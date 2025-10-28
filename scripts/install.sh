@@ -31,4 +31,4 @@ echo "Installing extension..."
 cursor --install-extension "$VSIX_FILE" --force
 
 echo "Extension installed successfully!"
-echo "Restart VS Code to activate the extension."
+echo "Restart Cursor to activate the extension."
