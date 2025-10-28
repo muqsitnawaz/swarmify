@@ -1,0 +1,65 @@
+{
+  "name": "cursor-agents",
+  "displayName": "Cursor Agents",
+  "description": "Manage multiple Claude Code and Codex terminal agents in the editor",
+  "version": "1.0.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/muqsitnawaz/CursorAgents"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "agentTabs.open",
+        "title": "Agent Tabs: Open All Terminals"
+      },
+      {
+        "command": "agentTabs.closeAll",
+        "title": "Agent Tabs: Close All Terminals"
+      },
+      {
+        "command": "agentTabs.configure",
+        "title": "Agent Tabs: Configure Counts"
+      }
+    ],
+    "configuration": {
+      "title": "Agent Tabs",
+      "properties": {
+        "agentTabs.claudeCount": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 10,
+          "description": "Number of Claude Code terminal tabs to open"
+        },
+        "agentTabs.codexCount": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 10,
+          "description": "Number of Codex terminal tabs to open"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.x",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.3"
+  }
+}
