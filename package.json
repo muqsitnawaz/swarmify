@@ -2,7 +2,8 @@
   "name": "cursor-agents",
   "displayName": "Cursor Agents",
   "description": "Manage multiple Claude Code and Codex terminal agents in the editor",
-  "version": "1.0.0",
+  "version": "1.0.1",
+  "icon": "assets/agents.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/muqsitnawaz/CursorAgents"
@@ -21,7 +22,11 @@
     "commands": [
       {
         "command": "agentTabs.open",
-        "title": "Agent Tabs: Open All Terminals"
+        "title": "Agent Tabs: Open All Terminals",
+        "icon": {
+          "light": "assets/agents.png",
+          "dark": "assets/agents.png"
+        }
       },
       {
         "command": "agentTabs.closeAll",
@@ -50,6 +55,15 @@
           "description": "Number of Codex terminal tabs to open"
         }
       }
+    },
+    "menus": {
+      "editor/title": [
+        {
+          "command": "agentTabs.open",
+          "group": "navigation",
+          "when": "true"
+        }
+      ]
     }
   },
   "scripts": {

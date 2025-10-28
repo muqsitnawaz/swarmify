@@ -53,22 +53,18 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
 
   // Get extension path for icons
   const extensionPath = context.extensionPath;
-  const claudeIconPath = vscode.Uri.file(path.join(extensionPath, 'assets', 'claude copy.png'));
-  const codexIconPath = vscode.Uri.file(path.join(extensionPath, 'assets', 'chatgpt.png'));
+  const claudeIconPath = vscode.Uri.file(path.join(extensionPath, 'assets', 'agents.png'));
+  const codexIconPath = vscode.Uri.file(path.join(extensionPath, 'assets', 'agents.png'));
 
   // Create Claude terminals
   for (let i = 0; i < claudeCount; i++) {
     const terminal = vscode.window.createTerminal({
       name: '', // Empty name to hide title
-      iconPath: claudeIconPath,
-      location: {
-        viewColumn: vscode.ViewColumn.One,
-        preserveFocus: false
-      }
+      iconPath: claudeIconPath
     });
 
     // Send the claude command
-    terminal.sendText('claude', false);
+    terminal.sendText('claude');
 
     managedTerminals.push(terminal);
   }
@@ -77,23 +73,22 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
   for (let i = 0; i < codexCount; i++) {
     const terminal = vscode.window.createTerminal({
       name: '', // Empty name to hide title
-      iconPath: codexIconPath,
-      location: {
-        viewColumn: vscode.ViewColumn.One,
-        preserveFocus: false
-      }
+      iconPath: codexIconPath
     });
 
     // Send the codex command
-    terminal.sendText('codex', false);
+    terminal.sendText('codex');
 
     managedTerminals.push(terminal);
   }
 
-  // Show the first terminal
-  if (managedTerminals.length > 0) {
-    managedTerminals[0].show();
+  // Show all terminals
+  for (const terminal of managedTerminals) {
+    terminal.show();
   }
+
+  // Note: VSCode API does not provide a way to programmatically pin terminal tabs
+  // Users will need to manually pin terminals if desired
 
   // Save state for persistence
   const state: TerminalState = {

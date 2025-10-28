@@ -28,7 +28,7 @@ if [ ! -f "$VSIX_FILE" ]; then
 fi
 
 echo "Installing extension..."
-code --install-extension "$VSIX_FILE" --force
+cursor --install-extension "$VSIX_FILE" --force
 
 echo "Extension installed successfully!"
 echo "Restart VS Code to activate the extension."
