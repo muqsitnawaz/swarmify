@@ -1,8 +1,8 @@
 {
   "name": "cursor-agents",
   "displayName": "Cursor Agents",
-  "description": "Manage multiple Claude Code and Codex terminal agents in the editor",
-  "version": "1.0.4",
+  "description": "Manage multiple Claude Code, Codex, and Gemini terminal agents in the editor",
+  "version": "1.0.10",
   "icon": "assets/agents.png",
   "repository": {
     "type": "git",
@@ -22,7 +22,7 @@
     "commands": [
       {
         "command": "agentTabs.open",
-        "title": "Agent Tabs: Open All Terminals",
+        "title": "Run Agents",
         "icon": {
           "light": "assets/agents.png",
           "dark": "assets/agents.png"
@@ -35,6 +35,30 @@
       {
         "command": "agentTabs.configure",
         "title": "Agent Tabs: Configure Counts"
+      },
+      {
+        "command": "agentTabs.newClaudeCode",
+        "title": "Agents: New Claude Code",
+        "icon": {
+          "light": "assets/logo1-claude.png",
+          "dark": "assets/logo1-claude.png"
+        }
+      },
+      {
+        "command": "agentTabs.newCodex",
+        "title": "Agents: New Codex",
+        "icon": {
+          "light": "assets/logo1-chatgpt.png",
+          "dark": "assets/logo1-chatgpt.png"
+        }
+      },
+      {
+        "command": "agentTabs.newGemini",
+        "title": "Agents: New Gemini Agent",
+        "icon": {
+          "light": "assets/gemini.png",
+          "dark": "assets/gemini.png"
+        }
       }
     ],
     "configuration": {
@@ -43,16 +67,62 @@
         "agentTabs.claudeCount": {
           "type": "number",
           "default": 2,
-          "minimum": 1,
+          "minimum": 0,
           "maximum": 10,
           "description": "Number of Claude Code terminal tabs to open"
         },
         "agentTabs.codexCount": {
           "type": "number",
           "default": 2,
-          "minimum": 1,
+          "minimum": 0,
           "maximum": 10,
           "description": "Number of Codex terminal tabs to open"
+        },
+        "agentTabs.geminiCount": {
+          "type": "number",
+          "default": 2,
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Number of Gemini terminal tabs to open"
+        },
+        "agentTabs.customAgents": {
+          "type": "array",
+          "default": [],
+          "description": "Custom agent configurations",
+          "items": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string",
+                "description": "Display title for the agent (e.g., 'GC' for Gemini CLI)"
+              },
+              "command": {
+                "type": "string",
+                "description": "Terminal command to run (e.g., 'gemini-cli')"
+              },
+              "count": {
+                "type": "number",
+                "default": 1,
+                "minimum": 0,
+                "maximum": 10,
+                "description": "Number of terminal instances to open on startup"
+              },
+              "iconPath": {
+                "type": "string",
+                "description": "Optional: Path to custom icon relative to extension root (defaults to assets/agents.png)"
+              }
+            },
+            "required": [
+              "title",
+              "command",
+              "count"
+            ]
+          }
+        },
+        "agentTabs.autoStart": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically open configured agents on workspace startup"
         }
       }
     },
@@ -62,6 +132,13 @@
           "command": "agentTabs.open",
           "group": "navigation",
           "when": "true"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "agentTabs.newGemini",
+          "when": "true",
+          "group": "navigation@2"
         }
       ]
     }

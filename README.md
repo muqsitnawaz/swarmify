@@ -1,10 +1,13 @@
 # Cursor Agents
 
-VS Code extension for managing multiple Claude Code and Codex terminal instances in the editor.
+VS Code extension for managing multiple AI agent terminal instances in the editor with support for custom agents.
 
 ## Features
 
-- Configure the number of Claude Code and Codex terminals
+- Built-in support for Claude Code, Codex, and Gemini terminals
+- Add custom AI agents (e.g., Gemini CLI, GPT-4 CLI, etc.)
+- Configure starting instance counts per agent
+- Individual commands to open single agent instances
 - Opens terminals in the editor area with custom icons
 - Persistent across VS Code restarts
 - Pin terminals for easy access
@@ -13,21 +16,61 @@ VS Code extension for managing multiple Claude Code and Codex terminal instances
 
 ### Commands
 
-- **Agent Tabs: Open All Terminals** - Opens configured number of terminals
+- **Run Agents** - Opens all configured agents with their specified counts
+- **Agents: New Claude Code** - Opens a single Claude Code terminal
+- **Agents: New Codex** - Opens a single Codex terminal
+- **Agents: New Gemini Agent** - Opens a single Gemini terminal
 - **Agent Tabs: Close All Terminals** - Closes all managed terminals
 - **Agent Tabs: Configure Counts** - Interactive configuration dialog
 
+Custom agents automatically get commands registered as `Agents: New [Title]` when defined in settings.
+
 ### Settings
 
-Configure in VS Code settings:
+Configure in VS Code settings (JSON or UI):
 
-- `agentTabs.claudeCount` - Number of Claude Code terminals (1-10, default: 2)
-- `agentTabs.codexCount` - Number of Codex terminals (1-10, default: 2)
+#### General Settings
+- `agentTabs.autoStart` - Automatically open configured agents on workspace startup (default: `false`)
+  - When `false`: Agents only start when you manually click "Run Agents" or use individual commands
+  - When `true`: Agents automatically open on startup based on configured counts
+
+#### Built-in Agents
+- `agentTabs.claudeCount` - Number of Claude Code terminals (0-10, default: 2)
+- `agentTabs.codexCount` - Number of Codex terminals (0-10, default: 2)
+- `agentTabs.geminiCount` - Number of Gemini terminals (0-10, default: 2)
+
+#### Custom Agents
+- `agentTabs.customAgents` - Array of custom agent configurations
+
+Example custom agent configuration in `settings.json`:
+```json
+{
+  "agentTabs.customAgents": [
+    {
+      "title": "GC",
+      "command": "gemini-cli",
+      "count": 2,
+      "iconPath": "assets/gemini-icon.png"
+    },
+    {
+      "title": "GPT",
+      "command": "gpt-cli",
+      "count": 1
+    }
+  ]
+}
+```
+
+Custom agent properties:
+- `title` (required) - Display title for the agent (e.g., "GC" for Gemini CLI)
+- `command` (required) - Terminal command to run (e.g., "gemini-cli")
+- `count` (required) - Number of terminal instances to open on startup (0-10)
+- `iconPath` (optional) - Path to custom icon relative to extension root (defaults to `assets/agents.png`)
 
 ## Requirements
 
-- `claude` CLI tool installed and in PATH
-- `codex` CLI tool installed and in PATH
+- Built-in agents: `claude`, `codex`, and `gemini` CLI tools installed and in PATH
+- Custom agents: respective CLI tools installed and accessible
 
 ## Development
 

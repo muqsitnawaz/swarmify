@@ -22,6 +22,7 @@ echo "Building Cursor Agents v${VERSION}..."
 # Get the project root directory
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_ROOT"
+DIST_DIR="$PROJECT_ROOT/dist"
 
 # Update version in package.json
 echo "Updating version to ${VERSION}..."
@@ -44,7 +45,10 @@ if ! command -v vsce &> /dev/null; then
 fi
 
 # Package extension
-echo "Packaging extension..."
-vsce package
+echo "Creating dist directory..."
+mkdir -p "$DIST_DIR"
 
-echo "Build complete: cursor-agents-${VERSION}.vsix"
+echo "Packaging extension..."
+vsce package --out "$DIST_DIR/cursor-agents-${VERSION}.vsix"
+
+echo "Build complete: $DIST_DIR/cursor-agents-${VERSION}.vsix"
