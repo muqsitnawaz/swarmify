@@ -1,4 +1,4 @@
-# Cursor Agents
+# Agents
 
 VS Code extension for managing multiple AI agent terminal instances in the editor with support for custom agents.
 
@@ -20,8 +20,8 @@ VS Code extension for managing multiple AI agent terminal instances in the edito
 - **Agents: New Claude Code** - Opens a single Claude Code terminal
 - **Agents: New Codex** - Opens a single Codex terminal
 - **Agents: New Gemini Agent** - Opens a single Gemini terminal
-- **Agent Tabs: Close All Terminals** - Closes all managed terminals
-- **Agent Tabs: Configure Counts** - Interactive configuration dialog
+- **Agents: Close All Terminals** - Closes all managed terminals
+- **Agents: Configure Counts** - Interactive configuration dialog
 
 Custom agents automatically get commands registered as `Agents: New [Title]` when defined in settings.
 

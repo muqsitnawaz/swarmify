@@ -1,6 +1,6 @@
 {
   "name": "cursor-agents",
-  "displayName": "Cursor Agents",
+  "displayName": "Agents",
   "description": "Manage multiple Claude Code, Codex, and Gemini terminal agents in the editor",
   "version": "1.0.10",
   "icon": "assets/agents.png",
@@ -30,11 +30,11 @@
       },
       {
         "command": "agentTabs.closeAll",
-        "title": "Agent Tabs: Close All Terminals"
+        "title": "Agents: Close All Terminals"
       },
       {
         "command": "agentTabs.configure",
-        "title": "Agent Tabs: Configure Counts"
+        "title": "Agents: Configure Counts"
       },
       {
         "command": "agentTabs.newClaudeCode",
@@ -59,10 +59,18 @@
           "light": "assets/gemini.png",
           "dark": "assets/gemini.png"
         }
+      },
+      {
+        "command": "agentTabs.setTitle",
+        "title": "Agents: Set Title"
+      },
+      {
+        "command": "agentTabs.generateTitle",
+        "title": "Agents: Generate Title (AI)"
       }
     ],
     "configuration": {
-      "title": "Agent Tabs",
+      "title": "Agents",
       "properties": {
         "agentTabs.claudeCount": {
           "type": "number",
@@ -84,6 +92,16 @@
           "minimum": 0,
           "maximum": 10,
           "description": "Number of Gemini terminal tabs to open"
+        },
+        "agentTabs.openAiApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Your OpenAI API key for generating tab labels (stored in user settings)"
+        },
+        "agentTabs.openAiModel": {
+          "type": "string",
+          "default": "gpt-4o-mini",
+          "description": "OpenAI model to use for label generation (cheap nano/mini model recommended)"
         },
         "agentTabs.customAgents": {
           "type": "array",
