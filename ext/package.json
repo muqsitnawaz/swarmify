@@ -1,8 +1,8 @@
 {
   "name": "cursor-agents",
   "displayName": "Agents",
-  "description": "Manage multiple Claude Code, Codex, and Gemini terminal agents in the editor",
-  "version": "1.0.10",
+  "description": "Manage multiple Claude Code, Codex, Gemini, and Cursor terminal agents in the editor",
+  "version": "1.2.3",
   "icon": "assets/agents.png",
   "repository": {
     "type": "git",
@@ -40,16 +40,16 @@
         "command": "agentTabs.newClaudeCode",
         "title": "Agents: New Claude Code",
         "icon": {
-          "light": "assets/logo1-claude.png",
-          "dark": "assets/logo1-claude.png"
+          "light": "assets/claude.png",
+          "dark": "assets/claude.png"
         }
       },
       {
         "command": "agentTabs.newCodex",
         "title": "Agents: New Codex",
         "icon": {
-          "light": "assets/logo1-chatgpt.png",
-          "dark": "assets/logo1-chatgpt.png"
+          "light": "assets/chatgpt.png",
+          "dark": "assets/chatgpt.png"
         }
       },
       {
@@ -61,12 +61,16 @@
         }
       },
       {
-        "command": "agentTabs.setTitle",
-        "title": "Agents: Set Title"
+        "command": "agentTabs.newCursor",
+        "title": "Agents: New Cursor Agent",
+        "icon": {
+          "light": "assets/cursor.png",
+          "dark": "assets/cursor.png"
+        }
       },
       {
-        "command": "agentTabs.generateTitle",
-        "title": "Agents: Generate Title (AI)"
+        "command": "agentTabs.setTitle",
+        "title": "Agents: Set Label"
       }
     ],
     "configuration": {
@@ -93,15 +97,12 @@
           "maximum": 10,
           "description": "Number of Gemini terminal tabs to open"
         },
-        "agentTabs.openAiApiKey": {
-          "type": "string",
-          "default": "",
-          "description": "Your OpenAI API key for generating tab labels (stored in user settings)"
-        },
-        "agentTabs.openAiModel": {
-          "type": "string",
-          "default": "gpt-4o-mini",
-          "description": "OpenAI model to use for label generation (cheap nano/mini model recommended)"
+        "agentTabs.cursorCount": {
+          "type": "number",
+          "default": 2,
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Number of Cursor terminal tabs to open"
         },
         "agentTabs.customAgents": {
           "type": "array",
@@ -159,7 +160,15 @@
           "group": "navigation@2"
         }
       ]
-    }
+    },
+    "keybindings": [
+      {
+        "command": "agentTabs.setTitle",
+        "key": "ctrl+shift+l",
+        "mac": "cmd+shift+l",
+        "when": "terminalFocus"
+      }
+    ]
   },
   "scripts": {
     "compile": "tsc -p ./",

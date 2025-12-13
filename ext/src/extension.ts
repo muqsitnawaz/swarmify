@@ -1,11 +1,12 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { TextDecoder } from 'util';
+import * as fs from 'fs';
 
 interface TerminalState {
   claudeCount: number;
   codexCount: number;
   geminiCount: number;
+  cursorCount: number;
   terminalIds: string[];
 }
 
@@ -24,9 +25,38 @@ interface CustomAgentSettings {
   iconPath?: string;
 }
 
+interface CodingTask {
+  id: string;
+  description: string;
+  type: 'feature' | 'bugfix' | 'refactor' | 'test' | 'documentation' | 'review';
+  priority: 'high' | 'medium' | 'low';
+  files?: string[];
+  context?: string;
+  status: 'pending' | 'in-progress' | 'completed' | 'failed';
+  assignedAgents?: string[];
+}
+
+interface AgentCapability {
+  agentType: 'claude' | 'codex' | 'gemini' | 'cursor';
+  strengths: string[];
+  weaknesses: string[];
+  bestFor: string[];
+}
+
+interface OrchestrationSession {
+  id: string;
+  task: CodingTask;
+  orchestratorTerminalId: string;
+  workerAgents: Map<string, AgentCapability>;
+  createdAt: number;
+  status: 'analyzing' | 'orchestrating' | 'monitoring' | 'completed';
+}
+
 let managedTerminals: vscode.Terminal[] = [];
 // Map to track terminal ID -> terminal instance for URI callbacks
 const terminalMap = new Map<string, vscode.Terminal>();
+// Counter to ensure unique terminal IDs
+let terminalIdCounter = 0;
 
 interface TerminalMetadata {
   id: string;
@@ -37,22 +67,51 @@ interface TerminalMetadata {
 const terminalMetadataByInstance = new Map<vscode.Terminal, TerminalMetadata>();
 const terminalMetadataById = new Map<string, TerminalMetadata>();
 
+const activeOrchestrationSessions = new Map<string, OrchestrationSession>();
+
 const CLAUDE_TITLE = 'CC';
 const CODEX_TITLE = 'CX';
-const GEMINI_TITLE = 'GM';
+const GEMINI_TITLE = 'GX';
+const CURSOR_TITLE = 'CR';
+const ORCHESTRATOR_TITLE = 'OR';
 const LABEL_MAX_WORDS = 5;
-const CONTEXT_SNIPPET_LIMIT = 800;
-const decoder = new TextDecoder();
+
+const AGENT_CAPABILITIES: Map<string, AgentCapability> = new Map([
+  ['claude', {
+    agentType: 'claude',
+    strengths: ['code-generation', 'refactoring', 'documentation', 'code-review', 'architectural-design'],
+    weaknesses: ['real-time-data', 'mathematical-calculations'],
+    bestFor: ['feature', 'refactor', 'documentation', 'review']
+  }],
+  ['codex', {
+    agentType: 'codex',
+    strengths: ['code-completion', 'syntax-generation', 'quick-prototyping', 'pattern-matching'],
+    weaknesses: ['complex-reasoning', 'architectural-planning'],
+    bestFor: ['feature', 'bugfix']
+  }],
+  ['gemini', {
+    agentType: 'gemini',
+    strengths: ['multimodal-analysis', 'code-understanding', 'testing', 'documentation'],
+    weaknesses: ['code-generation-speed'],
+    bestFor: ['test', 'documentation', 'review']
+  }],
+  ['cursor', {
+    agentType: 'cursor',
+    strengths: ['codebase-navigation', 'context-awareness', 'incremental-changes', 'local-development'],
+    weaknesses: ['large-scale-refactoring'],
+    bestFor: ['bugfix', 'refactor', 'feature']
+  }]
+]);
 
 function getBuiltInAgents(extensionPath: string): AgentConfig[] {
   const claudeIconPath: vscode.IconPath = {
-    light: vscode.Uri.file(path.join(extensionPath, 'assets', 'logo1-claude.png')),
-    dark: vscode.Uri.file(path.join(extensionPath, 'assets', 'logo1-claude.png'))
+    light: vscode.Uri.file(path.join(extensionPath, 'assets', 'claude.png')),
+    dark: vscode.Uri.file(path.join(extensionPath, 'assets', 'claude.png'))
   };
 
   const codexIconPath: vscode.IconPath = {
-    light: vscode.Uri.file(path.join(extensionPath, 'assets', 'logo1-chatgpt.png')),
-    dark: vscode.Uri.file(path.join(extensionPath, 'assets', 'logo1-chatgpt.png'))
+    light: vscode.Uri.file(path.join(extensionPath, 'assets', 'chatgpt.png')),
+    dark: vscode.Uri.file(path.join(extensionPath, 'assets', 'chatgpt.png'))
   };
 
   const geminiIconPath: vscode.IconPath = {
@@ -60,10 +119,16 @@ function getBuiltInAgents(extensionPath: string): AgentConfig[] {
     dark: vscode.Uri.file(path.join(extensionPath, 'assets', 'gemini.png'))
   };
 
+  const cursorIconPath: vscode.IconPath = {
+    light: vscode.Uri.file(path.join(extensionPath, 'assets', 'cursor.png')),
+    dark: vscode.Uri.file(path.join(extensionPath, 'assets', 'cursor.png'))
+  };
+
   const config = vscode.workspace.getConfiguration('agentTabs');
   const claudeCount = config.get<number>('claudeCount', 2);
   const codexCount = config.get<number>('codexCount', 2);
   const geminiCount = config.get<number>('geminiCount', 2);
+  const cursorCount = config.get<number>('cursorCount', 2);
 
   return [
     {
@@ -86,6 +151,13 @@ function getBuiltInAgents(extensionPath: string): AgentConfig[] {
       count: geminiCount,
       iconPath: geminiIconPath,
       prefix: 'gm'
+    },
+    {
+      title: CURSOR_TITLE,
+      command: 'cursor',
+      count: cursorCount,
+      iconPath: cursorIconPath,
+      prefix: 'cr'
     }
   ];
 }
@@ -108,7 +180,7 @@ function getCustomAgents(extensionPath: string): AgentConfig[] {
       : defaultIconPath;
 
     // Generate prefix from title (lowercase, remove spaces/special chars)
-    const prefix = agent.title.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const prefix = agent.title.toLowerCase().replace(/[^a-z0-9]/g, '') || 'ax';
 
     return {
       title: agent.title,
@@ -124,9 +196,177 @@ function getAllAgents(extensionPath: string): AgentConfig[] {
   return [...getBuiltInAgents(extensionPath), ...getCustomAgents(extensionPath)];
 }
 
-async function setTerminalTitle(terminal: vscode.Terminal, title: string) {
+async function analyzeCodebase(): Promise<{
+  languages: string[];
+  frameworks: string[];
+  fileCount: number;
+  structure: string;
+}> {
+  const workspaceFolders = vscode.workspace.workspaceFolders;
+  if (!workspaceFolders || workspaceFolders.length === 0) {
+    return { languages: [], frameworks: [], fileCount: 0, structure: 'No workspace open' };
+  }
+
+  const rootPath = workspaceFolders[0].uri.fsPath;
+  const languages = new Set<string>();
+  const frameworks = new Set<string>();
+  let fileCount = 0;
+  const structure: string[] = [];
+
   try {
-    terminal.show();
+    const files = await vscode.workspace.findFiles('**/*', '**/node_modules/**', 1000);
+    fileCount = files.length;
+
+    for (const file of files) {
+      const ext = path.extname(file.fsPath).toLowerCase();
+      if (ext === '.ts' || ext === '.tsx') languages.add('TypeScript');
+      else if (ext === '.js' || ext === '.jsx') languages.add('JavaScript');
+      else if (ext === '.py') languages.add('Python');
+      else if (ext === '.go') languages.add('Go');
+      else if (ext === '.rs') languages.add('Rust');
+      else if (ext === '.java') languages.add('Java');
+      else if (ext === '.rb') languages.add('Ruby');
+      else if (ext === '.php') languages.add('PHP');
+
+      const relativePath = path.relative(rootPath, file.fsPath);
+      if (relativePath.includes('package.json')) {
+        try {
+          const content = fs.readFileSync(file.fsPath, 'utf8');
+          const pkg = JSON.parse(content);
+          if (pkg.dependencies) {
+            if (pkg.dependencies.react) frameworks.add('React');
+            if (pkg.dependencies.vue) frameworks.add('Vue');
+            if (pkg.dependencies.angular) frameworks.add('Angular');
+            if (pkg.dependencies['@nestjs/core']) frameworks.add('NestJS');
+            if (pkg.dependencies.express) frameworks.add('Express');
+            if (pkg.dependencies.next) frameworks.add('Next.js');
+          }
+        } catch {}
+      }
+    }
+
+    const topLevelDirs = fs.readdirSync(rootPath, { withFileTypes: true })
+      .filter(dirent => dirent.isDirectory())
+      .map(dirent => dirent.name)
+      .filter(name => !name.startsWith('.') && name !== 'node_modules');
+
+    structure.push(`Root: ${path.basename(rootPath)}`);
+    structure.push(`Top-level directories: ${topLevelDirs.join(', ')}`);
+  } catch (error) {
+    console.error('Error analyzing codebase:', error);
+  }
+
+  return {
+    languages: Array.from(languages),
+    frameworks: Array.from(frameworks),
+    fileCount,
+    structure: structure.join('\n')
+  };
+}
+
+function selectAgentsForTask(task: CodingTask): string[] {
+  const selectedAgents: string[] = [];
+  const taskType = task.type;
+
+  for (const [agentName, capability] of AGENT_CAPABILITIES.entries()) {
+    if (capability.bestFor.includes(taskType)) {
+      selectedAgents.push(agentName);
+    }
+  }
+
+  if (selectedAgents.length === 0) {
+    selectedAgents.push('claude');
+  }
+
+  if (task.priority === 'high' && selectedAgents.length < 2) {
+    if (!selectedAgents.includes('claude')) selectedAgents.push('claude');
+    if (!selectedAgents.includes('cursor')) selectedAgents.push('cursor');
+  }
+
+  return selectedAgents.slice(0, 3);
+}
+
+async function spawnWorkerAgent(
+  context: vscode.ExtensionContext,
+  agentType: string,
+  task: CodingTask,
+  sessionId: string
+): Promise<string | null> {
+  const builtInAgents = getBuiltInAgents(context.extensionPath);
+  let agentConfig: AgentConfig | undefined;
+
+  switch (agentType) {
+    case 'claude':
+      agentConfig = builtInAgents.find(a => a.title === CLAUDE_TITLE);
+      break;
+    case 'codex':
+      agentConfig = builtInAgents.find(a => a.title === CODEX_TITLE);
+      break;
+    case 'gemini':
+      agentConfig = builtInAgents.find(a => a.title === GEMINI_TITLE);
+      break;
+    case 'cursor':
+      agentConfig = builtInAgents.find(a => a.title === CURSOR_TITLE);
+      break;
+  }
+
+  if (!agentConfig) {
+    console.error(`Agent config not found for type: ${agentType}`);
+    return null;
+  }
+
+  const editorLocation: vscode.TerminalEditorLocationOptions = {
+    viewColumn: vscode.ViewColumn.Active,
+    preserveFocus: false
+  };
+
+  const terminalId = `${agentConfig.prefix}-${Date.now()}-${++terminalIdCounter}`;
+  const baseName = `${agentConfig.title} [${task.id.substring(0, 8)}]`;
+
+  try {
+    const terminal = vscode.window.createTerminal({
+      iconPath: agentConfig.iconPath,
+      location: editorLocation,
+      isTransient: true,
+      name: baseName,
+      env: {
+        AGENT_TERMINAL_ID: terminalId,
+        ORCHESTRATION_SESSION_ID: sessionId,
+        TASK_ID: task.id,
+        TASK_DESCRIPTION: task.description
+      }
+    });
+
+    terminalMap.set(terminalId, terminal);
+    registerTerminalMetadata(terminal, terminalId, baseName);
+
+    const capability = AGENT_CAPABILITIES.get(agentType);
+    if (capability) {
+      const session = activeOrchestrationSessions.get(sessionId);
+      if (session) {
+        session.workerAgents.set(terminalId, capability);
+      }
+    }
+
+    terminal.sendText(agentConfig.command);
+    await setTerminalTitle(terminal, baseName, { preserveFocus: false });
+
+    managedTerminals.push(terminal);
+    return terminalId;
+  } catch (error) {
+    console.error(`Failed to spawn worker agent ${agentType}:`, error);
+    return null;
+  }
+}
+
+async function setTerminalTitle(
+  terminal: vscode.Terminal,
+  title: string,
+  options?: { preserveFocus?: boolean }
+) {
+  try {
+    const preserveFocus = options?.preserveFocus ?? true;
+    terminal.show(preserveFocus);
     await vscode.commands.executeCommand('workbench.action.terminal.renameWithArg', { name: title });
   } catch (error) {
     console.error(`Failed to set terminal title to ${title}`, error);
@@ -150,24 +390,16 @@ function sanitizeLabel(raw: string) {
   return words.join(' ').trim();
 }
 
-function getFriendlyAgentName(title: string) {
-  if (title === CLAUDE_TITLE) {
-    return 'Claude';
-  }
-  if (title === CODEX_TITLE) {
-    return 'Codex';
-  }
-  if (title === GEMINI_TITLE) {
-    return 'Gemini';
-  }
-  return title;
-}
-
-async function applyLabelToTerminal(terminal: vscode.Terminal, metadata: TerminalMetadata, label: string) {
+async function applyLabelToTerminal(
+  terminal: vscode.Terminal,
+  metadata: TerminalMetadata,
+  label: string,
+  options?: { preserveFocus?: boolean }
+) {
   const cleaned = sanitizeLabel(label);
   const finalTitle = buildDisplayedTitle(metadata.baseName, cleaned);
   metadata.label = cleaned;
-  await setTerminalTitle(terminal, finalTitle);
+  await setTerminalTitle(terminal, finalTitle, options);
 }
 
 function registerTerminalMetadata(terminal: vscode.Terminal, id: string, baseName: string) {
@@ -182,138 +414,6 @@ function unregisterTerminalMetadata(terminal: vscode.Terminal) {
     terminalMetadataByInstance.delete(terminal);
     terminalMetadataById.delete(metadata.id);
   }
-}
-
-function getWorkspaceRoot() {
-  return vscode.workspace.workspaceFolders?.[0]?.uri ?? null;
-}
-
-async function readPreferredContextFile(): Promise<{ label: string; content: string } | undefined> {
-  const workspaceRoot = getWorkspaceRoot();
-  if (!workspaceRoot) {
-    return undefined;
-  }
-
-  // Priority: AGENTS.md > CLAUDE.md/GEMINI.md > README.md (case-insensitive)
-  const candidates = [
-    'AGENTS.md',
-    'agents.md',
-    'CLAUDE.md',
-    'claude.md',
-    'GEMINI.md',
-    'gemini.md',
-    'README.md',
-    'readme.md'
-  ];
-
-  for (const fileName of candidates) {
-    const fileUri = vscode.Uri.joinPath(workspaceRoot, fileName);
-    try {
-      const stat = await vscode.workspace.fs.stat(fileUri);
-      if (stat) {
-        const data = await vscode.workspace.fs.readFile(fileUri);
-        const text = decoder.decode(data).slice(0, CONTEXT_SNIPPET_LIMIT);
-        return { label: fileName, content: text };
-      }
-    } catch {
-      // Ignore missing files and keep scanning
-      continue;
-    }
-  }
-
-  return undefined;
-}
-
-function getEditorSelectionSnippet(): string | undefined {
-  const editor = vscode.window.activeTextEditor;
-  if (!editor) {
-    return undefined;
-  }
-  const selection = editor.selection;
-  if (selection.isEmpty) {
-    return undefined;
-  }
-  const text = editor.document.getText(selection).trim();
-  if (!text) {
-    return undefined;
-  }
-  return text.slice(0, 1000);
-}
-
-function buildLabelPrompt(params: {
-  agentName: string;
-  workspaceFolder?: string;
-  selection?: string;
-  fileContext?: { label: string; content: string };
-}) {
-  const lines: string[] = [];
-  lines.push(
-    'You create a concise, human-friendly label for a coding agent terminal tab.',
-    'Rules: max 5 words, prefer feature/task names, no quotes/emoji, avoid trailing punctuation.',
-    `Agent: ${params.agentName}`
-  );
-
-  if (params.workspaceFolder) {
-    lines.push(`Workspace: ${params.workspaceFolder}`);
-  }
-
-  if (params.fileContext) {
-    lines.push(`${params.fileContext.label} excerpt:\n${params.fileContext.content}`);
-  }
-
-  lines.push('User selection/context:');
-  lines.push(params.selection ?? '(none provided)');
-  lines.push('Return only the label text.');
-
-  return lines.join('\n');
-}
-
-async function callLabelModel(prompt: string) {
-  const config = vscode.workspace.getConfiguration('agentTabs');
-  const apiKey = config.get<string>('openAiApiKey', '').trim();
-  const model = config.get<string>('openAiModel', 'gpt-4o-mini').trim() || 'gpt-4o-mini';
-
-  if (!apiKey) {
-    throw new Error('Set agentTabs.openAiApiKey in settings to generate labels.');
-  }
-
-  const fetchFn: any = (globalThis as any).fetch;
-  if (!fetchFn) {
-    throw new Error('fetch is not available in this environment.');
-  }
-
-  const response = await fetchFn('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.2,
-      max_tokens: 30,
-      messages: [
-        {
-          role: 'system',
-          content:
-            'You write short, human-friendly labels for VS Code terminal tabs. Respond with <=5 words, no quotes or emoji.'
-        },
-        { role: 'user', content: prompt }
-      ]
-    })
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`LLM call failed: ${response.status} ${errorText}`);
-  }
-
-  const data = await response.json();
-  const text: string | undefined = data?.choices?.[0]?.message?.content;
-  if (!text) {
-    throw new Error('LLM returned no content');
-  }
-  return text.trim();
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -360,10 +460,6 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('agentTabs.setTitle', () => setTitleForActiveTerminal())
   );
 
-  context.subscriptions.push(
-    vscode.commands.registerCommand('agentTabs.generateTitle', () => generateTitleForActiveTerminal())
-  );
-
   // Register built-in individual agent commands
   context.subscriptions.push(
     vscode.commands.registerCommand('agentTabs.newClaudeCode', () => {
@@ -391,6 +487,16 @@ export function activate(context: vscode.ExtensionContext) {
       const geminiAgent = builtInAgents.find(a => a.title === GEMINI_TITLE);
       if (geminiAgent) {
         openSingleAgent(context, geminiAgent);
+      }
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('agentTabs.newCursor', () => {
+      const builtInAgents = getBuiltInAgents(context.extensionPath);
+      const cursorAgent = builtInAgents.find(a => a.title === CURSOR_TITLE);
+      if (cursorAgent) {
+        openSingleAgent(context, cursorAgent);
       }
     })
   );
@@ -445,12 +551,31 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
-  // Auto-open terminals on startup if previously configured and autoStart is enabled
+  const onDidChangeTerminalName = (vscode.window as any)
+    .onDidChangeTerminalName as vscode.Event<vscode.Terminal> | undefined;
+  if (onDidChangeTerminalName) {
+    context.subscriptions.push(
+      onDidChangeTerminalName(async (terminal: vscode.Terminal) => {
+        const metadata = terminalMetadataByInstance.get(terminal);
+        if (!metadata) {
+          return;
+        }
+        const desiredTitle = buildDisplayedTitle(metadata.baseName, metadata.label);
+        if (terminal.name === desiredTitle) {
+          return;
+        }
+        await setTerminalTitle(terminal, desiredTitle);
+      })
+    );
+  } else {
+    console.warn('onDidChangeTerminalName API unavailable; agent titles may change when shells rename themselves.');
+  }
+
+  // Auto-open terminals on startup if autoStart is enabled
   const config = vscode.workspace.getConfiguration('agentTabs');
   const autoStart = config.get<boolean>('autoStart', false);
-  const state = context.globalState.get<TerminalState>('terminalState');
 
-  if (autoStart && state && state.terminalIds.length > 0) {
+  if (autoStart) {
     // Delay to ensure workspace is fully loaded
     setTimeout(() => openAgentTerminals(context), 1000);
   }
@@ -462,15 +587,15 @@ async function openSingleAgent(context: vscode.ExtensionContext, agentConfig: Ag
     preserveFocus: false
   };
 
-  const terminalId = `${agentConfig.prefix}-${Date.now()}-0`;
-  const baseName = getFriendlyAgentName(agentConfig.title);
+  const terminalId = `${agentConfig.prefix}-${Date.now()}-${++terminalIdCounter}`;
+  const baseName = agentConfig.title;
   const terminal = vscode.window.createTerminal({
     iconPath: agentConfig.iconPath,
     location: editorLocation,
     isTransient: true,
     name: agentConfig.title,
     env: {
-      CLAUDE_TERMINAL_ID: terminalId
+      AGENT_TERMINAL_ID: terminalId
     }
   });
 
@@ -480,7 +605,7 @@ async function openSingleAgent(context: vscode.ExtensionContext, agentConfig: Ag
 
   // Send the agent command
   terminal.sendText(agentConfig.command);
-  await setTerminalTitle(terminal, baseName);
+  await setTerminalTitle(terminal, baseName, { preserveFocus: false });
 
   managedTerminals.push(terminal);
 }
@@ -499,15 +624,15 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
   // Create terminals for each agent type
   for (const agent of agents) {
     for (let i = 0; i < agent.count; i++) {
-      const terminalId = `${agent.prefix}-${Date.now()}-${i}`;
-      const baseName = getFriendlyAgentName(agent.title);
+      const terminalId = `${agent.prefix}-${Date.now()}-${++terminalIdCounter}`;
+      const baseName = agent.title;
       const terminal = vscode.window.createTerminal({
         iconPath: agent.iconPath,
         location: editorLocation,
         isTransient: true,
         name: agent.title,
         env: {
-          CLAUDE_TERMINAL_ID: terminalId
+          AGENT_TERMINAL_ID: terminalId
         }
       });
 
@@ -517,7 +642,7 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
 
       // Send the agent command
       terminal.sendText(agent.command);
-      await setTerminalTitle(terminal, baseName);
+      await setTerminalTitle(terminal, baseName, { preserveFocus: false });
 
       managedTerminals.push(terminal);
       totalCount++;
@@ -533,7 +658,11 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
     claudeCount: config.get<number>('claudeCount', 2),
     codexCount: config.get<number>('codexCount', 2),
     geminiCount: config.get<number>('geminiCount', 2),
-    terminalIds: managedTerminals.map((_, idx) => `terminal-${idx}`)
+    cursorCount: config.get<number>('cursorCount', 2),
+    terminalIds: managedTerminals.map((terminal) => {
+      const metadata = terminalMetadataByInstance.get(terminal);
+      return metadata?.id || '';
+    }).filter(id => id !== '')
   };
   await context.globalState.update('terminalState', state);
 
@@ -604,10 +733,27 @@ async function configureCounts() {
     return; // User cancelled
   }
 
+  const cursorInput = await vscode.window.showInputBox({
+    prompt: 'Number of Cursor terminals',
+    value: config.get<number>('cursorCount', 2).toString(),
+    validateInput: (value) => {
+      const num = parseInt(value);
+      if (isNaN(num) || num < 0 || num > 10) {
+        return 'Please enter a number between 0 and 10';
+      }
+      return null;
+    }
+  });
+
+  if (cursorInput === undefined) {
+    return; // User cancelled
+  }
+
   // Update configuration
   await config.update('claudeCount', parseInt(claudeInput), vscode.ConfigurationTarget.Global);
   await config.update('codexCount', parseInt(codexInput), vscode.ConfigurationTarget.Global);
   await config.update('geminiCount', parseInt(geminiInput), vscode.ConfigurationTarget.Global);
+  await config.update('cursorCount', parseInt(cursorInput), vscode.ConfigurationTarget.Global);
 
   const action = await vscode.window.showInformationMessage(
     'Configuration updated. Open terminals now?',
@@ -620,27 +766,15 @@ async function configureCounts() {
   }
 }
 
-async function getActiveManagedTerminal() {
+async function setTitleForActiveTerminal() {
   const terminal = vscode.window.activeTerminal;
   if (!terminal) {
     vscode.window.showInformationMessage('No active terminal to label.');
-    return undefined;
-  }
-  const metadata = terminalMetadataByInstance.get(terminal);
-  if (!metadata) {
-    vscode.window.showInformationMessage('Active terminal is not managed by Cursor Agents.');
-    return undefined;
-  }
-  return { terminal, metadata };
-}
-
-async function setTitleForActiveTerminal() {
-  const active = await getActiveManagedTerminal();
-  if (!active) {
     return;
   }
 
-  const currentLabel = active.metadata.label ?? '';
+  const metadata = terminalMetadataByInstance.get(terminal);
+  const currentLabel = metadata?.label ?? '';
   const input = await vscode.window.showInputBox({
     prompt: 'Set a short label for this agent tab',
     placeHolder: 'Feature name or task (max 5 words)',
@@ -651,71 +785,31 @@ async function setTitleForActiveTerminal() {
     return;
   }
 
-  const cleaned = sanitizeLabel(input);
+  const cleaned = input.trim();
   if (!cleaned) {
     vscode.window.showInformationMessage('Label not set (empty input).');
     return;
   }
 
-  await applyLabelToTerminal(active.terminal, active.metadata, cleaned);
-}
-
-async function generateTitleForActiveTerminal() {
-  const active = await getActiveManagedTerminal();
-  if (!active) {
-    return;
-  }
-
-  const selection = getEditorSelectionSnippet();
-  const manualContext =
-    selection ??
-    (await vscode.window.showInputBox({
-      prompt: 'Optional: paste a short task/context snippet for this tab',
-      placeHolder: 'E.g., Fix login bug, implement feature X'
-    }));
-
-  const workspaceRoot = getWorkspaceRoot();
-  const workspaceName = workspaceRoot ? path.basename(workspaceRoot.fsPath) : undefined;
-  const fileContext = await readPreferredContextFile();
-  const prompt = buildLabelPrompt({
-    agentName: active.metadata.baseName,
-    workspaceFolder: workspaceName,
-    selection: manualContext?.slice(0, 1000),
-    fileContext
-  });
-
-  try {
-    const suggested = await vscode.window.withProgress(
-      {
-        location: vscode.ProgressLocation.Notification,
-        title: 'Generating agent tab label…'
-      },
-      async () => callLabelModel(prompt)
-    );
-
-    const cleaned = sanitizeLabel(suggested);
-    const finalLabel = await vscode.window.showInputBox({
-      prompt: 'Review or edit the generated label',
-      value: cleaned || active.metadata.label || '',
-      placeHolder: 'Feature name or task (max 5 words)'
-    });
-
-    if (finalLabel === undefined) {
-      return;
+  // For managed terminals, update metadata and use full title format
+  if (metadata) {
+    await applyLabelToTerminal(terminal, metadata, sanitizeLabel(cleaned), { preserveFocus: false });
+  } else {
+    // For unmanaged terminals, try to detect agent type from terminal name
+    const terminalName = terminal.name.toLowerCase();
+    let prefix = '';
+    if (terminalName.includes('claude') || terminalName.includes('cc')) {
+      prefix = CLAUDE_TITLE;
+    } else if (terminalName.includes('codex') || terminalName.includes('cx')) {
+      prefix = CODEX_TITLE;
+    } else if (terminalName.includes('gemini') || terminalName.includes('gx') || terminalName.includes('gm')) {
+      prefix = GEMINI_TITLE;
+    } else if (terminalName.includes('cursor') || terminalName.includes('cr')) {
+      prefix = CURSOR_TITLE;
     }
 
-    const finalCleaned = sanitizeLabel(finalLabel);
-    if (!finalCleaned) {
-      vscode.window.showInformationMessage('Label not set (empty input).');
-      return;
-    }
-
-    await applyLabelToTerminal(active.terminal, active.metadata, finalCleaned);
-  } catch (error: any) {
-    console.error('Failed to generate tab label', error);
-    vscode.window.showErrorMessage(
-      `Could not generate label: ${error?.message ?? 'Unknown error'}`
-    );
+    const title = prefix ? `${prefix} - ${sanitizeLabel(cleaned)}` : cleaned;
+    await setTerminalTitle(terminal, title, { preserveFocus: false });
   }
 }
 
