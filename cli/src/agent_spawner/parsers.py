@@ -75,6 +75,17 @@ def _normalize_codex(raw: dict) -> dict:
                 "timestamp": timestamp,
             }
 
+        elif item_type == "command_execution":
+            # Codex runs shell commands via command_execution
+            command = item.get("command", "")
+            return {
+                "type": "bash",
+                "agent": "codex",
+                "tool": "command_execution",
+                "command": command,
+                "timestamp": timestamp,
+            }
+
         elif item_type == "tool_call":
             tool_name = item.get("name", "unknown")
             tool_args = item.get("arguments", {})
@@ -259,25 +270,28 @@ def _normalize_gemini(raw: dict) -> dict:
                 "timestamp": timestamp,
             }
 
-    elif event_type == "tool_call":
-        tool_name = raw.get("name", "unknown")
-        tool_args = raw.get("args", {})
+    elif event_type in ("tool_call", "tool_use"):
+        # Gemini uses tool_name/parameters, others use name/args
+        tool_name = raw.get("tool_name", raw.get("name", "unknown"))
+        tool_args = raw.get("parameters", raw.get("args", {}))
 
-        # Detect file operations
-        if "file" in tool_name.lower() and "write" in tool_name.lower():
+        # Detect file operations (handle both path and file_path keys)
+        file_path = tool_args.get("file_path", tool_args.get("path", ""))
+
+        if "write" in tool_name.lower() and "file" in tool_name.lower():
             return {
                 "type": "file_write",
                 "agent": "gemini",
                 "tool": tool_name,
-                "path": tool_args.get("path", ""),
+                "path": file_path,
                 "timestamp": timestamp,
             }
-        elif "file" in tool_name.lower() and "read" in tool_name.lower():
+        elif "read" in tool_name.lower() and "file" in tool_name.lower():
             return {
                 "type": "file_read",
                 "agent": "gemini",
                 "tool": tool_name,
-                "path": tool_args.get("path", ""),
+                "path": file_path,
                 "timestamp": timestamp,
             }
         elif tool_name.lower() in ("shell", "bash", "execute", "run_command"):
