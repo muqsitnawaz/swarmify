@@ -9,9 +9,11 @@ Uses a persistent architecture that survives MCP server restarts:
 import asyncio
 import json
 import os
+import re
+import shutil
 import signal
-import tempfile
 import subprocess
+import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -93,6 +95,39 @@ AGENT_COMMANDS: dict[AgentType, list[str]] = {
     "gemini": ["gemini", "-p", "{prompt}", "--output-format", "stream-json"],
     "claude": ["claude", "-p", "{prompt}", "--output-format", "stream-json"],
 }
+
+
+def check_cli_available(agent_type: AgentType) -> tuple[bool, str | None]:
+    """Check if the CLI tool for an agent type is available.
+
+    Returns (is_available, path_or_error_message).
+    """
+    cmd_template = AGENT_COMMANDS.get(agent_type)
+    if not cmd_template:
+        return False, f"Unknown agent type: {agent_type}"
+
+    executable = cmd_template[0]
+    path = shutil.which(executable)
+
+    if path:
+        return True, path
+    else:
+        return False, f"CLI tool '{executable}' not found in PATH. Install it first."
+
+
+def check_all_clis() -> dict[str, dict]:
+    """Check availability of all supported CLI agents.
+
+    Returns dict with agent type as key and {installed, path, error} as value.
+    """
+    results = {}
+    for agent_type in AGENT_COMMANDS:
+        available, path_or_error = check_cli_available(agent_type)
+        if available:
+            results[agent_type] = {"installed": True, "path": path_or_error, "error": None}
+        else:
+            results[agent_type] = {"installed": False, "path": None, "error": path_or_error}
+    return results
 
 # Base directory for agent data
 AGENTS_DIR = _resolve_agents_dir()
@@ -320,6 +355,19 @@ class AgentManager:
         yolo: bool = False,
     ) -> AgentProcess:
         """Spawn a new agent process (detached, survives server restart)."""
+        # Validate CLI tool is available
+        available, path_or_error = check_cli_available(agent_type)
+        if not available:
+            raise ValueError(path_or_error)
+
+        # Validate working directory
+        if cwd is not None:
+            cwd_path = Path(cwd)
+            if not cwd_path.exists():
+                raise ValueError(f"Working directory does not exist: {cwd}")
+            if not cwd_path.is_dir():
+                raise ValueError(f"Working directory is not a directory: {cwd}")
+
         agent_id = str(uuid4())[:8]
 
         cmd = self._build_command(agent_type, prompt, yolo)
@@ -340,17 +388,17 @@ class AgentManager:
         mode_label = "yolo" if yolo else "safe"
         logger.info(f"Spawning {agent_type} agent {agent_id} [{mode_label}]: {' '.join(cmd[:3])}...")
 
-        # Open stdout file for subprocess output
-        stdout_file = open(agent.stdout_path, "w")
-
-        # Spawn detached process (survives parent death)
-        process = subprocess.Popen(
-            cmd,
-            stdout=stdout_file,
-            stderr=subprocess.STDOUT,
-            cwd=cwd,
-            start_new_session=True,  # Detach from parent process group
-        )
+        # Spawn detached process with stdout redirected to file
+        # Use context manager to ensure file descriptor is properly closed after Popen inherits it
+        with open(agent.stdout_path, "w") as stdout_file:
+            process = subprocess.Popen(
+                cmd,
+                stdout=stdout_file,
+                stderr=subprocess.STDOUT,
+                cwd=cwd,
+                start_new_session=True,  # Detach from parent process group
+            )
+            # File descriptor is inherited by subprocess, safe to close after Popen returns
 
         agent.pid = process.pid
         agent.save_meta()
@@ -389,7 +437,7 @@ class AgentManager:
     def _prompt_has_yolo_flag(prompt: str) -> bool:
         """Detect attempts to inject the --yolo flag directly in the prompt."""
         normalized = prompt.lower()
-        return "--yolo" in normalized
+        return bool(re.search(r"(^|\s)--\s*yolo(\s|$|[^\w-])", normalized))
 
     @staticmethod
     def _apply_yolo_mode(agent_type: AgentType, cmd: list[str]) -> list[str]:

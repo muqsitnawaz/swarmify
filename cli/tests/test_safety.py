@@ -28,6 +28,11 @@ class TestYoloSafety:
         with pytest.raises(ValueError, match="yolo=True"):
             await manager.spawn("codex", "deploy --yolo everything", None)
 
+    async def test_yolo_split_flag_rejected(self, manager):
+        """Test that attempts to smuggle '-- yolo' are blocked without opt-in."""
+        with pytest.raises(ValueError, match="yolo=True"):
+            await manager.spawn("codex", "deploy -- yolo everything", None)
+
     async def test_yolo_opt_in_builds_yolo_command(self, manager):
         """Explicit opt-in should swap --full-auto for --yolo where supported."""
         cmd = manager._build_command("codex", "deploy to prod", yolo=True)

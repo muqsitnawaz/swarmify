@@ -6,12 +6,47 @@ Install this in Claude Code and it can delegate tasks to Codex, Gemini, Cursor, 
 
 ## Why
 
-Large tasks benefit from parallelization. With agent-spawner, Claude Code can:
+Large tasks benefit from parallelization. With agent-swarm, Claude Code can:
 
 - **Delegate subtasks**: Spin up a Codex agent to write tests while Gemini documents the API
 - **Get second opinions**: Have multiple agents review the same code independently
 - **Run long tasks in background**: Spawn an agent and check back later for results
-- **Stay token-efficient**: Read brief summaries instead of full agent transcripts
+- **Save costs**: Summarized outputs reduce token usage by ~99% compared to raw transcripts
+
+## Speed
+
+Sequential task execution is slow. With agent-swarm, Claude Code can spawn multiple agents in parallel and continue working while they run in the background.
+
+**Amdahl's Law** tells us: parallelize everything except what absolutely must be sequential. In practice:
+
+- Spawn 3 agents to work on tests, docs, and implementation simultaneously
+- Continue planning the next phase while agents work
+- Check back periodically with delta reads
+- Merge results when agents complete
+
+A task that takes 30 minutes sequentially might complete in 10 minutes with parallel workers.
+
+## Cost Efficiency
+
+Agent transcripts can be massive (50k+ tokens). This MCP server provides APIs designed to minimize token usage:
+
+- **Summary format**: Extracts only key info (files modified, errors, final message) - ~200 tokens instead of 50k
+- **Delta reads**: Poll running agents for only new events since last check
+- **Brief mode**: Ultra-compact ~80 token summaries for quick status checks
+- **Smart filtering**: `list_agents()` returns only running + recent agents, not full history
+
+## Smart Agent Selection
+
+Different agents have different strengths. The orchestrator automatically picks the best tool for each job:
+
+| Task Type | Agent | Why |
+|-----------|-------|-----|
+| New features | Codex | Fast, cheap, good at self-contained work |
+| Bug fixes | Cursor | Excellent at tracing through existing code |
+| Complex refactors | Gemini | Handles multi-file architectural changes |
+| Research/exploration | Claude | Maximum capability when you need it |
+
+No manual agent selection needed - just describe the task and let the orchestrator route it.
 
 ## Installation
 
@@ -128,17 +163,6 @@ Multi-agent systems need coordination to prevent conflicts. There are two main a
 agent-swarm uses orchestrator-based coordination. Claude Code acts as the coordinator, spawning workers for specific tasks and synthesizing their outputs. This keeps the architecture simple - no message brokers, no lock servers, no agent identity management.
 
 If you need decentralized agent-to-agent communication without an orchestrator, consider [Agent Mail MCP](https://github.com/Dicklesworthstone/mcp_agent_mail).
-
-## Agent Selection
-
-The orchestrator automatically picks the right agent based on task type:
-
-| Agent | Best For |
-|-------|----------|
-| `codex` | Self-contained features, clean implementations (default) |
-| `cursor` | Debugging, bug fixes, tracing through code |
-| `gemini` | Complex features involving multiple subsystems |
-| `claude` | General purpose, research, exploration |
 
 ## How It Works
 

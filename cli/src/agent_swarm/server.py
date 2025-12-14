@@ -9,7 +9,7 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
-from .agents import AgentManager, AgentStatus, AgentType
+from .agents import AgentManager, AgentStatus, AgentType, check_all_clis
 from .summarizer import summarize_events, get_delta
 
 # Global agent manager
@@ -120,6 +120,14 @@ For most use cases, just call with agent_id only - defaults are optimized for ef
                 "required": ["agent_id"],
             },
         ),
+        Tool(
+            name="check_environment",
+            description="Check which CLI agents are installed and available. Call this before spawning agents to verify the environment is ready.",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+            },
+        ),
     ]
 
 
@@ -150,6 +158,9 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
         elif name == "stop_agent":
             result = await handle_stop_agent(agent_id=arguments["agent_id"])
+
+        elif name == "check_environment":
+            result = await handle_check_environment()
 
         else:
             result = {"error": f"Unknown tool: {name}"}
