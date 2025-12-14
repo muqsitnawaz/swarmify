@@ -1,6 +1,7 @@
 """MCP server for spawning and orchestrating AI coding agents."""
 
 import asyncio
+from datetime import datetime, timedelta
 from typing import Literal
 
 from loguru import logger
@@ -15,7 +16,7 @@ from .summarizer import summarize_events, get_delta
 manager = AgentManager()
 
 # Create MCP server
-server = Server("agent-spawner")
+server = Server("agent-swarm")
 
 
 @server.list_tools()
@@ -24,7 +25,15 @@ async def list_tools() -> list[Tool]:
     return [
         Tool(
             name="spawn_agent",
-            description="Spawn an AI coding agent (codex, gemini, cursor, claude) to work on a task asynchronously",
+            description="""Spawn an AI coding agent to work on a task asynchronously.
+
+Agent selection guide (choose automatically - don't ask the user):
+- codex: Self-contained features, clean implementations, straightforward tasks with clear specs. Fast and cheap. Use for most feature work.
+- cursor: Debugging, bug fixes, investigating issues in existing code. Good at tracing through codebases and fixing broken things.
+- gemini: Complex features involving multiple subsystems, architectural changes, or tasks requiring coordination across many files.
+- claude: General purpose fallback, research, exploration, or when you need maximum capability.
+
+Default to codex for feature implementation. Use cursor for bugs. Use gemini for complex multi-system work.""",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -41,13 +50,26 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "description": "Working directory for the agent (optional)",
                     },
+                    "yolo": {
+                        "type": "boolean",
+                        "description": "Enable unsafe yolo mode (replaces --full-auto with --yolo when supported)",
+                        "default": False,
+                    },
                 },
                 "required": ["agent_type", "prompt"],
             },
         ),
         Tool(
             name="read_agent_output",
-            description="Read output from a running or completed agent. Use format='summary' (default) for token-efficient summaries, 'delta' for changes since last read, or 'events' for raw events.",
+            description="""Read output from a running or completed agent.
+
+IMPORTANT: Always prefer summary format with brief/standard detail to minimize token usage.
+- format='summary' + detail_level='brief': Use this by default. Minimal tokens, shows status and key info.
+- format='summary' + detail_level='standard': Use when you need more context about what the agent did.
+- format='delta': Use for polling a running agent - only returns new events since last read.
+- format='events' or detail_level='detailed': ONLY use when debugging failures or need raw output. Very token-heavy.
+
+For most use cases, just call with agent_id only - defaults are optimized for efficiency.""",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -59,13 +81,13 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "enum": ["summary", "delta", "events"],
                         "default": "summary",
-                        "description": "Output format: summary (compressed), delta (changes only), events (raw)",
+                        "description": "Output format. Prefer 'summary' (default) for token efficiency. Use 'delta' for polling. Avoid 'events' unless debugging.",
                     },
                     "detail_level": {
                         "type": "string",
                         "enum": ["brief", "standard", "detailed"],
                         "default": "standard",
-                        "description": "Detail level for summary format",
+                        "description": "Detail level for summary format. Prefer 'brief' or 'standard'. Only use 'detailed' when debugging failures.",
                     },
                     "since_event": {
                         "type": "integer",
@@ -112,6 +134,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 agent_type=arguments["agent_type"],
                 prompt=arguments["prompt"],
                 cwd=arguments.get("cwd"),
+                yolo=arguments.get("yolo", False),
             )
 
         elif name == "read_agent_output":
@@ -142,16 +165,19 @@ async def handle_spawn_agent(
     agent_type: AgentType,
     prompt: str,
     cwd: str | None = None,
+    yolo: bool = False,
 ) -> dict:
     """Spawn a new agent."""
-    agent = await manager.spawn(agent_type, prompt, cwd)
+    agent = await manager.spawn(agent_type, prompt, cwd, yolo=yolo)
 
     return {
         "agent_id": agent.agent_id,
         "agent_type": agent.agent_type,
         "status": agent.status.value,
         "started_at": agent.started_at.isoformat(),
-        "message": f"Spawned {agent_type} agent to work on task",
+        "mode": "yolo" if agent.yolo else "safe",
+        "yolo": agent.yolo,
+        "message": f"Spawned {agent_type} agent to work on task ({'YOLO' if agent.yolo else 'safe'} mode)",
     }
 
 
@@ -167,6 +193,9 @@ async def handle_read_agent_output(
     if not agent:
         return {"error": f"Agent {agent_id} not found"}
 
+    mode = "yolo" if agent.yolo else "safe"
+    yolo_enabled = agent.yolo
+
     if format == "summary":
         summary = summarize_events(
             agent_id=agent.agent_id,
@@ -175,16 +204,25 @@ async def handle_read_agent_output(
             events=agent.events,
             duration_ms=agent._duration_ms(),
         )
-        return summary.to_dict(detail_level)
+        return {
+            **summary.to_dict(detail_level),
+            "mode": mode,
+            "yolo": yolo_enabled,
+        }
 
     elif format == "delta":
-        return get_delta(
+        delta = get_delta(
             agent_id=agent.agent_id,
             agent_type=agent.agent_type,
             status=agent.status.value,
             events=agent.events,
             since_event=since_event,
         )
+        return {
+            **delta,
+            "mode": mode,
+            "yolo": yolo_enabled,
+        }
 
     else:  # events
         events = agent.events[since_event:]
@@ -195,19 +233,31 @@ async def handle_read_agent_output(
             "since_event": since_event,
             "event_count": len(agent.events),
             "events": events,
+            "mode": mode,
+            "yolo": yolo_enabled,
         }
 
 
 async def handle_list_agents() -> dict:
-    """List all agents."""
-    agents = manager.list_all()
-    running = [a for a in agents if a.status == AgentStatus.RUNNING]
-    completed = [a for a in agents if a.status != AgentStatus.RUNNING]
+    """List agents with smart filtering (running + recent completions)."""
+    all_agents = manager.list_all()
+
+    # Filter: running OR completed within last hour
+    cutoff = datetime.now() - timedelta(hours=1)
+    relevant = [
+        a for a in all_agents
+        if a.status == AgentStatus.RUNNING
+        or (a.completed_at and a.completed_at > cutoff)
+    ]
+
+    running = [a for a in relevant if a.status == AgentStatus.RUNNING]
+    completed = [a for a in relevant if a.status != AgentStatus.RUNNING]
 
     return {
-        "agents": [a.to_dict() for a in agents],
+        "agents": [a.to_dict() for a in relevant],
         "running_count": len(running),
         "completed_count": len(completed),
+        "filtered": len(all_agents) - len(relevant),
     }
 
 
@@ -236,17 +286,35 @@ def main():
     """Run the MCP server."""
     import sys
 
-    # Configure loguru to write to stderr (stdout is for MCP protocol)
+    from .agents import AGENTS_DIR
+
+    # Configure loguru to write to stderr AND file for debugging
     logger.remove()
     logger.add(sys.stderr, level="INFO")
 
-    logger.info("Starting agent-spawner MCP server")
+    # Add file logging for debugging using the same writable base as agent storage
+    log_dir = AGENTS_DIR.parent
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_file = log_dir / "agent-swarm.log"
+        logger.add(log_file, level="DEBUG", rotation="10 MB", retention="3 days")
+    except Exception as exc:  # pragma: no cover - defensive fallback
+        logger.warning(f"File logging disabled (path not writable: {log_dir}): {exc}")
+
+    logger.info("Starting agent-swarm MCP server")
 
     async def run():
-        async with stdio_server() as (read_stream, write_stream):
-            await server.run(read_stream, write_stream, server.create_initialization_options())
+        try:
+            async with stdio_server() as (read_stream, write_stream):
+                await server.run(read_stream, write_stream, server.create_initialization_options())
+        except Exception as e:
+            logger.exception(f"MCP server crashed: {e}")
+            raise
 
-    asyncio.run(run())
+    try:
+        asyncio.run(run())
+    except Exception as e:
+        logger.exception(f"Fatal error in agent-swarm: {e}")
 
 
 if __name__ == "__main__":

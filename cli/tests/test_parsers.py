@@ -1,7 +1,7 @@
 """Tests for parsers.py - critical for normalizing different CLI formats."""
 
 import pytest
-from agent_spawner.parsers import normalize_event
+from agent_swarm.parsers import normalize_event
 
 
 class TestCodexParser:

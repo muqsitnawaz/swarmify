@@ -1,14 +1,39 @@
 """Tests for agents.py - agent process management."""
 
+import shutil
 import pytest
 from datetime import datetime
-from agent_spawner.agents import (
+from pathlib import Path
+from agent_swarm.agents import (
     AgentManager,
     AgentProcess,
     AgentStatus,
     AgentType,
     AGENT_COMMANDS,
 )
+
+# Test data directory - checked into repo for reproducible tests
+TESTDATA_DIR = Path(__file__).parent / "testdata"
+
+
+def test_resolve_agents_dir_falls_back(monkeypatch, tmp_path):
+    """Ensure storage resolution falls back when defaults are not writable."""
+    import agent_swarm.agents as agents
+
+    attempts: list[Path] = []
+
+    def fake_is_writable(path: Path) -> bool:
+        attempts.append(path)
+        return path == tmp_path / "agent-swarm" / "agents"
+
+    monkeypatch.delenv("AGENT_SWARM_DIR", raising=False)
+    monkeypatch.setattr(agents, "_is_writable", fake_is_writable)
+    monkeypatch.setattr(agents.tempfile, "gettempdir", lambda: str(tmp_path))
+
+    resolved = agents._resolve_agents_dir()
+
+    assert resolved == tmp_path / "agent-swarm" / "agents"
+    assert attempts[-1] == resolved
 
 
 class TestAgentProcess:
@@ -21,6 +46,7 @@ class TestAgentProcess:
             agent_type="codex",
             prompt="Test prompt",
             cwd=None,
+            yolo=False,
             status=AgentStatus.RUNNING,
             started_at=datetime(2024, 1, 1, 0, 0, 0),
         )
@@ -32,6 +58,24 @@ class TestAgentProcess:
         assert result["status"] == "running"
         assert result["event_count"] == 0
         assert result["completed_at"] is None
+        assert result["mode"] == "safe"
+        assert result["yolo"] is False
+        assert result["mode"] == "safe"
+
+    def test_to_dict_yolo_mode(self):
+        """Test serialization reflects yolo mode."""
+        agent = AgentProcess(
+            agent_id="test-yolo",
+            agent_type="codex",
+            prompt="Test prompt",
+            cwd=None,
+            yolo=True,
+            status=AgentStatus.RUNNING,
+            started_at=datetime(2024, 1, 1, 0, 0, 0),
+        )
+
+        result = agent.to_dict()
+        assert result["mode"] == "yolo"
 
     def test_duration_calculation_completed(self):
         """Test duration calculation for completed agent."""
@@ -106,8 +150,13 @@ class TestAgentManager:
 
     @pytest.fixture
     def manager(self):
-        """Create a fresh AgentManager for each test."""
-        return AgentManager(max_completed=5)
+        """Create a fresh AgentManager for each test with isolated storage."""
+        agents_dir = TESTDATA_DIR / "agent_manager_tests"
+        # Clean before each test for isolation
+        if agents_dir.exists():
+            shutil.rmtree(agents_dir)
+        agents_dir.mkdir(parents=True, exist_ok=True)
+        return AgentManager(max_agents=5, agents_dir=agents_dir)
 
     def test_manager_initialization(self, manager):
         """Test manager initialization."""
@@ -219,8 +268,12 @@ class TestAgentManagerAsync:
 
     @pytest.fixture
     def manager(self):
-        """Create a fresh AgentManager for each test."""
-        return AgentManager()
+        """Create a fresh AgentManager for each test with isolated storage."""
+        agents_dir = TESTDATA_DIR / "agent_manager_async_tests"
+        if agents_dir.exists():
+            shutil.rmtree(agents_dir)
+        agents_dir.mkdir(parents=True, exist_ok=True)
+        return AgentManager(agents_dir=agents_dir)
 
     async def test_spawn_invalid_agent_type(self, manager):
         """Test spawning with invalid agent type."""

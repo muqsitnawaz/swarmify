@@ -71,6 +71,10 @@
       {
         "command": "agentTabs.setTitle",
         "title": "Agents: Set Label"
+      },
+      {
+        "command": "agentTabs.reload",
+        "title": "Agents: Reload"
       }
     ],
     "configuration": {
@@ -166,6 +170,12 @@
         "command": "agentTabs.setTitle",
         "key": "ctrl+shift+l",
         "mac": "cmd+shift+l",
+        "when": "terminalFocus"
+      },
+      {
+        "command": "agentTabs.reload",
+        "key": "ctrl+shift+r",
+        "mac": "cmd+shift+r",
         "when": "terminalFocus"
       }
     ]

@@ -1,88 +1,109 @@
 # Multi-Agent Orchestration System
 
-MCP server that lets Claude Code spawn and coordinate multiple AI coding agents (Codex, Gemini, Cursor) in parallel.
+MCP server that lets Claude Code spawn and coordinate multiple AI coding agents (Codex, Gemini, Cursor, Claude) in parallel.
 
 ## Status
 
 - [x] Phase 1: Core MCP Server
-- [x] Phase 1.5: Context Management (summarization)
-- [ ] Phase 2: Test with Claude Code (restart session)
+- [x] Phase 2: Persistent Architecture (agents survive MCP restarts)
 - [ ] Phase 3: Publish to PyPI
 
 ## Architecture
 
 ```
 Claude Code (Orchestrator)
-    │ MCP Tools
+    │
+    │ MCP Protocol (stdio)
     ▼
 agent-spawner (MCP Server)
-    │ spawn_agent / read_agent_output / list_agents / stop_agent
+    │
+    │ Detached subprocesses + file-based output
+    ▼
+┌─────────────────────────────────────────────────────┐
+│  ~/.claude/agent-spawner/agents/                    │
+│  ├── {agent_id}/                                    │
+│  │   ├── meta.json     (PID, status, timestamps)   │
+│  │   └── stdout.log    (JSON streaming output)     │
+│  └── ...                                            │
+└─────────────────────────────────────────────────────┘
+    │
     ▼
 ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐
 │ Codex  │ │ Gemini │ │ Cursor │ │ Claude │
 └────────┘ └────────┘ └────────┘ └────────┘
 ```
 
-## CLI Commands
+## Key Design: Persistent Spawning
 
-| CLI | Command | JSON Flag |
-|-----|---------|-----------|
-| Codex | `codex exec "prompt" --full-auto --json` | `--json` |
-| Gemini | `gemini -p "prompt" --output-format stream-json` | `--output-format stream-json` |
-| Cursor | `cursor-agent -p --output-format stream-json "prompt"` | `--output-format stream-json` |
+Agents run as **detached processes** (`start_new_session=True`) that:
+- Survive MCP server disconnects/restarts
+- Write output to files (not pipes)
+- Store metadata on disk for recovery
+- Can be monitored across Claude Code sessions
 
 ## MCP Tools
 
 | Tool | Description |
 |------|-------------|
-| `spawn_agent(type, prompt, cwd)` | Start agent, returns `agent_id` |
-| `read_agent_output(id, format, detail_level)` | Get summary/delta/events |
-| `list_agents()` | Show all running/completed |
-| `stop_agent(id)` | Kill running agent |
+| `spawn_agent(type, prompt, cwd)` | Start detached agent, returns `agent_id` |
+| `read_agent_output(id, format, detail_level)` | Get summary/delta/events from file |
+| `list_agents()` | List all agents (restored from disk on restart) |
+| `stop_agent(id)` | Kill agent by PID |
 
-## Test Results
+### Output Formats
 
-**Task:** "Read README.md and summarize in 10 words"
+| Format | Use Case |
+|--------|----------|
+| `summary` | Token-efficient overview (files modified, errors, final message) |
+| `delta` | Incremental updates since last read |
+| `events` | Raw JSON events from agent |
 
-| Agent | Tool Used | Duration | Answer |
-|-------|-----------|----------|--------|
-| Gemini | `read_file` | 6s | "VS Code extension: manage AI agent terminals, custom agents, and settings." |
-| Codex | `cat README.md` | 12s | "VS Code extension configuring built-in and custom AI agent terminals." |
+### Detail Levels (for summary)
 
-**Parallel test:** Gemini + Codex ran simultaneously ✓
+| Level | Tokens | Contents |
+|-------|--------|----------|
+| `brief` | ~50 | files_modified, has_errors |
+| `standard` | ~200 | + tools_used, errors, final_message |
+| `detailed` | ~500 | + bash_commands, all files, warnings |
 
 ## Configuration
 
-Add to `~/.claude/settings.json`:
+Add to `~/.claude.json`:
 
 ```json
 {
   "mcpServers": {
     "agent-spawner": {
       "command": "uv",
-      "args": ["run", "--directory", "/Users/muqsit/src/github.com/muqsitnawaz/CursorAgents/cli", "agent-spawner"]
+      "args": ["run", "--directory", "/path/to/cli", "agent-spawner"]
     }
   }
 }
 ```
 
+## Supported Agents
+
+| Agent | Command |
+|-------|---------|
+| Codex | `codex exec "{prompt}" --full-auto --json` |
+| Gemini | `gemini -p "{prompt}" --output-format stream-json` |
+| Cursor | `cursor-agent -p --output-format stream-json "{prompt}"` |
+| Claude | `claude -p "{prompt}" --output-format stream-json` |
+
 ## Project Structure
 
 ```
-CursorAgents/
-├── ext/                      # VS Code extension
-├── cli/                      # MCP agent spawner
-│   ├── src/agent_spawner/
-│   │   ├── server.py         # MCP server + tools
-│   │   ├── agents.py         # Process manager
-│   │   ├── parsers.py        # JSON normalizers
-│   │   └── summarizer.py     # Rule-based summarization
-│   └── pyproject.toml
-└── AGENTS.md
+cli/
+├── src/agent_spawner/
+│   ├── server.py      # MCP server + tool handlers
+│   ├── agents.py      # Persistent process manager
+│   ├── parsers.py     # Normalize CLI output formats
+│   └── summarizer.py  # Rule-based event summarization
+├── tests/
+└── pyproject.toml
 ```
 
 ## TODO
 
-- [ ] Restart Claude Code session and test MCP tools live
 - [ ] Test with complex multi-file task
 - [ ] Publish to PyPI as `uvx agent-spawner`

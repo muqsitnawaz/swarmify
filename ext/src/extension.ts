@@ -196,6 +196,40 @@ function getAllAgents(extensionPath: string): AgentConfig[] {
   return [...getBuiltInAgents(extensionPath), ...getCustomAgents(extensionPath)];
 }
 
+function getAgentConfigFromTerminal(
+  terminal: vscode.Terminal,
+  extensionPath: string
+): AgentConfig | null {
+  const metadata = terminalMetadataByInstance.get(terminal);
+  if (!metadata) {
+    return null;
+  }
+
+  const baseName = metadata.baseName.trim();
+  
+  const builtInAgents = getBuiltInAgents(extensionPath);
+  const customAgents = getCustomAgents(extensionPath);
+  const allAgents = [...builtInAgents, ...customAgents];
+
+  if (baseName.startsWith(CLAUDE_TITLE)) {
+    return builtInAgents.find(a => a.title === CLAUDE_TITLE) || null;
+  } else if (baseName.startsWith(CODEX_TITLE)) {
+    return builtInAgents.find(a => a.title === CODEX_TITLE) || null;
+  } else if (baseName.startsWith(GEMINI_TITLE)) {
+    return builtInAgents.find(a => a.title === GEMINI_TITLE) || null;
+  } else if (baseName.startsWith(CURSOR_TITLE)) {
+    return builtInAgents.find(a => a.title === CURSOR_TITLE) || null;
+  } else {
+    for (const agent of customAgents) {
+      if (baseName.startsWith(agent.title)) {
+        return agent;
+      }
+    }
+  }
+
+  return null;
+}
+
 async function analyzeCodebase(): Promise<{
   languages: string[];
   frameworks: string[];
@@ -458,6 +492,10 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('agentTabs.setTitle', () => setTitleForActiveTerminal())
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('agentTabs.reload', () => reloadActiveTerminal(context))
   );
 
   // Register built-in individual agent commands
@@ -810,6 +848,38 @@ async function setTitleForActiveTerminal() {
 
     const title = prefix ? `${prefix} - ${sanitizeLabel(cleaned)}` : cleaned;
     await setTerminalTitle(terminal, title, { preserveFocus: false });
+  }
+}
+
+async function reloadActiveTerminal(context: vscode.ExtensionContext) {
+  try {
+    const terminal = vscode.window.activeTerminal;
+    if (!terminal) {
+      vscode.window.showErrorMessage('No active terminal to reload.');
+      return;
+    }
+
+    const agentConfig = getAgentConfigFromTerminal(terminal, context.extensionPath);
+    if (!agentConfig) {
+      vscode.window.showErrorMessage('Could not identify agent type from active terminal.');
+      return;
+    }
+
+    terminal.sendText('/quit');
+    terminal.sendText('\r');
+
+    await new Promise(resolve => setTimeout(resolve, 2500));
+
+    try {
+      terminal.sendText(agentConfig.command);
+      terminal.sendText('\r');
+      vscode.window.showInformationMessage(`Reloaded ${agentConfig.title} agent.`);
+    } catch (sendError) {
+      vscode.window.showWarningMessage('Terminal may have been closed. Please open a new agent terminal.');
+    }
+  } catch (error) {
+    console.error('Error reloading terminal:', error);
+    vscode.window.showErrorMessage(`Failed to reload terminal: ${error}`);
   }
 }
 

@@ -1,11 +1,12 @@
 """Tests for summarizer.py - critical for context management."""
 
 import pytest
-from agent_spawner.summarizer import (
+from agent_swarm.summarizer import (
     AgentSummary,
     summarize_events,
     get_delta,
     filter_events_by_priority,
+    _extract_file_ops_from_bash,
 )
 
 
@@ -179,6 +180,7 @@ class TestSummaryToDict:
             agent_type="codex",
             status="completed",
             events=events,
+            duration_ms=5000,
         )
 
         result = summary.to_dict("brief")
@@ -189,8 +191,11 @@ class TestSummaryToDict:
         assert len(result["files_modified"]) == 5
         assert "files_created" in result
         assert "has_errors" in result
-        assert "duration_ms" not in result
-        assert "tools_used" not in result
+        # Brief now includes activity indicators
+        assert result["duration_ms"] == 5000
+        assert result["tool_call_count"] == 6
+        assert result["last_activity"] == "file_write"
+        assert "tools_used" not in result  # Still excluded from brief
 
     def test_standard_detail_level(self):
         """Test standard detail level output."""
@@ -389,3 +394,91 @@ class TestEventPriorityFiltering:
         assert any(e["type"] == "bash" for e in filtered)
         assert any(e["type"] == "message" for e in filtered)
         assert not any(e["type"] == "init" for e in filtered)
+
+
+class TestBashCommandParsing:
+    """Test bash command parsing for file operations."""
+
+    def test_sed_read(self):
+        """Test sed -n read detection."""
+        files_read, files_written = _extract_file_ops_from_bash(
+            "sed -n '1,100p' path/to/file.tsx"
+        )
+        assert "path/to/file.tsx" in files_read
+        assert len(files_written) == 0
+
+    def test_sed_write(self):
+        """Test sed -i write detection."""
+        files_read, files_written = _extract_file_ops_from_bash(
+            "sed -i 's/old/new/' file.ts"
+        )
+        assert "file.ts" in files_written
+        assert len(files_read) == 0
+
+    def test_cat_redirect_write(self):
+        """Test cat > file write detection."""
+        files_read, files_written = _extract_file_ops_from_bash(
+            "cat > src/App.tsx << 'EOF'"
+        )
+        assert "src/App.tsx" in files_written
+
+    def test_echo_redirect_write(self):
+        """Test echo > file write detection."""
+        files_read, files_written = _extract_file_ops_from_bash(
+            'echo "content" > output.txt'
+        )
+        assert "output.txt" in files_written
+
+    def test_tee_write(self):
+        """Test tee file write detection."""
+        files_read, files_written = _extract_file_ops_from_bash(
+            "echo test | tee output.log"
+        )
+        assert "output.log" in files_written
+
+    def test_wrapped_zsh_command(self):
+        """Test unwrapping /bin/zsh -lc wrapper."""
+        files_read, files_written = _extract_file_ops_from_bash(
+            '/bin/zsh -lc "sed -n \'1,240p\' rush/app/src/App.tsx"'
+        )
+        assert "rush/app/src/App.tsx" in files_read
+
+    def test_head_tail_read(self):
+        """Test head/tail read detection."""
+        files_read, _ = _extract_file_ops_from_bash("head -100 file.txt")
+        assert "file.txt" in files_read
+
+        files_read, _ = _extract_file_ops_from_bash("tail -n 50 log.txt")
+        assert "log.txt" in files_read
+
+    def test_no_file_ops(self):
+        """Test commands without file operations."""
+        files_read, files_written = _extract_file_ops_from_bash("npm install")
+        assert len(files_read) == 0
+        assert len(files_written) == 0
+
+    def test_summarize_events_extracts_bash_files(self):
+        """Test that summarize_events extracts files from bash commands."""
+        events = [
+            {
+                "type": "bash",
+                "command": '/bin/zsh -lc "sed -n \'1,100p\' src/App.tsx"',
+                "timestamp": "2024-01-01",
+            },
+            {
+                "type": "bash",
+                "command": "cat > src/new.tsx << 'EOF'",
+                "timestamp": "2024-01-01",
+            },
+        ]
+
+        summary = summarize_events(
+            agent_id="test-bash",
+            agent_type="codex",
+            status="running",
+            events=events,
+        )
+
+        assert "src/App.tsx" in summary.files_read
+        assert "src/new.tsx" in summary.files_modified
+        assert summary.tool_call_count == 2

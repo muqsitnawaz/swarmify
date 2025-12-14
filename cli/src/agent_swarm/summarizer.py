@@ -3,8 +3,49 @@
 Reduces token usage by ~99% while preserving key information.
 """
 
+import re
 from dataclasses import dataclass, field
 from typing import Literal
+
+
+def _extract_file_ops_from_bash(command: str) -> tuple[list[str], list[str]]:
+    """Extract file read/write paths from a bash command.
+
+    Returns (files_read, files_written)
+    """
+    files_read: list[str] = []
+    files_written: list[str] = []
+
+    # Unwrap shell wrappers: /bin/zsh -lc "actual command"
+    if match := re.search(r'-[lc]+\s+["\'](.+)["\']$', command):
+        command = match.group(1)
+
+    # File write patterns
+    write_patterns = [
+        r'(?:cat|echo|printf)\s+.*?>\s*["\']?([^\s"\'|;&]+)',  # cat/echo > file
+        r'tee\s+(?:-a\s+)?["\']?([^\s"\'|;&]+)',               # tee file
+        r'sed\s+-i[^\s]*\s+.*?["\']?([^\s"\']+)$',             # sed -i 'pattern' file
+    ]
+
+    for pattern in write_patterns:
+        for m in re.finditer(pattern, command):
+            path = m.group(1)
+            if path and not path.startswith('-'):
+                files_written.append(path)
+
+    # File read patterns (no write redirection)
+    read_patterns = [
+        r'sed\s+-n\s+["\'][^"\']+["\']\s+["\']?([^\s"\'|;&>]+)',  # sed -n 'x,y' file
+        r'(?:head|tail)\s+(?:-\w+\s+)*(?:\d+\s+)?([^\s"\'|;&-][^\s"\'|;&]*)',  # head/tail file
+    ]
+
+    for pattern in read_patterns:
+        for m in re.finditer(pattern, command):
+            path = m.group(1)
+            if path and not path.startswith('-'):
+                files_read.append(path)
+
+    return files_read, files_written
 
 
 # Event priority for filtering
@@ -74,9 +115,12 @@ class AgentSummary:
         }
 
         if detail_level == "brief":
-            # ~50 tokens
+            # ~80 tokens - includes activity indicators
             return {
                 **base,
+                "duration_ms": self.duration_ms,
+                "tool_call_count": self.tool_call_count,
+                "last_activity": self.last_activity,
                 "files_modified": list(self.files_modified)[:5],
                 "files_created": list(self.files_created)[:5],
                 "has_errors": len(self.errors) > 0,
@@ -182,6 +226,12 @@ def summarize_events(
             summary.tools_used.add("bash")
             if command:
                 summary.bash_commands.append(command)
+                # Extract file operations from bash command
+                files_read, files_written = _extract_file_ops_from_bash(command)
+                for path in files_read:
+                    summary.files_read.add(path)
+                for path in files_written:
+                    summary.files_modified.add(path)
             summary.tool_call_count += 1
 
         # Messages - capture last non-empty content
