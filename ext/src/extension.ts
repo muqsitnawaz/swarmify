@@ -196,20 +196,49 @@ function getAllAgents(extensionPath: string): AgentConfig[] {
   return [...getBuiltInAgents(extensionPath), ...getCustomAgents(extensionPath)];
 }
 
+function detectAgentTypeFromTerminalName(terminalName: string): string | null {
+  const nameLower = terminalName.toLowerCase();
+  
+  if (nameLower.includes('claude') || nameLower.includes('cc')) {
+    return CLAUDE_TITLE;
+  } else if (nameLower.includes('codex') || nameLower.includes('cx')) {
+    return CODEX_TITLE;
+  } else if (nameLower.includes('gemini') || nameLower.includes('gx') || nameLower.includes('gm')) {
+    return GEMINI_TITLE;
+  } else if (nameLower.includes('cursor') || nameLower.includes('cr')) {
+    return CURSOR_TITLE;
+  }
+  
+  return null;
+}
+
 function getAgentConfigFromTerminal(
   terminal: vscode.Terminal,
   extensionPath: string
 ): AgentConfig | null {
   const metadata = terminalMetadataByInstance.get(terminal);
-  if (!metadata) {
-    return null;
-  }
-
-  const baseName = metadata.baseName.trim();
+  let baseName: string | null = null;
   
   const builtInAgents = getBuiltInAgents(extensionPath);
   const customAgents = getCustomAgents(extensionPath);
-  const allAgents = [...builtInAgents, ...customAgents];
+  
+  if (metadata) {
+    baseName = metadata.baseName.trim();
+  } else {
+    const detectedPrefix = detectAgentTypeFromTerminalName(terminal.name);
+    if (detectedPrefix) {
+      baseName = detectedPrefix;
+    } else {
+      const terminalName = terminal.name.trim();
+      for (const agent of customAgents) {
+        if (terminalName.toLowerCase().includes(agent.title.toLowerCase()) || 
+            terminalName.startsWith(agent.title)) {
+          return agent;
+        }
+      }
+      return null;
+    }
+  }
 
   if (baseName.startsWith(CLAUDE_TITLE)) {
     return builtInAgents.find(a => a.title === CLAUDE_TITLE) || null;
@@ -834,18 +863,7 @@ async function setTitleForActiveTerminal() {
     await applyLabelToTerminal(terminal, metadata, sanitizeLabel(cleaned), { preserveFocus: false });
   } else {
     // For unmanaged terminals, try to detect agent type from terminal name
-    const terminalName = terminal.name.toLowerCase();
-    let prefix = '';
-    if (terminalName.includes('claude') || terminalName.includes('cc')) {
-      prefix = CLAUDE_TITLE;
-    } else if (terminalName.includes('codex') || terminalName.includes('cx')) {
-      prefix = CODEX_TITLE;
-    } else if (terminalName.includes('gemini') || terminalName.includes('gx') || terminalName.includes('gm')) {
-      prefix = GEMINI_TITLE;
-    } else if (terminalName.includes('cursor') || terminalName.includes('cr')) {
-      prefix = CURSOR_TITLE;
-    }
-
+    const prefix = detectAgentTypeFromTerminalName(terminal.name);
     const title = prefix ? `${prefix} - ${sanitizeLabel(cleaned)}` : cleaned;
     await setTerminalTitle(terminal, title, { preserveFocus: false });
   }

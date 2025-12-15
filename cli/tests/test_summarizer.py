@@ -20,7 +20,7 @@ class TestSummarizeEvents:
             agent_type="codex",
             status="running",
             events=[],
-            duration_ms=None,
+            duration=None,
         )
 
         assert summary.agent_id == "test-1"
@@ -44,7 +44,7 @@ class TestSummarizeEvents:
             agent_type="codex",
             status="completed",
             events=events,
-            duration_ms=5000,
+            duration="5 seconds",
         )
 
         assert "src/auth.ts" in summary.files_modified
@@ -142,10 +142,10 @@ class TestSummarizeEvents:
             agent_type="codex",
             status="completed",
             events=events,
-            duration_ms=None,
+            duration=None,
         )
 
-        assert summary.duration_ms == 7500
+        assert summary.duration == "7.5 seconds"
 
     def test_event_count(self):
         """Test event count tracking."""
@@ -180,7 +180,7 @@ class TestSummaryToDict:
             agent_type="codex",
             status="completed",
             events=events,
-            duration_ms=5000,
+            duration="5 seconds",
         )
 
         result = summary.to_dict("brief")
@@ -192,7 +192,7 @@ class TestSummaryToDict:
         assert "files_created" in result
         assert "has_errors" in result
         # Brief now includes activity indicators
-        assert result["duration_ms"] == 5000
+        assert result["duration"] == "5 seconds"
         assert result["tool_call_count"] == 6
         assert result["last_activity"] == "file_write"
         assert "tools_used" not in result  # Still excluded from brief
@@ -215,12 +215,12 @@ class TestSummaryToDict:
             agent_type="codex",
             status="completed",
             events=events,
-            duration_ms=5000,
+            duration="5 seconds",
         )
 
         result = summary.to_dict("standard")
 
-        assert result["duration_ms"] == 5000
+        assert result["duration"] == "5 seconds"
         assert "files_modified" in result
         assert "tools_used" in result
         assert "tool_call_count" in result

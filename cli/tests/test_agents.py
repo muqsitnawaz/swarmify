@@ -84,7 +84,7 @@ class TestAgentProcess:
         assert result["completed_at"] is None
         assert result["mode"] == "safe"
         assert result["yolo"] is False
-        assert result["mode"] == "safe"
+        assert "duration" in result
 
     def test_to_dict_yolo_mode(self):
         """Test serialization reflects yolo mode."""
@@ -140,8 +140,8 @@ class TestAgentProcess:
             completed_at=completed,
         )
 
-        duration = agent._duration_ms()
-        assert duration == 5000
+        duration = agent._duration()
+        assert duration == "5 seconds"
 
     def test_duration_calculation_running(self):
         """Test duration calculation for running agent."""
@@ -156,9 +156,9 @@ class TestAgentProcess:
             started_at=started,
         )
 
-        duration = agent._duration_ms()
+        duration = agent._duration()
         assert duration is not None
-        assert duration >= 0
+        assert "seconds" in duration or "minutes" in duration
 
     def test_update_status_marks_failed_on_nonzero_exit(self, monkeypatch):
         """Non-zero exit without completion events should mark agent as failed."""

@@ -259,7 +259,7 @@ async def handle_read_agent_output(
             agent_type=agent.agent_type,
             status=agent.status.value,
             events=agent.events,
-            duration_ms=agent._duration_ms(),
+            duration=agent._duration(),
         )
         return {
             **summary.to_dict(detail_level),

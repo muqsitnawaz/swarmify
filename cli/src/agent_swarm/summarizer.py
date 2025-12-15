@@ -8,6 +8,27 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 
+def _extract_error_from_raw_events(events: list[dict], max_chars: int = 500) -> str | None:
+    """Extract error messages from raw events that look like errors.
+    
+    Scans recent raw events (last 20 events) for error-like content.
+    Returns the first meaningful error message found, truncated to max_chars.
+    """
+    error_keywords = ["error", "Error", "ERROR", "failed", "Failed", "FAILED", "exception", "Exception"]
+    
+    for event in reversed(events[-20:]):
+        if event.get("type") == "raw":
+            content = event.get("content", "")
+            if isinstance(content, str):
+                content_lower = content.lower()
+                if any(keyword.lower() in content_lower for keyword in error_keywords):
+                    error_msg = content.strip()
+                    if len(error_msg) > max_chars:
+                        error_msg = error_msg[:max_chars - 3] + "..."
+                    return error_msg
+    return None
+
+
 def _extract_file_ops_from_bash(command: str) -> tuple[list[str], list[str]]:
     """Extract file read/write paths from a bash command.
 
@@ -82,7 +103,7 @@ class AgentSummary:
     agent_id: str
     agent_type: str
     status: str
-    duration_ms: int | None = None
+    duration: str | None = None
 
     # Files
     files_modified: set[str] = field(default_factory=set)
@@ -118,7 +139,7 @@ class AgentSummary:
             # ~80 tokens - includes activity indicators
             return {
                 **base,
-                "duration_ms": self.duration_ms,
+                "duration": self.duration,
                 "tool_call_count": self.tool_call_count,
                 "last_activity": self.last_activity,
                 "files_modified": list(self.files_modified)[:5],
@@ -130,7 +151,7 @@ class AgentSummary:
             # ~200 tokens
             return {
                 **base,
-                "duration_ms": self.duration_ms,
+                "duration": self.duration,
                 "files_modified": list(self.files_modified),
                 "files_created": list(self.files_created),
                 "tools_used": list(self.tools_used),
@@ -143,7 +164,7 @@ class AgentSummary:
             # ~500 tokens
             return {
                 **base,
-                "duration_ms": self.duration_ms,
+                "duration": self.duration,
                 "files_modified": list(self.files_modified),
                 "files_created": list(self.files_created),
                 "files_read": list(self.files_read),
@@ -171,7 +192,7 @@ def summarize_events(
     agent_type: str,
     status: str,
     events: list[dict],
-    duration_ms: int | None = None,
+    duration: str | None = None,
 ) -> AgentSummary:
     """
     Create a summary from a list of events.
@@ -182,9 +203,11 @@ def summarize_events(
         agent_id=agent_id,
         agent_type=agent_type,
         status=status,
-        duration_ms=duration_ms,
+        duration=duration,
         event_count=len(events),
     )
+    
+    summary._events_cache = events
 
     for event in events:
         event_type = event.get("type", "unknown")
@@ -241,8 +264,19 @@ def summarize_events(
                 summary.final_message = content
 
         elif event_type == "error":
-            error_msg = event.get("message", event.get("content", "Unknown error"))
-            summary.errors.append(error_msg)
+            error_msg = None
+            for key in ["message", "content", "error", "error_message", "details"]:
+                if key in event and event[key]:
+                    error_msg = str(event[key])
+                    break
+            
+            if not error_msg:
+                error_msg = _extract_error_from_raw_events(summary._events_cache)
+            
+            if error_msg:
+                if len(error_msg) > 500:
+                    error_msg = error_msg[:497] + "..."
+                summary.errors.append(error_msg)
 
         elif event_type == "warning":
             warning_msg = event.get("message", event.get("content", ""))
@@ -252,10 +286,27 @@ def summarize_events(
         # Result
         elif event_type == "result":
             if event.get("status") == "error":
-                error_msg = event.get("message", event.get("error", "Task failed"))
-                summary.errors.append(error_msg)
-            if not summary.duration_ms:
-                summary.duration_ms = event.get("duration_ms")
+                error_msg = None
+                for key in ["message", "error", "error_message", "error_details", "details"]:
+                    if key in event and event[key]:
+                        error_msg = str(event[key])
+                        break
+                
+                if not error_msg:
+                    error_msg = _extract_error_from_raw_events(summary._events_cache)
+                
+                if error_msg:
+                    if len(error_msg) > 500:
+                        error_msg = error_msg[:497] + "..."
+                    summary.errors.append(error_msg)
+            if not summary.duration and event.get("duration_ms"):
+                duration_ms = event.get("duration_ms")
+                seconds = duration_ms / 1000
+                if seconds < 60:
+                    summary.duration = f"{int(seconds)} seconds"
+                else:
+                    minutes = seconds / 60
+                    summary.duration = f"{minutes:.1f} minutes"
 
     return summary
 

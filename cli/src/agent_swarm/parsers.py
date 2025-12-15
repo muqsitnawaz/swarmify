@@ -275,7 +275,7 @@ def _normalize_cursor(raw: dict) -> list[dict]:
     }]
 
 
-def _normalize_gemini(raw: dict) -> dict:
+def _normalize_gemini(raw: dict) -> list[dict]:
     """
     Normalize Gemini CLI output.
 
@@ -288,31 +288,31 @@ def _normalize_gemini(raw: dict) -> dict:
     timestamp = raw.get("timestamp", datetime.now().isoformat())
 
     if event_type == "init":
-        return {
+        return [{
             "type": "init",
             "agent": "gemini",
             "model": raw.get("model"),
             "session_id": raw.get("session_id"),
             "timestamp": timestamp,
-        }
+        }]
 
     elif event_type == "message":
         role = raw.get("role", "assistant")
         if role == "assistant":
-            return {
+            return [{
                 "type": "message",
                 "agent": "gemini",
                 "content": raw.get("content", ""),
                 "complete": not raw.get("delta", False),
                 "timestamp": timestamp,
-            }
+            }]
         else:
-            return {
+            return [{
                 "type": "user_message",
                 "agent": "gemini",
                 "content": raw.get("content", ""),
                 "timestamp": timestamp,
-            }
+            }]
 
     elif event_type in ("tool_call", "tool_use"):
         # Gemini uses tool_name/parameters, others use name/args
@@ -329,41 +329,41 @@ def _normalize_gemini(raw: dict) -> dict:
         file_path = tool_args.get("file_path", tool_args.get("path", ""))
 
         if "write" in tool_name_lower and "file" in tool_name_lower:
-            return {
+            return [{
                 "type": "file_write",
                 "agent": "gemini",
                 "tool": tool_name,
                 "path": file_path,
                 "timestamp": timestamp,
-            }
+            }]
         elif "read" in tool_name_lower and "file" in tool_name_lower:
-            return {
+            return [{
                 "type": "file_read",
                 "agent": "gemini",
                 "tool": tool_name,
                 "path": file_path,
                 "timestamp": timestamp,
-            }
+            }]
         elif tool_name_lower in ("shell", "bash", "execute", "run_command"):
-            return {
+            return [{
                 "type": "bash",
                 "agent": "gemini",
                 "tool": tool_name,
                 "command": tool_args.get("command", ""),
                 "timestamp": timestamp,
-            }
+            }]
 
-        return {
+        return [{
             "type": "tool_use",
             "agent": "gemini",
             "tool": tool_name,
             "args": tool_args,
             "timestamp": timestamp,
-        }
+        }]
 
     elif event_type == "result":
         stats = raw.get("stats", {})
-        return {
+        return [{
             "type": "result",
             "agent": "gemini",
             "status": raw.get("status", "success"),
@@ -372,18 +372,18 @@ def _normalize_gemini(raw: dict) -> dict:
                 "total_tokens": stats.get("total_tokens", 0),
             },
             "timestamp": timestamp,
-        }
+        }]
 
     # Default passthrough
-    return {
+    return [{
         "type": event_type,
         "agent": "gemini",
         "raw": raw,
         "timestamp": timestamp,
-    }
+    }]
 
 
-def _normalize_claude(raw: dict) -> dict | list[dict]:
+def _normalize_claude(raw: dict) -> list[dict]:
     """
     Normalize Claude Code CLI output.
 
@@ -393,21 +393,17 @@ def _normalize_claude(raw: dict) -> dict | list[dict]:
     events = _normalize_cursor(raw)
 
     # _normalize_cursor returns a list; mirror that but ensure agent is set correctly.
-    if isinstance(events, list):
-        for event in events:
-            event["agent"] = "claude"
-        return events
-
-    events["agent"] = "claude"
+    for event in events:
+        event["agent"] = "claude"
     return events
 
 
-def parse_event(agent_type: AgentType, line: str) -> dict | list[dict] | None:
-    """Parse a single line of output into an event."""
+def parse_event(agent_type: AgentType, line: str) -> list[dict] | None:
+    """Parse a single line of output into normalized events."""
     import json
 
     try:
         raw = json.loads(line)
-        return normalize_event(agent_type, raw)
+        return normalize_events(agent_type, raw)
     except json.JSONDecodeError:
         return None

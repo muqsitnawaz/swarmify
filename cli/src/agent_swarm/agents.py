@@ -2,7 +2,7 @@
 
 Uses a persistent architecture that survives MCP server restarts:
 - Agents run as detached processes (separate process group)
-- Metadata and output stored in ~/.claude/agent-swarm/agents/{agent_id}/ by default
+- Metadata and output stored in ~/.agent-swarm/agents/{agent_id}/ by default
 - On restart, manager scans for existing agents and reconnects
 """
 
@@ -23,7 +23,7 @@ from uuid import uuid4
 
 from loguru import logger
 
-from .parsers import normalize_event
+from .parsers import normalize_events
 
 
 def _is_writable(directory: Path) -> bool:
@@ -39,11 +39,24 @@ def _is_writable(directory: Path) -> bool:
         return False
 
 
+def _has_agent_data(directory: Path) -> bool:
+    """Check if a directory contains existing agent data."""
+    if not directory.exists():
+        return False
+    try:
+        for item in directory.iterdir():
+            if item.is_dir() and (item / "meta.json").exists():
+                return True
+    except Exception:
+        pass
+    return False
+
+
 def _resolve_agents_dir() -> Path:
     """Resolve a writable agents directory.
 
-    Prefers ~/.claude/agent-swarm/agents/, falling back to alternatives that
-    are writable in restricted environments (e.g., sandboxes or CI).
+    Prefers directories that already contain agent data, then falls back to
+    ~/.agent-swarm/agents/, then alternatives for restricted environments.
     Override with AGENT_SWARM_DIR env var if needed.
     """
     env_dir = os.environ.get("AGENT_SWARM_DIR")
@@ -53,10 +66,10 @@ def _resolve_agents_dir() -> Path:
             return env_path
         logger.warning(f"AGENT_SWARM_DIR is not writable: {env_path}")
 
-    canonical = Path.home() / ".claude" / "agent-swarm" / "agents"
+    canonical = Path.home() / ".agent-swarm" / "agents"
     candidates = [
         canonical,
-        Path.home() / ".agent-swarm" / "agents",
+        Path.home() / ".claude" / "agent-swarm" / "agents",
     ]
 
     xdg_state_home = os.environ.get("XDG_STATE_HOME")
@@ -68,6 +81,14 @@ def _resolve_agents_dir() -> Path:
         Path(tempfile.gettempdir()) / "agent-swarm" / "agents",
     ])
 
+    # First pass: prefer a writable directory that already has agent data
+    for candidate in candidates:
+        if _is_writable(candidate) and _has_agent_data(candidate):
+            if candidate != canonical:
+                logger.info(f"Using existing agent storage at {candidate}")
+            return candidate
+
+    # Second pass: use first writable directory
     for candidate in candidates:
         if _is_writable(candidate):
             if candidate != canonical:
@@ -233,18 +254,25 @@ class AgentProcess:
             "started_at": self.started_at.isoformat(),
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "event_count": len(self.events),
-            "duration_ms": self._duration_ms(),
+            "duration": self._duration(),
             "mode": self.mode,
             "yolo": self.yolo,
         }
 
-    def _duration_ms(self) -> int | None:
-        """Calculate duration in milliseconds."""
+    def _duration(self) -> str | None:
+        """Calculate duration as a human-readable string."""
         if self.completed_at:
-            return int((self.completed_at - self.started_at).total_seconds() * 1000)
-        if self.status == AgentStatus.RUNNING:
-            return int((datetime.now() - self.started_at).total_seconds() * 1000)
-        return None
+            seconds = (self.completed_at - self.started_at).total_seconds()
+        elif self.status == AgentStatus.RUNNING:
+            seconds = (datetime.now() - self.started_at).total_seconds()
+        else:
+            return None
+
+        if seconds < 60:
+            return f"{int(seconds)} seconds"
+        else:
+            minutes = seconds / 60
+            return f"{minutes:.1f} minutes"
 
     @property
     def events(self) -> list[dict]:
@@ -273,12 +301,11 @@ class AgentProcess:
 
                 try:
                     raw_event = json.loads(line)
-                    normalized = normalize_event(self.agent_type, raw_event)
-                    events = normalized if isinstance(normalized, list) else [normalized]
-                    self._events_cache.extend(events)
-
-                    # Check for completion events
+                    events = normalize_events(self.agent_type, raw_event)
                     for event in events:
+                        self._events_cache.append(event)
+
+                        # Check for completion events
                         if event.get("type") in ("result", "turn.completed", "thread.completed"):
                             if event.get("status") == "success" or event.get("type") == "turn.completed":
                                 self.status = AgentStatus.COMPLETED
@@ -521,6 +548,7 @@ class AgentManager:
             with open(agent.stdout_path, "w") as stdout_file:
                 process = subprocess.Popen(
                     cmd,
+                    stdin=subprocess.DEVNULL,  # Prevent agent from reading MCP server's stdin
                     stdout=stdout_file,
                     stderr=subprocess.STDOUT,
                     cwd=cwd,
