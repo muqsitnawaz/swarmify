@@ -373,6 +373,53 @@ class TestAgentManagerAsync:
         success = await manager.stop("completed-1")
         assert success is False
 
+    async def test_spawn_accepts_mode_string(self, manager, monkeypatch):
+        """Manager.spawn should accept a mode string and flip the yolo flag."""
+        monkeypatch.setattr("agent_swarm.agents.check_cli_available", lambda agent_type: (True, "/bin/echo"))
+
+        class DummyProcess:
+            def __init__(self):
+                self.pid = 7777
+
+        monkeypatch.setattr("agent_swarm.agents.subprocess.Popen", lambda *_, **__: DummyProcess())
+
+        agent = await manager.spawn("codex", "task", None, mode="yolo")
+
+        assert agent.yolo is True
+        assert agent.mode == "yolo"
+
+    async def test_spawn_invalid_mode_rejected(self, manager, monkeypatch):
+        """Invalid mode strings should be rejected before spawning."""
+        monkeypatch.setattr("agent_swarm.agents.check_cli_available", lambda agent_type: (True, "/bin/echo"))
+
+        with pytest.raises(ValueError, match="mode"):
+            await manager.spawn("codex", "task", None, mode="turbo")
+
+    async def test_spawn_mode_overrides_yolo_flag(self, manager, monkeypatch):
+        """Explicit mode selection should override the boolean yolo flag at manager level."""
+        monkeypatch.setattr("agent_swarm.agents.check_cli_available", lambda agent_type: (True, "/bin/echo"))
+
+        class DummyProcess:
+            def __init__(self):
+                self.pid = 8888
+
+        monkeypatch.setattr("agent_swarm.agents.subprocess.Popen", lambda *_, **__: DummyProcess())
+
+        captured: dict[str, bool] = {}
+        original_build_command = manager._build_command
+
+        def capture_build(agent_type, prompt, yolo_flag):
+            captured["yolo"] = yolo_flag
+            return original_build_command(agent_type, prompt, yolo_flag)
+
+        monkeypatch.setattr(manager, "_build_command", capture_build)
+
+        agent = await manager.spawn("codex", "ship it", None, yolo=False, mode="yolo")
+
+        assert captured.get("yolo") is True
+        assert agent.yolo is True
+        assert agent.mode == "yolo"
+
     async def test_spawn_handles_popen_failure(self, manager, monkeypatch):
         """Spawn should surface a clean error and cleanup when Popen fails."""
         agents_dir = TESTDATA_DIR / "agent_manager_async_tests"
@@ -504,6 +551,51 @@ class TestAgentManagerAsync:
         agent = await manager.spawn("codex", "new task", None)
         assert agent is not None
         assert len(manager.list_running()) == 2
+
+    async def test_spawn_refreshes_running_status_before_limit(self, monkeypatch):
+        """Stale RUNNING agents should not block new spawns when the process is dead."""
+        agents_dir = TESTDATA_DIR / "agent_manager_concurrent_refresh_tests"
+        if agents_dir.exists():
+            shutil.rmtree(agents_dir)
+        agents_dir.mkdir(parents=True, exist_ok=True)
+
+        manager = AgentManager(max_concurrent=1, agents_dir=agents_dir)
+
+        stale = AgentProcess(
+            agent_id="stale",
+            agent_type="codex",
+            prompt="Test",
+            cwd=None,
+            status=AgentStatus.RUNNING,
+            pid=1111,
+            _base_dir=agents_dir,
+        )
+        stale.agent_dir.mkdir(parents=True, exist_ok=True)
+        stale.save_meta()
+        manager._agents = {stale.agent_id: stale}
+
+        # Process already exited, but status is still RUNNING
+        monkeypatch.setattr(AgentProcess, "is_process_alive", lambda self: self.agent_id != "stale")
+        monkeypatch.setattr(AgentProcess, "_reap_process", lambda self: 0)
+        monkeypatch.setattr(AgentProcess, "_read_new_events", lambda self: None)
+
+        monkeypatch.setattr(
+            "agent_swarm.agents.check_cli_available", lambda agent_type: (True, "/bin/echo")
+        )
+
+        class DummyProcess:
+            def __init__(self):
+                self.pid = 2222
+
+        monkeypatch.setattr("agent_swarm.agents.subprocess.Popen", lambda *_, **__: DummyProcess())
+
+        agent = await manager.spawn("codex", "new task", None)
+
+        assert agent is not None
+        assert stale.status == AgentStatus.COMPLETED
+        running = manager.list_running()
+        assert len(running) == 1
+        assert running[0].agent_id == agent.agent_id
 
     async def test_spawn_handles_mkdir_failure(self, monkeypatch):
         """Verify spawn handles agent directory creation failure gracefully."""

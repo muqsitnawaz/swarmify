@@ -97,6 +97,18 @@ AGENT_COMMANDS: dict[AgentType, list[str]] = {
 }
 
 
+def resolve_mode_flags(requested_mode: str | None, requested_yolo: bool | None) -> tuple[str, bool]:
+    """Resolve requested mode/yolo inputs into a canonical mode string and bool."""
+    if requested_mode is not None:
+        normalized = requested_mode.lower()
+        if normalized not in ("safe", "yolo"):
+            raise ValueError(f"Invalid mode '{requested_mode}'. Use 'safe' or 'yolo'.")
+        return normalized, normalized == "yolo"
+
+    resolved_yolo = bool(requested_yolo)
+    return ("yolo" if resolved_yolo else "safe", resolved_yolo)
+
+
 def check_cli_available(agent_type: AgentType) -> tuple[bool, str | None]:
     """Check if the CLI tool for an agent type is available.
 
@@ -397,11 +409,15 @@ class AgentManager:
         agent_type: AgentType,
         prompt: str,
         cwd: str | None = None,
-        yolo: bool = False,
+        yolo: bool | None = False,
+        mode: Literal["safe", "yolo"] | None = None,
     ) -> AgentProcess:
         """Spawn a new agent process (detached, survives server restart)."""
+        resolved_mode, resolved_yolo = resolve_mode_flags(mode, yolo)
+
         # Check concurrent agent limit
-        running = [a for a in self._agents.values() if a.status == AgentStatus.RUNNING]
+        # Refresh statuses before enforcing the limit so completed agents don't block new spawns
+        running = self.list_running()
         if len(running) >= self._max_concurrent:
             raise ValueError(
                 f"Maximum concurrent agents ({self._max_concurrent}) reached. "
@@ -423,7 +439,7 @@ class AgentManager:
 
         agent_id = str(uuid4())[:8]
 
-        cmd = self._build_command(agent_type, prompt, yolo)
+        cmd = self._build_command(agent_type, prompt, resolved_yolo)
 
         # Create agent object
         agent = AgentProcess(
@@ -431,7 +447,7 @@ class AgentManager:
             agent_type=agent_type,
             prompt=prompt,
             cwd=cwd,
-            yolo=yolo,
+            yolo=resolved_yolo,
             _base_dir=self._agents_dir,
         )
 
@@ -442,7 +458,7 @@ class AgentManager:
             self._agents.pop(agent.agent_id, None)
             raise ValueError(f"Failed to create agent directory: {exc}") from exc
 
-        logger.info(f"Spawning {agent_type} agent {agent_id} [{agent.mode}]: {' '.join(cmd[:3])}...")
+        logger.info(f"Spawning {agent_type} agent {agent_id} [{resolved_mode}]: {' '.join(cmd[:3])}...")
 
         try:
             # Spawn detached process with stdout redirected to file

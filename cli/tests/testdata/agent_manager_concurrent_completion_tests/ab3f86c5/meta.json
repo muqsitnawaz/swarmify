@@ -1,0 +1,12 @@
+{
+  "agent_id": "ab3f86c5",
+  "agent_type": "codex",
+  "prompt": "new task",
+  "cwd": null,
+  "yolo": false,
+  "mode": "safe",
+  "pid": 9999,
+  "status": "running",
+  "started_at": "2025-12-14T21:57:55.431248",
+  "completed_at": null
+}

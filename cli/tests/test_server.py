@@ -115,7 +115,7 @@ class TestMCPToolHandlers:
     async def test_spawn_allows_explicit_yolo_mode(self, monkeypatch):
         """Test that explicit yolo opt-in flows through the handler."""
 
-        async def fake_spawn(agent_type, prompt, cwd, yolo=False):
+        async def fake_spawn(agent_type, prompt, cwd, yolo=False, mode=None):
             class DummyAgent:
                 def __init__(self):
                     self.agent_id = "test-yolo"
@@ -145,7 +145,7 @@ class TestMCPToolHandlers:
     async def test_spawn_accepts_mode_string(self, monkeypatch):
         """Mode string should map to the correct yolo flag."""
 
-        async def fake_spawn(agent_type, prompt, cwd, yolo=False):
+        async def fake_spawn(agent_type, prompt, cwd, yolo=False, mode=None):
             class DummyAgent:
                 def __init__(self):
                     self.agent_id = "mode-yolo"
@@ -186,8 +186,9 @@ class TestMCPToolHandlers:
         """Explicit mode selection should win over the yolo boolean."""
         captured: dict[str, bool] = {}
 
-        async def fake_spawn(agent_type, prompt, cwd, yolo=False):
+        async def fake_spawn(agent_type, prompt, cwd, yolo=False, mode=None):
             captured["yolo"] = yolo
+            captured["mode"] = mode
 
             class DummyAgent:
                 def __init__(self):
@@ -214,6 +215,7 @@ class TestMCPToolHandlers:
         assert result["mode"] == "yolo"
         assert result["yolo"] is True
         assert captured.get("yolo") is True
+        assert captured.get("mode") == "yolo"
 
 
 class TestAgentCommands:

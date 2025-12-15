@@ -9,7 +9,7 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
-from .agents import AgentManager, AgentStatus, AgentType, check_all_clis
+from .agents import AgentManager, AgentStatus, AgentType, check_all_clis, resolve_mode_flags
 from .summarizer import summarize_events, get_delta
 
 # Global agent manager
@@ -26,14 +26,7 @@ def _get_agent_mode(agent) -> str:
 
 def _resolve_mode(requested_mode: str | None, requested_yolo: bool | None) -> tuple[str, bool]:
     """Resolve the requested mode/yolo flags into a canonical mode + bool."""
-    if requested_mode is not None:
-        normalized = requested_mode.lower()
-        if normalized not in ("safe", "yolo"):
-            raise ValueError(f"Invalid mode '{requested_mode}'. Use 'safe' or 'yolo'.")
-        return normalized, normalized == "yolo"
-
-    resolved_yolo = bool(requested_yolo)
-    return ("yolo" if resolved_yolo else "safe", resolved_yolo)
+    return resolve_mode_flags(requested_mode, requested_yolo)
 
 
 @server.list_tools()
@@ -204,7 +197,7 @@ async def handle_spawn_agent(
 ) -> dict:
     """Spawn a new agent."""
     resolved_mode, resolved_yolo = _resolve_mode(mode, yolo)
-    agent = await manager.spawn(agent_type, prompt, cwd, yolo=resolved_yolo)
+    agent = await manager.spawn(agent_type, prompt, cwd, yolo=resolved_yolo, mode=resolved_mode)
 
     response_mode = _get_agent_mode(agent) or resolved_mode
     return {
