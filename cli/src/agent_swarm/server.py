@@ -293,6 +293,26 @@ async def handle_stop_agent(agent_id: str) -> dict:
         return {"error": f"Agent {agent_id} not found"}
 
 
+async def handle_check_environment() -> dict:
+    """Check which CLI agents are installed and available."""
+    agents = check_all_clis()
+
+    installed = [name for name, info in agents.items() if info["installed"]]
+    missing = [name for name, info in agents.items() if not info["installed"]]
+
+    return {
+        "agents": agents,
+        "installed": installed,
+        "missing": missing,
+        "ready": len(missing) == 0,
+        "message": (
+            "All CLI agents are installed and ready."
+            if len(missing) == 0
+            else f"Missing CLI tools: {', '.join(missing)}. Install them to use these agent types."
+        ),
+    }
+
+
 def main():
     """Run the MCP server."""
     import sys
