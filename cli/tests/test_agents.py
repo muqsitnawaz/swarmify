@@ -427,6 +427,9 @@ class TestAgentManagerAsync:
         # Create manager with max_concurrent=2
         manager = AgentManager(max_concurrent=2, agents_dir=agents_dir)
 
+        # Prevent status updates from changing running agents to completed
+        monkeypatch.setattr(AgentProcess, "is_process_alive", lambda self: True)
+
         # Add 2 running agents to the manager
         for i in range(2):
             agent = AgentProcess(
@@ -458,6 +461,9 @@ class TestAgentManagerAsync:
         agents_dir.mkdir(parents=True, exist_ok=True)
 
         manager = AgentManager(max_concurrent=2, agents_dir=agents_dir)
+
+        # Prevent status updates from changing running agents to completed
+        monkeypatch.setattr(AgentProcess, "is_process_alive", lambda self: self.status == AgentStatus.RUNNING)
 
         # Add 2 agents, one running and one completed
         running = AgentProcess(
