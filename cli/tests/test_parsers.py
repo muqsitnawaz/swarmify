@@ -309,6 +309,19 @@ class TestGeminiParser:
         assert event["duration_ms"] == 3000
         assert event["usage"]["total_tokens"] == 150
 
+    def test_tool_call_missing_fields(self):
+        """Tool events without names/args should still normalize safely."""
+        raw = {
+            "type": "tool_call",
+            "name": None,
+            "args": None,
+        }
+        event = normalize_event("gemini", raw)
+
+        assert event["type"] == "tool_use"
+        assert event["tool"] == "unknown"
+        assert event["args"] == {}
+
 
 class TestClaudeParser:
     """Test Claude CLI output parsing (uses Cursor format)."""

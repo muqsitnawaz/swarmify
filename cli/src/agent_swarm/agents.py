@@ -96,17 +96,58 @@ AGENT_COMMANDS: dict[AgentType, list[str]] = {
     "claude": ["claude", "-p", "{prompt}", "--output-format", "stream-json"],
 }
 
+VALID_MODES: tuple[str, str] = ("safe", "yolo")
 
-def resolve_mode_flags(requested_mode: str | None, requested_yolo: bool | None) -> tuple[str, bool]:
+
+def _normalize_mode_value(mode_value: str | None) -> Literal["safe", "yolo"] | None:
+    """Normalize a mode string to 'safe' or 'yolo'."""
+    if mode_value is None:
+        return None
+
+    normalized = mode_value.strip().lower()
+    if normalized in VALID_MODES:
+        return normalized  # type: ignore[return-value]
+    return None
+
+
+def _default_mode_from_env() -> Literal["safe", "yolo"]:
+    """Resolve default mode from environment variables, falling back to safe."""
+    for env_var in ("AGENT_SWARM_MODE", "AGENT_SWARM_DEFAULT_MODE"):
+        raw_value = os.environ.get(env_var)
+        parsed = _normalize_mode_value(raw_value)
+        if parsed:
+            return parsed
+
+        if raw_value is not None:
+            logger.warning(
+                f"Invalid {env_var}='{raw_value}'. Use 'safe' or 'yolo'. Falling back to safe mode."
+            )
+
+    return "safe"
+
+
+def resolve_mode_flags(
+    requested_mode: str | None,
+    requested_yolo: bool | None,
+    default_mode: Literal["safe", "yolo"] = "safe",
+) -> tuple[str, bool]:
     """Resolve requested mode/yolo inputs into a canonical mode string and bool."""
-    if requested_mode is not None:
-        normalized = requested_mode.lower()
-        if normalized not in ("safe", "yolo"):
-            raise ValueError(f"Invalid mode '{requested_mode}'. Use 'safe' or 'yolo'.")
-        return normalized, normalized == "yolo"
+    normalized_default = _normalize_mode_value(default_mode)
+    if normalized_default is None:
+        raise ValueError(f"Invalid default mode '{default_mode}'. Use 'safe' or 'yolo'.")
 
-    resolved_yolo = bool(requested_yolo)
-    return ("yolo" if resolved_yolo else "safe", resolved_yolo)
+    if requested_mode is not None:
+        normalized_mode = _normalize_mode_value(requested_mode)
+        if normalized_mode is None:
+            raise ValueError(f"Invalid mode '{requested_mode}'. Use 'safe' or 'yolo'.")
+        return normalized_mode, normalized_mode == "yolo"
+
+    if requested_yolo is not None:
+        if not isinstance(requested_yolo, bool):
+            raise ValueError("Invalid yolo flag - expected a boolean.")
+        return ("yolo" if requested_yolo else "safe", requested_yolo)
+
+    return normalized_default, normalized_default == "yolo"
 
 
 def check_cli_available(agent_type: AgentType) -> tuple[bool, str | None]:
@@ -232,17 +273,19 @@ class AgentProcess:
 
                 try:
                     raw_event = json.loads(line)
-                    event = normalize_event(self.agent_type, raw_event)
-                    self._events_cache.append(event)
+                    normalized = normalize_event(self.agent_type, raw_event)
+                    events = normalized if isinstance(normalized, list) else [normalized]
+                    self._events_cache.extend(events)
 
                     # Check for completion events
-                    if event.get("type") in ("result", "turn.completed", "thread.completed"):
-                        if event.get("status") == "success" or event.get("type") == "turn.completed":
-                            self.status = AgentStatus.COMPLETED
-                            self.completed_at = datetime.now()
-                        elif event.get("status") == "error":
-                            self.status = AgentStatus.FAILED
-                            self.completed_at = datetime.now()
+                    for event in events:
+                        if event.get("type") in ("result", "turn.completed", "thread.completed"):
+                            if event.get("status") == "success" or event.get("type") == "turn.completed":
+                                self.status = AgentStatus.COMPLETED
+                                self.completed_at = datetime.now()
+                            elif event.get("status") == "error":
+                                self.status = AgentStatus.FAILED
+                                self.completed_at = datetime.now()
 
                 except json.JSONDecodeError:
                     self._events_cache.append({
@@ -373,17 +416,29 @@ class AgentManager:
         max_agents: int = 50,
         max_concurrent: int = 10,
         agents_dir: Path | None = None,
+        default_mode: Literal["safe", "yolo"] | None = None,
     ):
         self._agents: dict[str, AgentProcess] = {}
         self._max_agents = max_agents
         self._max_concurrent = max_concurrent
         self._agents_dir = agents_dir or AGENTS_DIR
+        resolved_default_mode = (
+            _normalize_mode_value(default_mode) if default_mode is not None else _default_mode_from_env()
+        )
+        if resolved_default_mode is None:
+            raise ValueError(f"Invalid default_mode '{default_mode}'. Use 'safe' or 'yolo'.")
+        self._default_mode: Literal["safe", "yolo"] = resolved_default_mode
 
         # Ensure agents directory exists
         self._agents_dir.mkdir(parents=True, exist_ok=True)
 
         # Load existing agents from disk
         self._load_existing_agents()
+
+    @property
+    def default_mode(self) -> Literal["safe", "yolo"]:
+        """Return the configured default automation mode."""
+        return self._default_mode
 
     def _load_existing_agents(self) -> None:
         """Scan disk for existing agents and load them."""
@@ -409,11 +464,11 @@ class AgentManager:
         agent_type: AgentType,
         prompt: str,
         cwd: str | None = None,
-        yolo: bool | None = False,
+        yolo: bool | None = None,
         mode: Literal["safe", "yolo"] | None = None,
     ) -> AgentProcess:
         """Spawn a new agent process (detached, survives server restart)."""
-        resolved_mode, resolved_yolo = resolve_mode_flags(mode, yolo)
+        resolved_mode, resolved_yolo = resolve_mode_flags(mode, yolo, self._default_mode)
 
         # Check concurrent agent limit
         # Refresh statuses before enforcing the limit so completed agents don't block new spawns
@@ -560,6 +615,14 @@ class AgentManager:
         agent = self._agents.get(agent_id)
         if agent:
             agent.update_status_from_process()
+            return agent
+        
+        agent = AgentProcess.load_from_disk(agent_id, base_dir=self._agents_dir)
+        if agent:
+            agent.update_status_from_process()
+            self._agents[agent_id] = agent
+            logger.debug(f"Loaded agent {agent_id} from disk")
+        
         return agent
 
     def list_all(self) -> list[AgentProcess]:

@@ -26,7 +26,8 @@ def _get_agent_mode(agent) -> str:
 
 def _resolve_mode(requested_mode: str | None, requested_yolo: bool | None) -> tuple[str, bool]:
     """Resolve the requested mode/yolo flags into a canonical mode + bool."""
-    return resolve_mode_flags(requested_mode, requested_yolo)
+    default_mode = getattr(manager, "default_mode", "safe")
+    return resolve_mode_flags(requested_mode, requested_yolo, default_mode)
 
 
 @server.list_tools()
@@ -143,6 +144,26 @@ For most use cases, just call with agent_id only - defaults are optimized for ef
                 "properties": {},
             },
         ),
+        Tool(
+            name="view_logs",
+            description="View recent agent-swarm server logs for debugging. Shows server startup, agent spawns, errors, and shutdown events.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "lines": {
+                        "type": "integer",
+                        "description": "Number of recent log lines to return (default: 50, max: 500)",
+                        "default": 50,
+                    },
+                    "level": {
+                        "type": "string",
+                        "enum": ["all", "info", "warning", "error"],
+                        "description": "Filter by log level (default: all)",
+                        "default": "all",
+                    },
+                },
+            },
+        ),
     ]
 
 
@@ -177,6 +198,12 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
         elif name == "check_environment":
             result = await handle_check_environment()
+
+        elif name == "view_logs":
+            result = await handle_view_logs(
+                lines=arguments.get("lines", 50),
+                level=arguments.get("level", "all"),
+            )
 
         else:
             result = {"error": f"Unknown tool: {name}"}
@@ -332,8 +359,59 @@ async def handle_check_environment() -> dict:
     }
 
 
+async def handle_view_logs(lines: int = 50, level: str = "all") -> dict:
+    """View recent server logs for debugging."""
+    from .agents import AGENTS_DIR
+
+    log_file = AGENTS_DIR.parent / "agent-swarm.log"
+
+    if not log_file.exists():
+        return {
+            "error": "Log file not found",
+            "path": str(log_file),
+        }
+
+    # Clamp lines to reasonable range
+    lines = max(1, min(lines, 500))
+
+    # Read the log file
+    try:
+        with open(log_file, "r") as f:
+            all_lines = f.readlines()
+    except Exception as e:
+        return {"error": f"Failed to read log file: {e}"}
+
+    # Filter by level if requested
+    level_filters = {
+        "info": ["INFO", "WARNING", "ERROR"],
+        "warning": ["WARNING", "ERROR"],
+        "error": ["ERROR"],
+        "all": None,
+    }
+
+    filter_levels = level_filters.get(level)
+    if filter_levels:
+        all_lines = [
+            line for line in all_lines
+            if any(f" | {lvl}" in line for lvl in filter_levels)
+        ]
+
+    # Get the last N lines
+    recent_lines = all_lines[-lines:]
+
+    return {
+        "log_path": str(log_file),
+        "total_lines": len(all_lines),
+        "returned_lines": len(recent_lines),
+        "level_filter": level,
+        "logs": "".join(recent_lines),
+    }
+
+
 def main():
     """Run the MCP server."""
+    import atexit
+    import signal
     import sys
 
     from .agents import AGENTS_DIR
@@ -351,18 +429,38 @@ def main():
     except Exception as exc:  # pragma: no cover - defensive fallback
         logger.warning(f"File logging disabled (path not writable: {log_dir}): {exc}")
 
+    # Log shutdown reasons for debugging
+    def log_exit():
+        logger.debug("MCP server exiting (atexit handler)")
+
+    def signal_handler(signum, frame):
+        sig_name = signal.Signals(signum).name
+        logger.warning(f"MCP server received signal {sig_name} ({signum})")
+        sys.exit(128 + signum)
+
+    atexit.register(log_exit)
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+    # SIGPIPE can cause silent exits when the parent closes the pipe
+    signal.signal(signal.SIGPIPE, signal.SIG_IGN)
+
     logger.info("Starting agent-swarm MCP server")
 
     async def run():
         try:
             async with stdio_server() as (read_stream, write_stream):
+                logger.debug("MCP stdio connection established")
                 await server.run(read_stream, write_stream, server.create_initialization_options())
+                logger.debug("MCP server.run() returned normally")
         except Exception as e:
             logger.exception(f"MCP server crashed: {e}")
             raise
 
     try:
         asyncio.run(run())
+        logger.debug("asyncio.run() completed normally")
+    except KeyboardInterrupt:
+        logger.info("MCP server interrupted by keyboard")
     except Exception as e:
         logger.exception(f"Fatal error in agent-swarm: {e}")
 

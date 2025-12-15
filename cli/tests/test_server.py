@@ -264,6 +264,41 @@ class TestServerIntegration:
         assert "list_agents" in tool_names
         assert "stop_agent" in tool_names
         assert "check_environment" in tool_names
+        assert "view_logs" in tool_names
+
+
+class TestViewLogs:
+    """Tests for view_logs functionality."""
+
+    @pytest.mark.asyncio
+    async def test_view_logs_returns_structure(self):
+        """Test view_logs returns expected structure."""
+        from agent_swarm.server import handle_view_logs
+
+        result = await handle_view_logs(lines=10)
+
+        # Should have either logs or error
+        assert "log_path" in result or "error" in result
+
+    @pytest.mark.asyncio
+    async def test_view_logs_respects_line_limit(self):
+        """Test view_logs respects line count limits."""
+        from agent_swarm.server import handle_view_logs
+
+        result = await handle_view_logs(lines=5)
+
+        if "returned_lines" in result:
+            assert result["returned_lines"] <= 5
+
+    @pytest.mark.asyncio
+    async def test_view_logs_clamps_max_lines(self):
+        """Test view_logs clamps to max 500 lines."""
+        from agent_swarm.server import handle_view_logs
+
+        result = await handle_view_logs(lines=1000)
+
+        if "returned_lines" in result:
+            assert result["returned_lines"] <= 500
 
 
 class TestCheckEnvironment:

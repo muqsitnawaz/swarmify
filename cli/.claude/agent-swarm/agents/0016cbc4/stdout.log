@@ -1,3 +1,0 @@
-2025-12-14T12:43:22.933335Z ERROR codex_core::codex: failed to initialize rollout recorder: Operation not permitted (os error 1)
-2025-12-14T12:43:22.933411Z ERROR codex_core::codex: Failed to create session: Operation not permitted (os error 1)
-Error: Fatal error: Codex cannot access session files at /Users/muqsit/.codex/sessions (permission denied). If sessions were created using sudo, fix ownership: sudo chown -R $(whoami) /Users/muqsit/.codex (underlying error: Operation not permitted (os error 1))

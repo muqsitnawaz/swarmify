@@ -133,6 +133,8 @@ spawn_agent(agent_type="codex", prompt="deploy without safety rails", yolo=True)
 YOLO mode swaps `--full-auto` for `--yolo` in the Codex command template; other agents keep their normal flags. Without `yolo=True`, any attempt to smuggle `--yolo` through the prompt is still rejected.
 If you prefer a string-based option, `mode="yolo"` is equivalent and overrides the boolean if both are supplied.
 
+Set an environment default with `AGENT_SWARM_MODE=yolo` (or `AGENT_SWARM_DEFAULT_MODE=yolo`) to make YOLO the default for all new spawns. Explicit `mode`/`yolo` arguments always win over the environment.
+
 ## Output Formats
 
 | Format | Use Case |

@@ -12,6 +12,7 @@ from agent_swarm.agents import (
     AgentStatus,
     AgentType,
     AGENT_COMMANDS,
+    resolve_mode_flags,
 )
 
 # Test data directory - checked into repo for reproducible tests
@@ -36,6 +37,27 @@ def test_resolve_agents_dir_falls_back(monkeypatch, tmp_path):
 
     assert resolved == tmp_path / "agent-swarm" / "agents"
     assert attempts[-1] == resolved
+
+
+class TestModeResolution:
+    """Tests for resolving requested modes and yolo flags."""
+
+    def test_resolve_mode_flags_uses_default(self):
+        """Default mode should be applied when no flags are provided."""
+        mode, yolo = resolve_mode_flags(None, None, default_mode="yolo")
+
+        assert mode == "yolo"
+        assert yolo is True
+
+    def test_resolve_mode_flags_rejects_non_bool_yolo(self):
+        """Non-boolean yolo values should be rejected to keep opt-in explicit."""
+        with pytest.raises(ValueError, match="boolean"):
+            resolve_mode_flags(None, "yes")
+
+    def test_resolve_mode_flags_invalid_default(self):
+        """Invalid default modes should raise an error."""
+        with pytest.raises(ValueError, match="default mode"):
+            resolve_mode_flags(None, None, default_mode="fast")
 
 
 class TestAgentProcess:
@@ -420,6 +442,44 @@ class TestAgentManagerAsync:
         assert agent.yolo is True
         assert agent.mode == "yolo"
 
+    async def test_spawn_uses_env_default_mode(self, monkeypatch, tmp_path):
+        """Default mode should come from environment when no flags provided."""
+        monkeypatch.setenv("AGENT_SWARM_MODE", "yolo")
+        agents_dir = tmp_path / "agent_manager_env_default_tests"
+        manager = AgentManager(agents_dir=agents_dir)
+        monkeypatch.setattr("agent_swarm.agents.check_cli_available", lambda agent_type: (True, "/bin/echo"))
+
+        class DummyProcess:
+            def __init__(self):
+                self.pid = 4242
+
+        monkeypatch.setattr("agent_swarm.agents.subprocess.Popen", lambda *_, **__: DummyProcess())
+
+        agent = await manager.spawn("codex", "env default mode", None)
+
+        assert agent.yolo is True
+        assert agent.mode == "yolo"
+        assert manager.default_mode == "yolo"
+
+    async def test_env_default_mode_can_be_overridden(self, monkeypatch, tmp_path):
+        """Explicit safe mode should override a yolo default from the environment."""
+        monkeypatch.setenv("AGENT_SWARM_MODE", "yolo")
+        agents_dir = tmp_path / "agent_manager_env_override_tests"
+        manager = AgentManager(agents_dir=agents_dir)
+        monkeypatch.setattr("agent_swarm.agents.check_cli_available", lambda agent_type: (True, "/bin/echo"))
+
+        class DummyProcess:
+            def __init__(self):
+                self.pid = 4343
+
+        monkeypatch.setattr("agent_swarm.agents.subprocess.Popen", lambda *_, **__: DummyProcess())
+
+        agent = await manager.spawn("codex", "stay safe", None, mode="safe")
+
+        assert agent.yolo is False
+        assert agent.mode == "safe"
+        assert manager.default_mode == "yolo"
+
     async def test_spawn_handles_popen_failure(self, manager, monkeypatch):
         """Spawn should surface a clean error and cleanup when Popen fails."""
         agents_dir = TESTDATA_DIR / "agent_manager_async_tests"
@@ -666,3 +726,17 @@ class TestAgentManagerAsync:
         # Verify cleanup still happened
         assert manager.list_all() == []
         assert list(agents_dir.iterdir()) == []
+
+
+def test_agent_manager_rejects_invalid_default_mode(tmp_path):
+    """Invalid default_mode values should be rejected early."""
+    with pytest.raises(ValueError, match="default_mode"):
+        AgentManager(agents_dir=tmp_path / "invalid_default_mode", default_mode="turbo")
+
+
+def test_agent_manager_invalid_env_default_falls_back_safe(monkeypatch, tmp_path):
+    """Invalid env default should be ignored in favor of safe mode."""
+    monkeypatch.setenv("AGENT_SWARM_MODE", "invalid")
+    manager = AgentManager(agents_dir=tmp_path / "invalid_env_default")
+
+    assert manager.default_mode == "safe"
