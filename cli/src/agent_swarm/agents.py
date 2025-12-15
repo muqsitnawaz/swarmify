@@ -151,6 +151,11 @@ class AgentProcess:
     _base_dir: Path | None = None  # If None, uses AGENTS_DIR
 
     @property
+    def mode(self) -> str:
+        """Return human-readable mode."""
+        return "yolo" if self.yolo else "safe"
+
+    @property
     def agent_dir(self) -> Path:
         """Directory for this agent's data."""
         base = self._base_dir if self._base_dir else AGENTS_DIR
@@ -176,7 +181,7 @@ class AgentProcess:
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "event_count": len(self.events),
             "duration_ms": self._duration_ms(),
-            "mode": "yolo" if self.yolo else "safe",
+            "mode": self.mode,
             "yolo": self.yolo,
         }
 
@@ -246,6 +251,7 @@ class AgentProcess:
             "prompt": self.prompt,
             "cwd": self.cwd,
             "yolo": self.yolo,
+            "mode": self.mode,
             "pid": self.pid,
             "status": self.status.value,
             "started_at": self.started_at.isoformat(),
@@ -268,12 +274,16 @@ class AgentProcess:
             with open(meta_path) as f:
                 meta = json.load(f)
 
+            yolo_from_meta = meta.get("yolo")
+            if yolo_from_meta is None and meta.get("mode") == "yolo":
+                yolo_from_meta = True
+
             agent = cls(
                 agent_id=meta["agent_id"],
                 agent_type=meta["agent_type"],
                 prompt=meta["prompt"],
                 cwd=meta.get("cwd"),
-                yolo=meta.get("yolo", False),
+                yolo=bool(yolo_from_meta) if yolo_from_meta is not None else False,
                 pid=meta.get("pid"),
                 status=AgentStatus(meta["status"]),
                 started_at=datetime.fromisoformat(meta["started_at"]),
@@ -295,31 +305,66 @@ class AgentProcess:
         except OSError:
             return False
 
+    def _reap_process(self) -> int | None:
+        """Non-blocking reap to avoid zombie processes. Returns exit code if collected."""
+        if not self.pid:
+            return None
+
+        try:
+            waited_pid, status = os.waitpid(self.pid, os.WNOHANG)
+        except ChildProcessError:
+            return None
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.debug(f"Failed to reap agent {self.agent_id} (PID {self.pid}): {exc}")
+            return None
+
+        if waited_pid == 0:
+            return None
+
+        try:
+            return os.waitstatus_to_exitcode(status)
+        except Exception:
+            return None
+
     def update_status_from_process(self) -> None:
         """Update status based on process state."""
-        if self.status != AgentStatus.RUNNING:
-            return
-
-        # Only check process status if we have a PID
         if self.pid is None:
             return
 
-        if not self.is_process_alive():
-            # Process finished - read remaining events to determine final status
-            self._read_new_events()
-            if self.status == AgentStatus.RUNNING:
-                # No completion event found, assume completed
+        if self.is_process_alive():
+            return
+
+        exit_code = self._reap_process()
+
+        # Process finished - read remaining events to determine final status
+        self._read_new_events()
+
+        if self.status == AgentStatus.RUNNING:
+            # No completion event found, infer status from exit code
+            if exit_code not in (None, 0):
+                self.status = AgentStatus.FAILED
+            else:
                 self.status = AgentStatus.COMPLETED
-                self.completed_at = datetime.now()
-            self.save_meta()
+            self.completed_at = datetime.now()
+        elif self.completed_at is None:
+            # Ensure completed_at is set even if status was updated via events
+            self.completed_at = datetime.now()
+
+        self.save_meta()
 
 
 class AgentManager:
     """Manages multiple agent processes with persistence."""
 
-    def __init__(self, max_agents: int = 50, agents_dir: Path | None = None):
+    def __init__(
+        self,
+        max_agents: int = 50,
+        max_concurrent: int = 10,
+        agents_dir: Path | None = None,
+    ):
         self._agents: dict[str, AgentProcess] = {}
         self._max_agents = max_agents
+        self._max_concurrent = max_concurrent
         self._agents_dir = agents_dir or AGENTS_DIR
 
         # Ensure agents directory exists
@@ -355,6 +400,14 @@ class AgentManager:
         yolo: bool = False,
     ) -> AgentProcess:
         """Spawn a new agent process (detached, survives server restart)."""
+        # Check concurrent agent limit
+        running = [a for a in self._agents.values() if a.status == AgentStatus.RUNNING]
+        if len(running) >= self._max_concurrent:
+            raise ValueError(
+                f"Maximum concurrent agents ({self._max_concurrent}) reached. "
+                "Wait for an agent to complete or stop one first."
+            )
+
         # Validate CLI tool is available
         available, path_or_error = check_cli_available(agent_type)
         if not available:
@@ -383,25 +436,53 @@ class AgentManager:
         )
 
         # Create agent directory
-        agent.agent_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            agent.agent_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            self._agents.pop(agent.agent_id, None)
+            raise ValueError(f"Failed to create agent directory: {exc}") from exc
 
-        mode_label = "yolo" if yolo else "safe"
-        logger.info(f"Spawning {agent_type} agent {agent_id} [{mode_label}]: {' '.join(cmd[:3])}...")
+        logger.info(f"Spawning {agent_type} agent {agent_id} [{agent.mode}]: {' '.join(cmd[:3])}...")
 
-        # Spawn detached process with stdout redirected to file
-        # Use context manager to ensure file descriptor is properly closed after Popen inherits it
-        with open(agent.stdout_path, "w") as stdout_file:
-            process = subprocess.Popen(
-                cmd,
-                stdout=stdout_file,
-                stderr=subprocess.STDOUT,
-                cwd=cwd,
-                start_new_session=True,  # Detach from parent process group
-            )
-            # File descriptor is inherited by subprocess, safe to close after Popen returns
+        try:
+            # Spawn detached process with stdout redirected to file
+            # Use context manager to ensure file descriptor is properly closed after Popen inherits it
+            with open(agent.stdout_path, "w") as stdout_file:
+                process = subprocess.Popen(
+                    cmd,
+                    stdout=stdout_file,
+                    stderr=subprocess.STDOUT,
+                    cwd=cwd,
+                    start_new_session=True,  # Detach from parent process group
+                )
+                # File descriptor is inherited by subprocess, safe to close after Popen returns
+        except OSError as exc:
+            # Clean up the partially created agent directory to avoid leaving junk on disk
+            self._cleanup_partial_agent(agent)
+            logger.error(f"Failed to spawn agent {agent_id}: {exc}")
+            raise ValueError(f"Failed to spawn agent: {exc}") from exc
+        except Exception:
+            self._cleanup_partial_agent(agent)
+            raise
 
         agent.pid = process.pid
-        agent.save_meta()
+        try:
+            agent.save_meta()
+        except Exception as exc:
+            # If metadata persistence fails, terminate the child process to avoid orphaned work
+            try:
+                if agent.pid:
+                    os.killpg(os.getpgid(agent.pid), signal.SIGTERM)
+            except ProcessLookupError:
+                # Process already exited - this is fine
+                logger.debug(f"Agent {agent_id} process already exited before cleanup")
+            except OSError as kill_exc:
+                logger.warning(f"Failed to terminate agent {agent_id}: {kill_exc}")
+
+            agent._reap_process()
+            self._cleanup_partial_agent(agent)
+            logger.error(f"Failed to persist metadata for agent {agent_id}: {exc}")
+            raise ValueError(f"Failed to persist metadata for agent {agent_id}: {exc}") from exc
 
         self._agents[agent_id] = agent
 
@@ -504,9 +585,21 @@ class AgentManager:
             agent.completed_at = datetime.now()
             agent.save_meta()
             logger.info(f"Stopped agent {agent_id}")
+            agent._reap_process()
             return True
 
         return False
+
+    def _cleanup_partial_agent(self, agent: AgentProcess) -> None:
+        """Remove a partially created agent directory and drop in-memory reference."""
+        # Remove from manager cache if it somehow got added
+        self._agents.pop(agent.agent_id, None)
+
+        try:
+            if agent.agent_dir.exists():
+                shutil.rmtree(agent.agent_dir)
+        except Exception as exc:  # pragma: no cover - defensive cleanup
+            logger.warning(f"Failed to clean up agent directory {agent.agent_dir}: {exc}")
 
     def _cleanup_old_agents(self) -> None:
         """Remove old completed agents to free space."""

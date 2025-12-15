@@ -1,0 +1,12 @@
+{
+  "agent_id": "completed-1",
+  "agent_type": "codex",
+  "prompt": "Test",
+  "cwd": null,
+  "yolo": false,
+  "mode": "safe",
+  "pid": 1002,
+  "status": "completed",
+  "started_at": "2025-12-14T21:42:49.846604",
+  "completed_at": "2025-12-14T21:42:49.846808"
+}

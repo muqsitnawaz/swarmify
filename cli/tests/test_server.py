@@ -141,6 +141,80 @@ class TestMCPToolHandlers:
         assert result["yolo"] is True
         assert "YOLO" in result["message"]
 
+    @pytest.mark.asyncio
+    async def test_spawn_accepts_mode_string(self, monkeypatch):
+        """Mode string should map to the correct yolo flag."""
+
+        async def fake_spawn(agent_type, prompt, cwd, yolo=False):
+            class DummyAgent:
+                def __init__(self):
+                    self.agent_id = "mode-yolo"
+                    self.agent_type = agent_type
+                    self.prompt = prompt
+                    self.cwd = cwd
+                    self.status = AgentStatus.RUNNING
+                    self.started_at = datetime(2024, 1, 1)
+                    self.yolo = yolo
+
+            return DummyAgent()
+
+        monkeypatch.setattr(self.manager, "spawn", fake_spawn)
+
+        result = await handle_spawn_agent(
+            agent_type="codex",
+            prompt="ship it",
+            cwd=None,
+            mode="yolo",
+        )
+
+        assert result["mode"] == "yolo"
+        assert result["yolo"] is True
+
+    @pytest.mark.asyncio
+    async def test_spawn_invalid_mode_rejected(self):
+        """Invalid mode values should raise an error."""
+        with pytest.raises(ValueError, match="mode"):
+            await handle_spawn_agent(
+                agent_type="codex",
+                prompt="ship it",
+                cwd=None,
+                mode="turbo",
+            )
+
+    @pytest.mark.asyncio
+    async def test_spawn_mode_overrides_yolo_flag(self, monkeypatch):
+        """Explicit mode selection should win over the yolo boolean."""
+        captured: dict[str, bool] = {}
+
+        async def fake_spawn(agent_type, prompt, cwd, yolo=False):
+            captured["yolo"] = yolo
+
+            class DummyAgent:
+                def __init__(self):
+                    self.agent_id = "mode-override"
+                    self.agent_type = agent_type
+                    self.prompt = prompt
+                    self.cwd = cwd
+                    self.status = AgentStatus.RUNNING
+                    self.started_at = datetime(2024, 1, 1)
+                    self.yolo = yolo
+
+            return DummyAgent()
+
+        monkeypatch.setattr(self.manager, "spawn", fake_spawn)
+
+        result = await handle_spawn_agent(
+            agent_type="codex",
+            prompt="ship it",
+            cwd=None,
+            yolo=False,
+            mode="yolo",
+        )
+
+        assert result["mode"] == "yolo"
+        assert result["yolo"] is True
+        assert captured.get("yolo") is True
+
 
 class TestAgentCommands:
     """Test agent command configurations."""
@@ -187,3 +261,80 @@ class TestServerIntegration:
         assert "read_agent_output" in tool_names
         assert "list_agents" in tool_names
         assert "stop_agent" in tool_names
+        assert "check_environment" in tool_names
+
+
+class TestCheckEnvironment:
+    """Tests for environment checking functionality."""
+
+    @pytest.mark.asyncio
+    async def test_check_environment_returns_all_agents(self):
+        """Test check_environment returns info for all agent types."""
+        from agent_swarm.server import handle_check_environment
+
+        result = await handle_check_environment()
+
+        assert "agents" in result
+        assert "installed" in result
+        assert "missing" in result
+        assert "ready" in result
+        assert "message" in result
+
+        # Should have info for all 4 agent types
+        assert "codex" in result["agents"]
+        assert "cursor" in result["agents"]
+        assert "gemini" in result["agents"]
+        assert "claude" in result["agents"]
+
+    @pytest.mark.asyncio
+    async def test_check_environment_agent_info_structure(self):
+        """Test each agent has proper info structure."""
+        from agent_swarm.server import handle_check_environment
+
+        result = await handle_check_environment()
+
+        for agent_type, info in result["agents"].items():
+            assert "installed" in info
+            assert "path" in info
+            assert "error" in info
+
+            if info["installed"]:
+                assert info["path"] is not None
+                assert info["error"] is None
+            else:
+                assert info["path"] is None
+                assert info["error"] is not None
+
+
+class TestCLIValidation:
+    """Tests for CLI tool validation before spawning."""
+
+    def test_check_cli_available_returns_tuple(self):
+        """Test check_cli_available returns proper tuple."""
+        from agent_swarm.agents import check_cli_available
+
+        available, path_or_error = check_cli_available("codex")
+
+        assert isinstance(available, bool)
+        assert isinstance(path_or_error, str)
+
+    def test_check_cli_available_invalid_type(self):
+        """Test check_cli_available with invalid agent type."""
+        from agent_swarm.agents import check_cli_available
+
+        available, error = check_cli_available("invalid_agent")
+
+        assert available is False
+        assert "Unknown agent type" in error
+
+    def test_check_all_clis_returns_dict(self):
+        """Test check_all_clis returns proper structure."""
+        from agent_swarm.agents import check_all_clis
+
+        result = check_all_clis()
+
+        assert isinstance(result, dict)
+        assert "codex" in result
+        assert "cursor" in result
+        assert "gemini" in result
+        assert "claude" in result

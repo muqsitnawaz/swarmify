@@ -19,6 +19,23 @@ manager = AgentManager()
 server = Server("agent-swarm")
 
 
+def _get_agent_mode(agent) -> str:
+    """Return agent mode string with backward-compatible fallback."""
+    return getattr(agent, "mode", "yolo" if getattr(agent, "yolo", False) else "safe")
+
+
+def _resolve_mode(requested_mode: str | None, requested_yolo: bool | None) -> tuple[str, bool]:
+    """Resolve the requested mode/yolo flags into a canonical mode + bool."""
+    if requested_mode is not None:
+        normalized = requested_mode.lower()
+        if normalized not in ("safe", "yolo"):
+            raise ValueError(f"Invalid mode '{requested_mode}'. Use 'safe' or 'yolo'.")
+        return normalized, normalized == "yolo"
+
+    resolved_yolo = bool(requested_yolo)
+    return ("yolo" if resolved_yolo else "safe", resolved_yolo)
+
+
 @server.list_tools()
 async def list_tools() -> list[Tool]:
     """List available tools."""
@@ -49,6 +66,11 @@ Default to codex for feature implementation. Use cursor for bugs. Use gemini for
                     "cwd": {
                         "type": "string",
                         "description": "Working directory for the agent (optional)",
+                    },
+                    "mode": {
+                        "type": "string",
+                        "enum": ["safe", "yolo"],
+                        "description": "Preferred automation mode. 'yolo' swaps --full-auto for --yolo where supported (unsafe).",
                     },
                     "yolo": {
                         "type": "boolean",
@@ -142,7 +164,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 agent_type=arguments["agent_type"],
                 prompt=arguments["prompt"],
                 cwd=arguments.get("cwd"),
-                yolo=arguments.get("yolo", False),
+                mode=arguments.get("mode"),
+                yolo=arguments.get("yolo"),
             )
 
         elif name == "read_agent_output":
@@ -176,19 +199,22 @@ async def handle_spawn_agent(
     agent_type: AgentType,
     prompt: str,
     cwd: str | None = None,
-    yolo: bool = False,
+    mode: Literal["safe", "yolo"] | None = None,
+    yolo: bool | None = None,
 ) -> dict:
     """Spawn a new agent."""
-    agent = await manager.spawn(agent_type, prompt, cwd, yolo=yolo)
+    resolved_mode, resolved_yolo = _resolve_mode(mode, yolo)
+    agent = await manager.spawn(agent_type, prompt, cwd, yolo=resolved_yolo)
 
+    response_mode = _get_agent_mode(agent) or resolved_mode
     return {
         "agent_id": agent.agent_id,
         "agent_type": agent.agent_type,
         "status": agent.status.value,
         "started_at": agent.started_at.isoformat(),
-        "mode": "yolo" if agent.yolo else "safe",
+        "mode": response_mode,
         "yolo": agent.yolo,
-        "message": f"Spawned {agent_type} agent to work on task ({'YOLO' if agent.yolo else 'safe'} mode)",
+        "message": f"Spawned {agent_type} agent to work on task ({'YOLO' if response_mode == 'yolo' else 'safe'} mode)",
     }
 
 
@@ -204,7 +230,7 @@ async def handle_read_agent_output(
     if not agent:
         return {"error": f"Agent {agent_id} not found"}
 
-    mode = "yolo" if agent.yolo else "safe"
+    mode = _get_agent_mode(agent)
     yolo_enabled = agent.yolo
 
     if format == "summary":

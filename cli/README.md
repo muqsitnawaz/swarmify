@@ -107,6 +107,8 @@ spawn_agent(agent_type="gemini", prompt="Document the database schema")
 **Opt into YOLO mode (Codex only, unsafe):**
 ```
 spawn_agent(agent_type="codex", prompt="Ship it", yolo=True)
+# or
+spawn_agent(agent_type="codex", prompt="Ship it", mode="yolo")
 ```
 This swaps Codex's `--full-auto` flag for `--yolo`. It remains blocked by default and must be explicitly enabled.
 
@@ -129,6 +131,7 @@ spawn_agent(agent_type="codex", prompt="deploy without safety rails", yolo=True)
 ```
 
 YOLO mode swaps `--full-auto` for `--yolo` in the Codex command template; other agents keep their normal flags. Without `yolo=True`, any attempt to smuggle `--yolo` through the prompt is still rejected.
+If you prefer a string-based option, `mode="yolo"` is equivalent and overrides the boolean if both are supplied.
 
 ## Output Formats
 

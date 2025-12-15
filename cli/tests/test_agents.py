@@ -1,6 +1,8 @@
 """Tests for agents.py - agent process management."""
 
+import json
 import shutil
+import signal
 import pytest
 from datetime import datetime
 from pathlib import Path
@@ -77,6 +79,30 @@ class TestAgentProcess:
         result = agent.to_dict()
         assert result["mode"] == "yolo"
 
+    def test_save_and_load_persists_yolo_mode(self, tmp_path):
+        """Persisted metadata should carry yolo mode across restarts."""
+        agent = AgentProcess(
+            agent_id="persist-yolo",
+            agent_type="codex",
+            prompt="Test prompt",
+            cwd=None,
+            yolo=True,
+            status=AgentStatus.RUNNING,
+            _base_dir=tmp_path,
+        )
+
+        agent.save_meta()
+
+        with open(agent.meta_path) as f:
+            meta = json.load(f)
+        assert meta["mode"] == "yolo"
+        assert meta["yolo"] is True
+
+        reloaded = AgentProcess.load_from_disk(agent.agent_id, base_dir=tmp_path)
+        assert reloaded is not None
+        assert reloaded.yolo is True
+        assert reloaded.mode == "yolo"
+
     def test_duration_calculation_completed(self):
         """Test duration calculation for completed agent."""
         started = datetime(2024, 1, 1, 0, 0, 0)
@@ -111,6 +137,54 @@ class TestAgentProcess:
         duration = agent._duration_ms()
         assert duration is not None
         assert duration >= 0
+
+    def test_update_status_marks_failed_on_nonzero_exit(self, monkeypatch):
+        """Non-zero exit without completion events should mark agent as failed."""
+        agent = AgentProcess(
+            agent_id="crash",
+            agent_type="codex",
+            prompt="Test",
+            cwd=None,
+            status=AgentStatus.RUNNING,
+            pid=4242,
+        )
+
+        monkeypatch.setattr(agent, "is_process_alive", lambda: False)
+        monkeypatch.setattr(agent, "_reap_process", lambda: 9)
+        monkeypatch.setattr(agent, "_read_new_events", lambda: None)
+
+        saved: dict[str, bool] = {}
+        monkeypatch.setattr(agent, "save_meta", lambda: saved.setdefault("called", True))
+
+        agent.update_status_from_process()
+
+        assert agent.status == AgentStatus.FAILED
+        assert agent.completed_at is not None
+        assert saved.get("called") is True
+
+    def test_update_status_marks_completed_on_clean_exit(self, monkeypatch):
+        """Zero exit without completion events should mark agent as completed."""
+        agent = AgentProcess(
+            agent_id="clean-exit",
+            agent_type="codex",
+            prompt="Test",
+            cwd=None,
+            status=AgentStatus.RUNNING,
+            pid=5252,
+        )
+
+        monkeypatch.setattr(agent, "is_process_alive", lambda: False)
+        monkeypatch.setattr(agent, "_reap_process", lambda: 0)
+        monkeypatch.setattr(agent, "_read_new_events", lambda: None)
+
+        saved: dict[str, bool] = {}
+        monkeypatch.setattr(agent, "save_meta", lambda: saved.setdefault("called", True))
+
+        agent.update_status_from_process()
+
+        assert agent.status == AgentStatus.COMPLETED
+        assert agent.completed_at is not None
+        assert saved.get("called") is True
 
 
 class TestAgentCommands:
@@ -298,3 +372,199 @@ class TestAgentManagerAsync:
 
         success = await manager.stop("completed-1")
         assert success is False
+
+    async def test_spawn_handles_popen_failure(self, manager, monkeypatch):
+        """Spawn should surface a clean error and cleanup when Popen fails."""
+        agents_dir = TESTDATA_DIR / "agent_manager_async_tests"
+
+        monkeypatch.setattr("agent_swarm.agents.check_cli_available", lambda agent_type: (True, "/bin/echo"))
+
+        def fake_popen(*_, **__):
+            raise OSError("boom")
+
+        monkeypatch.setattr("agent_swarm.agents.subprocess.Popen", fake_popen)
+
+        with pytest.raises(ValueError, match="Failed to spawn agent"):
+            await manager.spawn("codex", "task", None)
+
+        assert manager.list_all() == []
+        assert list(agents_dir.iterdir()) == []
+
+    async def test_spawn_cleans_up_on_meta_save_failure(self, manager, monkeypatch):
+        """If metadata persistence fails, the child process is terminated and cleaned up."""
+        agents_dir = TESTDATA_DIR / "agent_manager_async_tests"
+        kills: list[tuple[int, signal.Signals]] = []
+
+        monkeypatch.setattr("agent_swarm.agents.check_cli_available", lambda agent_type: (True, "/bin/echo"))
+
+        class DummyProcess:
+            def __init__(self):
+                self.pid = 12345
+
+        monkeypatch.setattr("agent_swarm.agents.subprocess.Popen", lambda *_, **__: DummyProcess())
+
+        def fail_save_meta(self):
+            raise RuntimeError("disk full")
+
+        monkeypatch.setattr("agent_swarm.agents.AgentProcess.save_meta", fail_save_meta)
+        monkeypatch.setattr("agent_swarm.agents.os.getpgid", lambda pid: pid)
+        monkeypatch.setattr("agent_swarm.agents.os.killpg", lambda pgid, sig: kills.append((pgid, sig)))
+
+        with pytest.raises(ValueError, match="persist metadata"):
+            await manager.spawn("codex", "task", None)
+
+        assert manager.list_all() == []
+        assert list(agents_dir.iterdir()) == []
+        assert kills and kills[0][1] == signal.SIGTERM
+
+    async def test_concurrent_spawn_limit_rejects_at_max(self, monkeypatch):
+        """Verify spawn rejects when max_concurrent running agents is reached."""
+        agents_dir = TESTDATA_DIR / "agent_manager_concurrent_tests"
+        if agents_dir.exists():
+            shutil.rmtree(agents_dir)
+        agents_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create manager with max_concurrent=2
+        manager = AgentManager(max_concurrent=2, agents_dir=agents_dir)
+
+        # Add 2 running agents to the manager
+        for i in range(2):
+            agent = AgentProcess(
+                agent_id=f"running-{i}",
+                agent_type="codex",
+                prompt="Test",
+                cwd=None,
+                status=AgentStatus.RUNNING,
+                pid=1000 + i,
+                _base_dir=agents_dir,
+            )
+            manager._agents[agent.agent_id] = agent
+
+        assert len(manager.list_running()) == 2
+
+        # Third spawn should fail
+        monkeypatch.setattr(
+            "agent_swarm.agents.check_cli_available", lambda agent_type: (True, "/bin/echo")
+        )
+
+        with pytest.raises(ValueError, match="Maximum concurrent agents"):
+            await manager.spawn("codex", "third task", None)
+
+    async def test_concurrent_spawn_allows_after_completion(self, monkeypatch):
+        """Verify spawn succeeds after a running agent completes."""
+        agents_dir = TESTDATA_DIR / "agent_manager_concurrent_completion_tests"
+        if agents_dir.exists():
+            shutil.rmtree(agents_dir)
+        agents_dir.mkdir(parents=True, exist_ok=True)
+
+        manager = AgentManager(max_concurrent=2, agents_dir=agents_dir)
+
+        # Add 2 agents, one running and one completed
+        running = AgentProcess(
+            agent_id="running-1",
+            agent_type="codex",
+            prompt="Test",
+            cwd=None,
+            status=AgentStatus.RUNNING,
+            pid=1001,
+            _base_dir=agents_dir,
+        )
+        completed = AgentProcess(
+            agent_id="completed-1",
+            agent_type="codex",
+            prompt="Test",
+            cwd=None,
+            status=AgentStatus.COMPLETED,
+            pid=1002,
+            _base_dir=agents_dir,
+        )
+        manager._agents = {"running-1": running, "completed-1": completed}
+
+        assert len(manager.list_running()) == 1
+
+        # Should allow spawn since only 1 is running
+        monkeypatch.setattr(
+            "agent_swarm.agents.check_cli_available", lambda agent_type: (True, "/bin/echo")
+        )
+
+        class DummyProcess:
+            def __init__(self):
+                self.pid = 9999
+
+        monkeypatch.setattr(
+            "agent_swarm.agents.subprocess.Popen", lambda *_, **__: DummyProcess()
+        )
+
+        agent = await manager.spawn("codex", "new task", None)
+        assert agent is not None
+        assert len(manager.list_running()) == 2
+
+    async def test_spawn_handles_mkdir_failure(self, monkeypatch):
+        """Verify spawn handles agent directory creation failure gracefully."""
+        agents_dir = TESTDATA_DIR / "agent_manager_mkdir_tests"
+        if agents_dir.exists():
+            shutil.rmtree(agents_dir)
+        agents_dir.mkdir(parents=True, exist_ok=True)
+
+        manager = AgentManager(agents_dir=agents_dir)
+
+        monkeypatch.setattr(
+            "agent_swarm.agents.check_cli_available", lambda agent_type: (True, "/bin/echo")
+        )
+
+        original_mkdir = Path.mkdir
+
+        def fail_mkdir(self, *args, **kwargs):
+            # Fail only for agent subdirectories, not for the base dir
+            if "agent_manager_mkdir_tests" in str(self) and len(self.parts) > len(
+                agents_dir.parts
+            ):
+                raise OSError("Permission denied")
+            return original_mkdir(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "mkdir", fail_mkdir)
+
+        with pytest.raises(ValueError, match="Failed to create agent directory"):
+            await manager.spawn("codex", "test task", None)
+
+        assert manager.list_all() == []
+
+    async def test_spawn_handles_process_exit_during_cleanup(self, monkeypatch):
+        """Verify spawn cleanup handles process that exits before getpgid is called."""
+        agents_dir = TESTDATA_DIR / "agent_manager_race_tests"
+        if agents_dir.exists():
+            shutil.rmtree(agents_dir)
+        agents_dir.mkdir(parents=True, exist_ok=True)
+
+        manager = AgentManager(agents_dir=agents_dir)
+
+        monkeypatch.setattr(
+            "agent_swarm.agents.check_cli_available", lambda agent_type: (True, "/bin/echo")
+        )
+
+        class DummyProcess:
+            def __init__(self):
+                self.pid = 54321
+
+        monkeypatch.setattr(
+            "agent_swarm.agents.subprocess.Popen", lambda *_, **__: DummyProcess()
+        )
+
+        def fail_save_meta(self):
+            raise RuntimeError("disk full")
+
+        monkeypatch.setattr("agent_swarm.agents.AgentProcess.save_meta", fail_save_meta)
+
+        # Simulate process already exited by the time we try to kill it
+        def raise_process_lookup_error(pid):
+            raise ProcessLookupError("No such process")
+
+        monkeypatch.setattr("agent_swarm.agents.os.getpgid", raise_process_lookup_error)
+
+        # This should NOT crash - it should handle ProcessLookupError gracefully
+        with pytest.raises(ValueError, match="persist metadata"):
+            await manager.spawn("codex", "task", None)
+
+        # Verify cleanup still happened
+        assert manager.list_all() == []
+        assert list(agents_dir.iterdir()) == []
