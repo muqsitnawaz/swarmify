@@ -148,7 +148,7 @@ class AgentSummary:
             }
 
         elif detail_level == "standard":
-            # ~200 tokens
+            # ~200 tokens (excluding message which can be longer)
             return {
                 **base,
                 "duration": self.duration,
@@ -157,11 +157,11 @@ class AgentSummary:
                 "tools_used": list(self.tools_used),
                 "tool_call_count": self.tool_call_count,
                 "errors": self.errors[:3],
-                "final_message": self._truncate(self.final_message, 200),
+                "final_message": self._truncate(self.final_message, 2000),  # Preserve full messages
             }
 
         else:  # detailed
-            # ~500 tokens
+            # ~500 tokens (excluding message which can be longer)
             return {
                 **base,
                 "duration": self.duration,
@@ -174,7 +174,7 @@ class AgentSummary:
                 "bash_commands": self.bash_commands[-10:],
                 "errors": self.errors,
                 "warnings": self.warnings,
-                "final_message": self._truncate(self.final_message, 500),
+                "final_message": self.final_message,  # No truncation - preserve full messages
                 "event_count": self.event_count,
                 "last_activity": self.last_activity,
             }

@@ -309,17 +309,20 @@ async def handle_read_agent_output(
             if event_type in critical_types or event_type in important_types:
                 filtered_events.append(event)
         
-        # Truncate long content in remaining events
+        # Truncate long content in remaining events (but preserve full messages)
         optimized_events = []
         for event in filtered_events:
             event_copy = event.copy()
             event_type = event.get("type", "")
             
-            # Truncate long content fields
+            # Truncate thinking content (verbose), but keep full messages (important)
             if "content" in event_copy and isinstance(event_copy["content"], str):
-                max_len = 200 if event_type == "thinking" else 500
-                if len(event_copy["content"]) > max_len:
-                    event_copy["content"] = event_copy["content"][:max_len - 3] + "..."
+                if event_type == "thinking":
+                    # Truncate thinking content to reduce tokens
+                    max_len = 200
+                    if len(event_copy["content"]) > max_len:
+                        event_copy["content"] = event_copy["content"][:max_len - 3] + "..."
+                # Don't truncate message content - these are important and should be shown in full
             
             # Truncate long command fields
             if "command" in event_copy and isinstance(event_copy["command"], str):
