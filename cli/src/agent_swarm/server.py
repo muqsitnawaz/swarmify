@@ -1,6 +1,7 @@
 """MCP server for spawning and orchestrating AI coding agents."""
 
 import asyncio
+import json
 from datetime import datetime, timedelta
 from typing import Literal
 
@@ -411,6 +412,69 @@ async def handle_check_environment() -> dict:
             if len(missing) == 0
             else f"Missing CLI tools: {', '.join(missing)}. Install them to use these agent types."
         ),
+    }
+
+
+async def handle_watch_agent(
+    agent_id: str,
+    since_event: int = 0,
+    include_raw: bool = False,
+) -> dict:
+    """Watch agent output in real-time - returns new events since last call."""
+    agent = manager.get(agent_id)
+
+    if not agent:
+        return {"error": f"Agent {agent_id} not found"}
+
+    # Force refresh to get latest events from file
+    agent._read_new_events()
+
+    all_events = agent.events
+    new_events = all_events[since_event:]
+
+    # Get raw events from stdout file if requested
+    raw_events = []
+    if include_raw and agent.stdout_path.exists():
+        try:
+            with open(agent.stdout_path, "r") as f:
+                lines = f.readlines()
+                # Get lines after the ones we've already processed
+                # This is approximate - we track by event count, not line count
+                if since_event < len(lines):
+                    raw_lines = lines[since_event:]
+                    for line in raw_lines:
+                        line = line.strip()
+                        if line:
+                            try:
+                                raw_events.append(json.loads(line))
+                            except json.JSONDecodeError:
+                                pass
+        except Exception as e:
+            logger.debug(f"Error reading raw events: {e}")
+
+    # Format events for display (preserve full messages)
+    formatted_events = []
+    for event in new_events:
+        event_copy = event.copy()
+        event_type = event.get("type", "")
+        
+        # Only truncate thinking content, preserve messages
+        if "content" in event_copy and isinstance(event_copy["content"], str):
+            if event_type == "thinking" and len(event_copy["content"]) > 200:
+                event_copy["content"] = event_copy["content"][:197] + "..."
+        
+        formatted_events.append(event_copy)
+
+    return {
+        "agent_id": agent_id,
+        "agent_type": agent.agent_type,
+        "status": agent.status.value,
+        "since_event": since_event,
+        "current_event_count": len(all_events),
+        "new_event_count": len(new_events),
+        "events": formatted_events,
+        "raw_events": raw_events if include_raw else None,
+        "has_more": agent.status == AgentStatus.RUNNING,
     }
 
 
