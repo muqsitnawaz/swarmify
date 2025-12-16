@@ -1,0 +1,12 @@
+{
+  "agent_id": "586f7dc6",
+  "agent_type": "codex",
+  "prompt": "Read and summarize the README.md file in this directory. Be concise.",
+  "cwd": "/Users/muqsit/src/github.com/muqsitnawaz/CursorAgents/cli",
+  "yolo": false,
+  "mode": "safe",
+  "pid": 23479,
+  "status": "running",
+  "started_at": "2025-12-15T22:49:11.700706",
+  "completed_at": null
+}

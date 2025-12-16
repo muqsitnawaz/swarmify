@@ -111,7 +111,7 @@ AgentType = Literal["codex", "gemini", "cursor", "claude"]
 
 
 AGENT_COMMANDS: dict[AgentType, list[str]] = {
-    "codex": ["codex", "exec", "{prompt}", "--full-auto", "--json"],
+    "codex": ["codex", "exec", "--sandbox", "workspace-write", "{prompt}", "--full-auto", "--json"],
     "cursor": ["cursor-agent", "-p", "--output-format", "stream-json", "{prompt}"],
     "gemini": ["gemini", "-p", "{prompt}", "--output-format", "stream-json"],
     "claude": ["claude", "-p", "{prompt}", "--output-format", "stream-json"],
@@ -528,6 +528,7 @@ class AgentManager:
         cwd: str | None = None,
         yolo: bool | None = None,
         mode: Literal["safe", "yolo"] | None = None,
+        model: str | None = None,
     ) -> AgentProcess:
         """Spawn a new agent process (detached, survives server restart)."""
         resolved_mode, resolved_yolo = resolve_mode_flags(mode, yolo, self._default_mode)
@@ -556,7 +557,7 @@ class AgentManager:
 
         agent_id = str(uuid4())[:8]
 
-        cmd = self._build_command(agent_type, prompt, resolved_yolo)
+        cmd = self._build_command(agent_type, prompt, resolved_yolo, model=model)
 
         # Create agent object
         agent = AgentProcess(
@@ -626,7 +627,7 @@ class AgentManager:
         logger.info(f"Spawned agent {agent_id} with PID {process.pid}")
         return agent
 
-    def _build_command(self, agent_type: AgentType, prompt: str, yolo: bool) -> list[str]:
+    def _build_command(self, agent_type: AgentType, prompt: str, yolo: bool, model: str | None = None) -> list[str]:
         """Build an agent command, applying safety or yolo overrides."""
         cmd_template = AGENT_COMMANDS.get(agent_type)
         if not cmd_template:
@@ -638,6 +639,15 @@ class AgentManager:
             )
 
         cmd = [part.replace("{prompt}", prompt) for part in cmd_template]
+
+        # Add model flag for codex if specified
+        if model and agent_type == "codex":
+            # Insert --model flag after "exec" and before "--sandbox"
+            # Command structure: ["codex", "exec", "--sandbox", "workspace-write", ...]
+            exec_index = cmd.index("exec") if "exec" in cmd else 1
+            sandbox_index = cmd.index("--sandbox") if "--sandbox" in cmd else exec_index + 1
+            cmd.insert(sandbox_index, model)
+            cmd.insert(sandbox_index, "--model")
 
         if yolo:
             cmd = self._apply_yolo_mode(agent_type, cmd)

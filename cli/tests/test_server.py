@@ -12,6 +12,7 @@ from agent_swarm.server import (
     handle_read_agent_output,
     handle_list_agents,
     handle_stop_agent,
+    handle_check_agents_status,
     manager,
 )
 
@@ -265,6 +266,7 @@ class TestServerIntegration:
         assert "stop_agent" in tool_names
         assert "check_environment" in tool_names
         assert "view_logs" in tool_names
+        assert "check_agents_status" in tool_names
 
 
 class TestViewLogs:
@@ -375,3 +377,326 @@ class TestCLIValidation:
         assert "cursor" in result
         assert "gemini" in result
         assert "claude" in result
+
+
+class TestCheckAgentsStatus:
+    """Tests for check_agents_status functionality."""
+
+    @pytest.fixture(autouse=True)
+    def setup_test_manager(self, monkeypatch):
+        """Replace global manager with test instance."""
+        agents_dir = TESTDATA_DIR / "check_agents_status_tests"
+        if agents_dir.exists():
+            shutil.rmtree(agents_dir)
+        agents_dir.mkdir(parents=True, exist_ok=True)
+
+        test_manager = AgentManager(agents_dir=agents_dir)
+        monkeypatch.setattr("agent_swarm.server.manager", test_manager)
+        self.manager = test_manager
+        self.agents_dir = agents_dir
+
+    @pytest.mark.asyncio
+    async def test_check_agents_status_empty_list(self):
+        """Test checking status with empty list."""
+        result = await handle_check_agents_status(agent_ids=[])
+
+        assert "agents" in result
+        assert "summary" in result
+        assert result["agents"] == []
+        assert result["summary"]["not_found"] == 0
+
+    @pytest.mark.asyncio
+    async def test_check_agents_status_nonexistent_agents(self):
+        """Test checking status of nonexistent agents."""
+        result = await handle_check_agents_status(agent_ids=["nonexistent1", "nonexistent2"])
+
+        assert len(result["agents"]) == 2
+        assert result["summary"]["not_found"] == 2
+        assert all("error" in agent for agent in result["agents"])
+
+    @pytest.mark.asyncio
+    async def test_check_agents_status_returns_structure(self):
+        """Test check_agents_status returns expected structure."""
+        agent = AgentProcess(
+            agent_id="test-status",
+            agent_type="codex",
+            prompt="test",
+            cwd=None,
+            status=AgentStatus.RUNNING,
+            _base_dir=self.agents_dir,
+        )
+        agent.agent_dir.mkdir(parents=True, exist_ok=True)
+        agent.save_meta()
+        self.manager._agents[agent.agent_id] = agent
+
+        result = await handle_check_agents_status(agent_ids=[agent.agent_id])
+
+        assert "agents" in result
+        assert "summary" in result
+        assert len(result["agents"]) == 1
+        
+        agent_status = result["agents"][0]
+        assert "agent_id" in agent_status
+        assert "agent_type" in agent_status
+        assert "status" in agent_status
+        assert "duration" in agent_status
+        assert "last_tool" in agent_status
+        assert "summary" in agent_status
+        
+        assert "running" in result["summary"]
+        assert "completed" in result["summary"]
+        assert "failed" in result["summary"]
+        assert "stopped" in result["summary"]
+        assert "not_found" in result["summary"]
+
+    @pytest.mark.asyncio
+    async def test_check_agents_status_summary_is_brief(self):
+        """Test that summary is a brief string, not full event data."""
+        agent = AgentProcess(
+            agent_id="test-brief",
+            agent_type="cursor",
+            prompt="test",
+            cwd=None,
+            status=AgentStatus.RUNNING,
+            _base_dir=self.agents_dir,
+        )
+        agent.agent_dir.mkdir(parents=True, exist_ok=True)
+        agent._events_cache = [
+            {"type": "file_write", "path": "test.py"},
+            {"type": "bash", "command": "ls"},
+            {"type": "file_write", "path": "test2.py"},
+        ]
+        agent.save_meta()
+        self.manager._agents[agent.agent_id] = agent
+
+        result = await handle_check_agents_status(agent_ids=[agent.agent_id])
+
+        summary = result["agents"][0]["summary"]
+        assert isinstance(summary, str)
+        assert len(summary.split()) <= 30
+        assert "events" not in summary.lower() or "event" in summary.lower()
+
+    @pytest.mark.asyncio
+    async def test_check_agents_status_multiple_agents(self):
+        """Test checking status of multiple agents with different statuses."""
+        running_agent = AgentProcess(
+            agent_id="running-agent",
+            agent_type="codex",
+            prompt="test",
+            cwd=None,
+            status=AgentStatus.RUNNING,
+            _base_dir=self.agents_dir,
+        )
+        running_agent.agent_dir.mkdir(parents=True, exist_ok=True)
+        running_agent._events_cache = [{"type": "file_write", "path": "test.py"}]
+        running_agent.save_meta()
+        self.manager._agents[running_agent.agent_id] = running_agent
+
+        completed_agent = AgentProcess(
+            agent_id="completed-agent",
+            agent_type="cursor",
+            prompt="test",
+            cwd=None,
+            status=AgentStatus.COMPLETED,
+            completed_at=datetime.now(),
+            _base_dir=self.agents_dir,
+        )
+        completed_agent.agent_dir.mkdir(parents=True, exist_ok=True)
+        completed_agent._events_cache = [
+            {"type": "file_write", "path": "test.py"},
+            {"type": "message", "content": "Done"},
+        ]
+        completed_agent.save_meta()
+        self.manager._agents[completed_agent.agent_id] = completed_agent
+
+        result = await handle_check_agents_status(
+            agent_ids=[running_agent.agent_id, completed_agent.agent_id, "nonexistent"]
+        )
+
+        assert len(result["agents"]) == 3
+        assert result["summary"]["running"] == 1
+        assert result["summary"]["completed"] == 1
+        assert result["summary"]["not_found"] == 1
+
+        running_status = next(a for a in result["agents"] if a["agent_id"] == running_agent.agent_id)
+        assert running_status["status"] == "running"
+        assert running_status["summary"] is not None
+
+        completed_status = next(a for a in result["agents"] if a["agent_id"] == completed_agent.agent_id)
+        assert completed_status["status"] == "completed"
+        assert completed_status["summary"] is not None
+
+    @pytest.mark.asyncio
+    async def test_check_agents_status_no_events(self):
+        """Test agent with no events."""
+        agent = AgentProcess(
+            agent_id="no-events",
+            agent_type="codex",
+            prompt="test",
+            cwd=None,
+            status=AgentStatus.RUNNING,
+            _base_dir=self.agents_dir,
+        )
+        agent.agent_dir.mkdir(parents=True, exist_ok=True)
+        agent._events_cache = []
+        agent.save_meta()
+        self.manager._agents[agent.agent_id] = agent
+
+        result = await handle_check_agents_status(agent_ids=[agent.agent_id])
+
+        agent_status = result["agents"][0]
+        assert agent_status["last_tool"] is None
+        assert agent_status["summary"] is not None
+        assert isinstance(agent_status["summary"], str)
+
+    @pytest.mark.asyncio
+    async def test_check_agents_status_last_tool(self):
+        """Test that last_tool is correctly extracted."""
+        agent = AgentProcess(
+            agent_id="last-tool-test",
+            agent_type="cursor",
+            prompt="test",
+            cwd=None,
+            status=AgentStatus.RUNNING,
+            _base_dir=self.agents_dir,
+        )
+        agent.agent_dir.mkdir(parents=True, exist_ok=True)
+        agent._events_cache = [
+            {"type": "file_write", "path": "test.py"},
+            {"type": "bash", "command": "ls"},
+            {"type": "message", "content": "Done"},
+        ]
+        agent.save_meta()
+        self.manager._agents[agent.agent_id] = agent
+
+        result = await handle_check_agents_status(agent_ids=[agent.agent_id])
+
+        agent_status = result["agents"][0]
+        assert agent_status["last_tool"] == "message"
+
+    @pytest.mark.asyncio
+    async def test_check_agents_status_refreshes_events(self):
+        """Test that status check refreshes events from file."""
+        agent = AgentProcess(
+            agent_id="refresh-test",
+            agent_type="codex",
+            prompt="test",
+            cwd=None,
+            status=AgentStatus.RUNNING,
+            _base_dir=self.agents_dir,
+        )
+        agent.agent_dir.mkdir(parents=True, exist_ok=True)
+        agent.save_meta()
+        self.manager._agents[agent.agent_id] = agent
+
+        stdout_path = agent.stdout_path
+        stdout_path.write_text('{"type": "file_write", "path": "test.py"}\n')
+
+        result = await handle_check_agents_status(agent_ids=[agent.agent_id])
+
+        agent_status = result["agents"][0]
+        assert agent_status["summary"] is not None
+        assert "modified" in agent_status["summary"] or "file" in agent_status["summary"].lower()
+
+
+class TestCheckAgentsStatusIntegration:
+    """Integration tests for check_agents_status with real agent spawning."""
+
+    @pytest.fixture(autouse=True)
+    def setup_test_manager(self, monkeypatch):
+        """Replace global manager with test instance."""
+        agents_dir = TESTDATA_DIR / "check_agents_status_integration"
+        if agents_dir.exists():
+            shutil.rmtree(agents_dir)
+        agents_dir.mkdir(parents=True, exist_ok=True)
+
+        test_manager = AgentManager(agents_dir=agents_dir)
+        monkeypatch.setattr("agent_swarm.server.manager", test_manager)
+        self.manager = test_manager
+        self.agents_dir = agents_dir
+
+    @pytest.mark.asyncio
+    async def test_spawn_codex_and_gemini_summarize_readme(self):
+        """Test spawning codex and gemini to summarize README.md, then check status."""
+        from agent_swarm.agents import check_cli_available
+        
+        codex_available, _ = check_cli_available("codex")
+        gemini_available, _ = check_cli_available("gemini")
+        
+        if not codex_available or not gemini_available:
+            pytest.skip("codex or gemini CLI not available")
+        
+        readme_path = Path(__file__).parent.parent / "README.md"
+        if not readme_path.exists():
+            pytest.skip("README.md not found")
+        
+        prompt = f"Read and summarize the README.md file in this directory. Be concise."
+        cwd = str(readme_path.parent)
+        
+        codex_result = await handle_spawn_agent(
+            agent_type="codex",
+            prompt=prompt,
+            cwd=cwd,
+        )
+        codex_id = codex_result["agent_id"]
+        
+        gemini_result = await handle_spawn_agent(
+            agent_type="gemini",
+            prompt=prompt,
+            cwd=cwd,
+        )
+        gemini_id = gemini_result["agent_id"]
+        
+        assert codex_result["status"] == "running"
+        assert gemini_result["status"] == "running"
+        
+        import asyncio
+        
+        print(f"\n=== Initial Status Check (after 2 seconds) ===")
+        await asyncio.sleep(2)
+        
+        status_result = await handle_check_agents_status(agent_ids=[codex_id, gemini_id])
+        
+        print(f"\nFull check_agents_status output:")
+        print(json.dumps(status_result, indent=2))
+        
+        assert len(status_result["agents"]) == 2
+        assert status_result["summary"]["running"] >= 0
+        
+        codex_status = next(a for a in status_result["agents"] if a["agent_id"] == codex_id)
+        gemini_status = next(a for a in status_result["agents"] if a["agent_id"] == gemini_id)
+        
+        assert codex_status["agent_type"] == "codex"
+        assert gemini_status["agent_type"] == "gemini"
+        assert codex_status["status"] in ("running", "completed", "failed")
+        assert gemini_status["status"] in ("running", "completed", "failed")
+        assert "summary" in codex_status
+        assert "summary" in gemini_status
+        assert isinstance(codex_status["summary"], str)
+        assert isinstance(gemini_status["summary"], str)
+        assert len(codex_status["summary"].split()) <= 30
+        assert len(gemini_status["summary"].split()) <= 30
+        
+        print(f"\nParsed output:")
+        print(f"Codex: {codex_status['status']} | {codex_status['summary']} | last_tool: {codex_status.get('last_tool')} | duration: {codex_status.get('duration')}")
+        print(f"Gemini: {gemini_status['status']} | {gemini_status['summary']} | last_tool: {gemini_status.get('last_tool')} | duration: {gemini_status.get('duration')}")
+        print(f"Summary counts: {status_result['summary']}")
+        
+        print(f"\n=== Second Status Check (after 5 more seconds) ===")
+        await asyncio.sleep(5)
+        
+        status_result2 = await handle_check_agents_status(agent_ids=[codex_id, gemini_id])
+        
+        print(f"\nFull check_agents_status output (second check):")
+        print(json.dumps(status_result2, indent=2))
+        
+        codex_status2 = next(a for a in status_result2["agents"] if a["agent_id"] == codex_id)
+        gemini_status2 = next(a for a in status_result2["agents"] if a["agent_id"] == gemini_id)
+        
+        print(f"\nParsed output:")
+        print(f"Codex: {codex_status2['status']} | {codex_status2['summary']} | last_tool: {codex_status2.get('last_tool')} | duration: {codex_status2.get('duration')}")
+        print(f"Gemini: {gemini_status2['status']} | {gemini_status2['summary']} | last_tool: {gemini_status2.get('last_tool')} | duration: {gemini_status2.get('duration')}")
+        print(f"Summary counts: {status_result2['summary']}")
+        
+        assert codex_status2["agent_id"] == codex_id
+        assert gemini_status2["agent_id"] == gemini_id

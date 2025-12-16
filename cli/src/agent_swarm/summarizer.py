@@ -373,3 +373,95 @@ def filter_events_by_priority(
         allowed_types.update(PRIORITY.get(level, []))
 
     return [e for e in events if e.get("type") in allowed_types]
+
+
+def get_last_tool(events: list[dict]) -> str | None:
+    """Return the last tool/activity type from events.
+    
+    Looks at last event's type (tool_use, bash, file_write, etc.).
+    Returns None if no events or can't determine.
+    """
+    if not events:
+        return None
+    
+    last_event = events[-1]
+    event_type = last_event.get("type", "")
+    
+    if event_type in ("tool_use", "bash", "file_write", "file_create", "file_read", "file_delete", "message", "error", "result"):
+        return event_type
+    
+    return None
+
+
+def get_status_summary(
+    agent_id: str,
+    agent_type: str,
+    status: str,
+    events: list[dict],
+    duration: str | None = None,
+) -> str:
+    """Generate a brief text summary for status checking.
+    
+    Returns a brief text summary string (~20-30 words max).
+    Only scans events for counts - doesn't process full event data.
+    """
+    if not events:
+        if status == "running":
+            return "Just started, no activity yet"
+        return "No activity"
+    
+    file_count = 0
+    bash_count = 0
+    tool_count = 0
+    has_errors = False
+    
+    for event in events:
+        event_type = event.get("type", "")
+        
+        if event_type in ("file_write", "file_create", "file_delete"):
+            file_count += 1
+        elif event_type == "bash":
+            bash_count += 1
+        elif event_type in ("tool_use", "file_read"):
+            tool_count += 1
+        elif event_type in ("error", "result"):
+            if event.get("status") == "error":
+                has_errors = True
+    
+    total_tools = bash_count + tool_count
+    
+    parts = []
+    
+    if status == "running":
+        parts.append("Running")
+    elif status == "completed":
+        if has_errors:
+            parts.append("Completed with errors")
+        else:
+            parts.append("Completed successfully")
+    elif status == "failed":
+        parts.append("Failed")
+    elif status == "stopped":
+        parts.append("Stopped")
+    
+    if file_count > 0:
+        parts.append(f"modified {file_count} file{'s' if file_count != 1 else ''}")
+    
+    if bash_count > 0:
+        parts.append(f"used bash {bash_count} time{'s' if bash_count != 1 else ''}")
+    
+    if tool_count > 0 and bash_count == 0:
+        parts.append(f"used {tool_count} tool{'s' if tool_count != 1 else ''}")
+    
+    if total_tools > 0 and bash_count > 0:
+        parts.append(f"used {total_tools} tool{'s' if total_tools != 1 else ''}")
+    
+    if has_errors and status == "running":
+        parts.append("has errors")
+    
+    if not parts:
+        if status == "running":
+            return f"Running, {len(events)} event{'s' if len(events) != 1 else ''} so far"
+        return status.capitalize()
+    
+    return ", ".join(parts)

@@ -11,7 +11,7 @@ from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
 from .agents import AgentManager, AgentStatus, AgentType, check_all_clis, resolve_mode_flags
-from .summarizer import summarize_events, get_delta
+from .summarizer import summarize_events, get_delta, get_status_summary, get_last_tool
 
 # Global agent manager
 # Clean up agents older than 7 days, but don't filter by CWD (unknown until spawn)
@@ -72,6 +72,10 @@ Default to codex for feature implementation. Use cursor for bugs. Use gemini for
                         "type": "boolean",
                         "description": "Enable unsafe yolo mode (replaces --full-auto with --yolo when supported)",
                         "default": False,
+                    },
+                    "model": {
+                        "type": "string",
+                        "description": "Model to use (for codex: gpt-5-codex, gpt-5-codex-mini, etc.)",
                     },
                 },
                 "required": ["agent_type", "prompt"],
@@ -171,6 +175,21 @@ For most use cases, just call with agent_id only - defaults are optimized for ef
                 },
             },
         ),
+        Tool(
+            name="check_agents_status",
+            description="Efficiently check status of multiple agents at once. Returns minimal status info (status, last_tool, brief summary) without reading full event summaries. Use this for polling multiple agents, then call read_agent_output only when you need detailed information.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "agent_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of agent IDs to check",
+                    },
+                },
+                "required": ["agent_ids"],
+            },
+        ),
     ]
 
 
@@ -187,6 +206,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 cwd=arguments.get("cwd"),
                 mode=arguments.get("mode"),
                 yolo=arguments.get("yolo"),
+                model=arguments.get("model"),
             )
 
         elif name == "read_agent_output":
@@ -213,6 +233,11 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 level=arguments.get("level", "all"),
             )
 
+        elif name == "check_agents_status":
+            result = await handle_check_agents_status(
+                agent_ids=arguments["agent_ids"],
+            )
+
         else:
             result = {"error": f"Unknown tool: {name}"}
 
@@ -229,12 +254,14 @@ async def handle_spawn_agent(
     cwd: str | None = None,
     mode: Literal["safe", "yolo"] | None = None,
     yolo: bool | None = None,
+    model: str | None = None,
 ) -> dict:
     """Spawn a new agent."""
     resolved_mode, resolved_yolo = _resolve_mode(mode, yolo)
-    agent = await manager.spawn(agent_type, prompt, cwd, yolo=resolved_yolo, mode=resolved_mode)
+    agent = await manager.spawn(agent_type, prompt, cwd, yolo=resolved_yolo, mode=resolved_mode, model=model)
 
     response_mode = _get_agent_mode(agent) or resolved_mode
+    model_info = f" (model: {model})" if model else ""
     return {
         "agent_id": agent.agent_id,
         "agent_type": agent.agent_type,
@@ -242,7 +269,8 @@ async def handle_spawn_agent(
         "started_at": agent.started_at.isoformat(),
         "mode": response_mode,
         "yolo": agent.yolo,
-        "message": f"Spawned {agent_type} agent to work on task ({'YOLO' if response_mode == 'yolo' else 'safe'} mode)",
+        "model": model,
+        "message": f"Spawned {agent_type} agent to work on task ({'YOLO' if response_mode == 'yolo' else 'safe'} mode){model_info}",
     }
 
 
@@ -570,6 +598,59 @@ async def handle_view_logs(lines: int = 50, level: str = "all") -> dict:
         "returned_lines": len(recent_lines),
         "level_filter": level,
         "logs": "".join(recent_lines),
+    }
+
+
+async def handle_check_agents_status(agent_ids: list[str]) -> dict:
+    """Check status of multiple agents efficiently."""
+    agents_status = []
+    status_counts = {
+        "running": 0,
+        "completed": 0,
+        "failed": 0,
+        "stopped": 0,
+        "not_found": 0,
+    }
+    
+    for agent_id in agent_ids:
+        agent = manager.get(agent_id)
+        
+        if not agent:
+            agents_status.append({
+                "agent_id": agent_id,
+                "error": "Agent not found",
+            })
+            status_counts["not_found"] += 1
+            continue
+        
+        agent._read_new_events()
+        
+        duration = agent._duration()
+        last_tool = get_last_tool(agent.events)
+        summary = get_status_summary(
+            agent_id=agent.agent_id,
+            agent_type=agent.agent_type,
+            status=agent.status.value,
+            events=agent.events,
+            duration=duration,
+        )
+        
+        agents_status.append({
+            "agent_id": agent.agent_id,
+            "agent_type": agent.agent_type,
+            "status": agent.status.value,
+            "duration": duration,
+            "last_tool": last_tool,
+            "summary": summary,
+        })
+        
+        status_key = agent.status.value
+        if status_key in status_counts:
+            status_counts[status_key] += 1
+    
+    return {
+        "agents": agents_status,
+        "summary": status_counts,
     }
 
 
