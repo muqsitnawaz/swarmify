@@ -226,7 +226,8 @@ class TestSummaryToDict:
         assert "tool_call_count" in result
         assert "errors" in result
         assert result["final_message"] is not None
-        assert len(result["final_message"]) <= 203
+        # Standard detail preserves messages up to 2000 chars
+        assert len(result["final_message"]) <= 2003
 
     def test_detailed_detail_level(self):
         """Test detailed detail level output."""
