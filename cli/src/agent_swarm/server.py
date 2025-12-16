@@ -102,8 +102,8 @@ For most use cases, just call with agent_id only - defaults are optimized for ef
                     "detail_level": {
                         "type": "string",
                         "enum": ["brief", "standard", "detailed"],
-                        "default": "standard",
-                        "description": "Detail level for summary format. Prefer 'brief' or 'standard'. Only use 'detailed' when debugging failures.",
+                        "default": "brief",
+                        "description": "Detail level for summary format. Default is 'brief' (~80 tokens) for efficiency. Use 'standard' (~200 tokens) for more context. Only use 'detailed' (~500 tokens) when debugging failures.",
                     },
                     "since_event": {
                         "type": "integer",
@@ -241,7 +241,7 @@ async def handle_spawn_agent(
 async def handle_read_agent_output(
     agent_id: str,
     format: Literal["summary", "delta", "events"] = "summary",
-    detail_level: Literal["brief", "standard", "detailed"] = "standard",
+    detail_level: Literal["brief", "standard", "detailed"] = "brief",
     since_event: int = 0,
 ) -> dict:
     """Read agent output in specified format."""
@@ -282,14 +282,66 @@ async def handle_read_agent_output(
         }
 
     else:  # events
-        events = agent.events[since_event:]
+        from .summarizer import PRIORITY
+        
+        all_events = agent.events[since_event:]
+        
+        # Filter out verbose events to reduce tokens
+        # Keep critical and important events, but filter incomplete thinking/message deltas
+        critical_types = set(PRIORITY.get("critical", []))
+        important_types = set(PRIORITY.get("important", []))
+        verbose_types = set(PRIORITY.get("verbose", []))
+        
+        filtered_events = []
+        for event in all_events:
+            event_type = event.get("type", "")
+            
+            # Skip verbose event types
+            if event_type in verbose_types:
+                continue
+            
+            # For thinking/message events, only include complete ones (not deltas)
+            if event_type in ("thinking", "message"):
+                if not event.get("complete", False):
+                    continue
+            
+            # Include critical and important events
+            if event_type in critical_types or event_type in important_types:
+                filtered_events.append(event)
+        
+        # Truncate long content in remaining events
+        optimized_events = []
+        for event in filtered_events:
+            event_copy = event.copy()
+            event_type = event.get("type", "")
+            
+            # Truncate long content fields
+            if "content" in event_copy and isinstance(event_copy["content"], str):
+                max_len = 200 if event_type == "thinking" else 500
+                if len(event_copy["content"]) > max_len:
+                    event_copy["content"] = event_copy["content"][:max_len - 3] + "..."
+            
+            # Truncate long command fields
+            if "command" in event_copy and isinstance(event_copy["command"], str):
+                if len(event_copy["command"]) > 300:
+                    event_copy["command"] = event_copy["command"][:297] + "..."
+            
+            # Remove verbose raw data (keep structure but not full raw payload)
+            if "raw" in event_copy and event_type != "raw":
+                raw_data = event_copy["raw"]
+                if isinstance(raw_data, dict) and len(str(raw_data)) > 500:
+                    event_copy["raw"] = {"_truncated": True, "_size": len(str(raw_data))}
+            
+            optimized_events.append(event_copy)
+        
         return {
             "agent_id": agent.agent_id,
             "agent_type": agent.agent_type,
             "status": agent.status.value,
             "since_event": since_event,
             "event_count": len(agent.events),
-            "events": events,
+            "filtered_event_count": len(optimized_events),
+            "events": optimized_events,
             "mode": mode,
             "yolo": yolo_enabled,
         }
