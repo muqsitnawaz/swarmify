@@ -15,7 +15,7 @@ import signal
 import subprocess
 import tempfile
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
 from typing import Literal
@@ -444,11 +444,15 @@ class AgentManager:
         max_concurrent: int = 10,
         agents_dir: Path | None = None,
         default_mode: Literal["safe", "yolo"] | None = None,
+        filter_by_cwd: str | None = None,
+        cleanup_age_days: int = 7,
     ):
         self._agents: dict[str, AgentProcess] = {}
         self._max_agents = max_agents
         self._max_concurrent = max_concurrent
         self._agents_dir = agents_dir or AGENTS_DIR
+        self._filter_by_cwd = filter_by_cwd
+        self._cleanup_age_days = cleanup_age_days
         resolved_default_mode = (
             _normalize_mode_value(default_mode) if default_mode is not None else _default_mode_from_env()
         )
@@ -472,19 +476,50 @@ class AgentManager:
         if not self._agents_dir.exists():
             return
 
+        cutoff_date = datetime.now() - timedelta(days=self._cleanup_age_days)
+        loaded_count = 0
+        skipped_cwd = 0
+        cleaned_old = 0
+
         for agent_dir in self._agents_dir.iterdir():
             if not agent_dir.is_dir():
                 continue
 
             agent_id = agent_dir.name
             agent = AgentProcess.load_from_disk(agent_id, base_dir=self._agents_dir)
-            if agent:
-                # Update status from process
-                agent.update_status_from_process()
-                self._agents[agent_id] = agent
-                logger.info(f"Restored agent {agent_id} (status: {agent.status.value})")
+            if not agent:
+                continue
 
-        logger.info(f"Loaded {len(self._agents)} agents from disk")
+            # Cleanup old agents (older than cleanup_age_days)
+            if agent.completed_at and agent.completed_at < cutoff_date:
+                try:
+                    import shutil
+                    if agent.agent_dir.exists():
+                        shutil.rmtree(agent.agent_dir)
+                    cleaned_old += 1
+                    logger.debug(f"Cleaned up old agent {agent_id} (completed {agent.completed_at.isoformat()})")
+                except Exception as e:
+                    logger.warning(f"Failed to cleanup old agent {agent_id}: {e}")
+                continue
+
+            # Filter by CWD if specified
+            if self._filter_by_cwd is not None:
+                agent_cwd = agent.cwd
+                if agent_cwd != self._filter_by_cwd:
+                    skipped_cwd += 1
+                    continue
+
+            # Update status from process
+            agent.update_status_from_process()
+            self._agents[agent_id] = agent
+            loaded_count += 1
+            logger.debug(f"Restored agent {agent_id} (status: {agent.status.value})")
+
+        if cleaned_old > 0:
+            logger.info(f"Cleaned up {cleaned_old} old agents (older than {self._cleanup_age_days} days)")
+        if skipped_cwd > 0:
+            logger.info(f"Skipped {skipped_cwd} agents (different CWD)")
+        logger.info(f"Loaded {loaded_count} agents from disk")
 
     async def spawn(
         self,

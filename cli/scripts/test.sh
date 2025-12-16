@@ -34,6 +34,7 @@ fi
 cd "$PROJECT_DIR"
 
 echo "Testing agent-swarm with agent type: $AGENT_TYPE"
+echo "Using local .agent-swarm directory for storage (test only)"
 echo "Spawning agent to count lines in README.md..."
 echo ""
 
@@ -50,10 +51,15 @@ from agent_swarm.agents import AgentManager
 from agent_swarm.server import handle_read_agent_output, handle_watch_agent, handle_watch_agent
 
 async def test_agent():
-    manager = AgentManager()
+    # Use local .agent-swarm directory for test storage (only for this test)
+    # Don't filter by CWD in test script so we can see all agents
+    test_agents_dir = project_dir / ".agent-swarm" / "agents"
+    test_agents_dir.mkdir(parents=True, exist_ok=True)
+    
+    manager = AgentManager(agents_dir=test_agents_dir, filter_by_cwd=None, cleanup_age_days=7)
     
     prompt = "Count the number of lines in the README.md file in the current directory and report the result."
-    cwd = str(Path.cwd())
+    cwd = str(project_dir)
     
     print(f"Prompt: {prompt}")
     print(f"Working directory: {cwd}")

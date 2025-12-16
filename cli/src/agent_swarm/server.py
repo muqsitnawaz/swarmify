@@ -14,7 +14,8 @@ from .agents import AgentManager, AgentStatus, AgentType, check_all_clis, resolv
 from .summarizer import summarize_events, get_delta
 
 # Global agent manager
-manager = AgentManager()
+# Clean up agents older than 7 days, but don't filter by CWD (unknown until spawn)
+manager = AgentManager(filter_by_cwd=None, cleanup_age_days=7)
 
 # Create MCP server
 server = Server("agent-swarm")
