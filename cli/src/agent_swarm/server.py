@@ -112,6 +112,11 @@ For most use cases, just call with agent_id only - defaults are optimized for ef
                         "default": 0,
                         "description": "Return events after this index (for delta/events format)",
                     },
+                    "include_all_events": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Include all events without filtering (for debugging). Very token-heavy.",
+                    },
                 },
                 "required": ["agent_id"],
             },
@@ -190,6 +195,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 format=arguments.get("format", "summary"),
                 detail_level=arguments.get("detail_level", "standard"),
                 since_event=arguments.get("since_event", 0),
+                include_all_events=arguments.get("include_all_events", False),
             )
 
         elif name == "list_agents":
@@ -245,6 +251,7 @@ async def handle_read_agent_output(
     format: Literal["summary", "delta", "events"] = "summary",
     detail_level: Literal["brief", "standard", "detailed"] = "brief",
     since_event: int = 0,
+    include_all_events: bool = False,
 ) -> dict:
     """Read agent output in specified format."""
     agent = manager.get(agent_id)
@@ -288,6 +295,21 @@ async def handle_read_agent_output(
         
         all_events = agent.events[since_event:]
         
+        if include_all_events:
+            # Return all events without filtering
+            return {
+                "agent_id": agent.agent_id,
+                "agent_type": agent.agent_type,
+                "status": agent.status.value,
+                "since_event": since_event,
+                "event_count": len(agent.events),
+                "filtered_event_count": len(all_events),
+                "events": all_events,
+                "mode": mode,
+                "yolo": yolo_enabled,
+                "note": "All events included (no filtering applied)",
+            }
+        
         # Filter out verbose events to reduce tokens
         # Keep critical and important events, but filter incomplete thinking/message deltas
         critical_types = set(PRIORITY.get("critical", []))
@@ -295,21 +317,26 @@ async def handle_read_agent_output(
         verbose_types = set(PRIORITY.get("verbose", []))
         
         filtered_events = []
+        filtered_out = []
         for event in all_events:
             event_type = event.get("type", "")
             
             # Skip verbose event types
             if event_type in verbose_types:
+                filtered_out.append({"type": event_type, "reason": "verbose_event_type"})
                 continue
             
             # For thinking/message events, only include complete ones (not deltas)
             if event_type in ("thinking", "message"):
                 if not event.get("complete", False):
+                    filtered_out.append({"type": event_type, "reason": "incomplete_delta"})
                     continue
             
             # Include critical and important events
             if event_type in critical_types or event_type in important_types:
                 filtered_events.append(event)
+            else:
+                filtered_out.append({"type": event_type, "reason": "not_critical_or_important"})
         
         # Truncate long content in remaining events (but preserve full messages)
         optimized_events = []
@@ -339,7 +366,15 @@ async def handle_read_agent_output(
             
             optimized_events.append(event_copy)
         
-        return {
+        # Group filtered events by reason for summary
+        filtered_summary = {}
+        for item in filtered_out:
+            reason = item["reason"]
+            if reason not in filtered_summary:
+                filtered_summary[reason] = []
+            filtered_summary[reason].append(item["type"])
+        
+        result = {
             "agent_id": agent.agent_id,
             "agent_type": agent.agent_type,
             "status": agent.status.value,
@@ -350,6 +385,16 @@ async def handle_read_agent_output(
             "mode": mode,
             "yolo": yolo_enabled,
         }
+        
+        # Add filtered events summary
+        if filtered_out:
+            result["filtered_events_summary"] = {
+                "total_filtered": len(filtered_out),
+                "by_reason": {reason: len(types) for reason, types in filtered_summary.items()},
+                "filtered_types": {reason: list(set(types)) for reason, types in filtered_summary.items()},
+            }
+        
+        return result
 
 
 async def handle_list_agents() -> dict:
