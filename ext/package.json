@@ -163,14 +163,12 @@
       {
         "command": "agents.setTitle",
         "key": "ctrl+l",
-        "mac": "cmd+l",
-        "when": "terminalEditorFocus"
+        "mac": "cmd+l"
       },
       {
         "command": "agents.clear",
         "key": "ctrl+shift+c",
-        "mac": "cmd+shift+c",
-        "when": "terminalEditorFocus"
+        "mac": "cmd+shift+c"
       }
     ]
   },

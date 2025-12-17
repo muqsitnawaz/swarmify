@@ -329,8 +329,24 @@ async function openSingleAgent(context: vscode.ExtensionContext, agentConfig: Om
     }
   });
 
-  terminals.register(terminal, terminalId, agentConfig);
-  terminal.sendText(agentConfig.command);
+  // Get PID and set up logging
+  const pid = await terminal.processId;
+  if (pid) {
+    try {
+      await ensureLogsDir();
+      const logPath = getLogPath(agentConfig.prefix, pid);
+      terminals.register(terminal, terminalId, agentConfig, pid, logPath);
+      terminal.sendText(`${agentConfig.command} 2>&1 | tee -a ${logPath}`);
+    } catch (err) {
+      // Fallback: logging setup failed, run without logging
+      terminals.register(terminal, terminalId, agentConfig, pid);
+      terminal.sendText(agentConfig.command);
+    }
+  } else {
+    // Fallback: no PID available, run without logging
+    terminals.register(terminal, terminalId, agentConfig);
+    terminal.sendText(agentConfig.command);
+  }
 }
 
 async function openAgentTerminals(context: vscode.ExtensionContext) {
@@ -345,6 +361,13 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
     viewColumn: vscode.ViewColumn.Active,
     preserveFocus: false
   };
+
+  // Ensure logs directory exists once before creating terminals
+  try {
+    await ensureLogsDir();
+  } catch (err) {
+    console.warn('Failed to create logs directory:', err);
+  }
 
   let totalCount = 0;
 
@@ -364,8 +387,16 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
         }
       });
 
-      terminals.register(terminal, terminalId, agent);
-      terminal.sendText(agent.command);
+      // Get PID and set up logging
+      const pid = await terminal.processId;
+      if (pid) {
+        const logPath = getLogPath(agent.prefix, pid);
+        terminals.register(terminal, terminalId, agent, pid, logPath);
+        terminal.sendText(`${agent.command} 2>&1 | tee -a ${logPath}`);
+      } else {
+        terminals.register(terminal, terminalId, agent);
+        terminal.sendText(agent.command);
+      }
       totalCount++;
     }
   }
