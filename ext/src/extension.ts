@@ -67,6 +67,8 @@ interface TerminalMetadata {
 const terminalMetadataByInstance = new Map<vscode.Terminal, TerminalMetadata>();
 const terminalMetadataById = new Map<string, TerminalMetadata>();
 
+let agentStatusBarItem: vscode.StatusBarItem | undefined;
+
 const activeOrchestrationSessions = new Map<string, OrchestrationSession>();
 
 const CLAUDE_TITLE = 'CC';
@@ -423,14 +425,6 @@ async function spawnWorkerAgent(
   }
 }
 
-function buildDisplayedTitle(baseName: string, label?: string) {
-  const cleanedLabel = sanitizeLabel(label ?? '');
-  if (!cleanedLabel) {
-    return baseName;
-  }
-  return `${baseName} - ${cleanedLabel}`;
-}
-
 function sanitizeLabel(raw: string) {
   const stripped = raw.replace(/["'`]/g, '').trim();
   if (!stripped) {
@@ -440,17 +434,18 @@ function sanitizeLabel(raw: string) {
   return words.join(' ').trim();
 }
 
-async function applyLabelToTerminal(
+function applyLabelToTerminal(
   terminal: vscode.Terminal,
   metadata: TerminalMetadata,
   label: string
 ) {
   const cleaned = sanitizeLabel(label);
-  const finalTitle = buildDisplayedTitle(metadata.baseName, cleaned);
   metadata.label = cleaned;
-  // User-initiated labeling - show terminal and rename
-  terminal.show(false);
-  await vscode.commands.executeCommand('workbench.action.terminal.renameWithArg', { name: finalTitle });
+  // Update status bar if this terminal is active
+  if (vscode.window.activeTerminal === terminal && agentStatusBarItem) {
+    agentStatusBarItem.text = cleaned || metadata.baseName;
+    agentStatusBarItem.show();
+  }
 }
 
 function registerTerminalMetadata(terminal: vscode.Terminal, id: string, baseName: string) {
@@ -469,6 +464,13 @@ function unregisterTerminalMetadata(terminal: vscode.Terminal) {
 
 export function activate(context: vscode.ExtensionContext) {
   console.log('Cursor Agents extension is now active');
+
+  // Create status bar item for showing active terminal label
+  agentStatusBarItem = vscode.window.createStatusBarItem(
+    vscode.StatusBarAlignment.Left,
+    100
+  );
+  context.subscriptions.push(agentStatusBarItem);
 
   // Register URI handler for notification callbacks
   context.subscriptions.push(
@@ -501,6 +503,34 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('agentTabs.configure', configureCounts)
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('agentTabs.newAgent', () => {
+      const config = vscode.workspace.getConfiguration('agentTabs');
+      const defaultAgent = config.get<string>('defaultAgent', 'claude');
+      const builtInAgents = getBuiltInAgents(context.extensionPath);
+
+      let agentConfig: AgentConfig | undefined;
+      switch (defaultAgent) {
+        case 'claude':
+          agentConfig = builtInAgents.find(a => a.title === CLAUDE_TITLE);
+          break;
+        case 'codex':
+          agentConfig = builtInAgents.find(a => a.title === CODEX_TITLE);
+          break;
+        case 'gemini':
+          agentConfig = builtInAgents.find(a => a.title === GEMINI_TITLE);
+          break;
+        case 'cursor':
+          agentConfig = builtInAgents.find(a => a.title === CURSOR_TITLE);
+          break;
+      }
+
+      if (agentConfig) {
+        openSingleAgent(context, agentConfig);
+      }
+    })
   );
 
   context.subscriptions.push(
@@ -585,6 +615,26 @@ export function activate(context: vscode.ExtensionContext) {
       }
 
       unregisterTerminalMetadata(terminal);
+    })
+  );
+
+  // Update status bar when active terminal changes
+  context.subscriptions.push(
+    vscode.window.onDidChangeActiveTerminal((terminal) => {
+      if (!terminal || !agentStatusBarItem) {
+        agentStatusBarItem?.hide();
+        return;
+      }
+      const metadata = terminalMetadataByInstance.get(terminal);
+      if (metadata?.label) {
+        agentStatusBarItem.text = metadata.label;
+        agentStatusBarItem.show();
+      } else if (metadata) {
+        agentStatusBarItem.text = metadata.baseName;
+        agentStatusBarItem.show();
+      } else {
+        agentStatusBarItem.hide();
+      }
     })
   );
 
@@ -776,7 +826,7 @@ async function configureCounts() {
   }
 }
 
-async function setTitleForActiveTerminal() {
+function setTitleForActiveTerminal() {
   const terminal = vscode.window.activeTerminal;
   if (!terminal) {
     vscode.window.showInformationMessage('No active terminal to label.');
@@ -784,33 +834,33 @@ async function setTitleForActiveTerminal() {
   }
 
   const metadata = terminalMetadataByInstance.get(terminal);
-  const currentLabel = metadata?.label ?? '';
-  const input = await vscode.window.showInputBox({
-    prompt: 'Set a short label for this agent tab',
+  if (!metadata) {
+    vscode.window.showInformationMessage('This terminal is not managed by Agent Tabs.');
+    return;
+  }
+
+  const currentLabel = metadata.label ?? '';
+  vscode.window.showInputBox({
+    prompt: 'Set a label for this agent (shown in status bar)',
     placeHolder: 'Feature name or task (max 5 words)',
     value: currentLabel
+  }).then((input) => {
+    if (input === undefined) {
+      return;
+    }
+
+    const cleaned = input.trim();
+    if (!cleaned) {
+      // Clear the label
+      metadata.label = undefined;
+      if (agentStatusBarItem && vscode.window.activeTerminal === terminal) {
+        agentStatusBarItem.text = metadata.baseName;
+      }
+      return;
+    }
+
+    applyLabelToTerminal(terminal, metadata, sanitizeLabel(cleaned));
   });
-
-  if (input === undefined) {
-    return;
-  }
-
-  const cleaned = input.trim();
-  if (!cleaned) {
-    vscode.window.showInformationMessage('Label not set (empty input).');
-    return;
-  }
-
-  // For managed terminals, update metadata and use full title format
-  if (metadata) {
-    await applyLabelToTerminal(terminal, metadata, sanitizeLabel(cleaned));
-  } else {
-    // For unmanaged terminals, try to detect agent type from terminal name
-    const prefix = detectAgentTypeFromTerminalName(terminal.name);
-    const title = prefix ? `${prefix} - ${sanitizeLabel(cleaned)}` : cleaned;
-    terminal.show(false);
-    await vscode.commands.executeCommand('workbench.action.terminal.renameWithArg', { name: title });
-  }
 }
 
 async function reloadActiveTerminal(context: vscode.ExtensionContext) {
@@ -833,6 +883,7 @@ async function reloadActiveTerminal(context: vscode.ExtensionContext) {
     await new Promise(resolve => setTimeout(resolve, 2500));
 
     try {
+      terminal.sendText('clear');
       terminal.sendText(agentConfig.command);
       terminal.sendText('\r');
       vscode.window.showInformationMessage(`Reloaded ${agentConfig.title} agent.`);

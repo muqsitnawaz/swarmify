@@ -2,7 +2,7 @@
   "name": "cursor-agents",
   "displayName": "Agents",
   "description": "Manage multiple Claude Code, Codex, Gemini, and Cursor terminal agents in the editor",
-  "version": "1.2.5",
+  "version": "1.3.0",
   "icon": "assets/agents.png",
   "repository": {
     "type": "git",
@@ -31,6 +31,10 @@
       {
         "command": "agentTabs.configure",
         "title": "Agents: Configure Counts"
+      },
+      {
+        "command": "agentTabs.newAgent",
+        "title": "Agents: New Agent"
       },
       {
         "command": "agentTabs.newClaudeCode",
@@ -142,6 +146,23 @@
           "type": "boolean",
           "default": false,
           "description": "Automatically open configured agents on workspace startup"
+        },
+        "agentTabs.defaultAgent": {
+          "type": "string",
+          "default": "claude",
+          "enum": [
+            "claude",
+            "codex",
+            "gemini",
+            "cursor"
+          ],
+          "enumDescriptions": [
+            "Claude Code (Anthropic)",
+            "Codex (OpenAI)",
+            "Gemini (Google)",
+            "Cursor Agent"
+          ],
+          "description": "Default agent type for 'Agents: New Agent' command"
         }
       }
     },
@@ -162,6 +183,11 @@
       ]
     },
     "keybindings": [
+      {
+        "command": "agentTabs.newAgent",
+        "key": "ctrl+shift+a",
+        "mac": "cmd+shift+a"
+      },
       {
         "command": "agentTabs.setTitle",
         "key": "ctrl+shift+l",
