@@ -35,6 +35,15 @@ export function normalizeEvent(agentType: AgentType, raw: any): any {
 }
 
 function normalizeCodex(raw: any): any[] {
+  if (!raw || typeof raw !== 'object') {
+    return [{
+      type: 'unknown',
+      agent: 'codex',
+      raw: raw,
+      timestamp: new Date().toISOString(),
+    }];
+  }
+
   const eventType = raw.type || 'unknown';
   const timestamp = new Date().toISOString();
 
@@ -42,7 +51,7 @@ function normalizeCodex(raw: any): any[] {
     return [{
       type: 'init',
       agent: 'codex',
-      session_id: raw.thread_id,
+      session_id: raw.thread_id || null,
       timestamp: timestamp,
     }];
   } else if (eventType === 'turn.started') {
@@ -53,18 +62,21 @@ function normalizeCodex(raw: any): any[] {
     }];
   } else if (eventType === 'item.completed') {
     const item = raw.item || {};
-    const itemType = item.type;
+    const itemType = item?.type;
 
     if (itemType === 'agent_message') {
       return [{
         type: 'message',
         agent: 'codex',
-        content: item.text || '',
+        content: item?.text || '',
         complete: true,
         timestamp: timestamp,
       }];
     } else if (itemType === 'command_execution') {
-      const command = item.command || '';
+      const command = item?.command || '';
+      if (!command.trim()) {
+        return [];
+      }
       return [{
         type: 'bash',
         agent: 'codex',
@@ -73,31 +85,67 @@ function normalizeCodex(raw: any): any[] {
         timestamp: timestamp,
       }];
     } else if (itemType === 'tool_call') {
-      const toolName = item.name || 'unknown';
-      const toolArgs = item.arguments || {};
+      const toolName = item?.name || 'unknown';
+      const toolArgs = item?.arguments || {};
 
-      if (toolName === 'write_file' || toolName === 'create_file' || toolName === 'edit_file') {
+      if (toolName === 'create_file') {
+        const path = toolArgs?.path || toolArgs?.file_path || '';
+        if (!path) {
+          return [];
+        }
+        return [{
+          type: 'file_create',
+          agent: 'codex',
+          tool: toolName,
+          path: path,
+          timestamp: timestamp,
+        }];
+      } else if (toolName === 'write_file' || toolName === 'edit_file') {
+        const path = toolArgs?.path || toolArgs?.file_path || '';
+        if (!path) {
+          return [];
+        }
         return [{
           type: 'file_write',
           agent: 'codex',
           tool: toolName,
-          path: toolArgs.path || toolArgs.file_path || '',
+          path: path,
           timestamp: timestamp,
         }];
       } else if (toolName === 'read_file') {
+        const path = toolArgs?.path || toolArgs?.file_path || '';
+        if (!path) {
+          return [];
+        }
         return [{
           type: 'file_read',
           agent: 'codex',
           tool: toolName,
-          path: toolArgs.path || toolArgs.file_path || '',
+          path: path,
+          timestamp: timestamp,
+        }];
+      } else if (toolName === 'delete_file' || toolName === 'remove_file') {
+        const path = toolArgs?.path || toolArgs?.file_path || '';
+        if (!path) {
+          return [];
+        }
+        return [{
+          type: 'file_delete',
+          agent: 'codex',
+          tool: toolName,
+          path: path,
           timestamp: timestamp,
         }];
       } else if (toolName === 'shell' || toolName === 'bash' || toolName === 'execute') {
+        const command = toolArgs?.command || '';
+        if (!command.trim()) {
+          return [];
+        }
         return [{
           type: 'bash',
           agent: 'codex',
           tool: toolName,
-          command: toolArgs.command || '',
+          command: command,
           timestamp: timestamp,
         }];
       } else {
@@ -117,8 +165,8 @@ function normalizeCodex(raw: any): any[] {
       agent: 'codex',
       status: 'success',
       usage: {
-        input_tokens: usage.input_tokens || 0,
-        output_tokens: usage.output_tokens || 0,
+        input_tokens: usage?.input_tokens || 0,
+        output_tokens: usage?.output_tokens || 0,
       },
       timestamp: timestamp,
     }];
@@ -146,6 +194,12 @@ function normalizeCursor(raw: any): any[] {
       timestamp: timestamp,
     }];
   } else if (eventType === 'thinking') {
+    if (subtype === 'delta') {
+      const text = raw.text || '';
+      if (!text.trim()) {
+        return [];
+      }
+    }
     return [{
       type: 'thinking',
       agent: 'cursor',

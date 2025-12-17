@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import { normalizeEvent } from '../src/parsers.js';
+import { normalizeEvent, normalizeEvents } from '../src/parsers.js';
 
 describe('Codex Parser', () => {
   test('should normalize thread.started event', () => {
@@ -155,6 +155,76 @@ describe('Cursor Parser', () => {
 
     expect(event.type).toBe('thinking');
     expect(event.complete).toBe(false);
+  });
+
+  test('should filter empty thinking delta event', () => {
+    const raw = {
+      type: 'thinking',
+      subtype: 'delta',
+      text: '',
+    };
+    const events = normalizeEvents('cursor', raw);
+
+    expect(events).toEqual([]);
+  });
+
+  test('should filter whitespace-only thinking delta event', () => {
+    const raw = {
+      type: 'thinking',
+      subtype: 'delta',
+      text: '   ',
+    };
+    const events = normalizeEvents('cursor', raw);
+
+    expect(events).toEqual([]);
+  });
+
+  test('should include thinking delta with actual content', () => {
+    const raw = {
+      type: 'thinking',
+      subtype: 'delta',
+      text: 'actual content',
+    };
+    const events = normalizeEvents('cursor', raw);
+
+    expect(events.length).toBe(1);
+    expect(events[0].type).toBe('thinking');
+    expect(events[0].content).toBe('actual content');
+    expect(events[0].complete).toBe(false);
+  });
+
+  test('should include completed thinking event even if empty', () => {
+    const raw = {
+      type: 'thinking',
+      subtype: 'completed',
+      text: '',
+    };
+    const events = normalizeEvents('cursor', raw);
+
+    expect(events.length).toBe(1);
+    expect(events[0].type).toBe('thinking');
+    expect(events[0].complete).toBe(true);
+  });
+
+  test('should filter thinking delta with null text', () => {
+    const raw = {
+      type: 'thinking',
+      subtype: 'delta',
+      text: null,
+    };
+    const events = normalizeEvents('cursor', raw);
+
+    expect(events).toEqual([]);
+  });
+
+  test('should filter thinking delta with undefined text', () => {
+    const raw = {
+      type: 'thinking',
+      subtype: 'delta',
+    };
+    const events = normalizeEvents('cursor', raw);
+
+    expect(events).toEqual([]);
   });
 
   test('should normalize assistant message', () => {
