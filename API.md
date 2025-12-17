@@ -1,126 +1,93 @@
-# Editor Terminal State API
+# Editor Terminal State
 
-## Overview
+All terminals in the editor area exist in a single Map. This is the state.
 
-All terminals in the editor area exist in a single Map. This is the state - not "tracking", just the truth of what exists.
-
-## Core Type
+## Type
 
 ```typescript
 interface EditorTerminal {
-  id: string;                        // Unique ID (format: "prefix-timestamp-counter")
-  terminal: vscode.Terminal;         // VS Code terminal instance
-  agentConfig: AgentConfig | null;   // null for non-agent terminals (plain shells)
-  label?: string;                    // User-set label, shows in status bar
-  createdAt: number;                 // Unix timestamp
+  id: string;                        // "prefix-timestamp-counter"
+  terminal: vscode.Terminal;
+  agentConfig: AgentConfig | null;   // null for non-agent terminals
+  label?: string;
+  createdAt: number;
 }
 ```
 
 ## State
 
 ```typescript
-// THE state of editor terminals. Single source of truth.
 const editorTerminals = new Map<string, EditorTerminal>();
-
-// Reverse lookup for O(1) terminal -> id
 const terminalToId = new WeakMap<vscode.Terminal, string>();
-
-// ID counter
 let terminalIdCounter = 0;
 ```
 
 ## Functions
 
 ```typescript
-// Lookups
-function getByTerminal(terminal: vscode.Terminal): EditorTerminal | undefined;
-function getById(id: string): EditorTerminal | undefined;
+function getByTerminal(t: vscode.Terminal): EditorTerminal | undefined {
+  const id = terminalToId.get(t);
+  return id ? editorTerminals.get(id) : undefined;
+}
 
-// Mutations
-function setLabel(terminal: vscode.Terminal, label: string | undefined): void;
+function getById(id: string): EditorTerminal | undefined {
+  return editorTerminals.get(id);
+}
 
-// Helpers
-function generateId(prefix: string): string;
-function inferAgentConfig(name: string, extensionPath: string): AgentConfig | null;
+function setLabel(t: vscode.Terminal, label: string | undefined): void {
+  const entry = getByTerminal(t);
+  if (entry) entry.label = label;
+}
+
+function generateId(prefix: string): string {
+  return `${prefix}-${Date.now()}-${++terminalIdCounter}`;
+}
+
+function inferAgentConfig(name: string): AgentConfig | null {
+  const parsed = parseTerminalName(name);
+  if (!parsed) return null;
+  return builtInAgents.find(a => a.prefix === parsed.prefix) ?? null;
+}
 ```
 
-## Sync
+## Lifecycle
 
-### On Activation
-
-`scanExistingEditorTerminals()` already exists. Change it to:
-- Register ALL editor terminals (remove agent-only filter)
-- Infer `agentConfig` from terminal name (null if not recognized)
-
+**Create:**
 ```typescript
-function scanExistingEditorTerminals(extensionPath: string) {
-  const terminalsByName = new Map<string, vscode.Terminal>();
-  for (const terminal of vscode.window.terminals) {
-    terminalsByName.set(terminal.name, terminal);
-  }
+const terminal = vscode.window.createTerminal({ ... });
+const id = generateId(agentConfig?.prefix ?? 'term');
+editorTerminals.set(id, { id, terminal, agentConfig, createdAt: Date.now() });
+terminalToId.set(terminal, id);
+```
+
+**Close:**
+```typescript
+vscode.window.onDidCloseTerminal((terminal) => {
+  const id = terminalToId.get(terminal);
+  if (id) editorTerminals.delete(id);
+});
+```
+
+**Scan (on activation):**
+```typescript
+function scanExistingEditorTerminals() {
+  const byName = new Map<string, vscode.Terminal>();
+  for (const t of vscode.window.terminals) byName.set(t.name, t);
 
   for (const group of vscode.window.tabGroups.all) {
     for (const tab of group.tabs) {
       if (!(tab.input instanceof vscode.TabInputTerminal)) continue;
-
-      const terminal = terminalsByName.get(tab.label);
+      const terminal = byName.get(tab.label);
       if (!terminal || terminalToId.has(terminal)) continue;
 
-      const id = generateId(tab.label);
-      const agentConfig = inferAgentConfig(tab.label, extensionPath);
-
-      editorTerminals.set(id, {
-        id,
-        terminal,
-        agentConfig,
-        createdAt: Date.now()
-      });
+      const agentConfig = inferAgentConfig(tab.label);
+      const id = generateId(agentConfig?.prefix ?? 'term');
+      editorTerminals.set(id, { id, terminal, agentConfig, createdAt: Date.now() });
       terminalToId.set(terminal, id);
     }
   }
 }
 ```
-
-### On Terminal Create
-
-When we create a terminal, add to state immediately:
-
-```typescript
-const terminal = vscode.window.createTerminal({ ... });
-const id = generateId(agentConfig.prefix);
-
-editorTerminals.set(id, {
-  id,
-  terminal,
-  agentConfig,
-  createdAt: Date.now()
-});
-terminalToId.set(terminal, id);
-
-terminal.sendText(agentConfig.command);
-```
-
-### On Terminal Close
-
-```typescript
-vscode.window.onDidCloseTerminal((terminal) => {
-  const id = terminalToId.get(terminal);
-  if (id) {
-    editorTerminals.delete(id);
-  }
-});
-```
-
-## What Gets Deleted
-
-| Old Structure | Replacement |
-|---------------|-------------|
-| `managedTerminals: Terminal[]` | `editorTerminals.values()` |
-| `terminalMap: Map<string, Terminal>` | `editorTerminals` |
-| `terminalMetadataByInstance` | `terminalToId` + `editorTerminals` |
-| `terminalMetadataById` | `editorTerminals` |
-| `TerminalMetadata` interface | `EditorTerminal` |
-| `TerminalState` interface | Delete (never read) |
 
 ## Usage
 
@@ -128,11 +95,13 @@ vscode.window.onDidCloseTerminal((terminal) => {
 // Status bar
 const entry = getByTerminal(vscode.window.activeTerminal);
 if (entry?.agentConfig) {
-  statusBar.text = `${entry.agentConfig.title}${entry.label ? ` - ${entry.label}` : ''}`;
+  statusBar.text = entry.label
+    ? `${entry.agentConfig.title} - ${entry.label}`
+    : entry.agentConfig.title;
 }
 
-// Reload
-const entry = getByTerminal(activeTerminal);
+// Reload agent
+const entry = getByTerminal(terminal);
 if (entry?.agentConfig) {
   terminal.sendText('/quit\n', false);
   await sleep(2500);

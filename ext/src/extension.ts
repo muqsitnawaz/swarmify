@@ -995,10 +995,18 @@ async function reloadActiveTerminal(context: vscode.ExtensionContext) {
       return;
     }
 
-    terminal.sendText('/quit', false);
-    terminal.sendText('\r');
+    // Send Ctrl+C twice to exit CLI agents (first interrupts, second exits)
+    terminal.show();
+    await vscode.commands.executeCommand('workbench.action.terminal.sendSequence', {
+      text: '\u0003'
+    });
+    await new Promise(resolve => setTimeout(resolve, 200));
+    await vscode.commands.executeCommand('workbench.action.terminal.sendSequence', {
+      text: '\u0003'
+    });
 
-    await new Promise(resolve => setTimeout(resolve, 2500));
+    // Wait for process to terminate
+    await new Promise(resolve => setTimeout(resolve, 1500));
 
     try {
       terminal.sendText('clear && ' + agentConfig.command);
@@ -1085,9 +1093,8 @@ async function generateCommitMessage(sourceControl?: { rootUri?: vscode.Uri }) {
     return;
   }
 
-  const provider = config.get<string>('provider', 'openai');
-  const model = config.get<string>('model', 'gpt-4o-mini');
-  const autoPush = config.get<boolean>('autoPush', true);
+  const provider = 'openai';
+  const model = 'gpt-4o-mini';
   const commitMessageExamples = config.get<string[]>('commitMessageExamples', []);
   const ignoreFilesRaw = config.get<string>('ignoreFiles', '');
 
@@ -1209,16 +1216,12 @@ async function generateCommitMessage(sourceControl?: { rootUri?: vscode.Uri }) {
 
       try {
         await repo.commit(commitMessage);
-        if (autoPush) {
-          try {
-            await repo.push();
-            vscode.window.showInformationMessage(`Pushed: ${commitMessage}`);
-          } catch (pushError: unknown) {
-            const msg = pushError instanceof Error ? pushError.message : String(pushError);
-            vscode.window.showErrorMessage(`Committed but push failed: ${msg}`);
-          }
-        } else {
-          vscode.window.showInformationMessage(`Committed: ${commitMessage}`);
+        try {
+          await repo.push();
+          vscode.window.showInformationMessage(`Pushed: ${commitMessage}`);
+        } catch (pushError: unknown) {
+          const msg = pushError instanceof Error ? pushError.message : String(pushError);
+          vscode.window.showErrorMessage(`Committed but push failed: ${msg}`);
         }
       } catch (commitError: unknown) {
         const msg = commitError instanceof Error ? commitError.message : String(commitError);

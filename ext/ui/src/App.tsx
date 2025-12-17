@@ -40,13 +40,26 @@ declare function acquireVsCodeApi(): {
   setState(state: unknown): void
 }
 
+declare global {
+  interface Window {
+    __ICONS__: {
+      claude: string
+      codex: string
+      gemini: string
+      cursor: string
+      agents: string
+    }
+  }
+}
+
 const vscode = acquireVsCodeApi()
+const icons = window.__ICONS__
 
 const BUILT_IN_AGENTS = [
-  { key: 'claude', name: 'Claude', icon: 'claude.png' },
-  { key: 'codex', name: 'Codex', icon: 'chatgpt.png' },
-  { key: 'gemini', name: 'Gemini', icon: 'gemini.png' },
-  { key: 'cursor', name: 'Cursor', icon: 'cursor.png' },
+  { key: 'claude', name: 'Claude', icon: icons.claude },
+  { key: 'codex', name: 'Codex', icon: icons.codex },
+  { key: 'gemini', name: 'Gemini', icon: icons.gemini },
+  { key: 'cursor', name: 'Cursor', icon: icons.cursor },
 ] as const
 
 const RESERVED_NAMES = ['CC', 'CX', 'GX', 'CR']
@@ -159,7 +172,7 @@ export default function App() {
           ))}
           {Object.entries(runningCounts.custom).map(([name, count]) => (
             <div key={name} className="flex items-center gap-2 px-3 py-2 rounded border border-[var(--border)] bg-[var(--muted)]">
-              <img src="agents.png" alt={name} className="w-5 h-5" />
+              <img src={icons.agents} alt={name} className="w-5 h-5" />
               <span className="text-sm">{name}</span>
               <span className="text-lg font-semibold text-[var(--primary)]">{count}</span>
             </div>
@@ -212,7 +225,7 @@ export default function App() {
           )}
           {settings.custom.map((agent, index) => (
             <div key={index} className="flex items-center gap-4 px-3 py-2 rounded border border-[var(--border)] bg-[var(--muted)]">
-              <img src="agents.png" alt={agent.name} className="w-5 h-5" />
+              <img src={icons.agents} alt={agent.name} className="w-5 h-5" />
               <span className="text-sm font-medium w-20">{agent.name}</span>
               <div className="flex items-center gap-2">
                 <Checkbox
