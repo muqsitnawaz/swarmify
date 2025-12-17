@@ -653,6 +653,7 @@ export interface QuickStatus {
   tool_count: number;
   last_commands: string[];
   has_errors: boolean;
+  last_message: string | null;
 }
 
 export function getQuickStatus(
@@ -668,11 +669,17 @@ export function getQuickStatus(
   let toolCount = 0;
   let hasErrors = false;
   const commands: string[] = [];
+  let lastMessage: string | null = null;
 
   for (const event of events) {
     const eventType = event.type || '';
 
-    if (eventType === 'file_create') {
+    if (eventType === 'message') {
+      const content = event.content || '';
+      if (content) {
+        lastMessage = content;
+      }
+    } else if (eventType === 'file_create') {
       const path = event.path || '';
       if (path) {
         filesCreatedSet.add(path);
@@ -732,6 +739,7 @@ export function getQuickStatus(
     tool_count: toolCount,
     last_commands: commands.slice(-3),
     has_errors: hasErrors,
+    last_message: lastMessage,
   };
 }
 
