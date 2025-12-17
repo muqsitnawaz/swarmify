@@ -4,6 +4,7 @@ import {
   sanitizeLabel,
   getExpandedAgentName,
   getIconFilename,
+  getTerminalDisplayInfo,
   CLAUDE_TITLE,
   CODEX_TITLE,
   GEMINI_TITLE,
@@ -110,5 +111,91 @@ describe('getIconFilename', () => {
   test('returns null for unknown prefixes', () => {
     expect(getIconFilename('XX')).toBeNull();
     expect(getIconFilename('Custom')).toBeNull();
+  });
+});
+
+describe('getTerminalDisplayInfo', () => {
+  test('returns full info for agent terminals without label', () => {
+    expect(getTerminalDisplayInfo('CC')).toEqual({
+      isAgent: true,
+      prefix: 'CC',
+      label: null,
+      expandedName: 'Claude',
+      statusBarText: 'Claude',
+      iconFilename: 'claude.png'
+    });
+    expect(getTerminalDisplayInfo('CX')).toEqual({
+      isAgent: true,
+      prefix: 'CX',
+      label: null,
+      expandedName: 'Codex',
+      statusBarText: 'Codex',
+      iconFilename: 'chatgpt.png'
+    });
+    expect(getTerminalDisplayInfo('GX')).toEqual({
+      isAgent: true,
+      prefix: 'GX',
+      label: null,
+      expandedName: 'Gemini',
+      statusBarText: 'Gemini',
+      iconFilename: 'gemini.png'
+    });
+    expect(getTerminalDisplayInfo('CR')).toEqual({
+      isAgent: true,
+      prefix: 'CR',
+      label: null,
+      expandedName: 'Cursor',
+      statusBarText: 'Cursor',
+      iconFilename: 'cursor.png'
+    });
+  });
+
+  test('returns full info for agent terminals with label', () => {
+    expect(getTerminalDisplayInfo('CC - auth feature')).toEqual({
+      isAgent: true,
+      prefix: 'CC',
+      label: 'auth feature',
+      expandedName: 'Claude',
+      statusBarText: 'Claude - auth feature',
+      iconFilename: 'claude.png'
+    });
+    expect(getTerminalDisplayInfo('GX - refactor')).toEqual({
+      isAgent: true,
+      prefix: 'GX',
+      label: 'refactor',
+      expandedName: 'Gemini',
+      statusBarText: 'Gemini - refactor',
+      iconFilename: 'gemini.png'
+    });
+  });
+
+  test('returns null fields for non-agent terminals', () => {
+    expect(getTerminalDisplayInfo('bash')).toEqual({
+      isAgent: false,
+      prefix: null,
+      label: null,
+      expandedName: null,
+      statusBarText: null,
+      iconFilename: null
+    });
+    expect(getTerminalDisplayInfo('zsh')).toEqual({
+      isAgent: false,
+      prefix: null,
+      label: null,
+      expandedName: null,
+      statusBarText: null,
+      iconFilename: null
+    });
+  });
+
+  test('handles whitespace in terminal names', () => {
+    expect(getTerminalDisplayInfo('  CC  ')).toEqual({
+      isAgent: true,
+      prefix: 'CC',
+      label: null,
+      expandedName: 'Claude',
+      statusBarText: 'Claude',
+      iconFilename: 'claude.png'
+    });
   });
 });

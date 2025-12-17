@@ -74,3 +74,45 @@ export function getIconFilename(prefix: string): string | null {
   };
   return iconMap[prefix] || null;
 }
+
+export interface TerminalDisplayInfo {
+  isAgent: boolean;
+  prefix: string | null;
+  label: string | null;
+  expandedName: string | null;
+  statusBarText: string | null;
+  iconFilename: string | null;
+}
+
+/**
+ * Get complete display info for a terminal by name.
+ * Single source of truth for identifying agent terminals.
+ */
+export function getTerminalDisplayInfo(terminalName: string): TerminalDisplayInfo {
+  const parsed = parseTerminalName(terminalName);
+
+  if (!parsed.isAgent || !parsed.prefix) {
+    return {
+      isAgent: false,
+      prefix: null,
+      label: null,
+      expandedName: null,
+      statusBarText: null,
+      iconFilename: null
+    };
+  }
+
+  const expandedName = getExpandedAgentName(parsed.prefix);
+  const statusBarText = parsed.label
+    ? `${expandedName} - ${parsed.label}`
+    : expandedName;
+
+  return {
+    isAgent: true,
+    prefix: parsed.prefix,
+    label: parsed.label,
+    expandedName,
+    statusBarText,
+    iconFilename: getIconFilename(parsed.prefix)
+  };
+}

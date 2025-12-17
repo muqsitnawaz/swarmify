@@ -2,7 +2,7 @@
   "name": "cursor-agents",
   "displayName": "Agents",
   "description": "Manage multiple Claude Code, Codex, Gemini, and Cursor terminal agents in the editor",
-  "version": "0.9.4",
+  "version": "0.9.9",
   "icon": "assets/agents.png",
   "repository": {
     "type": "git",
@@ -82,128 +82,140 @@
         "icon": "$(git-commit)"
       }
     ],
-    "configuration": {
-      "title": "Agents",
-      "properties": {
-        "agents.claudeCount": {
-          "type": "number",
-          "default": 2,
-          "minimum": 0,
-          "maximum": 10,
-          "description": "Number of Claude Code terminal tabs to open"
-        },
-        "agents.codexCount": {
-          "type": "number",
-          "default": 2,
-          "minimum": 0,
-          "maximum": 10,
-          "description": "Number of Codex terminal tabs to open"
-        },
-        "agents.geminiCount": {
-          "type": "number",
-          "default": 2,
-          "minimum": 0,
-          "maximum": 10,
-          "description": "Number of Gemini terminal tabs to open"
-        },
-        "agents.cursorCount": {
-          "type": "number",
-          "default": 2,
-          "minimum": 0,
-          "maximum": 10,
-          "description": "Number of Cursor terminal tabs to open"
-        },
-        "agents.customAgents": {
-          "type": "array",
-          "default": [],
-          "description": "Custom agent configurations",
-          "items": {
-            "type": "object",
-            "properties": {
-              "title": {
-                "type": "string",
-                "description": "Display title for the agent (e.g., 'GC' for Gemini CLI)"
-              },
-              "command": {
-                "type": "string",
-                "description": "Terminal command to run (e.g., 'gemini-cli')"
-              },
-              "count": {
-                "type": "number",
-                "default": 1,
-                "minimum": 0,
-                "maximum": 10,
-                "description": "Number of terminal instances to open on startup"
-              },
-              "iconPath": {
-                "type": "string",
-                "description": "Optional: Path to custom icon relative to extension root (defaults to assets/agents.png)"
-              }
-            },
-            "required": [
-              "title",
-              "command",
-              "count"
-            ]
+    "configuration": [
+      {
+        "title": "Agents",
+        "properties": {
+          "agents.defaultAgent": {
+            "type": "string",
+            "default": "claude",
+            "enum": [
+              "claude",
+              "codex",
+              "gemini",
+              "cursor"
+            ],
+            "enumDescriptions": [
+              "Claude Code (Anthropic)",
+              "Codex (OpenAI)",
+              "Gemini (Google)",
+              "Cursor Agent"
+            ],
+            "description": "Default agent type for 'Agents: New Agent' command"
           }
-        },
-        "agents.autoStart": {
-          "type": "boolean",
-          "default": false,
-          "description": "Automatically open configured agents on workspace startup"
-        },
-        "agents.defaultAgent": {
-          "type": "string",
-          "default": "claude",
-          "enum": [
-            "claude",
-            "codex",
-            "gemini",
-            "cursor"
-          ],
-          "enumDescriptions": [
-            "Claude Code (Anthropic)",
-            "Codex (OpenAI)",
-            "Gemini (Google)",
-            "Cursor Agent"
-          ],
-          "description": "Default agent type for 'Agents: New Agent' command"
-        },
-        "agents.provider": {
-          "type": "string",
-          "default": "openai",
-          "description": "API provider for commit message generation (openai, openrouter, or custom OpenAI-compatible endpoint URL)"
-        },
-        "agents.model": {
-          "type": "string",
-          "default": "gpt-4o-mini",
-          "description": "Model to use for commit message generation"
-        },
-        "agents.apiKey": {
-          "type": "string",
-          "default": "",
-          "description": "API key for the provider"
-        },
-        "agents.autoPush": {
-          "type": "boolean",
-          "default": true,
-          "description": "Automatically push after committing"
-        },
-        "agents.commitMessageExamples": {
-          "type": "array",
-          "default": [],
-          "items": {
-            "type": "string"
+        }
+      },
+      {
+        "title": "Agents: Startup",
+        "properties": {
+          "agents.autoStart": {
+            "type": "boolean",
+            "default": false,
+            "description": "Automatically open agent terminals when the workspace loads (like Login Items in macOS)"
           },
-          "description": "Example commit messages to guide the AI style"
-        },
-        "agents.ignoreFiles": {
-          "type": "string",
-          "default": "node_modules,dist,build,out,.git,*.lock,bun.lock,package-lock.json",
-          "description": "Comma-separated patterns of files to ignore in diffs"
+          "agents.claudeCount": {
+            "type": "number",
+            "default": 2,
+            "minimum": 0,
+            "maximum": 10,
+            "description": "Number of Claude Code terminals to open on startup (requires Auto Start)"
+          },
+          "agents.codexCount": {
+            "type": "number",
+            "default": 2,
+            "minimum": 0,
+            "maximum": 10,
+            "description": "Number of Codex terminals to open on startup (requires Auto Start)"
+          },
+          "agents.geminiCount": {
+            "type": "number",
+            "default": 2,
+            "minimum": 0,
+            "maximum": 10,
+            "description": "Number of Gemini terminals to open on startup (requires Auto Start)"
+          },
+          "agents.cursorCount": {
+            "type": "number",
+            "default": 2,
+            "minimum": 0,
+            "maximum": 10,
+            "description": "Number of Cursor terminals to open on startup (requires Auto Start)"
+          },
+          "agents.customAgents": {
+            "type": "array",
+            "default": [],
+            "description": "Custom agent configurations for startup (requires Auto Start)",
+            "items": {
+              "type": "object",
+              "properties": {
+                "title": {
+                  "type": "string",
+                  "description": "Display title for the agent (e.g., 'GC' for Gemini CLI)"
+                },
+                "command": {
+                  "type": "string",
+                  "description": "Terminal command to run (e.g., 'gemini-cli')"
+                },
+                "count": {
+                  "type": "number",
+                  "default": 1,
+                  "minimum": 0,
+                  "maximum": 10,
+                  "description": "Number of terminal instances to open on startup"
+                },
+                "iconPath": {
+                  "type": "string",
+                  "description": "Optional: Path to custom icon relative to extension root (defaults to assets/agents.png)"
+                }
+              },
+              "required": [
+                "title",
+                "command",
+                "count"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "title": "Agents: Git",
+        "properties": {
+          "agents.provider": {
+            "type": "string",
+            "default": "openai",
+            "description": "API provider for commit message generation (openai, openrouter, or custom OpenAI-compatible endpoint URL)"
+          },
+          "agents.model": {
+            "type": "string",
+            "default": "gpt-4o-mini",
+            "description": "Model to use for commit message generation"
+          },
+          "agents.apiKey": {
+            "type": "string",
+            "default": "",
+            "description": "API key for the provider"
+          },
+          "agents.autoPush": {
+            "type": "boolean",
+            "default": true,
+            "description": "Automatically push after committing"
+          },
+          "agents.commitMessageExamples": {
+            "type": "array",
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "description": "Example commit messages to guide the AI style"
+          },
+          "agents.ignoreFiles": {
+            "type": "string",
+            "default": "node_modules,dist,build,out,.git,*.lock,bun.lock,package-lock.json",
+            "description": "Comma-separated patterns of files to ignore in diffs"
+          }
         }
       }
-    },
+    ],
     "menus": {
       "editor/title": [
         {
@@ -261,5 +273,8 @@
     "@types/node": "^20.x",
     "@types/vscode": "^1.85.0",
     "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "@vscode/webview-ui-toolkit": "^1.4.0"
   }
 }

@@ -6,6 +6,7 @@ import {
   sanitizeLabel,
   getExpandedAgentName,
   getIconFilename,
+  getTerminalDisplayInfo,
   CLAUDE_TITLE,
   CODEX_TITLE,
   GEMINI_TITLE,
@@ -37,33 +38,6 @@ interface CustomAgentSettings {
   iconPath?: string;
 }
 
-interface CodingTask {
-  id: string;
-  description: string;
-  type: 'feature' | 'bugfix' | 'refactor' | 'test' | 'documentation' | 'review';
-  priority: 'high' | 'medium' | 'low';
-  files?: string[];
-  context?: string;
-  status: 'pending' | 'in-progress' | 'completed' | 'failed';
-  assignedAgents?: string[];
-}
-
-interface AgentCapability {
-  agentType: 'claude' | 'codex' | 'gemini' | 'cursor';
-  strengths: string[];
-  weaknesses: string[];
-  bestFor: string[];
-}
-
-interface OrchestrationSession {
-  id: string;
-  task: CodingTask;
-  orchestratorTerminalId: string;
-  workerAgents: Map<string, AgentCapability>;
-  createdAt: number;
-  status: 'analyzing' | 'orchestrating' | 'monitoring' | 'completed';
-}
-
 let managedTerminals: vscode.Terminal[] = [];
 // Map to track terminal ID -> terminal instance for URI callbacks
 const terminalMap = new Map<string, vscode.Terminal>();
@@ -80,37 +54,6 @@ const terminalMetadataByInstance = new Map<vscode.Terminal, TerminalMetadata>();
 const terminalMetadataById = new Map<string, TerminalMetadata>();
 
 let agentStatusBarItem: vscode.StatusBarItem | undefined;
-
-const activeOrchestrationSessions = new Map<string, OrchestrationSession>();
-
-const ORCHESTRATOR_TITLE = 'OR';
-
-const AGENT_CAPABILITIES: Map<string, AgentCapability> = new Map([
-  ['claude', {
-    agentType: 'claude',
-    strengths: ['code-generation', 'refactoring', 'documentation', 'code-review', 'architectural-design'],
-    weaknesses: ['real-time-data', 'mathematical-calculations'],
-    bestFor: ['feature', 'refactor', 'documentation', 'review']
-  }],
-  ['codex', {
-    agentType: 'codex',
-    strengths: ['code-completion', 'syntax-generation', 'quick-prototyping', 'pattern-matching'],
-    weaknesses: ['complex-reasoning', 'architectural-planning'],
-    bestFor: ['feature', 'bugfix']
-  }],
-  ['gemini', {
-    agentType: 'gemini',
-    strengths: ['multimodal-analysis', 'code-understanding', 'testing', 'documentation'],
-    weaknesses: ['code-generation-speed'],
-    bestFor: ['test', 'documentation', 'review']
-  }],
-  ['cursor', {
-    agentType: 'cursor',
-    strengths: ['codebase-navigation', 'context-awareness', 'incremental-changes', 'local-development'],
-    weaknesses: ['large-scale-refactoring'],
-    bestFor: ['bugfix', 'refactor', 'feature']
-  }]
-]);
 
 function getBuiltInAgents(extensionPath: string): AgentConfig[] {
   const claudeIconPath: vscode.IconPath = {
@@ -291,170 +234,6 @@ function getAgentConfigFromTerminal(
   return null;
 }
 
-async function analyzeCodebase(): Promise<{
-  languages: string[];
-  frameworks: string[];
-  fileCount: number;
-  structure: string;
-}> {
-  const workspaceFolders = vscode.workspace.workspaceFolders;
-  if (!workspaceFolders || workspaceFolders.length === 0) {
-    return { languages: [], frameworks: [], fileCount: 0, structure: 'No workspace open' };
-  }
-
-  const rootPath = workspaceFolders[0].uri.fsPath;
-  const languages = new Set<string>();
-  const frameworks = new Set<string>();
-  let fileCount = 0;
-  const structure: string[] = [];
-
-  try {
-    const files = await vscode.workspace.findFiles('**/*', '**/node_modules/**', 1000);
-    fileCount = files.length;
-
-    for (const file of files) {
-      const ext = path.extname(file.fsPath).toLowerCase();
-      if (ext === '.ts' || ext === '.tsx') languages.add('TypeScript');
-      else if (ext === '.js' || ext === '.jsx') languages.add('JavaScript');
-      else if (ext === '.py') languages.add('Python');
-      else if (ext === '.go') languages.add('Go');
-      else if (ext === '.rs') languages.add('Rust');
-      else if (ext === '.java') languages.add('Java');
-      else if (ext === '.rb') languages.add('Ruby');
-      else if (ext === '.php') languages.add('PHP');
-
-      const relativePath = path.relative(rootPath, file.fsPath);
-      if (relativePath.includes('package.json')) {
-        try {
-          const content = fs.readFileSync(file.fsPath, 'utf8');
-          const pkg = JSON.parse(content);
-          if (pkg.dependencies) {
-            if (pkg.dependencies.react) frameworks.add('React');
-            if (pkg.dependencies.vue) frameworks.add('Vue');
-            if (pkg.dependencies.angular) frameworks.add('Angular');
-            if (pkg.dependencies['@nestjs/core']) frameworks.add('NestJS');
-            if (pkg.dependencies.express) frameworks.add('Express');
-            if (pkg.dependencies.next) frameworks.add('Next.js');
-          }
-        } catch {}
-      }
-    }
-
-    const topLevelDirs = fs.readdirSync(rootPath, { withFileTypes: true })
-      .filter(dirent => dirent.isDirectory())
-      .map(dirent => dirent.name)
-      .filter(name => !name.startsWith('.') && name !== 'node_modules');
-
-    structure.push(`Root: ${path.basename(rootPath)}`);
-    structure.push(`Top-level directories: ${topLevelDirs.join(', ')}`);
-  } catch (error) {
-    console.error('Error analyzing codebase:', error);
-  }
-
-  return {
-    languages: Array.from(languages),
-    frameworks: Array.from(frameworks),
-    fileCount,
-    structure: structure.join('\n')
-  };
-}
-
-function selectAgentsForTask(task: CodingTask): string[] {
-  const selectedAgents: string[] = [];
-  const taskType = task.type;
-
-  for (const [agentName, capability] of AGENT_CAPABILITIES.entries()) {
-    if (capability.bestFor.includes(taskType)) {
-      selectedAgents.push(agentName);
-    }
-  }
-
-  if (selectedAgents.length === 0) {
-    selectedAgents.push('claude');
-  }
-
-  if (task.priority === 'high' && selectedAgents.length < 2) {
-    if (!selectedAgents.includes('claude')) selectedAgents.push('claude');
-    if (!selectedAgents.includes('cursor')) selectedAgents.push('cursor');
-  }
-
-  return selectedAgents.slice(0, 3);
-}
-
-async function spawnWorkerAgent(
-  context: vscode.ExtensionContext,
-  agentType: string,
-  task: CodingTask,
-  sessionId: string
-): Promise<string | null> {
-  const builtInAgents = getBuiltInAgents(context.extensionPath);
-  let agentConfig: AgentConfig | undefined;
-
-  switch (agentType) {
-    case 'claude':
-      agentConfig = builtInAgents.find(a => a.title === CLAUDE_TITLE);
-      break;
-    case 'codex':
-      agentConfig = builtInAgents.find(a => a.title === CODEX_TITLE);
-      break;
-    case 'gemini':
-      agentConfig = builtInAgents.find(a => a.title === GEMINI_TITLE);
-      break;
-    case 'cursor':
-      agentConfig = builtInAgents.find(a => a.title === CURSOR_TITLE);
-      break;
-  }
-
-  if (!agentConfig) {
-    console.error(`Agent config not found for type: ${agentType}`);
-    return null;
-  }
-
-  const editorLocation: vscode.TerminalEditorLocationOptions = {
-    viewColumn: vscode.ViewColumn.Active,
-    preserveFocus: false
-  };
-
-  const terminalId = `${agentConfig.prefix}-${Date.now()}-${++terminalIdCounter}`;
-  const baseName = `${agentConfig.title} [${task.id.substring(0, 8)}]`;
-
-  try {
-    const terminal = vscode.window.createTerminal({
-      iconPath: agentConfig.iconPath,
-      location: editorLocation,
-      isTransient: true,
-      name: baseName,
-      env: {
-        AGENT_TERMINAL_ID: terminalId,
-        ORCHESTRATION_SESSION_ID: sessionId,
-        TASK_ID: task.id,
-        TASK_DESCRIPTION: task.description,
-        DISABLE_AUTO_TITLE: 'true',
-        PROMPT_COMMAND: ''
-      }
-    });
-
-    terminalMap.set(terminalId, terminal);
-    registerTerminalMetadata(terminal, terminalId, baseName);
-
-    const capability = AGENT_CAPABILITIES.get(agentType);
-    if (capability) {
-      const session = activeOrchestrationSessions.get(sessionId);
-      if (session) {
-        session.workerAgents.set(terminalId, capability);
-      }
-    }
-
-    terminal.sendText(agentConfig.command);
-
-    managedTerminals.push(terminal);
-    return terminalId;
-  } catch (error) {
-    console.error(`Failed to spawn worker agent ${agentType}:`, error);
-    return null;
-  }
-}
-
 function applyLabelToTerminal(
   terminal: vscode.Terminal,
   metadata: TerminalMetadata,
@@ -483,6 +262,60 @@ function unregisterTerminalMetadata(terminal: vscode.Terminal) {
   }
 }
 
+/**
+ * Scan existing terminals in the editor area and register any agent terminals.
+ * This ensures agent terminals created before extension activation are recognized.
+ *
+ * Note: TabInputTerminal is a marker class with no properties, so we match
+ * tab labels to terminals from vscode.window.terminals.
+ */
+function scanExistingEditorTerminals() {
+  console.log('[AGENTS] Scanning terminals in editor area...');
+  let registeredCount = 0;
+
+  // Build a map of terminal name -> terminal instance for lookup
+  const terminalsByName = new Map<string, vscode.Terminal>();
+  for (const terminal of vscode.window.terminals) {
+    terminalsByName.set(terminal.name, terminal);
+    console.log(`[AGENTS] Available terminal: "${terminal.name}"`);
+  }
+
+  for (const group of vscode.window.tabGroups.all) {
+    console.log(`[AGENTS] Tab group ${group.viewColumn}: ${group.tabs.length} tabs`);
+
+    for (const tab of group.tabs) {
+      if (tab.input instanceof vscode.TabInputTerminal) {
+        console.log(`[AGENTS] Found editor terminal tab: label="${tab.label}"`);
+
+        const info = getTerminalDisplayInfo(tab.label);
+        console.log(`[AGENTS] Display info for "${tab.label}": isAgent=${info.isAgent}, prefix=${info.prefix}`);
+
+        if (!info.isAgent || !info.prefix) continue;
+
+        // Find matching terminal by name
+        const terminal = terminalsByName.get(tab.label);
+        if (!terminal) {
+          console.log(`[AGENTS] No matching terminal found for label "${tab.label}"`);
+          continue;
+        }
+
+        if (terminalMetadataByInstance.has(terminal)) {
+          console.log(`[AGENTS] Already registered, skipping`);
+          continue;
+        }
+
+        const terminalId = `${info.prefix}-${Date.now()}-${++terminalIdCounter}`;
+        terminalMap.set(terminalId, terminal);
+        registerTerminalMetadata(terminal, terminalId, info.prefix);
+        registeredCount++;
+        console.log(`[AGENTS] Registered: id=${terminalId}, prefix=${info.prefix}`);
+      }
+    }
+  }
+
+  console.log(`[AGENTS] Scan complete. Registered ${registeredCount} agent terminals.`);
+}
+
 export function activate(context: vscode.ExtensionContext) {
   console.log('Cursor Agents extension is now active');
 
@@ -491,7 +324,12 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.StatusBarAlignment.Left,
     100
   );
+  agentStatusBarItem.text = 'Agents';
+  agentStatusBarItem.show();
   context.subscriptions.push(agentStatusBarItem);
+
+  // Scan existing terminals in the editor area to register any agent terminals
+  scanExistingEditorTerminals();
 
   // Register URI handler for notification callbacks
   context.subscriptions.push(
@@ -611,7 +449,7 @@ export function activate(context: vscode.ExtensionContext) {
   const customAgents = getCustomAgents(context.extensionPath);
   for (const agent of customAgents) {
     // Create a command ID from the agent title (sanitized)
-    const commandId = `agentTabs.new${agent.title.replace(/[^a-zA-Z0-9]/g, '')}`;
+    const commandId = `agents.new${agent.title.replace(/[^a-zA-Z0-9]/g, '')}`;
 
     // Register command with closure to capture the agent config
     const disposable = vscode.commands.registerCommand(commandId, () => {
@@ -646,19 +484,36 @@ export function activate(context: vscode.ExtensionContext) {
   // Update status bar when active terminal changes
   context.subscriptions.push(
     vscode.window.onDidChangeActiveTerminal((terminal) => {
-      if (!terminal || !agentStatusBarItem) {
-        agentStatusBarItem?.hide();
+      if (!agentStatusBarItem) return;
+
+      if (!terminal) {
+        agentStatusBarItem.text = 'Agents';
         return;
       }
+
+      // Check for user-set label in metadata first
       const metadata = terminalMetadataByInstance.get(terminal);
       if (metadata?.label) {
-        agentStatusBarItem.text = metadata.label;
-        agentStatusBarItem.show();
-      } else if (metadata) {
-        agentStatusBarItem.text = metadata.baseName;
-        agentStatusBarItem.show();
+        const expandedName = getExpandedAgentName(metadata.baseName);
+        agentStatusBarItem.text = `Agents: ${expandedName} - ${metadata.label}`;
+        return;
+      }
+
+      // Fall back to parsing terminal name directly
+      const info = getTerminalDisplayInfo(terminal.name);
+      if (info.isAgent && info.expandedName) {
+        agentStatusBarItem.text = `Agents: ${info.expandedName}`;
       } else {
-        agentStatusBarItem.hide();
+        agentStatusBarItem.text = 'Agents';
+      }
+    })
+  );
+
+  // Reset status bar when a text editor becomes active (switching away from terminal)
+  context.subscriptions.push(
+    vscode.window.onDidChangeActiveTextEditor(() => {
+      if (agentStatusBarItem) {
+        agentStatusBarItem.text = 'Agents';
       }
     })
   );
@@ -919,13 +774,12 @@ async function reloadActiveTerminal(context: vscode.ExtensionContext) {
       return;
     }
 
-    terminal.sendText('/quit\r');
+    terminal.sendText('/quit\n', false);
 
-    // Wait for agent to exit before restarting
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise(resolve => setTimeout(resolve, 2500));
 
     try {
-      terminal.sendText('clear && ' + agentConfig.command + '\r');
+      terminal.sendText('clear && ' + agentConfig.command + '\n', false);
       vscode.window.showInformationMessage(`Reloaded ${agentConfig.title} agent.`);
     } catch (sendError) {
       vscode.window.showWarningMessage('Terminal may have been closed. Please open a new agent terminal.');
