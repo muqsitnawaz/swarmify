@@ -1,3 +1,5 @@
+import { extractFileOpsFromBash } from './file_ops.js';
+
 export type AgentType = 'codex' | 'gemini' | 'cursor' | 'claude';
 
 const claudeToolUseMap = new Map<string, { tool: string; command?: string; path?: string }>();
@@ -79,13 +81,77 @@ function normalizeCodex(raw: any): any[] {
       if (!command.trim()) {
         return [];
       }
-      return [{
+      const events: any[] = [{
         type: 'bash',
         agent: 'codex',
         tool: 'command_execution',
         command: command,
         timestamp: timestamp,
       }];
+
+      const [filesRead, filesWritten, filesDeleted] = extractFileOpsFromBash(command);
+      for (const path of filesRead) {
+        events.push({
+          type: 'file_read',
+          agent: 'codex',
+          tool: 'bash',
+          path,
+          command,
+          timestamp,
+        });
+      }
+      for (const path of filesWritten) {
+        events.push({
+          type: 'file_write',
+          agent: 'codex',
+          tool: 'bash',
+          path,
+          command,
+          timestamp,
+        });
+      }
+      for (const path of filesDeleted) {
+        events.push({
+          type: 'file_delete',
+          agent: 'codex',
+          tool: 'bash',
+          path,
+          command,
+          timestamp,
+        });
+      }
+
+      return events;
+    } else if (itemType === 'file_change') {
+      const changes = Array.isArray(item?.changes) ? item.changes : [];
+      const changeEvents: any[] = [];
+
+      for (const change of changes) {
+        const path = change?.path || change?.file_path || '';
+        if (!path) {
+          continue;
+        }
+
+        const kind = String(change?.kind || change?.status || '').toLowerCase();
+        const baseEvent = {
+          agent: 'codex',
+          tool: 'file_change',
+          path,
+          timestamp,
+        };
+
+        if (['add', 'create', 'new'].includes(kind)) {
+          changeEvents.push({ ...baseEvent, type: 'file_create' });
+        } else if (['delete', 'remove'].includes(kind)) {
+          changeEvents.push({ ...baseEvent, type: 'file_delete' });
+        } else {
+          changeEvents.push({ ...baseEvent, type: 'file_write' });
+        }
+      }
+
+      if (changeEvents.length > 0) {
+        return changeEvents;
+      }
     } else if (itemType === 'tool_call') {
       const toolName = item?.name || 'unknown';
       const toolArgs = item?.arguments || {};
