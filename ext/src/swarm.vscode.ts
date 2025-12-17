@@ -17,8 +17,8 @@ export async function isSwarmEnabled(): Promise<boolean> {
 }
 
 export async function enableSwarm(_context: vscode.ExtensionContext): Promise<void> {
-  // Hardcoded to source repo - cli-ts must be built there
-  const cliTsPath = '/Users/muqsit/src/github.com/muqsitnawaz/CursorAgents/cli-ts/dist/index.js';
+  // Hardcoded to source repo - swarm must be built there
+  const cliTsPath = '/Users/muqsit/src/github.com/muqsitnawaz/CursorAgents/swarm/dist/index.js';
 
   try {
     // Use claude mcp add to register the server
