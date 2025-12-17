@@ -1,20 +1,23 @@
 // Swarm MCP configuration - VS Code dependent functions
 
-import * as vscode from 'vscode';
+import * as os from 'os';
 import * as path from 'path';
+import * as vscode from 'vscode';
 import { McpConfig, createSwarmServerConfig, mergeMcpConfig } from './utils';
 
 export async function enableSwarm(context: vscode.ExtensionContext): Promise<void> {
-  const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-  if (!workspaceFolder) {
-    vscode.window.showErrorMessage('No workspace folder open');
-    return;
+  const cliTsPath = path.join(context.extensionPath, '..', 'cli-ts', 'dist', 'index.js');
+  const mcpJsonPath = path.join(os.homedir(), '.claude', 'mcp.json');
+
+  // Ensure ~/.claude directory exists
+  const claudeDir = path.join(os.homedir(), '.claude');
+  try {
+    await vscode.workspace.fs.createDirectory(vscode.Uri.file(claudeDir));
+  } catch {
+    // Directory already exists
   }
 
-  const cliTsPath = path.join(context.extensionPath, '..', 'cli-ts', 'dist', 'index.js');
-  const mcpJsonPath = path.join(workspaceFolder.uri.fsPath, '.mcp.json');
-
-  // Read existing .mcp.json or create new
+  // Read existing mcp.json or create new
   let existingConfig: McpConfig | null = null;
   try {
     const existing = await vscode.workspace.fs.readFile(vscode.Uri.file(mcpJsonPath));
@@ -25,7 +28,7 @@ export async function enableSwarm(context: vscode.ExtensionContext): Promise<voi
 
   // Merge swarm server config
   const swarmConfig = createSwarmServerConfig(cliTsPath);
-  const mcpConfig = mergeMcpConfig(existingConfig, 'swarm', swarmConfig);
+  const mcpConfig = mergeMcpConfig(existingConfig, 'Swarm', swarmConfig);
 
   // Write back
   await vscode.workspace.fs.writeFile(
@@ -33,5 +36,5 @@ export async function enableSwarm(context: vscode.ExtensionContext): Promise<voi
     Buffer.from(JSON.stringify(mcpConfig, null, 2))
   );
 
-  vscode.window.showInformationMessage('Multi-agent support enabled. Reload Agents.');
+  vscode.window.showInformationMessage('Multi-agent support enabled. Reload Claude Code.');
 }
