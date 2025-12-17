@@ -6,7 +6,7 @@ True multi-agent coding in your favorite editor.
 
 CLI-based AI agents like Claude Code, Codex, and Gemini are powerful - but running them in separate terminal windows means constantly switching contexts. You lose sight of your code while talking to agents.
 
-This extension brings those agents into VS Code as editor tabs. Run multiple agents side-by-side with your code. Browse files while agents work. See what they're developing without leaving your IDE.
+This extension brings those agents into Cursor as editor tabs. Run multiple agents side-by-side with your code. Browse files while agents work. See what they're developing without leaving your IDE.
 
 All the power of CLI agents. All the context of your editor.
 
@@ -26,7 +26,7 @@ One command clears and restarts a stuck agent. No more killing terminals and ret
 
 ### Auto-Start Configuration
 
-Configure which agents launch automatically when VS Code opens. Set instance counts (1-10 per agent type) and toggle auto-start per agent through the visual settings panel.
+Configure which agents launch automatically when Cursor opens. Set instance counts (1-10 per agent type) and toggle auto-start per agent through the visual settings panel.
 
 ### Swarm: Multi-Agent Coordination
 
@@ -48,18 +48,10 @@ Generate commit messages from your staged changes. Learns from your commit style
 2. Spawn your first agent via command palette or shortcut
 3. Open settings (`Agents: Settings`) to configure auto-start and add custom agents
 
-## Configuration
-
-| Setting | Description |
-|---------|-------------|
-| `agents.apiKey` | OpenAI API key (for commit generation) |
-| `agents.commitMessageExamples` | Example commits for AI style guidance |
-| `agents.ignoreFiles` | Patterns to ignore in diffs |
-
 ## Keyboard Shortcuts
 
 | Shortcut | Action |
-|----------|--------|
+| --- | --- |
 | `Cmd+Shift+A` | Spawn new agent |
 | `Cmd+Shift+C` | Clear and restart agent |
 | `Cmd+L` | Label agent |
@@ -67,7 +59,7 @@ Generate commit messages from your staged changes. Learns from your commit style
 
 ## Requirements
 
-- VS Code 1.85+
+- Cursor (or any VS Code-based editor)
 - OpenAI API key (optional, only for commit generation)
 
 ## License
