@@ -2,7 +2,7 @@
   "name": "cursor-agents",
   "displayName": "Agents",
   "description": "Manage multiple Claude Code, Codex, Gemini, and Cursor terminal agents in the editor",
-  "version": "1.3.0",
+  "version": "1.3.3",
   "icon": "assets/agents.png",
   "repository": {
     "type": "git",
@@ -70,11 +70,16 @@
       },
       {
         "command": "agentTabs.setTitle",
-        "title": "Agents: Set Label"
+        "title": "Agents: Label"
       },
       {
         "command": "agentTabs.reload",
         "title": "Agents: Reload"
+      },
+      {
+        "command": "agentTabs.generateCommit",
+        "title": "Agents: Generate Commit",
+        "icon": "$(git-commit)"
       }
     ],
     "configuration": {
@@ -163,6 +168,39 @@
             "Cursor Agent"
           ],
           "description": "Default agent type for 'Agents: New Agent' command"
+        },
+        "agents.provider": {
+          "type": "string",
+          "default": "openai",
+          "description": "API provider for commit message generation (openai, openrouter, or custom OpenAI-compatible endpoint URL)"
+        },
+        "agents.model": {
+          "type": "string",
+          "default": "gpt-4o-mini",
+          "description": "Model to use for commit message generation"
+        },
+        "agents.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "API key for the provider"
+        },
+        "agents.autoPush": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically push after committing"
+        },
+        "agents.commitMessageExamples": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Example commit messages to guide the AI style"
+        },
+        "agents.ignoreFiles": {
+          "type": "string",
+          "default": "node_modules,dist,build,out,.git,*.lock,bun.lock,package-lock.json",
+          "description": "Comma-separated patterns of files to ignore in diffs"
         }
       }
     },
@@ -174,6 +212,13 @@
           "when": "true"
         }
       ],
+      "scm/title": [
+        {
+          "command": "agentTabs.generateCommit",
+          "group": "navigation",
+          "when": "scmProvider == git"
+        }
+      ],
       "commandPalette": [
         {
           "command": "agentTabs.newGemini",
@@ -183,6 +228,11 @@
       ]
     },
     "keybindings": [
+      {
+        "command": "agentTabs.generateCommit",
+        "key": "ctrl+shift+g",
+        "mac": "cmd+shift+g"
+      },
       {
         "command": "agentTabs.newAgent",
         "key": "ctrl+shift+a",
