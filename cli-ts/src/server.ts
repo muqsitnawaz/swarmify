@@ -4,9 +4,9 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import { AgentManager, AgentStatus, resolveModeFlags } from './agents.js';
+import { AgentManager } from './agents.js';
 import { AgentType } from './parsers.js';
-import { summarizeEvents, getQuickStatus, PRIORITY } from './summarizer.js';
+import { handleSpawn, handleStatus, handleStop, handleRead } from './api.js';
 
 const manager = new AgentManager(50, 10, null, null, null, 7);
 
@@ -21,11 +21,6 @@ const server = new Server(
     },
   }
 );
-
-function resolveMode(requestedMode: string | null | undefined): [string, boolean] {
-  const defaultMode = manager.getDefaultMode();
-  return resolveModeFlags(requestedMode, undefined, defaultMode);
-}
 
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
@@ -156,18 +151,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         throw new Error('Missing arguments for spawn');
       }
       result = await handleSpawn(
+        manager,
         args.task_name as string,
         args.agent_type as AgentType,
         args.prompt as string,
-        args.cwd as string | undefined,
-        args.mode as string | undefined,
-        args.model as string | undefined
+        (args.cwd as string) || null,
+        (args.mode as string) || null,
+        (args.model as string) || null
       );
     } else if (name === 'status') {
       if (!args) {
         throw new Error('Missing arguments for status');
       }
       result = await handleStatus(
+        manager,
         args.task_name as string,
         args.agent_id as string | undefined
       );
@@ -176,6 +173,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         throw new Error('Missing arguments for stop');
       }
       result = await handleStop(
+        manager,
         args.task_name as string,
         args.agent_id as string | undefined
       );
@@ -184,6 +182,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         throw new Error('Missing arguments for read');
       }
       result = await handleRead(
+        manager,
         args.task_name as string,
         args.agent_id as string,
         (args.offset as number) || 0
@@ -212,200 +211,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     };
   }
 });
-
-async function handleSpawn(
-  taskName: string,
-  agentType: AgentType,
-  prompt: string,
-  cwd: string | undefined,
-  mode: string | undefined,
-  model: string | undefined
-): Promise<any> {
-  const [resolvedMode, resolvedYolo] = resolveMode(mode);
-  const agent = await manager.spawn(taskName, agentType, prompt, cwd || null, resolvedYolo, resolvedMode as any, model || null);
-
-  return {
-    task_name: taskName,
-    agent_id: agent.agentId,
-    agent_type: agent.agentType,
-    status: agent.status,
-    started_at: agent.startedAt.toISOString(),
-  };
-}
-
-async function handleStatus(
-  taskName: string,
-  agentId: string | undefined
-): Promise<any> {
-  if (agentId) {
-    // Single agent detailed status
-    const agent = await manager.get(agentId);
-    if (!agent) {
-      return { error: `Agent ${agentId} not found` };
-    }
-    if (agent.taskName !== taskName) {
-      return { error: `Agent ${agentId} not in task ${taskName}` };
-    }
-
-    await agent.readNewEvents();
-    const events = agent.events;
-    const summary = summarizeEvents(
-      agent.agentId,
-      agent.agentType,
-      agent.status,
-      events,
-      agent.duration()
-    );
-
-    return {
-      task_name: taskName,
-      agent_id: agent.agentId,
-      agent_type: agent.agentType,
-      status: agent.status,
-      duration: agent.duration(),
-      files_created: Array.from(summary.filesCreated),
-      files_modified: Array.from(summary.filesModified),
-      tool_count: summary.toolCallCount,
-      last_commands: summary.bashCommands.slice(-3).map(cmd =>
-        cmd.length > 100 ? cmd.substring(0, 97) + '...' : cmd
-      ),
-      has_errors: summary.errors.length > 0,
-      final_message: summary.finalMessage ?
-        (summary.finalMessage.length > 500 ? summary.finalMessage.substring(0, 497) + '...' : summary.finalMessage)
-        : null,
-    };
-  } else {
-    // Task-level status (all agents)
-    const agents = await manager.listByTask(taskName);
-    const agentStatuses: any[] = [];
-    const counts = { running: 0, completed: 0, failed: 0, stopped: 0 };
-
-    for (const agent of agents) {
-      await agent.readNewEvents();
-      const quickStatus = getQuickStatus(
-        agent.agentId,
-        agent.agentType,
-        agent.status,
-        agent.events
-      );
-      agentStatuses.push(quickStatus);
-
-      if (agent.status === AgentStatus.RUNNING) counts.running++;
-      else if (agent.status === AgentStatus.COMPLETED) counts.completed++;
-      else if (agent.status === AgentStatus.FAILED) counts.failed++;
-      else if (agent.status === AgentStatus.STOPPED) counts.stopped++;
-    }
-
-    return {
-      task_name: taskName,
-      agents: agentStatuses,
-      summary: counts,
-    };
-  }
-}
-
-async function handleStop(
-  taskName: string,
-  agentId: string | undefined
-): Promise<any> {
-  if (agentId) {
-    // Stop single agent
-    const agent = await manager.get(agentId);
-    if (!agent) {
-      return {
-        task_name: taskName,
-        stopped: [],
-        already_stopped: [],
-        not_found: [agentId],
-      };
-    }
-    if (agent.taskName !== taskName) {
-      return { error: `Agent ${agentId} not in task ${taskName}` };
-    }
-
-    if (agent.status === AgentStatus.RUNNING) {
-      const success = await manager.stop(agentId);
-      return {
-        task_name: taskName,
-        stopped: success ? [agentId] : [],
-        already_stopped: success ? [] : [agentId],
-        not_found: [],
-      };
-    } else {
-      return {
-        task_name: taskName,
-        stopped: [],
-        already_stopped: [agentId],
-        not_found: [],
-      };
-    }
-  } else {
-    // Stop all agents in task
-    const result = await manager.stopByTask(taskName);
-    return {
-      task_name: taskName,
-      stopped: result.stopped,
-      already_stopped: result.alreadyStopped,
-      not_found: [],
-    };
-  }
-}
-
-async function handleRead(
-  taskName: string,
-  agentId: string,
-  offset: number
-): Promise<any> {
-  const agent = await manager.get(agentId);
-  if (!agent) {
-    return { error: `Agent ${agentId} not found` };
-  }
-  if (agent.taskName !== taskName) {
-    return { error: `Agent ${agentId} not in task ${taskName}` };
-  }
-
-  await agent.readNewEvents();
-  const allEvents = agent.events;
-  const newEvents = allEvents.slice(offset);
-
-  // Get full summary for detailed output
-  const summary = summarizeEvents(
-    agent.agentId,
-    agent.agentType,
-    agent.status,
-    allEvents,
-    agent.duration()
-  );
-
-  // Filter events to critical+important only
-  const criticalTypes = new Set(PRIORITY.critical || []);
-  const importantTypes = new Set(PRIORITY.important || []);
-
-  const filteredEvents = newEvents.filter(event => {
-    const eventType = event.type || '';
-    return criticalTypes.has(eventType) || importantTypes.has(eventType);
-  });
-
-  return {
-    task_name: taskName,
-    agent_id: agent.agentId,
-    agent_type: agent.agentType,
-    status: agent.status,
-    duration: agent.duration(),
-    files_created: Array.from(summary.filesCreated),
-    files_modified: Array.from(summary.filesModified),
-    files_read: Array.from(summary.filesRead),
-    files_deleted: Array.from(summary.filesDeleted),
-    tools_used: Array.from(summary.toolsUsed),
-    tool_count: summary.toolCallCount,
-    bash_commands: summary.bashCommands.slice(-10),
-    errors: summary.errors,
-    final_message: summary.finalMessage,
-    event_count: allEvents.length,
-    offset: offset,
-    events: filteredEvents,
-  };
-}
 
 export async function runServer(): Promise<void> {
   const transport = new StdioServerTransport();
