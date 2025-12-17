@@ -372,6 +372,8 @@ export class AgentManager {
   private cleanupAgeDays: number;
   private defaultMode: Mode;
 
+  private constructorAgentsDir: string | null = null;
+
   constructor(
     maxAgents: number = 50,
     maxConcurrent: number = 10,
@@ -382,6 +384,7 @@ export class AgentManager {
   ) {
     this.maxAgents = maxAgents;
     this.maxConcurrent = maxConcurrent;
+    this.constructorAgentsDir = agentsDir;
     this.filterByCwd = filterByCwd;
     this.cleanupAgeDays = cleanupAgeDays;
     const resolvedDefaultMode = defaultMode ? normalizeModeValue(defaultMode) : defaultModeFromEnv();
@@ -394,7 +397,7 @@ export class AgentManager {
   }
 
   private async initialize(): Promise<void> {
-    this.agentsDir = await getAgentsDir();
+    this.agentsDir = this.constructorAgentsDir || await getAgentsDir();
     await fs.mkdir(this.agentsDir, { recursive: true });
     await this.loadExistingAgents();
   }

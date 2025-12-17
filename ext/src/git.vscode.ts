@@ -1,0 +1,192 @@
+// Git commit generation - VS Code dependent functions
+
+import * as vscode from 'vscode';
+import {
+  getApiEndpoint,
+  parseIgnorePatterns,
+  shouldIgnoreFile,
+  buildSystemPrompt,
+  formatChangeStatus
+} from './git';
+
+export async function generateCommitMessage(sourceControl?: { rootUri?: vscode.Uri }): Promise<void> {
+  const gitExtension = vscode.extensions.getExtension('vscode.git')?.exports;
+  if (!gitExtension) {
+    vscode.window.showErrorMessage('Git extension not found');
+    return;
+  }
+
+  const gitApi = gitExtension.getAPI(1);
+  if (gitApi.repositories.length === 0) {
+    vscode.window.showErrorMessage('No Git repository found');
+    return;
+  }
+
+  let repo = gitApi.repositories[0];
+
+  // If triggered from SCM panel with repository context, use that repository
+  if (sourceControl?.rootUri) {
+    const matchingRepo = gitApi.repositories.find((r: { rootUri: vscode.Uri }) =>
+      r.rootUri.toString() === sourceControl.rootUri!.toString()
+    );
+    if (matchingRepo) {
+      repo = matchingRepo;
+    }
+  } else if (gitApi.repositories.length > 1) {
+    // Fallback: try to detect repo from active editor
+    const activeEditor = vscode.window.activeTextEditor;
+    if (activeEditor?.document.uri) {
+      const activeUri = activeEditor.document.uri;
+      const matchingRepo = gitApi.repositories.find((r: { rootUri: vscode.Uri }) =>
+        activeUri.fsPath.startsWith(r.rootUri.fsPath)
+      );
+      if (matchingRepo) {
+        repo = matchingRepo;
+      }
+    }
+  }
+
+  // If selected repo has no changes, find one that does
+  const selectedHasChanges = (repo.state.workingTreeChanges || []).length > 0 ||
+                              (repo.state.indexChanges || []).length > 0;
+  if (!selectedHasChanges && !sourceControl?.rootUri) {
+    const repoWithChanges = gitApi.repositories.find((r: { state: { workingTreeChanges: unknown[]; indexChanges: unknown[] } }) => {
+      const hasWorkingChanges = (r.state.workingTreeChanges || []).length > 0;
+      const hasIndexChanges = (r.state.indexChanges || []).length > 0;
+      return hasWorkingChanges || hasIndexChanges;
+    });
+    if (repoWithChanges) {
+      repo = repoWithChanges;
+    }
+  }
+
+  const config = vscode.workspace.getConfiguration('agents');
+  const apiKey = config.get<string>('apiKey');
+  if (!apiKey) {
+    vscode.window.showErrorMessage('API key not set', 'Open Settings').then(action => {
+      if (action === 'Open Settings') {
+        vscode.commands.executeCommand('workbench.action.openSettings', 'agents.apiKey');
+      }
+    });
+    return;
+  }
+
+  const provider = 'openai';
+  const model = 'gpt-4o-mini';
+  const commitMessageExamples = config.get<string[]>('commitMessageExamples', []);
+  const ignoreFilesRaw = config.get<string>('ignoreFiles', '');
+
+  await vscode.window.withProgress({
+    location: vscode.ProgressLocation.SourceControl,
+    title: 'Generating commit...',
+    cancellable: false
+  }, async () => {
+    try {
+      const unstagedDiffChanges = await repo.diff();
+      const stagedDiffChanges = await repo.diffWithHEAD();
+
+      const workingTreeChanges = repo.state.workingTreeChanges || [];
+      const indexChanges = repo.state.indexChanges || [];
+
+      // Filter changes based on ignore patterns
+      const ignorePatterns = parseIgnorePatterns(ignoreFilesRaw);
+
+      const filteredWorkingTreeChanges = workingTreeChanges.filter(
+        (c: { uri: vscode.Uri }) => !shouldIgnoreFile(c.uri.path, ignorePatterns)
+      );
+      const filteredIndexChanges = indexChanges.filter(
+        (c: { uri: vscode.Uri }) => !shouldIgnoreFile(c.uri.path, ignorePatterns)
+      );
+
+      const unstagedStatusChanges = filteredWorkingTreeChanges.map(
+        (change: { status: number; uri: vscode.Uri }) =>
+          `${formatChangeStatus(change.status, false)}: ${change.uri.path}`
+      ).join('\n');
+
+      const stagedStatusChanges = filteredIndexChanges.map(
+        (change: { status: number; uri: vscode.Uri }) =>
+          `${formatChangeStatus(change.status, true)}: ${change.uri.path}`
+      ).join('\n');
+
+      const allStatusChanges = [unstagedStatusChanges, stagedStatusChanges].filter(s => s.length > 0).join('\n');
+
+      const diffParts: string[] = [];
+      if (stagedDiffChanges) {
+        diffParts.push(`Staged Changes:\n${stagedDiffChanges}`);
+      }
+      if (unstagedDiffChanges) {
+        diffParts.push(`Unstaged Changes:\n${unstagedDiffChanges}`);
+      }
+      const allDiffChanges = diffParts.join('\n\n');
+
+      const hasChanges = (filteredWorkingTreeChanges.length > 0 || filteredIndexChanges.length > 0) ||
+                        (unstagedDiffChanges && unstagedDiffChanges.length > 0) ||
+                        (stagedDiffChanges && stagedDiffChanges.length > 0);
+
+      if (!hasChanges) {
+        vscode.window.showInformationMessage('No changes to commit.');
+        return;
+      }
+
+      const fullChanges = `Status:\n${allStatusChanges}\n\nDiff:\n${allDiffChanges}`;
+      const systemPrompt = buildSystemPrompt(commitMessageExamples);
+
+      const endpoint = getApiEndpoint(provider);
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: model,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: `Review the following git status + diff and generate a concise commit message:\n\n${fullChanges}` }
+          ]
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json() as { choices: Array<{ message: { content: string } }> };
+      const commitMessage = data.choices[0].message.content.trim();
+      repo.inputBox.value = commitMessage;
+
+      // Stage all unstaged changes
+      const allChangesToStage = [...(repo.state.workingTreeChanges || []), ...(repo.state.mergeChanges || [])];
+      if (allChangesToStage.length > 0) {
+        const changePaths = allChangesToStage.map((change: { uri: vscode.Uri }) => change.uri.fsPath);
+        await repo.add(changePaths);
+      }
+
+      // Check if there are staged changes to commit
+      const stagedChangesBefore = repo.state.indexChanges || [];
+      const hasStagedChanges = stagedChangesBefore.length > 0 || allChangesToStage.length > 0;
+
+      if (!hasStagedChanges) {
+        vscode.window.showWarningMessage('No changes to commit.');
+        return;
+      }
+
+      try {
+        await repo.commit(commitMessage);
+        try {
+          await repo.push();
+          vscode.window.showInformationMessage(`Pushed: ${commitMessage}`);
+        } catch (pushError: unknown) {
+          const msg = pushError instanceof Error ? pushError.message : String(pushError);
+          vscode.window.showErrorMessage(`Committed but push failed: ${msg}`);
+        }
+      } catch (commitError: unknown) {
+        const msg = commitError instanceof Error ? commitError.message : String(commitError);
+        vscode.window.showErrorMessage(`Commit failed: ${msg}`);
+      }
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      vscode.window.showErrorMessage('Error generating commit message: ' + msg);
+    }
+  });
+}

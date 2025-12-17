@@ -22,13 +22,9 @@ const server = new Server(
   }
 );
 
-function getAgentMode(agent: any): string {
-  return agent.mode || (agent.yolo ? 'yolo' : 'safe');
-}
-
-function resolveMode(requestedMode: string | null | undefined, requestedYolo: boolean | null | undefined): [string, boolean] {
+function resolveMode(requestedMode: string | null | undefined): [string, boolean] {
   const defaultMode = manager.getDefaultMode();
-  return resolveModeFlags(requestedMode, requestedYolo, defaultMode);
+  return resolveModeFlags(requestedMode, undefined, defaultMode);
 }
 
 server.setRequestHandler(ListToolsRequestSchema, async () => {
@@ -225,7 +221,7 @@ async function handleSpawn(
   mode: string | undefined,
   model: string | undefined
 ): Promise<any> {
-  const [resolvedMode, resolvedYolo] = resolveMode(mode, undefined);
+  const [resolvedMode, resolvedYolo] = resolveMode(mode);
   const agent = await manager.spawn(taskName, agentType, prompt, cwd || null, resolvedYolo, resolvedMode as any, model || null);
 
   return {
