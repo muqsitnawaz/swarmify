@@ -331,49 +331,62 @@ function normalizeCursor(raw: any): any[] {
 }
 
 function normalizeGemini(raw: any): any[] {
-  const eventType = raw.type || 'unknown';
-  const timestamp = raw.timestamp || new Date().toISOString();
+  if (!raw || typeof raw !== 'object') {
+    return [{
+      type: 'unknown',
+      agent: 'gemini',
+      raw: raw,
+      timestamp: new Date().toISOString(),
+    }];
+  }
+
+  const eventType = raw?.type || 'unknown';
+  const timestamp = raw?.timestamp || new Date().toISOString();
 
   if (eventType === 'init') {
     return [{
       type: 'init',
       agent: 'gemini',
-      model: raw.model,
-      session_id: raw.session_id,
+      model: raw?.model,
+      session_id: raw?.session_id,
       timestamp: timestamp,
     }];
   } else if (eventType === 'message') {
-    const role = raw.role || 'assistant';
+    const role = raw?.role || 'assistant';
     if (role === 'assistant') {
       return [{
         type: 'message',
         agent: 'gemini',
-        content: raw.content || '',
-        complete: !raw.delta,
+        content: raw?.content || '',
+        complete: !raw?.delta,
         timestamp: timestamp,
       }];
     } else {
       return [{
         type: 'user_message',
         agent: 'gemini',
-        content: raw.content || '',
+        content: raw?.content || '',
         timestamp: timestamp,
       }];
     }
   } else if (eventType === 'tool_call' || eventType === 'tool_use') {
-    const toolNameRaw = raw.tool_name || raw.name || 'unknown';
+    const toolNameRaw = raw?.tool_name || raw?.name || 'unknown';
     const toolName = String(toolNameRaw);
 
-    let toolArgsRaw = raw.parameters;
+    let toolArgsRaw = raw?.parameters;
     if (toolArgsRaw === null || toolArgsRaw === undefined) {
-      toolArgsRaw = raw.args;
+      toolArgsRaw = raw?.args;
     }
     const toolArgs = (typeof toolArgsRaw === 'object' && toolArgsRaw !== null) ? toolArgsRaw : {};
     const toolNameLower = toolName.toLowerCase();
 
-    const filePath = toolArgs.file_path || toolArgs.path || '';
+    const filePath = toolArgs?.file_path || toolArgs?.path || '';
+    const command = toolArgs?.command || '';
 
     if (toolNameLower.includes('write') && toolNameLower.includes('file')) {
+      if (!filePath.trim()) {
+        return [];
+      }
       return [{
         type: 'file_write',
         agent: 'gemini',
@@ -382,6 +395,9 @@ function normalizeGemini(raw: any): any[] {
         timestamp: timestamp,
       }];
     } else if (toolNameLower.includes('read') && toolNameLower.includes('file')) {
+      if (!filePath.trim()) {
+        return [];
+      }
       return [{
         type: 'file_read',
         agent: 'gemini',
@@ -389,12 +405,26 @@ function normalizeGemini(raw: any): any[] {
         path: filePath,
         timestamp: timestamp,
       }];
+    } else if (toolNameLower.includes('delete') && toolNameLower.includes('file')) {
+      if (!filePath.trim()) {
+        return [];
+      }
+      return [{
+        type: 'file_delete',
+        agent: 'gemini',
+        tool: toolName,
+        path: filePath,
+        timestamp: timestamp,
+      }];
     } else if (['shell', 'bash', 'execute', 'run_command'].includes(toolNameLower)) {
+      if (!command.trim()) {
+        return [];
+      }
       return [{
         type: 'bash',
         agent: 'gemini',
         tool: toolName,
-        command: toolArgs.command || '',
+        command: command,
         timestamp: timestamp,
       }];
     }
@@ -407,14 +437,14 @@ function normalizeGemini(raw: any): any[] {
       timestamp: timestamp,
     }];
   } else if (eventType === 'result') {
-    const stats = raw.stats || {};
+    const stats = raw?.stats || {};
     return [{
       type: 'result',
       agent: 'gemini',
-      status: raw.status || 'success',
-      duration_ms: stats.duration_ms,
+      status: raw?.status || 'success',
+      duration_ms: stats?.duration_ms,
       usage: {
-        total_tokens: stats.total_tokens || 0,
+        total_tokens: stats?.total_tokens || 0,
       },
       timestamp: timestamp,
     }];
