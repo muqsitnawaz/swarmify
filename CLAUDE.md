@@ -1,3 +1,14 @@
+## Agent Spawning
+
+When asked to spawn agents or perform multi-agent tasks, use the Swarm MCP extension:
+
+- `mcp__Swarm__spawn` - Spawn agents (codex, cursor, gemini, claude)
+- `mcp__Swarm__status` - Check agent status
+- `mcp__Swarm__read` - Read agent output
+- `mcp__Swarm__stop` - Stop agents
+
+Do NOT use built-in Claude Code agents (Task tool with Explore/Plan subagent_type) when Swarm agents are requested.
+
 ## Critical Architecture
 
 ### Terminals in Editor Area (NOT Panel Terminals)
