@@ -447,16 +447,192 @@ describe('Gemini Parser', () => {
 });
 
 describe('Claude Parser', () => {
-  test('should use Cursor format', () => {
+  test('should normalize system/init event', () => {
     const raw = {
       type: 'system',
       subtype: 'init',
       model: 'claude-3-5-sonnet',
+      session_id: 'claude-123',
     };
     const event = normalizeEvent('claude', raw);
 
     expect(event.type).toBe('init');
     expect(event.agent).toBe('claude');
     expect(event.model).toBe('claude-3-5-sonnet');
+    expect(event.session_id).toBe('claude-123');
+  });
+
+  test('should normalize assistant message with tool_use', () => {
+    const raw = {
+      type: 'assistant',
+      message: {
+        content: [
+          { type: 'tool_use', id: 'toolu_123', name: 'Read', input: { file_path: 'test.ts' } },
+        ],
+      },
+    };
+    const events = normalizeEvents('claude', raw);
+
+    expect(events.length).toBe(1);
+    expect(events[0].type).toBe('tool_use');
+    expect(events[0].agent).toBe('claude');
+    expect(events[0].tool).toBe('Read');
+    expect(events[0].args).toEqual({ file_path: 'test.ts' });
+  });
+
+  test('should normalize assistant message with text', () => {
+    const raw = {
+      type: 'assistant',
+      message: {
+        content: [{ type: 'text', text: 'I will help you.' }],
+      },
+    };
+    const event = normalizeEvent('claude', raw);
+
+    expect(event.type).toBe('message');
+    expect(event.agent).toBe('claude');
+    expect(event.content).toBe('I will help you.');
+    expect(event.complete).toBe(true);
+  });
+
+  test('should normalize user message with file read tool_result', () => {
+    const raw = {
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [
+          {
+            tool_use_id: 'toolu_01Ji1f3DjUtvpyAFZsnfy5b1',
+            type: 'tool_result',
+            content: 'file content here',
+          },
+        ],
+      },
+      tool_use_result: {
+        type: 'text',
+        file: {
+          filePath: '/path/to/file.py',
+          content: 'def hello():\n    print("Hello")\n',
+          numLines: 3,
+        },
+      },
+    };
+    const event = normalizeEvent('claude', raw);
+
+    expect(event.type).toBe('file_read');
+    expect(event.agent).toBe('claude');
+    expect(event.path).toBe('/path/to/file.py');
+  });
+
+  test('should normalize user message with bash tool_result', () => {
+    const raw = {
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [
+          {
+            tool_use_id: 'toolu_01DNcDdJZtkfF3BjnH7qBZ7M',
+            type: 'tool_result',
+            content: 'output here',
+            is_error: false,
+          },
+        ],
+      },
+      tool_use_result: {
+        stdout: 'total 16\ndrwxr-xr-x  7 user  staff  224 Dec 17 11:22 .',
+        stderr: '',
+        interrupted: false,
+        isImage: false,
+      },
+    };
+    const event = normalizeEvent('claude', raw);
+
+    expect(event.type).toBe('bash');
+    expect(event.agent).toBe('claude');
+    expect(event.command).toBe('');
+  });
+
+  test('should normalize user message with error tool_result (is_error flag)', () => {
+    const raw = {
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [
+          {
+            tool_use_id: 'toolu_01Xs4xtWTaktfXzucyfjFsYM',
+            type: 'tool_result',
+            content: 'Permission denied',
+            is_error: true,
+          },
+        ],
+      },
+      tool_use_result: 'Error: Permission denied',
+    };
+    const event = normalizeEvent('claude', raw);
+
+    expect(event.type).toBe('error');
+    expect(event.agent).toBe('claude');
+    expect(event.message).toBe('Permission denied');
+  });
+
+  test('should normalize user message with error tool_result (Error string)', () => {
+    const raw = {
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [
+          {
+            tool_use_id: 'toolu_01Nz1myXfvKC3hPKtCyJJWN4',
+            type: 'tool_result',
+            content: 'This command requires approval',
+            is_error: true,
+          },
+        ],
+      },
+      tool_use_result: 'Error: This command requires approval',
+    };
+    const event = normalizeEvent('claude', raw);
+
+    expect(event.type).toBe('error');
+    expect(event.agent).toBe('claude');
+    expect(event.message).toBe('This command requires approval');
+  });
+
+  test('should normalize user message with generic tool_result', () => {
+    const raw = {
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [
+          {
+            tool_use_id: 'toolu_123',
+            type: 'tool_result',
+            content: 'Some result',
+            is_error: false,
+          },
+        ],
+      },
+      tool_use_result: { some: 'data' },
+    };
+    const event = normalizeEvent('claude', raw);
+
+    expect(event.type).toBe('tool_result');
+    expect(event.agent).toBe('claude');
+    expect(event.tool_use_id).toBe('toolu_123');
+    expect(event.success).toBe(true);
+  });
+
+  test('should normalize result event', () => {
+    const raw = {
+      type: 'result',
+      subtype: 'success',
+      duration_ms: 5000,
+    };
+    const event = normalizeEvent('claude', raw);
+
+    expect(event.type).toBe('result');
+    expect(event.agent).toBe('claude');
+    expect(event.status).toBe('success');
+    expect(event.duration_ms).toBe(5000);
   });
 });

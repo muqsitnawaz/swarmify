@@ -459,11 +459,124 @@ function normalizeGemini(raw: any): any[] {
 }
 
 function normalizeClaude(raw: any): any[] {
-  const events = normalizeCursor(raw);
-  for (const event of events) {
-    event.agent = 'claude';
+  const eventType = raw.type || 'unknown';
+  const subtype = raw.subtype;
+  const timestamp = new Date().toISOString();
+
+  if (eventType === 'system' && subtype === 'init') {
+    return [{
+      type: 'init',
+      agent: 'claude',
+      model: raw.model,
+      session_id: raw.session_id,
+      timestamp: timestamp,
+    }];
+  } else if (eventType === 'assistant') {
+    const message = raw.message || {};
+    const contentBlocks = message.content || [];
+    const events: any[] = [];
+    let textContent = '';
+
+    for (const block of contentBlocks) {
+      if (block.type === 'text') {
+        textContent += block.text || '';
+      } else if (block.type === 'tool_use') {
+        events.push({
+          type: 'tool_use',
+          agent: 'claude',
+          tool: block.name || 'unknown',
+          args: block.input || {},
+          timestamp: timestamp,
+        });
+      }
+    }
+
+    if (textContent) {
+      events.push({
+        type: 'message',
+        agent: 'claude',
+        content: textContent,
+        complete: true,
+        timestamp: timestamp,
+      });
+    }
+
+    if (events.length === 0) {
+      events.push({
+        type: 'message',
+        agent: 'claude',
+        content: '',
+        complete: true,
+        timestamp: timestamp,
+      });
+    }
+
+    return events;
+  } else if (eventType === 'user') {
+    const message = raw.message || {};
+    const contentBlocks = message.content || [];
+    const toolUseResult = raw.tool_use_result;
+    const events: any[] = [];
+
+    for (const block of contentBlocks) {
+      if (block.type === 'tool_result') {
+        const toolUseId = block.tool_use_id;
+
+        if (toolUseResult?.file) {
+          events.push({
+            type: 'file_read',
+            agent: 'claude',
+            path: toolUseResult.file.filePath,
+            timestamp: timestamp,
+          });
+        } else if (toolUseResult?.stdout !== undefined) {
+          events.push({
+            type: 'bash',
+            agent: 'claude',
+            command: '',
+            timestamp: timestamp,
+          });
+        } else if (block.is_error || (typeof toolUseResult === 'string' && toolUseResult.startsWith('Error:'))) {
+          events.push({
+            type: 'error',
+            agent: 'claude',
+            message: block.content || (typeof toolUseResult === 'string' ? toolUseResult : ''),
+            timestamp: timestamp,
+          });
+        } else {
+          events.push({
+            type: 'tool_result',
+            agent: 'claude',
+            tool_use_id: toolUseId,
+            success: !block.is_error,
+            timestamp: timestamp,
+          });
+        }
+      }
+    }
+
+    return events.length > 0 ? events : [{
+      type: eventType,
+      agent: 'claude',
+      raw: raw,
+      timestamp: timestamp,
+    }];
+  } else if (eventType === 'result') {
+    return [{
+      type: 'result',
+      agent: 'claude',
+      status: subtype || 'success',
+      duration_ms: raw.duration_ms,
+      timestamp: timestamp,
+    }];
   }
-  return events;
+
+  return [{
+    type: eventType,
+    agent: 'claude',
+    raw: raw,
+    timestamp: timestamp,
+  }];
 }
 
 export function parseEvent(agentType: AgentType, line: string): any[] | null {
