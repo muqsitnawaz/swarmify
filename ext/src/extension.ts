@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as os from 'os';
+import * as fs from 'fs';
 import {
   parseTerminalName,
   sanitizeLabel,
@@ -137,6 +139,18 @@ function inferAgentConfigFromName(name: string, extensionPath: string): Omit<Age
     return createAgentConfig(extensionPath, def.title, def.command, def.icon, def.prefix);
   }
   return null;
+}
+
+// Logging helpers
+function getLogPath(prefix: string, pid: number): string {
+  const date = new Date().toISOString().split('T')[0];  // YYYY-MM-DD
+  const logsDir = path.join(os.homedir(), '.agents', 'logs');
+  return path.join(logsDir, `${date}-${prefix}-${pid}.log`);
+}
+
+async function ensureLogsDir(): Promise<void> {
+  const logsDir = path.join(os.homedir(), '.agents', 'logs');
+  await fs.promises.mkdir(logsDir, { recursive: true });
 }
 
 export function activate(context: vscode.ExtensionContext) {
