@@ -10,7 +10,7 @@ const __dirname = dirname(__filename);
 
 async function runGeminiAgent(prompt: string, timeoutMs: number = 60000, extraArgs: string[] = []): Promise<{ events: any[], rawEvents: any[], rawStdout: string }> {
   return new Promise((resolve, reject) => {
-    const args = ['-p', ...extraArgs, prompt, '--output-format', 'stream-json'];
+    const args = [...extraArgs, '-p', prompt, '--output-format', 'stream-json'];
     const proc = spawn('gemini', args, {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -103,8 +103,11 @@ describe('Gemini Live E2E', () => {
     console.log(`Saved summary to: ${summaryFilePath}`);
     console.log('Summary:', {
       toolCallCount: summary.toolCallCount,
-      bashCommands: summary.bashCommands,
+      filesCreated: Array.from(summary.filesCreated),
       filesModified: Array.from(summary.filesModified),
+      filesRead: Array.from(summary.filesRead),
+      filesDeleted: Array.from(summary.filesDeleted),
+      bashCommands: summary.bashCommands,
     });
 
     expect(summary.toolCallCount).toBeGreaterThan(0);
