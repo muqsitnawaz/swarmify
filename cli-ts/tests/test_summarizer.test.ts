@@ -4,6 +4,7 @@ import {
   summarizeEvents,
   getDelta,
   filterEventsByPriority,
+  getQuickStatus,
 } from '../src/summarizer.js';
 
 describe('SummarizeEvents', () => {
@@ -266,5 +267,95 @@ describe('EventPriorityFiltering', () => {
     expect(filtered.some(e => e.type === 'tool_use')).toBe(true);
     expect(filtered.some(e => e.type === 'thinking')).toBe(true);
     expect(filtered.some(e => e.type === 'init')).toBe(false);
+  });
+});
+
+describe('GetQuickStatus', () => {
+  it('should return correct counts for empty events', () => {
+    const status = getQuickStatus('test-1', 'codex', 'running', []);
+
+    expect(status.agent_id).toBe('test-1');
+    expect(status.agent_type).toBe('codex');
+    expect(status.status).toBe('running');
+    expect(status.files_created).toBe(0);
+    expect(status.files_modified).toBe(0);
+    expect(status.tool_count).toBe(0);
+    expect(status.last_commands).toEqual([]);
+    expect(status.has_errors).toBe(false);
+  });
+
+  it('should count file operations correctly', () => {
+    const events = [
+      { type: 'file_create', path: 'src/new.ts', timestamp: '2024-01-01' },
+      { type: 'file_create', path: 'src/another.ts', timestamp: '2024-01-01' },
+      { type: 'file_write', path: 'src/existing.ts', timestamp: '2024-01-01' },
+    ];
+
+    const status = getQuickStatus('test-2', 'codex', 'running', events);
+
+    expect(status.files_created).toBe(2);
+    expect(status.files_modified).toBe(1);
+    expect(status.tool_count).toBe(3);
+  });
+
+  it('should track last bash commands', () => {
+    const events = [
+      { type: 'bash', command: 'npm install', timestamp: '2024-01-01' },
+      { type: 'bash', command: 'npm test', timestamp: '2024-01-01' },
+      { type: 'bash', command: 'npm run build', timestamp: '2024-01-01' },
+      { type: 'bash', command: 'npm run lint', timestamp: '2024-01-01' },
+    ];
+
+    const status = getQuickStatus('test-3', 'codex', 'running', events);
+
+    expect(status.last_commands.length).toBe(3);
+    expect(status.last_commands).toContain('npm test');
+    expect(status.last_commands).toContain('npm run build');
+    expect(status.last_commands).toContain('npm run lint');
+    expect(status.last_commands).not.toContain('npm install');
+  });
+
+  it('should truncate long commands', () => {
+    const longCommand = 'a'.repeat(150);
+    const events = [
+      { type: 'bash', command: longCommand, timestamp: '2024-01-01' },
+    ];
+
+    const status = getQuickStatus('test-4', 'codex', 'running', events);
+
+    expect(status.last_commands[0].length).toBe(100);
+    expect(status.last_commands[0].endsWith('...')).toBe(true);
+  });
+
+  it('should detect errors', () => {
+    const events = [
+      { type: 'error', message: 'Something went wrong', timestamp: '2024-01-01' },
+    ];
+
+    const status = getQuickStatus('test-5', 'codex', 'failed', events);
+
+    expect(status.has_errors).toBe(true);
+  });
+
+  it('should detect errors from result events', () => {
+    const events = [
+      { type: 'result', status: 'error', message: 'Task failed', timestamp: '2024-01-01' },
+    ];
+
+    const status = getQuickStatus('test-6', 'codex', 'failed', events);
+
+    expect(status.has_errors).toBe(true);
+  });
+
+  it('should count other tool uses', () => {
+    const events = [
+      { type: 'tool_use', tool: 'read_file', timestamp: '2024-01-01' },
+      { type: 'file_read', path: 'src/config.ts', timestamp: '2024-01-01' },
+      { type: 'file_delete', path: 'src/old.ts', timestamp: '2024-01-01' },
+    ];
+
+    const status = getQuickStatus('test-7', 'codex', 'running', events);
+
+    expect(status.tool_count).toBe(3);
   });
 });

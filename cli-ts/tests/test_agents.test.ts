@@ -36,6 +36,7 @@ describe('AgentProcess', () => {
   it('should serialize to dict correctly', () => {
     const agent = new AgentProcess(
       'test-1',
+      'my-task',
       'codex',
       'Test prompt',
       null,
@@ -48,6 +49,7 @@ describe('AgentProcess', () => {
     const result = agent.toDict();
 
     expect(result.agent_id).toBe('test-1');
+    expect(result.task_name).toBe('my-task');
     expect(result.agent_type).toBe('codex');
     expect(result.status).toBe('running');
     expect(result.event_count).toBe(0);
@@ -60,6 +62,7 @@ describe('AgentProcess', () => {
   it('should reflect yolo mode in serialization', () => {
     const agent = new AgentProcess(
       'test-yolo',
+      'my-task',
       'codex',
       'Test prompt',
       null,
@@ -79,6 +82,7 @@ describe('AgentProcess', () => {
 
     const agent = new AgentProcess(
       'test-2',
+      'my-task',
       'codex',
       'Test',
       null,
@@ -98,6 +102,7 @@ describe('AgentProcess', () => {
 
     const agent = new AgentProcess(
       'test-3',
+      'my-task',
       'codex',
       'Test',
       null,
@@ -169,6 +174,7 @@ describe('AgentManager', () => {
   it('should list running agents correctly', async () => {
     const running1 = new AgentProcess(
       'running-1',
+      'task-1',
       'codex',
       'Test',
       null,
@@ -178,6 +184,7 @@ describe('AgentManager', () => {
     );
     const running2 = new AgentProcess(
       'running-2',
+      'task-1',
       'gemini',
       'Test',
       null,
@@ -187,6 +194,7 @@ describe('AgentManager', () => {
     );
     const completed = new AgentProcess(
       'completed-1',
+      'task-1',
       'codex',
       'Test',
       null,
@@ -207,6 +215,7 @@ describe('AgentManager', () => {
   it('should list completed agents correctly', async () => {
     const running = new AgentProcess(
       'running-1',
+      'task-1',
       'codex',
       'Test',
       null,
@@ -216,6 +225,7 @@ describe('AgentManager', () => {
     );
     const completed1 = new AgentProcess(
       'completed-1',
+      'task-1',
       'codex',
       'Test',
       null,
@@ -225,6 +235,7 @@ describe('AgentManager', () => {
     );
     const completed2 = new AgentProcess(
       'completed-2',
+      'task-1',
       'codex',
       'Test',
       null,
@@ -250,6 +261,7 @@ describe('AgentManager', () => {
   it('should stop already completed agent and return false', async () => {
     const agent = new AgentProcess(
       'completed-1',
+      'task-1',
       'codex',
       'Test',
       null,
@@ -261,5 +273,100 @@ describe('AgentManager', () => {
 
     const success = await manager.stop('completed-1');
     expect(success).toBe(false);
+  });
+
+  it('should list agents by task name', async () => {
+    const agent1 = new AgentProcess(
+      'agent-1',
+      'task-a',
+      'codex',
+      'Test',
+      null,
+      false,
+      null,
+      AgentStatus.RUNNING
+    );
+    const agent2 = new AgentProcess(
+      'agent-2',
+      'task-a',
+      'gemini',
+      'Test',
+      null,
+      false,
+      null,
+      AgentStatus.RUNNING
+    );
+    const agent3 = new AgentProcess(
+      'agent-3',
+      'task-b',
+      'codex',
+      'Test',
+      null,
+      false,
+      null,
+      AgentStatus.RUNNING
+    );
+
+    manager['agents'].set('agent-1', agent1);
+    manager['agents'].set('agent-2', agent2);
+    manager['agents'].set('agent-3', agent3);
+
+    const taskAAgents = await manager.listByTask('task-a');
+    expect(taskAAgents.length).toBe(2);
+    expect(taskAAgents.every(a => a.taskName === 'task-a')).toBe(true);
+
+    const taskBAgents = await manager.listByTask('task-b');
+    expect(taskBAgents.length).toBe(1);
+    expect(taskBAgents[0].agentId).toBe('agent-3');
+
+    const taskCAgents = await manager.listByTask('task-c');
+    expect(taskCAgents.length).toBe(0);
+  });
+
+  it('should stop all agents in a task', async () => {
+    const agent1 = new AgentProcess(
+      'agent-1',
+      'task-stop',
+      'codex',
+      'Test',
+      null,
+      false,
+      12345,
+      AgentStatus.RUNNING
+    );
+    const agent2 = new AgentProcess(
+      'agent-2',
+      'task-stop',
+      'gemini',
+      'Test',
+      null,
+      false,
+      null,
+      AgentStatus.COMPLETED
+    );
+    const agent3 = new AgentProcess(
+      'agent-3',
+      'other-task',
+      'codex',
+      'Test',
+      null,
+      false,
+      null,
+      AgentStatus.RUNNING
+    );
+
+    manager['agents'].set('agent-1', agent1);
+    manager['agents'].set('agent-2', agent2);
+    manager['agents'].set('agent-3', agent3);
+
+    const result = await manager.stopByTask('task-stop');
+
+    // agent-1 would be in stopped list if the process existed
+    // agent-2 is already completed so goes to alreadyStopped
+    expect(result.alreadyStopped).toContain('agent-2');
+
+    // agent-3 should not be affected
+    const otherAgent = manager['agents'].get('agent-3');
+    expect(otherAgent?.status).toBe(AgentStatus.RUNNING);
   });
 });

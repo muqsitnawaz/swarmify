@@ -115,6 +115,7 @@ export async function getAgentsDir(): Promise<string> {
 
 export class AgentProcess {
   agentId: string;
+  taskName: string;
   agentType: AgentType;
   prompt: string;
   cwd: string | null;
@@ -129,6 +130,7 @@ export class AgentProcess {
 
   constructor(
     agentId: string,
+    taskName: string,
     agentType: AgentType,
     prompt: string,
     cwd: string | null = null,
@@ -140,6 +142,7 @@ export class AgentProcess {
     baseDir: string | null = null
   ) {
     this.agentId = agentId;
+    this.taskName = taskName;
     this.agentType = agentType;
     this.prompt = prompt;
     this.cwd = cwd;
@@ -171,6 +174,7 @@ export class AgentProcess {
   toDict(): any {
     return {
       agent_id: this.agentId,
+      task_name: this.taskName,
       agent_type: this.agentType,
       status: this.status,
       started_at: this.startedAt.toISOString(),
@@ -256,6 +260,7 @@ export class AgentProcess {
     await fs.mkdir(agentDir, { recursive: true });
     const meta = {
       agent_id: this.agentId,
+      task_name: this.taskName,
       agent_type: this.agentType,
       prompt: this.prompt,
       cwd: this.cwd,
@@ -292,6 +297,7 @@ export class AgentProcess {
 
       const agent = new AgentProcess(
         meta.agent_id,
+        meta.task_name || 'default',
         meta.agent_type,
         meta.prompt,
         meta.cwd || null,
@@ -452,6 +458,7 @@ export class AgentManager {
   }
 
   async spawn(
+    taskName: string,
     agentType: AgentType,
     prompt: string,
     cwd: string | null = null,
@@ -490,6 +497,7 @@ export class AgentManager {
 
     const agent = new AgentProcess(
       agentId,
+      taskName,
       agentType,
       prompt,
       cwd,
@@ -631,6 +639,30 @@ export class AgentManager {
   async listCompleted(): Promise<AgentProcess[]> {
     const all = await this.listAll();
     return all.filter(a => a.status !== AgentStatus.RUNNING);
+  }
+
+  async listByTask(taskName: string): Promise<AgentProcess[]> {
+    const all = await this.listAll();
+    return all.filter(a => a.taskName === taskName);
+  }
+
+  async stopByTask(taskName: string): Promise<{ stopped: string[]; alreadyStopped: string[] }> {
+    const agents = await this.listByTask(taskName);
+    const stopped: string[] = [];
+    const alreadyStopped: string[] = [];
+
+    for (const agent of agents) {
+      if (agent.status === AgentStatus.RUNNING) {
+        const success = await this.stop(agent.agentId);
+        if (success) {
+          stopped.push(agent.agentId);
+        }
+      } else {
+        alreadyStopped.push(agent.agentId);
+      }
+    }
+
+    return { stopped, alreadyStopped };
   }
 
   async stop(agentId: string): Promise<boolean> {

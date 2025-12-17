@@ -385,6 +385,63 @@ export function getLastTool(events: any[]): string | null {
   return null;
 }
 
+export interface QuickStatus {
+  agent_id: string;
+  agent_type: string;
+  status: string;
+  files_created: number;
+  files_modified: number;
+  tool_count: number;
+  last_commands: string[];
+  has_errors: boolean;
+}
+
+export function getQuickStatus(
+  agentId: string,
+  agentType: string,
+  status: string,
+  events: any[]
+): QuickStatus {
+  let filesCreated = 0;
+  let filesModified = 0;
+  let toolCount = 0;
+  let hasErrors = false;
+  const commands: string[] = [];
+
+  for (const event of events) {
+    const eventType = event.type || '';
+
+    if (eventType === 'file_create') {
+      filesCreated++;
+      toolCount++;
+    } else if (eventType === 'file_write') {
+      filesModified++;
+      toolCount++;
+    } else if (eventType === 'bash') {
+      toolCount++;
+      const cmd = event.command || '';
+      if (cmd) {
+        commands.push(cmd.length > 100 ? cmd.substring(0, 97) + '...' : cmd);
+      }
+    } else if (['tool_use', 'file_read', 'file_delete'].includes(eventType)) {
+      toolCount++;
+    } else if (eventType === 'error' || (eventType === 'result' && event.status === 'error')) {
+      hasErrors = true;
+    }
+  }
+
+  return {
+    agent_id: agentId,
+    agent_type: agentType,
+    status: status,
+    files_created: filesCreated,
+    files_modified: filesModified,
+    tool_count: toolCount,
+    last_commands: commands.slice(-3),
+    has_errors: hasErrors,
+  };
+}
+
 export function getStatusSummary(
   agentId: string,
   agentType: string,

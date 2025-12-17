@@ -2,7 +2,7 @@
   "name": "cursor-agents",
   "displayName": "Agents",
   "description": "Manage multiple Claude Code, Codex, Gemini, and Cursor terminal agents in the editor",
-  "version": "0.9.21",
+  "version": "0.9.22",
   "icon": "assets/agents.png",
   "repository": {
     "type": "git",
@@ -19,6 +19,9 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "configurationDefaults": {
+      "terminal.integrated.confirmOnKill": "panel"
+    },
     "commands": [
       {
         "command": "agents.open",

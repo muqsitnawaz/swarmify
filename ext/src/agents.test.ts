@@ -2,7 +2,8 @@ import { describe, test, expect } from 'bun:test';
 import {
   BUILT_IN_AGENTS,
   getBuiltInByKey,
-  getBuiltInByPrefix
+  getBuiltInByPrefix,
+  getBuiltInDefByTitle
 } from './agents';
 import { CLAUDE_TITLE, CODEX_TITLE, GEMINI_TITLE, CURSOR_TITLE } from './utils';
 
@@ -90,6 +91,25 @@ describe('getBuiltInByPrefix', () => {
 
   test('returns undefined for unknown prefix', () => {
     const agent = getBuiltInByPrefix('xx');
+    expect(agent).toBeUndefined();
+  });
+});
+
+describe('getBuiltInDefByTitle', () => {
+  test('returns claude for CC title', () => {
+    const agent = getBuiltInDefByTitle(CLAUDE_TITLE);
+    expect(agent).toBeDefined();
+    expect(agent!.key).toBe('claude');
+  });
+
+  test('returns codex for CX title', () => {
+    const agent = getBuiltInDefByTitle(CODEX_TITLE);
+    expect(agent).toBeDefined();
+    expect(agent!.key).toBe('codex');
+  });
+
+  test('returns undefined for unknown title', () => {
+    const agent = getBuiltInDefByTitle('Unknown');
     expect(agent).toBeUndefined();
   });
 });
