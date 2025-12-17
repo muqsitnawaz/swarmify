@@ -72,6 +72,12 @@ Editor tabs show minimal prefixes (CC, CX, GX, CR) to maximize tab bar space. Us
 
 Users can label any agent terminal to track what task it's working on. Labels are stored in memory and shown in the status bar, not the tab title. This keeps tabs scannable while providing context when needed.
 
+**Status bar format:**
+- No label: `Agents: Claude`
+- With label: `Agents: Claude - {label}`
+
+Note the ` - ` separator between agent name and label.
+
 ### Strict Agent Identification
 
 Agent terminals are identified by exact prefix match (CC, CX, etc.) or the pattern "PREFIX - label". Loose matching (checking if name contains "claude") is avoided to prevent false positives. This ensures commands like Reload only affect actual agent terminals.

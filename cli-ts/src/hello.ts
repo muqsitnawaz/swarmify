@@ -6,8 +6,12 @@ export function printHelloWorld(): void {
   console.log(HELLO_MESSAGE);
 }
 
-const invokedFileUrl = pathToFileURL(process.argv[1] ?? '').href;
+const invokedPath = process.argv[1];
 
-if (import.meta.url === invokedFileUrl) {
-  printHelloWorld();
+if (invokedPath) {
+  const invokedFileUrl = pathToFileURL(invokedPath).href;
+
+  if (import.meta.url === invokedFileUrl) {
+    printHelloWorld();
+  }
 }
