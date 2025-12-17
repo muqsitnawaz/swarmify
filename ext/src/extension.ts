@@ -1,7 +1,5 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import * as os from 'os';
-import * as fs from 'fs';
 import {
   parseTerminalName,
   sanitizeLabel,
@@ -139,18 +137,6 @@ function inferAgentConfigFromName(name: string, extensionPath: string): Omit<Age
     return createAgentConfig(extensionPath, def.title, def.command, def.icon, def.prefix);
   }
   return null;
-}
-
-// Logging helpers
-function getLogPath(prefix: string, pid: number): string {
-  const date = new Date().toISOString().split('T')[0];  // YYYY-MM-DD
-  const logsDir = path.join(os.homedir(), '.agents', 'logs');
-  return path.join(logsDir, `${date}-${prefix}-${pid}.log`);
-}
-
-async function ensureLogsDir(): Promise<void> {
-  const logsDir = path.join(os.homedir(), '.agents', 'logs');
-  await fs.promises.mkdir(logsDir, { recursive: true });
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -329,24 +315,9 @@ async function openSingleAgent(context: vscode.ExtensionContext, agentConfig: Om
     }
   });
 
-  // Get PID and set up logging
   const pid = await terminal.processId;
-  if (pid) {
-    try {
-      await ensureLogsDir();
-      const logPath = getLogPath(agentConfig.prefix, pid);
-      terminals.register(terminal, terminalId, agentConfig, pid, logPath);
-      terminal.sendText(`${agentConfig.command} 2>&1 | tee -a ${logPath}`);
-    } catch (err) {
-      // Fallback: logging setup failed, run without logging
-      terminals.register(terminal, terminalId, agentConfig, pid);
-      terminal.sendText(agentConfig.command);
-    }
-  } else {
-    // Fallback: no PID available, run without logging
-    terminals.register(terminal, terminalId, agentConfig);
-    terminal.sendText(agentConfig.command);
-  }
+  terminals.register(terminal, terminalId, agentConfig, pid);
+  terminal.sendText(agentConfig.command);
 }
 
 async function openAgentTerminals(context: vscode.ExtensionContext) {
@@ -361,15 +332,6 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
     viewColumn: vscode.ViewColumn.Active,
     preserveFocus: false
   };
-
-  // Ensure logs directory exists once before creating terminals
-  let logsAvailable = false;
-  try {
-    await ensureLogsDir();
-    logsAvailable = true;
-  } catch (err) {
-    console.warn('Failed to create logs directory:', err);
-  }
 
   let totalCount = 0;
 
@@ -389,16 +351,9 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
         }
       });
 
-      // Get PID and set up logging (only if logs dir is available)
       const pid = await terminal.processId;
-      if (pid && logsAvailable) {
-        const logPath = getLogPath(agent.prefix, pid);
-        terminals.register(terminal, terminalId, agent, pid, logPath);
-        terminal.sendText(`${agent.command} 2>&1 | tee -a ${logPath}`);
-      } else {
-        terminals.register(terminal, terminalId, agent, pid);
-        terminal.sendText(agent.command);
-      }
+      terminals.register(terminal, terminalId, agent, pid);
+      terminal.sendText(agent.command);
       totalCount++;
     }
   }
@@ -486,16 +441,8 @@ async function clearActiveTerminal(context: vscode.ExtensionContext) {
     await new Promise(resolve => setTimeout(resolve, 1500));
 
     try {
-      // Get agent entry to retrieve existing log path
+      terminal.sendText('clear && ' + agentConfig.command);
       const entry = terminals.getByTerminal(terminal);
-      const logPath = entry?.logPath;
-
-      if (logPath) {
-        terminal.sendText(`clear && ${agentConfig.command} 2>&1 | tee -a ${logPath}`);
-      } else {
-        terminal.sendText('clear && ' + agentConfig.command);
-      }
-
       const agentNum = entry?.id ? entry.id.split('-').pop() : '';
       const numSuffix = agentNum ? ` agent # ${agentNum}` : ' agent';
       vscode.window.showInformationMessage(`Cleared ${getExpandedAgentName(agentConfig.title)}${numSuffix}`);

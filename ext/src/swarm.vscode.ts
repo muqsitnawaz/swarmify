@@ -1,14 +1,14 @@
 // Swarm MCP configuration - VS Code dependent functions
 
 import { exec } from 'child_process';
-import * as path from 'path';
 import { promisify } from 'util';
 import * as vscode from 'vscode';
 
 const execAsync = promisify(exec);
 
-export async function enableSwarm(context: vscode.ExtensionContext): Promise<void> {
-  const cliTsPath = path.join(context.extensionPath, '..', 'cli-ts', 'dist', 'index.js');
+export async function enableSwarm(_context: vscode.ExtensionContext): Promise<void> {
+  // Hardcoded to source repo - cli-ts must be built there
+  const cliTsPath = '/Users/muqsit/src/github.com/muqsitnawaz/CursorAgents/cli-ts/dist/index.js';
 
   try {
     // Use claude mcp add to register the server

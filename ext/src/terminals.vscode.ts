@@ -15,7 +15,6 @@ export interface EditorTerminal {
   autoLabel?: string;       // Auto-generated label (populated by LLM)
   createdAt: number;
   pid?: number;             // Shell process ID
-  logPath?: string;         // Path to tee log file
 }
 
 // Two-map architecture (API.md)
@@ -55,16 +54,14 @@ export function register(
   terminal: vscode.Terminal,
   id: string,
   agentConfig: Omit<AgentConfig, 'count'> | null,
-  pid?: number,
-  logPath?: string
+  pid?: number
 ): void {
   const entry: EditorTerminal = {
     id,
     terminal,
     agentConfig,
     createdAt: Date.now(),
-    pid,
-    logPath
+    pid
   };
   editorTerminals.set(id, entry);
   terminalToId.set(terminal, id);
