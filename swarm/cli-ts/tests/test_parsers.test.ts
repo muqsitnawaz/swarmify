@@ -1,5 +1,7 @@
 import { describe, test, expect } from 'bun:test';
-import { normalizeEvent, normalizeEvents } from '../src/parsers.js';
+import { normalizeEvent, normalizeEvents, parseEvent } from '../src/parsers.js';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 
 describe('Codex Parser', () => {
   test('should normalize thread.started event', () => {
@@ -525,6 +527,21 @@ describe('Claude Parser', () => {
   });
 
   test('should normalize user message with bash tool_result', () => {
+    const toolUseRaw = {
+      type: 'assistant',
+      message: {
+        content: [
+          {
+            type: 'tool_use',
+            id: 'toolu_01DNcDdJZtkfF3BjnH7qBZ7M',
+            name: 'Bash',
+            input: { command: 'ls -la /tmp/test' },
+          },
+        ],
+      },
+    };
+    normalizeEvents('claude', toolUseRaw);
+
     const raw = {
       type: 'user',
       message: {
@@ -549,7 +566,7 @@ describe('Claude Parser', () => {
 
     expect(event.type).toBe('bash');
     expect(event.agent).toBe('claude');
-    expect(event.command).toBe('');
+    expect(event.command).toBe('ls -la /tmp/test');
   });
 
   test('should normalize user message with error tool_result (is_error flag)', () => {
@@ -634,5 +651,46 @@ describe('Claude Parser', () => {
     expect(event.agent).toBe('claude');
     expect(event.status).toBe('success');
     expect(event.duration_ms).toBe(5000);
+  });
+
+  test('should parse comprehensive log file', () => {
+    const logFilePath = join(import.meta.dir, 'testdata', 'claude-agent-log-comprehensive.jsonl');
+    const logContent = readFileSync(logFilePath, 'utf-8');
+    const lines = logContent.trim().split('\n').filter(line => line.trim());
+
+    const events: any[] = [];
+    const eventTypes: Record<string, number> = {};
+
+    for (const line of lines) {
+      const parsed = parseEvent('claude', line);
+      if (parsed) {
+        events.push(...parsed);
+        for (const event of parsed) {
+          eventTypes[event.type] = (eventTypes[event.type] || 0) + 1;
+        }
+      }
+    }
+
+    expect(events.length).toBeGreaterThan(0);
+    expect(eventTypes['init']).toBe(1);
+    expect(eventTypes['file_read']).toBeGreaterThan(0);
+    expect(eventTypes['bash']).toBeGreaterThan(0);
+    expect(eventTypes['error']).toBeGreaterThan(0);
+    expect(eventTypes['tool_use']).toBeGreaterThan(0);
+    expect(eventTypes['result']).toBe(1);
+
+    const fileReadEvents = events.filter(e => e.type === 'file_read');
+    expect(fileReadEvents.length).toBeGreaterThan(0);
+    expect(fileReadEvents[0].path).toBeDefined();
+    expect(fileReadEvents[0].agent).toBe('claude');
+
+    const bashEvents = events.filter(e => e.type === 'bash');
+    expect(bashEvents.length).toBeGreaterThan(0);
+    expect(bashEvents[0].agent).toBe('claude');
+
+    const errorEvents = events.filter(e => e.type === 'error');
+    expect(errorEvents.length).toBeGreaterThan(0);
+    expect(errorEvents[0].message).toBeDefined();
+    expect(errorEvents[0].agent).toBe('claude');
   });
 });

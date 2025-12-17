@@ -8,9 +8,9 @@ import { summarizeEvents, getQuickStatus, getToolBreakdown } from '../src/summar
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-async function runClaudeAgent(prompt: string, timeoutMs: number = 60000): Promise<{ events: any[], rawEvents: any[], rawStdout: string }> {
+async function runClaudeAgent(prompt: string, timeoutMs: number = 60000, extraArgs: string[] = []): Promise<{ events: any[], rawEvents: any[], rawStdout: string }> {
   return new Promise((resolve, reject) => {
-    const args = ['-p', '--verbose', prompt, '--output-format', 'stream-json'];
+    const args = ['-p', '--verbose', ...extraArgs, prompt, '--output-format', 'stream-json'];
     const proc = spawn('claude', args, {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -167,7 +167,7 @@ describe('Claude Live E2E', () => {
       console.log('Running comprehensive test with prompt:', prompt);
       console.log('Raw event types before normalization:');
       
-      const { events, rawEvents, rawStdout } = await runClaudeAgent(prompt, 180000);
+      const { events, rawEvents, rawStdout } = await runClaudeAgent(prompt, 180000, ['--permission-mode', 'bypassPermissions']);
       
       const logFilePath = join(testdataDir, 'claude-agent-log-comprehensive.jsonl');
       writeFileSync(logFilePath, rawStdout, 'utf-8');

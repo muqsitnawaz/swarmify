@@ -1,5 +1,7 @@
 export type AgentType = 'codex' | 'gemini' | 'cursor' | 'claude';
 
+const claudeToolUseMap = new Map<string, { tool: string; command?: string; path?: string }>();
+
 export function normalizeEvents(agentType: AgentType, raw: any): any[] {
   if (agentType === 'codex') {
     return normalizeCodex(raw);
@@ -481,11 +483,25 @@ function normalizeClaude(raw: any): any[] {
       if (block.type === 'text') {
         textContent += block.text || '';
       } else if (block.type === 'tool_use') {
+        const toolName = block.name || 'unknown';
+        const toolId = block.id;
+        const toolInput = block.input || {};
+        
+        if (toolId) {
+          if (toolName === 'Bash' && toolInput.command) {
+            claudeToolUseMap.set(toolId, { tool: toolName, command: toolInput.command });
+          } else if ((toolName === 'Edit' || toolName === 'Write') && toolInput.file_path) {
+            claudeToolUseMap.set(toolId, { tool: toolName, path: toolInput.file_path });
+          } else if (toolName === 'Read' && toolInput.file_path) {
+            claudeToolUseMap.set(toolId, { tool: toolName, path: toolInput.file_path });
+          }
+        }
+        
         events.push({
           type: 'tool_use',
           agent: 'claude',
-          tool: block.name || 'unknown',
-          args: block.input || {},
+          tool: toolName,
+          args: toolInput,
           timestamp: timestamp,
         });
       }
@@ -530,12 +546,37 @@ function normalizeClaude(raw: any): any[] {
             timestamp: timestamp,
           });
         } else if (toolUseResult?.stdout !== undefined) {
+          const toolUseInfo = claudeToolUseMap.get(toolUseId);
+          const command = toolUseInfo?.command || '';
           events.push({
             type: 'bash',
             agent: 'claude',
-            command: '',
+            command: command,
             timestamp: timestamp,
           });
+          claudeToolUseMap.delete(toolUseId);
+        } else if (!block.is_error && typeof toolUseResult !== 'string') {
+          const toolUseInfo = claudeToolUseMap.get(toolUseId);
+          if (toolUseInfo && (toolUseInfo.tool === 'Edit' || toolUseInfo.tool === 'Write') && toolUseInfo.path) {
+            events.push({
+              type: 'file_write',
+              agent: 'claude',
+              path: toolUseInfo.path,
+              timestamp: timestamp,
+            });
+            claudeToolUseMap.delete(toolUseId);
+          } else {
+            events.push({
+              type: 'tool_result',
+              agent: 'claude',
+              tool_use_id: toolUseId,
+              success: true,
+              timestamp: timestamp,
+            });
+            if (toolUseInfo) {
+              claudeToolUseMap.delete(toolUseId);
+            }
+          }
         } else if (block.is_error || (typeof toolUseResult === 'string' && toolUseResult.startsWith('Error:'))) {
           events.push({
             type: 'error',
@@ -544,6 +585,7 @@ function normalizeClaude(raw: any): any[] {
             timestamp: timestamp,
           });
         } else {
+          const toolUseInfo = claudeToolUseMap.get(toolUseId);
           events.push({
             type: 'tool_result',
             agent: 'claude',
@@ -551,6 +593,9 @@ function normalizeClaude(raw: any): any[] {
             success: !block.is_error,
             timestamp: timestamp,
           });
+          if (toolUseInfo) {
+            claudeToolUseMap.delete(toolUseId);
+          }
         }
       }
     }
