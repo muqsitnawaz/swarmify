@@ -2,7 +2,7 @@
   "name": "cursor-agents",
   "displayName": "Agents",
   "description": "Manage multiple Claude Code, Codex, Gemini, and Cursor terminal agents in the editor",
-  "version": "0.9.1",
+  "version": "0.9.4",
   "icon": "assets/agents.png",
   "repository": {
     "type": "git",
@@ -21,7 +21,7 @@
   "contributes": {
     "commands": [
       {
-        "command": "agentTabs.open",
+        "command": "agents.open",
         "title": "Run Agents",
         "icon": {
           "light": "assets/agents.png",
@@ -29,15 +29,15 @@
         }
       },
       {
-        "command": "agentTabs.configure",
+        "command": "agents.configure",
         "title": "Agents: Configure Counts"
       },
       {
-        "command": "agentTabs.newAgent",
+        "command": "agents.newAgent",
         "title": "Agents: New Agent"
       },
       {
-        "command": "agentTabs.newClaudeCode",
+        "command": "agents.newClaudeCode",
         "title": "Agents: New Claude Code",
         "icon": {
           "light": "assets/claude.png",
@@ -45,7 +45,7 @@
         }
       },
       {
-        "command": "agentTabs.newCodex",
+        "command": "agents.newCodex",
         "title": "Agents: New Codex",
         "icon": {
           "light": "assets/chatgpt.png",
@@ -53,7 +53,7 @@
         }
       },
       {
-        "command": "agentTabs.newGemini",
+        "command": "agents.newGemini",
         "title": "Agents: New Gemini Agent",
         "icon": {
           "light": "assets/gemini.png",
@@ -61,7 +61,7 @@
         }
       },
       {
-        "command": "agentTabs.newCursor",
+        "command": "agents.newCursor",
         "title": "Agents: New Cursor Agent",
         "icon": {
           "light": "assets/cursor.png",
@@ -69,15 +69,15 @@
         }
       },
       {
-        "command": "agentTabs.setTitle",
+        "command": "agents.setTitle",
         "title": "Agents: Label"
       },
       {
-        "command": "agentTabs.reload",
+        "command": "agents.reload",
         "title": "Agents: Reload"
       },
       {
-        "command": "agentTabs.generateCommit",
+        "command": "agents.generateCommit",
         "title": "Agents: Generate Commit",
         "icon": "$(git-commit)"
       }
@@ -85,35 +85,35 @@
     "configuration": {
       "title": "Agents",
       "properties": {
-        "agentTabs.claudeCount": {
+        "agents.claudeCount": {
           "type": "number",
           "default": 2,
           "minimum": 0,
           "maximum": 10,
           "description": "Number of Claude Code terminal tabs to open"
         },
-        "agentTabs.codexCount": {
+        "agents.codexCount": {
           "type": "number",
           "default": 2,
           "minimum": 0,
           "maximum": 10,
           "description": "Number of Codex terminal tabs to open"
         },
-        "agentTabs.geminiCount": {
+        "agents.geminiCount": {
           "type": "number",
           "default": 2,
           "minimum": 0,
           "maximum": 10,
           "description": "Number of Gemini terminal tabs to open"
         },
-        "agentTabs.cursorCount": {
+        "agents.cursorCount": {
           "type": "number",
           "default": 2,
           "minimum": 0,
           "maximum": 10,
           "description": "Number of Cursor terminal tabs to open"
         },
-        "agentTabs.customAgents": {
+        "agents.customAgents": {
           "type": "array",
           "default": [],
           "description": "Custom agent configurations",
@@ -147,12 +147,12 @@
             ]
           }
         },
-        "agentTabs.autoStart": {
+        "agents.autoStart": {
           "type": "boolean",
           "default": false,
           "description": "Automatically open configured agents on workspace startup"
         },
-        "agentTabs.defaultAgent": {
+        "agents.defaultAgent": {
           "type": "string",
           "default": "claude",
           "enum": [
@@ -207,21 +207,21 @@
     "menus": {
       "editor/title": [
         {
-          "command": "agentTabs.open",
+          "command": "agents.open",
           "group": "navigation",
           "when": "true"
         }
       ],
       "scm/title": [
         {
-          "command": "agentTabs.generateCommit",
+          "command": "agents.generateCommit",
           "group": "navigation",
           "when": "scmProvider == git"
         }
       ],
       "commandPalette": [
         {
-          "command": "agentTabs.newGemini",
+          "command": "agents.newGemini",
           "when": "true",
           "group": "navigation@2"
         }
@@ -229,26 +229,26 @@
     },
     "keybindings": [
       {
-        "command": "agentTabs.generateCommit",
+        "command": "agents.generateCommit",
         "key": "ctrl+shift+g",
         "mac": "cmd+shift+g"
       },
       {
-        "command": "agentTabs.newAgent",
+        "command": "agents.newAgent",
         "key": "ctrl+shift+a",
         "mac": "cmd+shift+a"
       },
       {
-        "command": "agentTabs.setTitle",
+        "command": "agents.setTitle",
         "key": "ctrl+shift+l",
         "mac": "cmd+shift+l",
-        "when": "terminalFocus"
+        "when": "terminalEditorFocus"
       },
       {
-        "command": "agentTabs.reload",
+        "command": "agents.reload",
         "key": "ctrl+shift+r",
         "mac": "cmd+shift+r",
-        "when": "terminalFocus"
+        "when": "terminalEditorFocus"
       }
     ]
   },

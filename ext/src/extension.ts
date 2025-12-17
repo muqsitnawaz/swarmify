@@ -133,7 +133,7 @@ function getBuiltInAgents(extensionPath: string): AgentConfig[] {
     dark: vscode.Uri.file(path.join(extensionPath, 'assets', 'cursor.png'))
   };
 
-  const config = vscode.workspace.getConfiguration('agentTabs');
+  const config = vscode.workspace.getConfiguration('agents');
   const claudeCount = config.get<number>('claudeCount', 2);
   const codexCount = config.get<number>('codexCount', 2);
   const geminiCount = config.get<number>('geminiCount', 2);
@@ -172,7 +172,7 @@ function getBuiltInAgents(extensionPath: string): AgentConfig[] {
 }
 
 function getCustomAgents(extensionPath: string): AgentConfig[] {
-  const config = vscode.workspace.getConfiguration('agentTabs');
+  const config = vscode.workspace.getConfiguration('agents');
   const customAgents = config.get<CustomAgentSettings[]>('customAgents', []);
 
   const defaultIconPath: vscode.IconPath = {
@@ -227,7 +227,6 @@ function identifyAgentTerminal(terminal: vscode.Terminal, extensionPath: string)
   // First check in-memory metadata
   const metadata = terminalMetadataByInstance.get(terminal);
   if (metadata) {
-    console.log(`[Agents] identifyAgentTerminal: found metadata for "${terminal.name}" -> baseName="${metadata.baseName}"`);
     return {
       isAgent: true,
       prefix: metadata.baseName,
@@ -238,7 +237,6 @@ function identifyAgentTerminal(terminal: vscode.Terminal, extensionPath: string)
 
   // Fall back to strict name parsing using shared util
   const parsed = parseTerminalName(terminal.name);
-  console.log(`[Agents] identifyAgentTerminal: parseTerminalName("${terminal.name}") -> isAgent=${parsed.isAgent}, prefix="${parsed.prefix}"`);
   if (parsed.isAgent && parsed.prefix) {
     return {
       isAgent: true,
@@ -521,16 +519,16 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Register commands
   context.subscriptions.push(
-    vscode.commands.registerCommand('agentTabs.open', () => openAgentTerminals(context))
+    vscode.commands.registerCommand('agents.open', () => openAgentTerminals(context))
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('agentTabs.configure', configureCounts)
+    vscode.commands.registerCommand('agents.configure', configureCounts)
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('agentTabs.newAgent', () => {
-      const config = vscode.workspace.getConfiguration('agentTabs');
+    vscode.commands.registerCommand('agents.newAgent', () => {
+      const config = vscode.workspace.getConfiguration('agents');
       const defaultAgent = config.get<string>('defaultAgent', 'claude');
       const builtInAgents = getBuiltInAgents(context.extensionPath);
 
@@ -557,20 +555,20 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('agentTabs.setTitle', () => setTitleForActiveTerminal(context.extensionPath))
+    vscode.commands.registerCommand('agents.setTitle', () => setTitleForActiveTerminal(context.extensionPath))
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('agentTabs.reload', () => reloadActiveTerminal(context))
+    vscode.commands.registerCommand('agents.reload', () => reloadActiveTerminal(context))
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('agentTabs.generateCommit', generateCommitMessage)
+    vscode.commands.registerCommand('agents.generateCommit', generateCommitMessage)
   );
 
   // Register built-in individual agent commands
   context.subscriptions.push(
-    vscode.commands.registerCommand('agentTabs.newClaudeCode', () => {
+    vscode.commands.registerCommand('agents.newClaudeCode', () => {
       const builtInAgents = getBuiltInAgents(context.extensionPath);
       const claudeAgent = builtInAgents.find(a => a.title === CLAUDE_TITLE);
       if (claudeAgent) {
@@ -580,7 +578,7 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('agentTabs.newCodex', () => {
+    vscode.commands.registerCommand('agents.newCodex', () => {
       const builtInAgents = getBuiltInAgents(context.extensionPath);
       const codexAgent = builtInAgents.find(a => a.title === CODEX_TITLE);
       if (codexAgent) {
@@ -590,7 +588,7 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('agentTabs.newGemini', () => {
+    vscode.commands.registerCommand('agents.newGemini', () => {
       const builtInAgents = getBuiltInAgents(context.extensionPath);
       const geminiAgent = builtInAgents.find(a => a.title === GEMINI_TITLE);
       if (geminiAgent) {
@@ -600,7 +598,7 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('agentTabs.newCursor', () => {
+    vscode.commands.registerCommand('agents.newCursor', () => {
       const builtInAgents = getBuiltInAgents(context.extensionPath);
       const cursorAgent = builtInAgents.find(a => a.title === CURSOR_TITLE);
       if (cursorAgent) {
@@ -666,7 +664,7 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   // Auto-open terminals on startup if autoStart is enabled
-  const config = vscode.workspace.getConfiguration('agentTabs');
+  const config = vscode.workspace.getConfiguration('agents');
   const autoStart = config.get<boolean>('autoStart', false);
 
   if (autoStart) {
@@ -749,7 +747,7 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
   // Users will need to manually pin terminals if desired
 
   // Save state for persistence
-  const config = vscode.workspace.getConfiguration('agentTabs');
+  const config = vscode.workspace.getConfiguration('agents');
   const state: TerminalState = {
     claudeCount: config.get<number>('claudeCount', 2),
     codexCount: config.get<number>('codexCount', 2),
@@ -770,7 +768,7 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
 }
 
 async function configureCounts() {
-  const config = vscode.workspace.getConfiguration('agentTabs');
+  const config = vscode.workspace.getConfiguration('agents');
 
   const claudeInput = await vscode.window.showInputBox({
     prompt: 'Number of Claude Code terminals',
@@ -849,7 +847,7 @@ async function configureCounts() {
   );
 
   if (action === 'Yes') {
-    vscode.commands.executeCommand('agentTabs.open');
+    vscode.commands.executeCommand('agents.open');
   }
 }
 
@@ -915,30 +913,19 @@ async function reloadActiveTerminal(context: vscode.ExtensionContext) {
       return;
     }
 
-    // Debug: log the terminal name to help diagnose identification issues
-    console.log(`[Agents] Reload: terminal.name = "${terminal.name}" (length: ${terminal.name.length})`);
-    const charCodes = Array.from(terminal.name).map(c => c.charCodeAt(0));
-    console.log(`[Agents] Reload: char codes = [${charCodes.join(', ')}]`);
-
     const agentConfig = getAgentConfigFromTerminal(terminal, context.extensionPath);
-    console.log(`[Agents] Reload: agentConfig = ${agentConfig ? agentConfig.title : 'null'}`);
-
     if (!agentConfig) {
-      vscode.window.showErrorMessage(`Could not identify agent type. Terminal name: "${terminal.name}"`);
+      vscode.window.showErrorMessage('Could not identify agent type from active terminal.');
       return;
     }
 
-    // Show terminal to make it active, then send Ctrl+C via sendSequence
-    // which properly triggers SIGINT (sendText doesn't work for raw-mode CLIs)
-    terminal.show();
-    await vscode.commands.executeCommand('workbench.action.terminal.sendSequence', {
-      text: '\x03'
-    });
+    terminal.sendText('/quit\r');
+
+    // Wait for agent to exit before restarting
+    await new Promise(resolve => setTimeout(resolve, 500));
 
     try {
-      await vscode.commands.executeCommand('workbench.action.terminal.sendSequence', {
-        text: 'clear && ' + agentConfig.command + '\r'
-      });
+      terminal.sendText('clear && ' + agentConfig.command + '\r');
       vscode.window.showInformationMessage(`Reloaded ${agentConfig.title} agent.`);
     } catch (sendError) {
       vscode.window.showWarningMessage('Terminal may have been closed. Please open a new agent terminal.');
