@@ -17,16 +17,19 @@ vscode.window.createTerminal({
 ```
 
 **What gets created:**
+
 - `vscode.Terminal` - the terminal instance
 - `vscode.Tab` with `input: TabInputTerminal` - the visual tab
 
 **Keybinding contexts:**
+
 - `terminalFocus` - Any terminal (panel OR editor area)
 - `terminalEditorFocus` - Only terminals in editor area
 
 This extension uses `terminalEditorFocus` exclusively. Using `terminalFocus` will NOT work.
 
 **API behavior:**
+
 - `vscode.window.activeTerminal` - Works for both locations
 - `vscode.window.terminals` - Lists all terminals regardless of location
 
@@ -39,12 +42,14 @@ This extension uses `terminalEditorFocus` exclusively. Using `terminalFocus` wil
 The Tab API (`vscode.window.tabGroups`) is mostly readonly for positioning:
 
 **Supported:**
+
 - Get tab position: `group.tabs.indexOf(tab)` or `findIndex()`
 - Read pinned state: `tab.isPinned`
 - Close tabs: `vscode.window.tabGroups.close(tab)`
 - Pin/unpin via commands: `workbench.action.pinEditor`, `workbench.action.unpinEditor`
 
 **Not Supported:**
+
 - Insert tab at specific index
 - Insert at end/beginning programmatically
 - Insert relative to active tab
@@ -52,27 +57,6 @@ The Tab API (`vscode.window.tabGroups`) is mostly readonly for positioning:
 - Set position when opening via `showTextDocument()` (only `ViewColumn` for editor group, not position within group)
 
 User setting `workbench.editor.openPositioning` controls default behavior but cannot be overridden per-open.
-
-### Sending Commands to Interactive Terminal Agents
-
-When sending text to interactive CLI agents (Claude, Codex, Gemini, Cursor) via VS Code's terminal API, include the newline character in a single call:
-
-```typescript
-// CORRECT - single call with \n (RECOMMENDED)
-terminal.sendText('/quit\n', false);
-
-// ALTERNATIVE - use default addNewLine=true
-terminal.sendText('/quit');
-
-// WRONG - sending \r separately may not work reliably
-terminal.sendText('/quit', false);
-terminal.sendText('\r', false);  // May be normalized/ignored
-
-// WRONG - combining \r in string may not work
-terminal.sendText('/quit\r', false);  // Terminal emulator may not handle correctly
-```
-
-**Why `\n` works:** VS Code's terminal emulator (xterm.js) normalizes `\n` to the appropriate line ending (`\r` or `\r\n`) based on the terminal type. Sending `\r` separately can be buffered or normalized incorrectly, causing timing issues. Using `\n` in a single call is atomic and reliable.
 
 ### Agent Spawner (MCP)
 

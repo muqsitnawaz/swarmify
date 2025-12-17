@@ -38,6 +38,38 @@ interface CustomAgentSettings {
   iconPath?: string;
 }
 
+// Settings types for webview
+interface BuiltInAgentConfig {
+  login: boolean;
+  instances: number;
+}
+
+interface CustomAgentConfig {
+  name: string;
+  command: string;
+  login: boolean;
+  instances: number;
+}
+
+interface AgentSettings {
+  builtIn: {
+    claude: BuiltInAgentConfig;
+    codex: BuiltInAgentConfig;
+    gemini: BuiltInAgentConfig;
+    cursor: BuiltInAgentConfig;
+  };
+  custom: CustomAgentConfig[];
+}
+
+interface RunningCounts {
+  claude: number;
+  codex: number;
+  gemini: number;
+  cursor: number;
+  custom: Record<string, number>;
+}
+
+let settingsPanel: vscode.WebviewPanel | undefined;
 let managedTerminals: vscode.Terminal[] = [];
 // Map to track terminal ID -> terminal instance for URI callbacks
 const terminalMap = new Map<string, vscode.Terminal>();
@@ -269,6 +301,195 @@ function unregisterTerminalMetadata(terminal: vscode.Terminal) {
  * Note: TabInputTerminal is a marker class with no properties, so we match
  * tab labels to terminals from vscode.window.terminals.
  */
+// Settings functions for webview
+function getDefaultSettings(): AgentSettings {
+  return {
+    builtIn: {
+      claude: { login: false, instances: 2 },
+      codex: { login: false, instances: 2 },
+      gemini: { login: false, instances: 2 },
+      cursor: { login: false, instances: 2 }
+    },
+    custom: []
+  };
+}
+
+function getAgentSettings(context: vscode.ExtensionContext): AgentSettings {
+  const stored = context.globalState.get<AgentSettings>('agentSettings');
+  if (stored) return stored;
+
+  // Migrate from old settings if they exist
+  const config = vscode.workspace.getConfiguration('agents');
+  const claudeCount = config.get<number>('claudeCount');
+  const autoStart = config.get<boolean>('autoStart', false);
+
+  if (claudeCount !== undefined) {
+    // Old settings exist, migrate them
+    const migrated: AgentSettings = {
+      builtIn: {
+        claude: { login: autoStart, instances: config.get<number>('claudeCount', 2) },
+        codex: { login: autoStart, instances: config.get<number>('codexCount', 2) },
+        gemini: { login: autoStart, instances: config.get<number>('geminiCount', 2) },
+        cursor: { login: autoStart, instances: config.get<number>('cursorCount', 2) }
+      },
+      custom: (config.get<CustomAgentSettings[]>('customAgents', []) || []).map(a => ({
+        name: a.title,
+        command: a.command,
+        login: false,
+        instances: a.count
+      }))
+    };
+    context.globalState.update('agentSettings', migrated);
+    return migrated;
+  }
+
+  return getDefaultSettings();
+}
+
+async function saveAgentSettings(context: vscode.ExtensionContext, settings: AgentSettings) {
+  await context.globalState.update('agentSettings', settings);
+}
+
+function countRunningAgents(extensionPath: string): RunningCounts {
+  const counts: RunningCounts = {
+    claude: 0,
+    codex: 0,
+    gemini: 0,
+    cursor: 0,
+    custom: {}
+  };
+
+  for (const terminal of vscode.window.terminals) {
+    const info = getTerminalDisplayInfo(terminal.name);
+    if (!info.isAgent || !info.prefix) continue;
+
+    switch (info.prefix) {
+      case CLAUDE_TITLE:
+        counts.claude++;
+        break;
+      case CODEX_TITLE:
+        counts.codex++;
+        break;
+      case GEMINI_TITLE:
+        counts.gemini++;
+        break;
+      case CURSOR_TITLE:
+        counts.cursor++;
+        break;
+      default:
+        // Custom agent
+        counts.custom[info.prefix] = (counts.custom[info.prefix] || 0) + 1;
+        break;
+    }
+  }
+
+  return counts;
+}
+
+function openSettingsWebview(context: vscode.ExtensionContext) {
+  if (settingsPanel) {
+    settingsPanel.reveal();
+    return;
+  }
+
+  settingsPanel = vscode.window.createWebviewPanel(
+    'agentsSettings',
+    'Agents',
+    vscode.ViewColumn.One,
+    {
+      enableScripts: true,
+      localResourceRoots: [
+        vscode.Uri.joinPath(context.extensionUri, 'out', 'ui'),
+        vscode.Uri.joinPath(context.extensionUri, 'assets')
+      ]
+    }
+  );
+
+  const updateWebview = () => {
+    if (!settingsPanel) return;
+    const settings = getAgentSettings(context);
+    const runningCounts = countRunningAgents(context.extensionPath);
+    settingsPanel.webview.postMessage({
+      type: 'init',
+      settings,
+      runningCounts
+    });
+  };
+
+  settingsPanel.webview.html = getWebviewContent(settingsPanel.webview, context.extensionUri);
+
+  settingsPanel.webview.onDidReceiveMessage(async (message) => {
+    switch (message.type) {
+      case 'ready':
+        updateWebview();
+        break;
+      case 'saveSettings':
+        await saveAgentSettings(context, message.settings);
+        break;
+    }
+  }, undefined, context.subscriptions);
+
+  // Update running counts when terminals change
+  const terminalListener = vscode.window.onDidOpenTerminal(() => {
+    if (settingsPanel) {
+      settingsPanel.webview.postMessage({
+        type: 'updateRunningCounts',
+        counts: countRunningAgents(context.extensionPath)
+      });
+    }
+  });
+
+  const terminalCloseListener = vscode.window.onDidCloseTerminal(() => {
+    if (settingsPanel) {
+      settingsPanel.webview.postMessage({
+        type: 'updateRunningCounts',
+        counts: countRunningAgents(context.extensionPath)
+      });
+    }
+  });
+
+  settingsPanel.onDidDispose(() => {
+    settingsPanel = undefined;
+    terminalListener.dispose();
+    terminalCloseListener.dispose();
+  }, undefined, context.subscriptions);
+}
+
+function getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri): string {
+  const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'out', 'ui', 'main.js'));
+  const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'out', 'ui', 'main.css'));
+
+  // Get asset URIs for icons
+  const claudeIcon = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'claude.png'));
+  const codexIcon = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'chatgpt.png'));
+  const geminiIcon = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'gemini.png'));
+  const cursorIcon = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'cursor.png'));
+  const agentsIcon = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'agents.png'));
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="${styleUri}">
+  <script>
+    // Inject icon paths for the React app
+    window.__ICONS__ = {
+      claude: "${claudeIcon}",
+      codex: "${codexIcon}",
+      gemini: "${geminiIcon}",
+      cursor: "${cursorIcon}",
+      agents: "${agentsIcon}"
+    };
+  </script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="${scriptUri}"></script>
+</body>
+</html>`;
+}
+
 function scanExistingEditorTerminals() {
   console.log('[AGENTS] Scanning terminals in editor area...');
   let registeredCount = 0;
@@ -361,7 +582,7 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('agents.configure', configureCounts)
+    vscode.commands.registerCommand('agents.configure', () => openSettingsWebview(context))
   );
 
   context.subscriptions.push(
@@ -774,13 +995,14 @@ async function reloadActiveTerminal(context: vscode.ExtensionContext) {
       return;
     }
 
-    terminal.sendText('/quit\n', false);
+    terminal.sendText('/quit', false);
+    terminal.sendText('\r');
 
     await new Promise(resolve => setTimeout(resolve, 2500));
 
     try {
-      terminal.sendText('clear && ' + agentConfig.command + '\n', false);
-      vscode.window.showInformationMessage(`Reloaded ${agentConfig.title} agent.`);
+      terminal.sendText('clear && ' + agentConfig.command);
+      vscode.window.showInformationMessage(`Reloaded ${getExpandedAgentName(agentConfig.title)} agent.`);
     } catch (sendError) {
       vscode.window.showWarningMessage('Terminal may have been closed. Please open a new agent terminal.');
     }

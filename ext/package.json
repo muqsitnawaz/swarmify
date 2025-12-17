@@ -2,7 +2,7 @@
   "name": "cursor-agents",
   "displayName": "Agents",
   "description": "Manage multiple Claude Code, Codex, Gemini, and Cursor terminal agents in the editor",
-  "version": "0.9.9",
+  "version": "0.9.14",
   "icon": "assets/agents.png",
   "repository": {
     "type": "git",
@@ -38,7 +38,7 @@
       },
       {
         "command": "agents.newClaudeCode",
-        "title": "Agents: New Claude Code",
+        "title": "Agents: New Claude",
         "icon": {
           "light": "assets/claude.png",
           "dark": "assets/claude.png"
@@ -54,7 +54,7 @@
       },
       {
         "command": "agents.newGemini",
-        "title": "Agents: New Gemini Agent",
+        "title": "Agents: New Gemini",
         "icon": {
           "light": "assets/gemini.png",
           "dark": "assets/gemini.png"
@@ -62,7 +62,7 @@
       },
       {
         "command": "agents.newCursor",
-        "title": "Agents: New Cursor Agent",
+        "title": "Agents: New Cursor",
         "icon": {
           "light": "assets/cursor.png",
           "dark": "assets/cursor.png"
@@ -78,8 +78,11 @@
       },
       {
         "command": "agents.generateCommit",
-        "title": "Agents: Generate Commit",
-        "icon": "$(git-commit)"
+        "title": "Agents: Push",
+        "icon": {
+          "light": "assets/agents.png",
+          "dark": "assets/agents.png"
+        }
       }
     ],
     "configuration": [
