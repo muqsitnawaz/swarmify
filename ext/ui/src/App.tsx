@@ -337,6 +337,27 @@ export default function App() {
           )}
         </div>
       </section>
+
+      {/* Shortcuts */}
+      <section>
+        <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
+          Shortcuts
+        </h2>
+        <div className="space-y-2 text-sm">
+          <div className="flex items-center gap-4">
+            <kbd className="px-2 py-1 rounded bg-[var(--secondary)] text-[var(--muted-foreground)] font-mono text-xs">Cmd+Shift+A</kbd>
+            <span className="text-[var(--muted-foreground)]">New agent</span>
+          </div>
+          <div className="flex items-center gap-4">
+            <kbd className="px-2 py-1 rounded bg-[var(--secondary)] text-[var(--muted-foreground)] font-mono text-xs">Cmd+Shift+G</kbd>
+            <span className="text-[var(--muted-foreground)]">Commit & push</span>
+          </div>
+          <div className="flex items-center gap-4">
+            <kbd className="px-2 py-1 rounded bg-[var(--secondary)] text-[var(--muted-foreground)] font-mono text-xs">Cmd+Shift+C</kbd>
+            <span className="text-[var(--muted-foreground)]">Clear & restart</span>
+          </div>
+        </div>
+      </section>
     </div>
   )
 }

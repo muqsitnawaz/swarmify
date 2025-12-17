@@ -5,6 +5,8 @@ import {
   getExpandedAgentName,
   getIconFilename,
   getTerminalDisplayInfo,
+  mergeMcpConfig,
+  createSwarmServerConfig,
   CLAUDE_TITLE,
   CODEX_TITLE,
   GEMINI_TITLE,
@@ -197,5 +199,78 @@ describe('getTerminalDisplayInfo', () => {
       statusBarText: 'Claude',
       iconFilename: 'claude.png'
     });
+  });
+});
+
+describe('createSwarmServerConfig', () => {
+  test('creates correct server config for given path', () => {
+    const config = createSwarmServerConfig('/path/to/cli-ts/dist/index.js');
+    expect(config).toEqual({
+      type: 'stdio',
+      command: 'node',
+      args: ['/path/to/cli-ts/dist/index.js'],
+      env: {}
+    });
+  });
+});
+
+describe('mergeMcpConfig', () => {
+  test('creates new config when existing is null', () => {
+    const serverConfig = createSwarmServerConfig('/path/to/index.js');
+    const result = mergeMcpConfig(null, 'swarm', serverConfig);
+
+    expect(result).toEqual({
+      mcpServers: {
+        swarm: {
+          type: 'stdio',
+          command: 'node',
+          args: ['/path/to/index.js'],
+          env: {}
+        }
+      }
+    });
+  });
+
+  test('creates mcpServers when existing config has none', () => {
+    const serverConfig = createSwarmServerConfig('/path/to/index.js');
+    const result = mergeMcpConfig({}, 'swarm', serverConfig);
+
+    expect(result.mcpServers).toBeDefined();
+    expect(result.mcpServers!['swarm']).toEqual(serverConfig);
+  });
+
+  test('preserves existing servers when adding new one', () => {
+    const existing = {
+      mcpServers: {
+        'other-server': {
+          type: 'stdio',
+          command: 'python',
+          args: ['server.py'],
+          env: { FOO: 'bar' }
+        }
+      }
+    };
+    const serverConfig = createSwarmServerConfig('/path/to/index.js');
+    const result = mergeMcpConfig(existing, 'swarm', serverConfig);
+
+    expect(result.mcpServers!['other-server']).toEqual(existing.mcpServers['other-server']);
+    expect(result.mcpServers!['swarm']).toEqual(serverConfig);
+  });
+
+  test('overwrites existing server with same name', () => {
+    const existing = {
+      mcpServers: {
+        swarm: {
+          type: 'stdio',
+          command: 'old-node',
+          args: ['/old/path'],
+          env: {}
+        }
+      }
+    };
+    const newConfig = createSwarmServerConfig('/new/path/index.js');
+    const result = mergeMcpConfig(existing, 'swarm', newConfig);
+
+    expect(result.mcpServers!['swarm'].args).toEqual(['/new/path/index.js']);
   });
 });

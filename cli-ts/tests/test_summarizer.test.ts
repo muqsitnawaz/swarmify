@@ -10,8 +10,8 @@ describe('SummarizeEvents', () => {
   it('should handle empty events', () => {
     const summary = summarizeEvents('test-1', 'codex', 'running', [], null);
 
-    expect(summary.agent_id).toBe('test-1');
-    expect(summary.agent_type).toBe('codex');
+    expect(summary.agentId).toBe('test-1');
+    expect(summary.agentType).toBe('codex');
     expect(summary.status).toBe('running');
     expect(summary.filesModified.size).toBe(0);
     expect(summary.toolsUsed.size).toBe(0);

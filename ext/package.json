@@ -2,7 +2,7 @@
   "name": "cursor-agents",
   "displayName": "Agents",
   "description": "Manage multiple Claude Code, Codex, Gemini, and Cursor terminal agents in the editor",
-  "version": "0.9.20",
+  "version": "0.9.21",
   "icon": "assets/agents.png",
   "repository": {
     "type": "git",
@@ -73,8 +73,8 @@
         "title": "Agents: Label"
       },
       {
-        "command": "agents.reload",
-        "title": "Agents: Reload"
+        "command": "agents.clear",
+        "title": "Agents: Clear"
       },
       {
         "command": "agents.generateCommit",
@@ -138,8 +138,8 @@
     "keybindings": [
       {
         "command": "agents.generateCommit",
-        "key": "ctrl+g",
-        "mac": "cmd+g"
+        "key": "ctrl+shift+g",
+        "mac": "cmd+shift+g"
       },
       {
         "command": "agents.newAgent",
@@ -153,9 +153,9 @@
         "when": "terminalEditorFocus"
       },
       {
-        "command": "agents.reload",
-        "key": "ctrl+shift+r",
-        "mac": "cmd+shift+r",
+        "command": "agents.clear",
+        "key": "ctrl+shift+c",
+        "mac": "cmd+shift+c",
         "when": "terminalEditorFocus"
       }
     ]

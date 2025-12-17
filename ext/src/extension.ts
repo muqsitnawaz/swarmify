@@ -350,11 +350,6 @@ function openSettingsWebview(context: vscode.ExtensionContext) {
     dark: vscode.Uri.joinPath(context.extensionUri, 'assets', 'agents.png')
   };
 
-  // Pin the tab
-  setTimeout(() => {
-    vscode.commands.executeCommand('workbench.action.pinEditor');
-  }, 100);
-
   const updateWebview = () => {
     if (!settingsPanel) return;
     const settings = getAgentSettings(context);
@@ -550,7 +545,7 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('agents.reload', () => reloadActiveTerminal(context))
+    vscode.commands.registerCommand('agents.clear', () => clearActiveTerminal(context))
   );
 
   context.subscriptions.push(
@@ -569,22 +564,17 @@ export function activate(context: vscode.ExtensionContext) {
       const mcpJsonPath = path.join(workspaceFolder.uri.fsPath, '.mcp.json');
 
       // Read existing .mcp.json or create new
-      let mcpConfig: { mcpServers?: Record<string, unknown> } = { mcpServers: {} };
+      let existingConfig: McpConfig | null = null;
       try {
         const existing = await vscode.workspace.fs.readFile(vscode.Uri.file(mcpJsonPath));
-        mcpConfig = JSON.parse(existing.toString());
-        mcpConfig.mcpServers = mcpConfig.mcpServers || {};
+        existingConfig = JSON.parse(existing.toString());
       } catch {
-        // File doesn't exist, use empty config
+        // File doesn't exist, use null
       }
 
-      // Add swarm server
-      mcpConfig.mcpServers!['swarm'] = {
-        type: 'stdio',
-        command: 'node',
-        args: [cliTsPath],
-        env: {}
-      };
+      // Merge swarm server config
+      const swarmConfig = createSwarmServerConfig(cliTsPath);
+      const mcpConfig = mergeMcpConfig(existingConfig, 'swarm', swarmConfig);
 
       // Write back
       await vscode.workspace.fs.writeFile(
@@ -821,11 +811,11 @@ function setTitleForActiveTerminal(extensionPath: string) {
   });
 }
 
-async function reloadActiveTerminal(context: vscode.ExtensionContext) {
+async function clearActiveTerminal(context: vscode.ExtensionContext) {
   try {
     const terminal = vscode.window.activeTerminal;
     if (!terminal) {
-      vscode.window.showErrorMessage('No active terminal to reload.');
+      vscode.window.showErrorMessage('No active terminal to clear.');
       return;
     }
 
@@ -850,13 +840,17 @@ async function reloadActiveTerminal(context: vscode.ExtensionContext) {
 
     try {
       terminal.sendText('clear && ' + agentConfig.command);
-      vscode.window.showInformationMessage(`Reloaded ${getExpandedAgentName(agentConfig.title)} agent.`);
+      // Get agent number from metadata
+      const metadata = terminalMetadataByInstance.get(terminal);
+      const agentNum = metadata?.id ? metadata.id.split('-').pop() : '';
+      const numSuffix = agentNum ? ` agent # ${agentNum}` : ' agent';
+      vscode.window.showInformationMessage(`Cleared ${getExpandedAgentName(agentConfig.title)}${numSuffix}`);
     } catch (sendError) {
       vscode.window.showWarningMessage('Terminal may have been closed. Please open a new agent terminal.');
     }
   } catch (error) {
-    console.error('Error reloading terminal:', error);
-    vscode.window.showErrorMessage(`Failed to reload terminal: ${error}`);
+    console.error('Error clearing terminal:', error);
+    vscode.window.showErrorMessage(`Failed to clear terminal: ${error}`);
   }
 }
 

@@ -146,6 +146,7 @@ describe('AgentManager', () => {
     await fs.mkdir(testDir, { recursive: true });
     manager = new AgentManager(5, 10, testDir);
     await manager['initialize']();
+    manager['agents'].clear();
   });
 
   afterEach(async () => {
