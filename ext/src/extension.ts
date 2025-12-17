@@ -19,6 +19,7 @@ import { AgentSettings, hasLoginEnabled } from './settings';
 import * as settings from './settings.vscode';
 import * as git from './git.vscode';
 import * as swarm from './swarm.vscode';
+import * as claudemd from './claudemd.vscode';
 
 // Settings types are now imported from ./settings
 // Settings functions are in ./settings.vscode
@@ -153,6 +154,9 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Scan existing terminals in the editor area to register any agent terminals
   terminals.scanExisting((name) => inferAgentConfigFromName(name, context.extensionPath));
+
+  // Ensure CLAUDE.md has Swarm instructions if Swarm is enabled
+  claudemd.ensureSwarmInstructions();
 
   // Register URI handler for notification callbacks
   context.subscriptions.push(
