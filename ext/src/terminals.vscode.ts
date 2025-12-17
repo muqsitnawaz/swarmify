@@ -11,7 +11,8 @@ export interface EditorTerminal {
   id: string;
   terminal: vscode.Terminal;
   agentConfig: Omit<AgentConfig, 'count'> | null;
-  label?: string;
+  label?: string;           // User-set label (manual via Cmd+L)
+  autoLabel?: string;       // Auto-generated label (populated by LLM)
   createdAt: number;
 }
 
@@ -75,6 +76,13 @@ export function setLabel(terminal: vscode.Terminal, label: string | undefined): 
   const entry = getByTerminal(terminal);
   if (entry) {
     entry.label = label;
+  }
+}
+
+export function setAutoLabel(terminal: vscode.Terminal, autoLabel: string | undefined): void {
+  const entry = getByTerminal(terminal);
+  if (entry) {
+    entry.autoLabel = autoLabel;
   }
 }
 

@@ -260,11 +260,12 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.executeCommand('workbench.action.terminal.scrollToBottom');
       }
 
-      // Check for user-set label in terminals module first
+      // Check for label in terminals module (manual label takes precedence over auto-generated)
       const entry = terminals.getByTerminal(terminal);
-      if (entry?.label && entry.agentConfig) {
+      const displayLabel = entry?.label || entry?.autoLabel;
+      if (displayLabel && entry?.agentConfig) {
         const expandedName = getExpandedAgentName(entry.agentConfig.title);
-        agentStatusBarItem.text = `Agents: ${expandedName} - ${entry.label}`;
+        agentStatusBarItem.text = `Agents: ${expandedName} - ${displayLabel}`;
         return;
       }
 

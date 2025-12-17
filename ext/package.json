@@ -102,7 +102,18 @@
         },
         "agents.commitMessageExamples": {
           "type": "array",
-          "default": [],
+          "default": [
+            "feat: add user authentication with jwt tokens",
+            "fix: resolve null pointer exception in payment handler",
+            "docs: update api reference for v2 endpoints",
+            "build: configure webpack for production optimization",
+            "refactor: extract validation logic into separate module",
+            "fix: correct timezone handling in date formatter",
+            "feat: implement real-time notifications via websockets",
+            "release: bump version to 1.2.0 for stable release",
+            "refactor: simplify error handling in api client",
+            "docs: add examples for configuration options"
+          ],
           "items": {
             "type": "string"
           },
