@@ -33,6 +33,7 @@ export interface AgentStatusResult {
   last_commands: string[];
   has_errors: boolean;
   final_message: string | null;
+  last_message: string | null;
 }
 
 export interface StopResult {
@@ -125,6 +126,12 @@ export async function handleStatus(
       events,
       agent.duration()
     );
+    const quickStatus = getQuickStatus(
+      agent.agentId,
+      agent.agentType,
+      agent.status,
+      events
+    );
 
     console.log(`[status] Agent ${agentId}: status=${agent.status}, events=${events.length}, files_modified=${summary.filesModified.size}`);
 
@@ -144,6 +151,7 @@ export async function handleStatus(
       final_message: summary.finalMessage ?
         (summary.finalMessage.length > 500 ? summary.finalMessage.substring(0, 497) + '...' : summary.finalMessage)
         : null,
+      last_message: quickStatus.last_message,
     };
   } else {
     console.log(`[status] Getting status for all agents in task "${taskName}"...`);
