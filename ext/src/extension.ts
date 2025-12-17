@@ -227,6 +227,7 @@ function identifyAgentTerminal(terminal: vscode.Terminal, extensionPath: string)
   // First check in-memory metadata
   const metadata = terminalMetadataByInstance.get(terminal);
   if (metadata) {
+    console.log(`[Agents] identifyAgentTerminal: found metadata for "${terminal.name}" -> baseName="${metadata.baseName}"`);
     return {
       isAgent: true,
       prefix: metadata.baseName,
@@ -237,6 +238,7 @@ function identifyAgentTerminal(terminal: vscode.Terminal, extensionPath: string)
 
   // Fall back to strict name parsing using shared util
   const parsed = parseTerminalName(terminal.name);
+  console.log(`[Agents] identifyAgentTerminal: parseTerminalName("${terminal.name}") -> isAgent=${parsed.isAgent}, prefix="${parsed.prefix}"`);
   if (parsed.isAgent && parsed.prefix) {
     return {
       isAgent: true,
@@ -913,17 +915,30 @@ async function reloadActiveTerminal(context: vscode.ExtensionContext) {
       return;
     }
 
+    // Debug: log the terminal name to help diagnose identification issues
+    console.log(`[Agents] Reload: terminal.name = "${terminal.name}" (length: ${terminal.name.length})`);
+    const charCodes = Array.from(terminal.name).map(c => c.charCodeAt(0));
+    console.log(`[Agents] Reload: char codes = [${charCodes.join(', ')}]`);
+
     const agentConfig = getAgentConfigFromTerminal(terminal, context.extensionPath);
+    console.log(`[Agents] Reload: agentConfig = ${agentConfig ? agentConfig.title : 'null'}`);
+
     if (!agentConfig) {
-      vscode.window.showErrorMessage('Could not identify agent type from active terminal.');
+      vscode.window.showErrorMessage(`Could not identify agent type. Terminal name: "${terminal.name}"`);
       return;
     }
 
-    terminal.sendText('/quit');
+    // Show terminal to make it active, then send Ctrl+C via sendSequence
+    // which properly triggers SIGINT (sendText doesn't work for raw-mode CLIs)
+    terminal.show();
+    await vscode.commands.executeCommand('workbench.action.terminal.sendSequence', {
+      text: '\x03'
+    });
 
     try {
-      terminal.sendText('clear && ' + agentConfig.command);
-      terminal.sendText('\r');
+      await vscode.commands.executeCommand('workbench.action.terminal.sendSequence', {
+        text: 'clear && ' + agentConfig.command + '\r'
+      });
       vscode.window.showInformationMessage(`Reloaded ${agentConfig.title} agent.`);
     } catch (sendError) {
       vscode.window.showWarningMessage('Terminal may have been closed. Please open a new agent terminal.');

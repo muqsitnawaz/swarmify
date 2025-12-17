@@ -23,37 +23,26 @@ User setting `workbench.editor.openPositioning` controls default behavior but ca
 
 Agents run as detached processes (`start_new_session=True`) with file-based output. They survive MCP server restarts. See AGENTS.md for architecture.
 
-## Architecture
+## Design Principles
+
+### Short Tab Names, Rich Context Elsewhere
+
+Editor tabs show minimal prefixes (CC, CX, GX, CR) to maximize tab bar space. Users can set descriptive labels that appear in the status bar with expanded names (e.g., "Claude: auth feature"). The tab title never changes when labels are set.
+
+### User Labels for Agent Tabs
+
+Users can label any agent terminal to track what task it's working on. Labels are stored in memory and shown in the status bar, not the tab title. This keeps tabs scannable while providing context when needed.
+
+### Strict Agent Identification
+
+Agent terminals are identified by exact prefix match (CC, CX, etc.) or the pattern "PREFIX - label". Loose matching (checking if name contains "claude") is avoided to prevent false positives. This ensures commands like Reload only affect actual agent terminals.
 
 ### Shared Utilities (`ext/src/utils.ts`)
 
-All pure logic functions must live in `utils.ts` to ensure consistent behavior across commands. This separation provides:
+All pure logic lives in `utils.ts` for consistent behavior across commands:
 
-1. **Testability** - Pure functions can be tested with `bun test` without VS Code dependencies
-2. **Consistency** - Single source of truth for agent identification, label handling, etc.
-3. **Maintainability** - Changes propagate to all commands automatically
+- **Testability** - Pure functions tested with `bun test` without VS Code dependencies
+- **Consistency** - Single source of truth for parsing, validation, and mapping
+- **Maintainability** - Changes propagate to all commands automatically
 
-**What goes in utils.ts:**
-- Constants: `CLAUDE_TITLE`, `CODEX_TITLE`, `GEMINI_TITLE`, `CURSOR_TITLE`, `KNOWN_PREFIXES`
-- Pure parsers: `parseTerminalName()` - strict prefix matching for agent identification
-- Sanitizers: `sanitizeLabel()` - user input cleaning with word limits
-- Mappers: `getExpandedAgentName()`, `getIconFilename()`
-
-**What stays in extension.ts:**
-- VS Code API interactions (terminals, status bar, commands)
-- Functions that need `vscode.*` imports
-- Command handlers and activation logic
-
-**Pattern for new features:**
-```typescript
-// utils.ts - pure logic, testable
-export function parseTerminalName(name: string): ParsedTerminalName { ... }
-
-// extension.ts - VS Code integration
-function identifyAgentTerminal(terminal: vscode.Terminal, extensionPath: string) {
-  const parsed = parseTerminalName(terminal.name);  // use shared util
-  // ... VS Code-specific logic
-}
-```
-
-**Testing:** Run `bun test` in `ext/` directory. Tests live alongside source as `*.test.ts`.
+VS Code API interactions stay in `extension.ts`. Run `bun test` in `ext/` to verify behavior.
