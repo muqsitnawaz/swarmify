@@ -33,10 +33,9 @@ function buildSpawnDescription(): string {
 
 IMPORTANT: Avoid spawning the same agent type as yourself. If you are Claude, prefer cursor/codex/gemini instead.
 
-WAIT BEFORE CHECKING STATUS: Agents take time to execute (30+ seconds minimum). After spawning:
-- If you have other work to do, do that first
-- Do NOT immediately call status - it wastes tokens and returns nothing useful
-- Only check status after completing other work or waiting at least 30 seconds
+WAIT BEFORE CHECKING STATUS: After spawning all agents for this task, sleep for at least 2 minutes before checking status. Use: Bash(sleep 120 && echo "Done waiting on Swarm agents. Let's check status") timeout: 2m 30s
+
+Do NOT immediately call status - it wastes tokens and returns nothing useful.
 
 Agent selection (in order of preference):
 ${agentList}
@@ -139,7 +138,11 @@ Use this for polling. Returns counts and last few commands (truncated for effici
       },
       {
         name: 'read',
-        description: `Read detailed output from a specific agent. Use for debugging or when you need full context.
+        description: `Read output from a specific agent. By default returns summary-only (no events) for token efficiency.
+
+Default behavior (summary-only): Returns essential info (files changed, errors, final_message, tool breakdown) without events. Use this for most cases.
+
+Set detail_level='full' to get grouped/flattened events. This groups consecutive messages/thinking, file operations by path, and bash commands to reduce token usage by ~80% compared to raw events.
 
 Supports incremental reading via offset parameter - pass the event_count from previous read to get only new events.`,
         inputSchema: {
@@ -157,6 +160,11 @@ Supports incremental reading via offset parameter - pass the event_count from pr
               type: 'integer',
               default: 0,
               description: 'Event offset - skip this many events (use for incremental reads)',
+            },
+            detail_level: {
+              type: 'string',
+              enum: ['full'],
+              description: 'Optional: set to "full" to include grouped/flattened events. Default is summary-only (no events).',
             },
           },
           required: ['task_name', 'agent_id'],
@@ -211,7 +219,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         manager,
         args.task_name as string,
         args.agent_id as string,
-        (args.offset as number) || 0
+        (args.offset as number) || 0,
+        (args.detail_level as 'full' | undefined)
       );
     } else {
       result = { error: `Unknown tool: ${name}` };

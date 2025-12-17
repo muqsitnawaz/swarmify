@@ -1,25 +1,24 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
-import {
-  parseTerminalName,
-  sanitizeLabel,
-  getExpandedAgentName,
-  getTerminalDisplayInfo,
-  CLAUDE_TITLE
-} from './utils';
 import { BUILT_IN_AGENTS, getBuiltInDefByTitle } from './agents';
 import {
   AgentConfig,
+  buildIconPath,
   createAgentConfig,
-  getBuiltInByTitle,
-  buildIconPath
+  getBuiltInByTitle
 } from './agents.vscode';
-import * as terminals from './terminals.vscode';
+import * as claudemd from './claudemd.vscode';
+import * as git from './git.vscode';
 import { AgentSettings, hasLoginEnabled } from './settings';
 import * as settings from './settings.vscode';
-import * as git from './git.vscode';
 import * as swarm from './swarm.vscode';
-import * as claudemd from './claudemd.vscode';
+import * as terminals from './terminals.vscode';
+import {
+  CLAUDE_TITLE,
+  getExpandedAgentName,
+  getTerminalDisplayInfo,
+  parseTerminalName,
+  sanitizeLabel
+} from './utils';
 
 // Settings types are now imported from ./settings
 // Settings functions are in ./settings.vscode
@@ -143,7 +142,7 @@ function inferAgentConfigFromName(name: string, extensionPath: string): Omit<Age
 export function activate(context: vscode.ExtensionContext) {
   console.log('Cursor Agents extension is now active');
 
-  // Create status bar item for showing active terminal label
+  // Create status bar item for showing active terminal status bar label
   agentStatusBarItem = vscode.window.createStatusBarItem(
     vscode.StatusBarAlignment.Left,
     100
@@ -153,7 +152,9 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(agentStatusBarItem);
 
   // Scan existing terminals in the editor area to register any agent terminals
-  terminals.scanExisting((name) => inferAgentConfigFromName(name, context.extensionPath));
+  terminals.scanExisting((name) => inferAgentConfigFromName(name, context.extensionPath), context).catch(err => {
+    console.error('[EXTENSION] Error scanning existing terminals:', err);
+  });
 
   // Ensure CLAUDE.md has Swarm instructions if Swarm is enabled
   claudemd.ensureSwarmInstructions();
@@ -199,7 +200,7 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('agents.setTitle', () => setTitleForActiveTerminal(context.extensionPath))
+    vscode.commands.registerCommand('agents.setTitle', () => setStatusBarLabelForActiveTerminal(context))
   );
 
   context.subscriptions.push(
@@ -212,6 +213,10 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('agents.enableSwarm', () => swarm.enableSwarm(context))
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('agents.newTask', () => newTaskWithContext(context))
   );
 
   // Register built-in individual agent commands
@@ -264,7 +269,7 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.executeCommand('workbench.action.terminal.scrollToBottom');
       }
 
-      // Check for label in terminals module (manual label takes precedence over auto-generated)
+      // Check for status bar label in terminals module (manual status bar label takes precedence over auto-generated)
       const entry = terminals.getByTerminal(terminal);
       const displayLabel = entry?.label || entry?.autoLabel;
       if (displayLabel && entry?.agentConfig) {
@@ -320,8 +325,81 @@ async function openSingleAgent(context: vscode.ExtensionContext, agentConfig: Om
   });
 
   const pid = await terminal.processId;
-  terminals.register(terminal, terminalId, agentConfig, pid);
+  terminals.register(terminal, terminalId, agentConfig, pid, context);
   terminal.sendText(agentConfig.command);
+}
+
+async function newTaskWithContext(context: vscode.ExtensionContext) {
+  // 1. Copy selection to clipboard (if any)
+  await vscode.commands.executeCommand('workbench.action.terminal.copySelection');
+
+  // 2. Read clipboard
+  const clipboardText = await vscode.env.clipboard.readText();
+
+  // 3. Get user prompt
+  const userPrompt = await vscode.window.showInputBox({
+    prompt: 'Enter task for the agent',
+    placeHolder: 'What should the agent do?'
+  });
+
+  if (userPrompt === undefined) return; // User cancelled
+
+  // 4. Format message
+  let message: string;
+  if (clipboardText && clipboardText.trim()) {
+    message = `<context>\n${clipboardText.trim()}\n</context>\n\n${userPrompt}`;
+  } else {
+    message = userPrompt;
+  }
+
+  // 5. Open new Claude agent with queued message
+  const agentConfig = getBuiltInByTitle(context.extensionPath, CLAUDE_TITLE);
+  if (agentConfig) {
+    await openSingleAgentWithQueue(context, agentConfig, [message]);
+  }
+}
+
+async function openSingleAgentWithQueue(
+  context: vscode.ExtensionContext,
+  agentConfig: Omit<AgentConfig, 'count'>,
+  messages: string[]
+) {
+  const editorLocation: vscode.TerminalEditorLocationOptions = {
+    viewColumn: vscode.ViewColumn.Active,
+    preserveFocus: false
+  };
+
+  const terminalId = terminals.nextId(agentConfig.prefix);
+  const terminal = vscode.window.createTerminal({
+    iconPath: agentConfig.iconPath,
+    location: editorLocation,
+    isTransient: true,
+    name: agentConfig.title,
+    env: {
+      AGENT_TERMINAL_ID: terminalId,
+      DISABLE_AUTO_TITLE: 'true',
+      PROMPT_COMMAND: ''
+    }
+  });
+
+  const pid = await terminal.processId;
+  terminals.register(terminal, terminalId, agentConfig, pid, context);
+
+  // Queue messages
+  for (const msg of messages) {
+    terminals.queueMessage(terminal, msg);
+  }
+
+  // Send agent command
+  terminal.sendText(agentConfig.command);
+
+  // After delay, send queued messages
+  setTimeout(() => {
+    const queued = terminals.flushQueue(terminal);
+    for (const msg of queued) {
+      terminal.sendText(msg);
+    }
+  }, 2000); // 2s delay for agent to initialize
 }
 
 async function openAgentTerminals(context: vscode.ExtensionContext) {
@@ -356,7 +434,7 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
       });
 
       const pid = await terminal.processId;
-      terminals.register(terminal, terminalId, agent, pid);
+      terminals.register(terminal, terminalId, agent, pid, context);
       terminal.sendText(agent.command);
       totalCount++;
     }
@@ -372,27 +450,36 @@ function updateStatusBarForTerminal(terminal: vscode.Terminal, extensionPath: st
 
   const info = identifyAgentTerminal(terminal, extensionPath);
   if (!info.isAgent) {
-    agentStatusBarItem.hide();
+    agentStatusBarItem.text = 'Agents';
     return;
   }
 
-  const expandedName = getExpandedAgentName(info.prefix!);
-  if (info.label) {
-    agentStatusBarItem.text = `${expandedName}: ${info.label}`;
-  } else {
-    agentStatusBarItem.text = expandedName;
+  // Check for status bar label in terminals module (manual label takes precedence over auto-generated)
+  const entry = terminals.getByTerminal(terminal);
+  const displayLabel = entry?.label || entry?.autoLabel;
+  if (displayLabel && entry?.agentConfig) {
+    const expandedName = getExpandedAgentName(entry.agentConfig.title);
+    agentStatusBarItem.text = `Agents: ${expandedName} - ${displayLabel}`;
+    return;
   }
-  agentStatusBarItem.show();
+
+  // Fall back to parsing terminal name directly
+  const terminalInfo = getTerminalDisplayInfo(terminal.name);
+  if (terminalInfo.isAgent && terminalInfo.expandedName) {
+    agentStatusBarItem.text = `Agents: ${terminalInfo.expandedName}`;
+  } else {
+    agentStatusBarItem.text = 'Agents';
+  }
 }
 
-function setTitleForActiveTerminal(extensionPath: string) {
+function setStatusBarLabelForActiveTerminal(context: vscode.ExtensionContext) {
   const terminal = vscode.window.activeTerminal;
   if (!terminal) {
-    vscode.window.showInformationMessage('No active terminal to label.');
+    vscode.window.showInformationMessage('No active terminal to set status bar label.');
     return;
   }
 
-  const info = identifyAgentTerminal(terminal, extensionPath);
+  const info = identifyAgentTerminal(terminal, context.extensionPath);
   if (!info.isAgent) {
     vscode.window.showInformationMessage('This terminal is not an agent terminal.');
     return;
@@ -401,19 +488,19 @@ function setTitleForActiveTerminal(extensionPath: string) {
   const currentLabel = info.label ?? '';
 
   vscode.window.showInputBox({
-    prompt: 'Set a label for this agent',
-    placeHolder: 'Feature name or task (max 5 words)',
+    prompt: 'Set a status bar label for this agent',
+    placeHolder: 'Status bar label (max 5 words)',
     value: currentLabel
-  }).then((input) => {
+  }).then(async (input) => {
     if (input === undefined) {
       return;
     }
 
     const cleaned = sanitizeLabel(input.trim());
-    terminals.setLabel(terminal, cleaned || undefined);
+    await terminals.setLabel(terminal, cleaned || undefined, context);
 
     // Update status bar only (don't rename terminal tab)
-    updateStatusBarForTerminal(terminal, extensionPath);
+    updateStatusBarForTerminal(terminal, context.extensionPath);
   });
 }
 

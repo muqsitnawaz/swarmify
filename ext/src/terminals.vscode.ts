@@ -2,19 +2,53 @@
 // Implements API.md 2-map architecture
 
 import * as vscode from 'vscode';
-import { getTerminalDisplayInfo, parseTerminalName } from './utils';
 import { AgentConfig } from './agents.vscode';
-import { generateTerminalId, countRunningFromNames, RunningCounts } from './terminals';
+import { countRunningFromNames, generateTerminalId, RunningCounts } from './terminals';
+import { getTerminalDisplayInfo } from './utils';
 
 // Terminal entry following API.md
 export interface EditorTerminal {
   id: string;
   terminal: vscode.Terminal;
   agentConfig: Omit<AgentConfig, 'count'> | null;
-  label?: string;           // User-set label (manual via Cmd+L)
+  label?: string;           // User-set status bar label (manual via Cmd+L)
   autoLabel?: string;       // Auto-generated label (populated by LLM)
   createdAt: number;
   pid?: number;             // Shell process ID
+  messageQueue: string[];   // Queued messages to send after terminal ready
+}
+
+const STATUS_BAR_LABELS_KEY = 'agentStatusBarLabels';
+
+type StatusBarLabelsStorage = { [pid: number]: string };
+
+export function loadStatusBarLabels(context: vscode.ExtensionContext): StatusBarLabelsStorage {
+  const stored = context.globalState.get<StatusBarLabelsStorage>(STATUS_BAR_LABELS_KEY);
+  return stored || {};
+}
+
+export async function saveStatusBarLabel(
+  context: vscode.ExtensionContext,
+  pid: number,
+  label: string | undefined
+): Promise<void> {
+  const stored = loadStatusBarLabels(context);
+  if (label) {
+    stored[pid] = label;
+  } else {
+    delete stored[pid];
+  }
+  await context.globalState.update(STATUS_BAR_LABELS_KEY, stored);
+}
+
+export async function removeStatusBarLabel(
+  context: vscode.ExtensionContext,
+  pid: number | undefined
+): Promise<void> {
+  if (pid === undefined) return;
+  const stored = loadStatusBarLabels(context);
+  delete stored[pid];
+  await context.globalState.update(STATUS_BAR_LABELS_KEY, stored);
 }
 
 // Two-map architecture (API.md)
@@ -54,15 +88,26 @@ export function register(
   terminal: vscode.Terminal,
   id: string,
   agentConfig: Omit<AgentConfig, 'count'> | null,
-  pid?: number
+  pid?: number,
+  context?: vscode.ExtensionContext
 ): void {
   const entry: EditorTerminal = {
     id,
     terminal,
     agentConfig,
     createdAt: Date.now(),
-    pid
+    pid,
+    messageQueue: []
   };
+
+  if (pid !== undefined && context) {
+    const persistedLabels = loadStatusBarLabels(context);
+    const persistedLabel = persistedLabels[pid];
+    if (persistedLabel) {
+      entry.label = persistedLabel;
+    }
+  }
+
   editorTerminals.set(id, entry);
   terminalToId.set(terminal, id);
 }
@@ -75,10 +120,17 @@ export function unregister(terminal: vscode.Terminal): void {
   }
 }
 
-export function setLabel(terminal: vscode.Terminal, label: string | undefined): void {
+export async function setLabel(
+  terminal: vscode.Terminal,
+  label: string | undefined,
+  context?: vscode.ExtensionContext
+): Promise<void> {
   const entry = getByTerminal(terminal);
   if (entry) {
     entry.label = label;
+    if (entry.pid !== undefined && context) {
+      await saveStatusBarLabel(context, entry.pid, label);
+    }
   }
 }
 
@@ -89,11 +141,31 @@ export function setAutoLabel(terminal: vscode.Terminal, autoLabel: string | unde
   }
 }
 
+// Message queue management
+
+export function queueMessage(terminal: vscode.Terminal, message: string): void {
+  const entry = getByTerminal(terminal);
+  if (entry) {
+    entry.messageQueue.push(message);
+  }
+}
+
+export function flushQueue(terminal: vscode.Terminal): string[] {
+  const entry = getByTerminal(terminal);
+  if (entry) {
+    const messages = [...entry.messageQueue];
+    entry.messageQueue = [];
+    return messages;
+  }
+  return [];
+}
+
 // Lifecycle
 
-export function scanExisting(
-  inferAgentConfig: (name: string) => Omit<AgentConfig, 'count'> | null
-): number {
+export async function scanExisting(
+  inferAgentConfig: (name: string) => Omit<AgentConfig, 'count'> | null,
+  context?: vscode.ExtensionContext
+): Promise<number> {
   console.log('[TERMINALS] Scanning terminals in editor area...');
   let registeredCount = 0;
 
@@ -130,9 +202,17 @@ export function scanExisting(
 
         const agentConfig = inferAgentConfig(tab.label);
         const id = nextId(info.prefix);
-        register(terminal, id, agentConfig);
+
+        let pid: number | undefined;
+        try {
+          pid = await terminal.processId;
+        } catch (error) {
+          console.log(`[TERMINALS] Could not retrieve PID for terminal "${tab.label}"`);
+        }
+
+        register(terminal, id, agentConfig, pid, context);
         registeredCount++;
-        console.log(`[TERMINALS] Registered: id=${id}, prefix=${info.prefix}`);
+        console.log(`[TERMINALS] Registered: id=${id}, prefix=${info.prefix}, pid=${pid}`);
       }
     }
   }

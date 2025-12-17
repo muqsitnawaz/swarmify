@@ -150,7 +150,7 @@ function normalizeCursor(raw: any): any[] {
       type: 'thinking',
       agent: 'cursor',
       content: raw.text || '',
-      complete: subtype === 'complete',
+      complete: subtype === 'completed',
       timestamp: timestamp,
     }];
   } else if (eventType === 'assistant') {
@@ -208,6 +208,44 @@ function normalizeCursor(raw: any): any[] {
       agent: 'cursor',
       tool: raw.tool_name || 'unknown',
       success: raw.success !== false,
+      timestamp: timestamp,
+    }];
+  } else if (eventType === 'tool_call' && subtype === 'completed') {
+    const toolCall = raw.tool_call;
+
+    if (toolCall?.shellToolCall) {
+      const command = toolCall.shellToolCall.args?.command || '';
+      return [{
+        type: 'bash',
+        agent: 'cursor',
+        tool: 'shell',
+        command: command,
+        timestamp: timestamp,
+      }];
+    } else if (toolCall?.editToolCall) {
+      const filePath = toolCall.editToolCall.args?.path || '';
+      return [{
+        type: 'file_write',
+        agent: 'cursor',
+        tool: 'edit',
+        path: filePath,
+        timestamp: timestamp,
+      }];
+    } else if (toolCall?.readToolCall) {
+      const filePath = toolCall.readToolCall.args?.path || '';
+      return [{
+        type: 'file_read',
+        agent: 'cursor',
+        tool: 'read',
+        path: filePath,
+        timestamp: timestamp,
+      }];
+    }
+
+    return [{
+      type: 'tool_use',
+      agent: 'cursor',
+      tool: Object.keys(toolCall || {})[0] || 'unknown',
       timestamp: timestamp,
     }];
   }

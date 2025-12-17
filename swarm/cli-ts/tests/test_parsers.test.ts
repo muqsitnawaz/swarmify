@@ -131,10 +131,10 @@ describe('Cursor Parser', () => {
     expect(event.session_id).toBe('cursor-123');
   });
 
-  test('should normalize thinking complete event', () => {
+  test('should normalize thinking completed event', () => {
     const raw = {
       type: 'thinking',
-      subtype: 'complete',
+      subtype: 'completed',
       text: 'I need to implement authentication.',
     };
     const event = normalizeEvent('cursor', raw);
@@ -183,6 +183,77 @@ describe('Cursor Parser', () => {
     expect(event.type).toBe('result');
     expect(event.status).toBe('success');
     expect(event.duration_ms).toBe(5000);
+  });
+
+  test('should normalize shell tool_call completed event', () => {
+    const raw = {
+      type: 'tool_call',
+      subtype: 'completed',
+      call_id: 'tool_4c91ae03-9c12-4e34-8525-13b1ad8cc67',
+      tool_call: {
+        shellToolCall: {
+          args: {
+            command: "echo 'hello world' > /tmp/test.txt",
+            workingDirectory: '',
+            timeout: 300000,
+          },
+          result: {
+            success: {
+              exitCode: 0,
+              stdout: '',
+              stderr: '',
+            },
+          },
+        },
+      },
+    };
+    const event = normalizeEvent('cursor', raw);
+
+    expect(event.type).toBe('bash');
+    expect(event.agent).toBe('cursor');
+    expect(event.tool).toBe('shell');
+    expect(event.command).toBe("echo 'hello world' > /tmp/test.txt");
+  });
+
+  test('should normalize edit tool_call completed event', () => {
+    const raw = {
+      type: 'tool_call',
+      subtype: 'completed',
+      call_id: 'tool_c2be2308-a0e6-42c3-a8b6-8a7343fe254',
+      tool_call: {
+        editToolCall: {
+          args: {
+            path: '/tmp/test-cursor-output-123.txt',
+            streamContent: 'hello world',
+          },
+          result: {
+            rejected: { path: '', reason: '' },
+          },
+        },
+      },
+    };
+    const event = normalizeEvent('cursor', raw);
+
+    expect(event.type).toBe('file_write');
+    expect(event.agent).toBe('cursor');
+    expect(event.tool).toBe('edit');
+    expect(event.path).toBe('/tmp/test-cursor-output-123.txt');
+  });
+
+  test('should ignore tool_call started events', () => {
+    const raw = {
+      type: 'tool_call',
+      subtype: 'started',
+      call_id: 'tool_123',
+      tool_call: {
+        shellToolCall: {
+          args: { command: 'echo test' },
+        },
+      },
+    };
+    const event = normalizeEvent('cursor', raw);
+
+    expect(event.type).toBe('tool_call');
   });
 });
 

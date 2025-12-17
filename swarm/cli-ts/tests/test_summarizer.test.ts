@@ -358,4 +358,18 @@ describe('GetQuickStatus', () => {
 
     expect(status.tool_count).toBe(3);
   });
+
+  test('should extract file operations from bash commands', () => {
+    const events = [
+      { type: 'bash', command: "echo 'hello' > /tmp/test.txt", timestamp: '2024-01-01' },
+      { type: 'bash', command: 'cat /tmp/test.txt', timestamp: '2024-01-01' },
+      { type: 'bash', command: "echo 'world' >> /tmp/test.txt", timestamp: '2024-01-01' },
+    ];
+
+    const status = getQuickStatus('test-8', 'cursor', 'running', events);
+
+    expect(status.files_modified).toBeGreaterThanOrEqual(1);
+    expect(status.tool_count).toBe(3);
+    expect(status.last_commands.length).toBe(3);
+  });
 });

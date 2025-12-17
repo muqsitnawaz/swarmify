@@ -51,6 +51,9 @@ function extractFileOpsFromBash(command: string): [string[], string[]] {
   const readPatterns = [
     /sed\s+-n\s+["'][^"']+["']\s+["']?([^\s"'|;&>]+)/,
     /(?:head|tail)\s+(?:-\w+\s+)*(?:\d+\s+)?([^\s"'|;&-][^\s"'|;&]*)/,
+    // cat without output redirection (reading a file)
+    /^cat\s+(?:-[^\s]+\s+)*["']?([^\s"'|;&>]+)["']?(?:\s|$)/,
+    /\|\s*cat\s+["']?([^\s"'|;&>]+)["']?/,
   ];
 
   for (const pattern of readPatterns) {
@@ -90,6 +93,240 @@ export const PRIORITY: Record<string, string[]> = {
     'raw',
   ],
 };
+
+/**
+ * Collapse sequential events of the same type into summary entries.
+ * Returns a cleaner list of events suitable for output.
+ */
+export function collapseEvents(events: any[], maxEvents: number = 20): any[] {
+  if (events.length === 0) return [];
+
+  const collapsed: any[] = [];
+  let i = 0;
+
+  while (i < events.length) {
+    const event = events[i];
+    const eventType = event.type || 'unknown';
+
+    // For thinking events, collapse sequential ones
+    if (eventType === 'thinking') {
+      let count = 1;
+      let lastContent = event.content || '';
+      let j = i + 1;
+
+      while (j < events.length && events[j].type === 'thinking') {
+        count++;
+        if (events[j].content) {
+          lastContent = events[j].content;
+        }
+        j++;
+      }
+
+      if (count > 1) {
+        collapsed.push({
+          type: 'thinking_summary',
+          count: count,
+          last_content: lastContent.length > 200 ? lastContent.slice(-200) : lastContent,
+          timestamp: event.timestamp,
+        });
+      } else if (event.content) {
+        collapsed.push(event);
+      }
+      i = j;
+      continue;
+    }
+
+    // For message events, keep the last content
+    if (eventType === 'message') {
+      collapsed.push({
+        type: 'message',
+        content: event.content?.length > 500 ? event.content.slice(-500) : event.content,
+        complete: event.complete,
+        timestamp: event.timestamp,
+      });
+      i++;
+      continue;
+    }
+
+    // Keep tool events as-is but truncate large content
+    if (['bash', 'file_write', 'file_read', 'file_create', 'file_delete', 'tool_use'].includes(eventType)) {
+      const cleaned = { ...event };
+      if (cleaned.command && cleaned.command.length > 200) {
+        cleaned.command = cleaned.command.slice(0, 200) + '...';
+      }
+      collapsed.push(cleaned);
+      i++;
+      continue;
+    }
+
+    // Keep errors and results
+    if (['error', 'result'].includes(eventType)) {
+      collapsed.push(event);
+      i++;
+      continue;
+    }
+
+    // Skip other event types
+    i++;
+  }
+
+  // Return only the last N events
+  if (collapsed.length > maxEvents) {
+    return collapsed.slice(-maxEvents);
+  }
+
+  return collapsed;
+}
+
+/**
+ * Get a breakdown of tool calls by type.
+ */
+export function getToolBreakdown(events: any[]): Record<string, number> {
+  const breakdown: Record<string, number> = {};
+
+  for (const event of events) {
+    const eventType = event.type || '';
+
+    if (eventType === 'bash') {
+      breakdown['bash'] = (breakdown['bash'] || 0) + 1;
+    } else if (eventType === 'file_write') {
+      breakdown['file_write'] = (breakdown['file_write'] || 0) + 1;
+    } else if (eventType === 'file_read') {
+      breakdown['file_read'] = (breakdown['file_read'] || 0) + 1;
+    } else if (eventType === 'file_create') {
+      breakdown['file_create'] = (breakdown['file_create'] || 0) + 1;
+    } else if (eventType === 'file_delete') {
+      breakdown['file_delete'] = (breakdown['file_delete'] || 0) + 1;
+    } else if (eventType === 'tool_use') {
+      const tool = event.tool || 'unknown';
+      breakdown[tool] = (breakdown[tool] || 0) + 1;
+    }
+  }
+
+  return breakdown;
+}
+
+export function groupAndFlattenEvents(events: any[]): any[] {
+  if (events.length === 0) return [];
+
+  const grouped: any[] = [];
+  let i = 0;
+
+  while (i < events.length) {
+    const event = events[i];
+    const eventType = event.type || 'unknown';
+
+    if (eventType === 'message' || eventType === 'thinking') {
+      let count = 1;
+      let combinedContent = event.content || '';
+      let j = i + 1;
+
+      while (j < events.length && events[j].type === eventType) {
+        count++;
+        if (events[j].content) {
+          combinedContent += (combinedContent ? '\n' : '') + events[j].content;
+        }
+        j++;
+      }
+
+      const flattened: any = {
+        type: eventType,
+        content: combinedContent.length > 1000 ? combinedContent.slice(-1000) : combinedContent,
+      };
+      if (count > 1) {
+        flattened.count = count;
+      }
+      grouped.push(flattened);
+      i = j;
+      continue;
+    }
+
+    if (['file_write', 'file_create', 'file_read', 'file_delete'].includes(eventType)) {
+      const path = event.path || '';
+      if (!path) {
+        i++;
+        continue;
+      }
+
+      const pathGroup: any = {
+        type: eventType,
+        path: path,
+        count: 1,
+      };
+
+      let j = i + 1;
+      while (j < events.length && events[j].type === eventType && events[j].path === path) {
+        pathGroup.count++;
+        j++;
+      }
+
+      grouped.push(pathGroup);
+      i = j;
+      continue;
+    }
+
+    if (eventType === 'bash') {
+      const command = event.command || '';
+      if (!command) {
+        i++;
+        continue;
+      }
+
+      const bashGroup: any = {
+        type: 'bash',
+        commands: [command],
+        count: 1,
+      };
+
+      let j = i + 1;
+      while (j < events.length && events[j].type === 'bash') {
+        bashGroup.commands.push(events[j].command || '');
+        bashGroup.count++;
+        j++;
+      }
+
+      if (bashGroup.commands.length > 5) {
+        bashGroup.commands = bashGroup.commands.slice(-5);
+        bashGroup.truncated = bashGroup.count - 5;
+      }
+
+      grouped.push(bashGroup);
+      i = j;
+      continue;
+    }
+
+    if (eventType === 'tool_use') {
+      const flattened: any = {
+        type: 'tool_use',
+        tool: event.tool || 'unknown',
+      };
+      if (event.name) flattened.name = event.name;
+      if (event.input) {
+        const inputStr = typeof event.input === 'string' ? event.input : JSON.stringify(event.input);
+        flattened.input = inputStr.length > 200 ? inputStr.slice(0, 200) + '...' : inputStr;
+      }
+      grouped.push(flattened);
+      i++;
+      continue;
+    }
+
+    if (['error', 'result'].includes(eventType)) {
+      const flattened: any = {
+        type: eventType,
+      };
+      if (event.message) flattened.message = event.message;
+      if (event.content) flattened.content = event.content;
+      if (event.status) flattened.status = event.status;
+      grouped.push(flattened);
+      i++;
+      continue;
+    }
+
+    i++;
+  }
+
+  return grouped;
+}
 
 export class AgentSummary {
   agentId: string;
@@ -402,8 +639,8 @@ export function getQuickStatus(
   status: string,
   events: any[]
 ): QuickStatus {
-  let filesCreated = 0;
-  let filesModified = 0;
+  const filesCreatedSet = new Set<string>();
+  const filesModifiedSet = new Set<string>();
   let toolCount = 0;
   let hasErrors = false;
   const commands: string[] = [];
@@ -412,16 +649,26 @@ export function getQuickStatus(
     const eventType = event.type || '';
 
     if (eventType === 'file_create') {
-      filesCreated++;
+      const path = event.path || '';
+      if (path) {
+        filesCreatedSet.add(path);
+      }
       toolCount++;
     } else if (eventType === 'file_write') {
-      filesModified++;
+      const path = event.path || '';
+      if (path) {
+        filesModifiedSet.add(path);
+      }
       toolCount++;
     } else if (eventType === 'bash') {
       toolCount++;
       const cmd = event.command || '';
       if (cmd) {
         commands.push(cmd.length > 100 ? cmd.substring(0, 97) + '...' : cmd);
+        const [filesRead, filesWritten] = extractFileOpsFromBash(cmd);
+        for (const path of filesWritten) {
+          filesModifiedSet.add(path);
+        }
       }
     } else if (['tool_use', 'file_read', 'file_delete'].includes(eventType)) {
       toolCount++;
@@ -434,8 +681,8 @@ export function getQuickStatus(
     agent_id: agentId,
     agent_type: agentType,
     status: status,
-    files_created: filesCreated,
-    files_modified: filesModified,
+    files_created: filesCreatedSet.size,
+    files_modified: filesModifiedSet.size,
     tool_count: toolCount,
     last_commands: commands.slice(-3),
     has_errors: hasErrors,

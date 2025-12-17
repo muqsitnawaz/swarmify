@@ -5,7 +5,7 @@
 
 import { AgentManager, AgentStatus, resolveModeFlags } from './agents.js';
 import { AgentType } from './parsers.js';
-import { summarizeEvents, getQuickStatus, PRIORITY } from './summarizer.js';
+import { summarizeEvents, getQuickStatus, PRIORITY, collapseEvents, getToolBreakdown, groupAndFlattenEvents } from './summarizer.js';
 
 export interface SpawnResult {
   task_name: string;
@@ -54,6 +54,7 @@ export interface ReadResult {
   files_deleted: string[];
   tools_used: string[];
   tool_count: number;
+  tool_breakdown: Record<string, number>;
   bash_commands: string[];
   errors: string[];
   final_message: string | null;
@@ -238,9 +239,10 @@ export async function handleRead(
   manager: AgentManager,
   taskName: string,
   agentId: string,
-  offset: number = 0
+  offset: number = 0,
+  detailLevel?: 'full'
 ): Promise<ReadResult | { error: string }> {
-  console.log(`[read] Reading output for agent ${agentId} in task "${taskName}" (offset=${offset})...`);
+  console.log(`[read] Reading output for agent ${agentId} in task "${taskName}" (offset=${offset}, detailLevel=${detailLevel || 'summary'})...`);
 
   const agent = await manager.get(agentId);
   if (!agent) {
@@ -264,15 +266,15 @@ export async function handleRead(
     agent.duration()
   );
 
-  const criticalTypes = new Set(PRIORITY.critical || []);
-  const importantTypes = new Set(PRIORITY.important || []);
+  const toolBreakdown = getToolBreakdown(allEvents);
 
-  const filteredEvents = newEvents.filter(event => {
-    const eventType = event.type || '';
-    return criticalTypes.has(eventType) || importantTypes.has(eventType);
-  });
+  let events: any[] = [];
+  if (detailLevel === 'full') {
+    const filteredEvents = newEvents;
+    events = groupAndFlattenEvents(filteredEvents);
+  }
 
-  console.log(`[read] Agent ${agentId}: total_events=${allEvents.length}, new_events=${newEvents.length}, filtered=${filteredEvents.length}`);
+  console.log(`[read] Agent ${agentId}: total_events=${allEvents.length}, new_events=${newEvents.length}, returned_events=${events.length}`);
 
   return {
     task_name: taskName,
@@ -286,11 +288,12 @@ export async function handleRead(
     files_deleted: Array.from(summary.filesDeleted),
     tools_used: Array.from(summary.toolsUsed),
     tool_count: summary.toolCallCount,
+    tool_breakdown: toolBreakdown,
     bash_commands: summary.bashCommands.slice(-10),
     errors: summary.errors,
     final_message: summary.finalMessage,
     event_count: allEvents.length,
     offset: offset,
-    events: filteredEvents,
+    events: events,
   };
 }

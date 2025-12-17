@@ -90,6 +90,10 @@
       {
         "command": "agents.enableSwarm",
         "title": "Agents: Enable Swarm"
+      },
+      {
+        "command": "agents.newTask",
+        "title": "Agents: New Task"
       }
     ],
     "configuration": {
@@ -169,6 +173,12 @@
         "command": "agents.clear",
         "key": "ctrl+shift+c",
         "mac": "cmd+shift+c"
+      },
+      {
+        "command": "agents.newTask",
+        "key": "ctrl+shift+n",
+        "mac": "cmd+shift+n",
+        "when": "terminalEditorFocus"
       }
     ]
   },
