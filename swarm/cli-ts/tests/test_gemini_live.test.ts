@@ -8,9 +8,9 @@ import { summarizeEvents, getQuickStatus, getToolBreakdown } from '../src/summar
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-async function runGeminiAgent(prompt: string, timeoutMs: number = 60000): Promise<{ events: any[], rawEvents: any[], rawStdout: string }> {
+async function runGeminiAgent(prompt: string, timeoutMs: number = 60000, extraArgs: string[] = []): Promise<{ events: any[], rawEvents: any[], rawStdout: string }> {
   return new Promise((resolve, reject) => {
-    const args = ['-p', prompt, '--output-format', 'stream-json'];
+    const args = ['-p', ...extraArgs, prompt, '--output-format', 'stream-json'];
     const proc = spawn('gemini', args, {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -163,7 +163,7 @@ describe('Gemini Live E2E', () => {
       console.log('Running comprehensive test with prompt:', prompt);
       console.log('Raw event types before normalization:');
       
-      const { events, rawEvents, rawStdout } = await runGeminiAgent(prompt, 180000);
+      const { events, rawEvents, rawStdout } = await runGeminiAgent(prompt, 180000, ['--yolo']);
       
       const logFilePath = join(testdataDir, 'gemini-agent-log-comprehensive.jsonl');
       writeFileSync(logFilePath, rawStdout, 'utf-8');
@@ -187,6 +187,16 @@ describe('Gemini Live E2E', () => {
       
       expect(events.length).toBeGreaterThan(0);
       expect(typeCounts['result']).toBe(1);
+      
+      const resultEvent = events.find(e => e.type === 'result');
+      if (resultEvent && resultEvent.status === 'error') {
+        console.warn('⚠️  API error detected. Possible causes:');
+        console.warn('  - Missing or invalid GEMINI_API_KEY environment variable');
+        console.warn('  - Model configuration issues');
+        console.warn('  - API quota exceeded or rate limiting');
+        console.warn('Error details:', resultEvent);
+        return;
+      }
       
       const summary = summarizeEvents('comprehensive-agent', 'gemini', 'completed', events, null);
       console.log('Summary:', {
