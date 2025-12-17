@@ -65,14 +65,13 @@ async function runGeminiAgent(prompt: string, timeoutMs: number = 60000): Promis
 
 describe('Gemini Live E2E', () => {
   test('should spawn gemini and parse tool calls correctly', async () => {
-    const testFile = `/tmp/gemini-live-test-${Date.now()}.txt`;
+    const testdataDir = join(__dirname, 'testdata');
+    const testFile = join(testdataDir, `gemini-live-test-${Date.now()}.txt`);
     const prompt = `Create a file at ${testFile} with the content 'hello from live test' using echo command`;
 
     console.log('Running gemini with prompt:', prompt);
 
     const { events, rawEvents, rawStdout } = await runGeminiAgent(prompt, 120000);
-
-    const testdataDir = join(__dirname, 'testdata');
     const logFilePath = join(testdataDir, 'gemini-agent-log-simple.jsonl');
     const { writeFileSync } = await import('fs');
     writeFileSync(logFilePath, rawStdout, 'utf-8');
@@ -126,8 +125,9 @@ describe('Gemini Live E2E', () => {
   }, 120000);
 
   test('should handle comprehensive file operations', async () => {
-    const testDir = `/tmp/gemini-comprehensive-test-${Date.now()}`;
-    const testDataPath = `${testDir}/tests/testdata`;
+    const testdataDir = join(__dirname, 'testdata');
+    const testSubDir = join(testdataDir, `gemini-comprehensive-test-${Date.now()}`);
+    const testDataPath = testSubDir;
     
     const { mkdirSync, writeFileSync, readFileSync, unlinkSync, rmdirSync } = await import('fs');
     
@@ -165,7 +165,6 @@ describe('Gemini Live E2E', () => {
       
       const { events, rawEvents, rawStdout } = await runGeminiAgent(prompt, 180000);
       
-      const testdataDir = join(__dirname, 'testdata');
       const logFilePath = join(testdataDir, 'gemini-agent-log-comprehensive.jsonl');
       writeFileSync(logFilePath, rawStdout, 'utf-8');
       console.log(`Saved full stdout to: ${logFilePath}`);
@@ -212,7 +211,7 @@ describe('Gemini Live E2E', () => {
     } finally {
       try {
         const { rmSync } = await import('fs');
-        rmSync(testDir, { recursive: true, force: true });
+        rmSync(testSubDir, { recursive: true, force: true });
       } catch {
       }
     }
