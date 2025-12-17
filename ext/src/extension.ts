@@ -396,7 +396,9 @@ async function spawnWorkerAgent(
         AGENT_TERMINAL_ID: terminalId,
         ORCHESTRATION_SESSION_ID: sessionId,
         TASK_ID: task.id,
-        TASK_DESCRIPTION: task.description
+        TASK_DESCRIPTION: task.description,
+        DISABLE_AUTO_TITLE: 'true',
+        PROMPT_COMMAND: ''
       }
     });
 
@@ -412,27 +414,12 @@ async function spawnWorkerAgent(
     }
 
     terminal.sendText(agentConfig.command);
-    await setTerminalTitle(terminal, baseName, { preserveFocus: false });
 
     managedTerminals.push(terminal);
     return terminalId;
   } catch (error) {
     console.error(`Failed to spawn worker agent ${agentType}:`, error);
     return null;
-  }
-}
-
-async function setTerminalTitle(
-  terminal: vscode.Terminal,
-  title: string,
-  options?: { preserveFocus?: boolean }
-) {
-  try {
-    const preserveFocus = options?.preserveFocus ?? true;
-    terminal.show(preserveFocus);
-    await vscode.commands.executeCommand('workbench.action.terminal.renameWithArg', { name: title });
-  } catch (error) {
-    console.error(`Failed to set terminal title to ${title}`, error);
   }
 }
 
@@ -456,13 +443,14 @@ function sanitizeLabel(raw: string) {
 async function applyLabelToTerminal(
   terminal: vscode.Terminal,
   metadata: TerminalMetadata,
-  label: string,
-  options?: { preserveFocus?: boolean }
+  label: string
 ) {
   const cleaned = sanitizeLabel(label);
   const finalTitle = buildDisplayedTitle(metadata.baseName, cleaned);
   metadata.label = cleaned;
-  await setTerminalTitle(terminal, finalTitle, options);
+  // User-initiated labeling - show terminal and rename
+  terminal.show(false);
+  await vscode.commands.executeCommand('workbench.action.terminal.renameWithArg', { name: finalTitle });
 }
 
 function registerTerminalMetadata(terminal: vscode.Terminal, id: string, baseName: string) {
@@ -604,40 +592,6 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
-  context.subscriptions.push(
-    vscode.window.onDidChangeActiveTerminal(async (terminal) => {
-      if (!terminal) {
-        return;
-      }
-      const metadata = terminalMetadataByInstance.get(terminal);
-      if (!metadata) {
-        return;
-      }
-      const title = buildDisplayedTitle(metadata.baseName, metadata.label);
-      await setTerminalTitle(terminal, title);
-    })
-  );
-
-  const onDidChangeTerminalName = (vscode.window as any)
-    .onDidChangeTerminalName as vscode.Event<vscode.Terminal> | undefined;
-  if (onDidChangeTerminalName) {
-    context.subscriptions.push(
-      onDidChangeTerminalName(async (terminal: vscode.Terminal) => {
-        const metadata = terminalMetadataByInstance.get(terminal);
-        if (!metadata) {
-          return;
-        }
-        const desiredTitle = buildDisplayedTitle(metadata.baseName, metadata.label);
-        if (terminal.name === desiredTitle) {
-          return;
-        }
-        await setTerminalTitle(terminal, desiredTitle);
-      })
-    );
-  } else {
-    console.warn('onDidChangeTerminalName API unavailable; agent titles may change when shells rename themselves.');
-  }
-
   // Auto-open terminals on startup if autoStart is enabled
   const config = vscode.workspace.getConfiguration('agentTabs');
   const autoStart = config.get<boolean>('autoStart', false);
@@ -662,7 +616,9 @@ async function openSingleAgent(context: vscode.ExtensionContext, agentConfig: Ag
     isTransient: true,
     name: agentConfig.title,
     env: {
-      AGENT_TERMINAL_ID: terminalId
+      AGENT_TERMINAL_ID: terminalId,
+      DISABLE_AUTO_TITLE: 'true',
+      PROMPT_COMMAND: ''
     }
   });
 
@@ -672,7 +628,6 @@ async function openSingleAgent(context: vscode.ExtensionContext, agentConfig: Ag
 
   // Send the agent command
   terminal.sendText(agentConfig.command);
-  await setTerminalTitle(terminal, baseName, { preserveFocus: false });
 
   managedTerminals.push(terminal);
 }
@@ -699,7 +654,9 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
         isTransient: true,
         name: agent.title,
         env: {
-          AGENT_TERMINAL_ID: terminalId
+          AGENT_TERMINAL_ID: terminalId,
+          DISABLE_AUTO_TITLE: 'true',
+          PROMPT_COMMAND: ''
         }
       });
 
@@ -709,7 +666,6 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
 
       // Send the agent command
       terminal.sendText(agent.command);
-      await setTerminalTitle(terminal, baseName, { preserveFocus: false });
 
       managedTerminals.push(terminal);
       totalCount++;
@@ -860,12 +816,13 @@ async function setTitleForActiveTerminal() {
 
   // For managed terminals, update metadata and use full title format
   if (metadata) {
-    await applyLabelToTerminal(terminal, metadata, sanitizeLabel(cleaned), { preserveFocus: false });
+    await applyLabelToTerminal(terminal, metadata, sanitizeLabel(cleaned));
   } else {
     // For unmanaged terminals, try to detect agent type from terminal name
     const prefix = detectAgentTypeFromTerminalName(terminal.name);
     const title = prefix ? `${prefix} - ${sanitizeLabel(cleaned)}` : cleaned;
-    await setTerminalTitle(terminal, title, { preserveFocus: false });
+    terminal.show(false);
+    await vscode.commands.executeCommand('workbench.action.terminal.renameWithArg', { name: title });
   }
 }
 
