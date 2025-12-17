@@ -1,4 +1,4 @@
-import { spawn, ChildProcess } from 'child_process';
+import { spawn, execSync, ChildProcess } from 'child_process';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
@@ -82,7 +82,6 @@ export function checkCliAvailable(agentType: AgentType): [boolean, string | null
   }
 
   const executable = cmdTemplate[0];
-  const { execSync } = require('child_process');
   try {
     const whichPath = execSync(`which ${executable}`, { encoding: 'utf-8' }).trim();
     return [true, whichPath];
@@ -309,8 +308,8 @@ export class AgentProcess {
         baseDir
       );
       return agent;
-    } catch (err) {
-      console.error(`Error loading agent ${agentId}:`, err);
+    } catch {
+      // Skip agents with corrupt/legacy data
       return null;
     }
   }

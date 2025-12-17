@@ -10,6 +10,35 @@ import { handleSpawn, handleStatus, handleStop, handleRead } from './api.js';
 
 const manager = new AgentManager(50, 10, null, null, null, 7);
 
+// Agent preference order (configurable via AGENT_SWARM_PREFERENCE env var)
+const defaultPreference: AgentType[] = ['cursor', 'codex', 'claude', 'gemini'];
+const agentPreference: AgentType[] = process.env.AGENT_SWARM_PREFERENCE
+  ? (process.env.AGENT_SWARM_PREFERENCE.split(',').map(s => s.trim()) as AgentType[])
+  : defaultPreference;
+
+// Agent descriptions for dynamic tool description
+const agentDescriptions: Record<AgentType, string> = {
+  cursor: 'Debugging, bug fixes, tracing through codebases.',
+  codex: 'Fast, cheap. Self-contained features, clean implementations.',
+  claude: 'Maximum capability, research, exploration.',
+  gemini: 'Complex multi-system features, architectural changes.',
+};
+
+function buildSpawnDescription(): string {
+  const agentList = agentPreference
+    .map((agent, i) => `${i + 1}. ${agent} - ${agentDescriptions[agent]}`)
+    .join('\n');
+
+  return `Spawn an AI coding agent to work on a task.
+
+IMPORTANT: Avoid spawning the same agent type as yourself. If you are Claude, prefer cursor/codex/gemini instead.
+
+Agent selection (in order of preference):
+${agentList}
+
+Choose automatically based on task requirements - don't ask the user.`;
+}
+
 const server = new Server(
   {
     name: 'agent-swarm',
