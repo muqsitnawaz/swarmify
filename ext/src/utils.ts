@@ -116,3 +116,40 @@ export function getTerminalDisplayInfo(terminalName: string): TerminalDisplayInf
     iconFilename: getIconFilename(parsed.prefix)
   };
 }
+
+export interface McpServerConfig {
+  type: string;
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+}
+
+export interface McpConfig {
+  mcpServers?: Record<string, McpServerConfig>;
+}
+
+/**
+ * Merge a new MCP server into an existing config.
+ * Preserves existing servers while adding/updating the specified one.
+ */
+export function mergeMcpConfig(
+  existing: McpConfig | null,
+  serverName: string,
+  serverConfig: McpServerConfig
+): McpConfig {
+  const config: McpConfig = existing ? { ...existing } : {};
+  config.mcpServers = { ...(config.mcpServers || {}), [serverName]: serverConfig };
+  return config;
+}
+
+/**
+ * Create the swarm MCP server config for a given cli-ts path.
+ */
+export function createSwarmServerConfig(cliTsIndexPath: string): McpServerConfig {
+  return {
+    type: 'stdio',
+    command: 'node',
+    args: [cliTsIndexPath],
+    env: {}
+  };
+}

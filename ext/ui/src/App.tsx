@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Button } from './components/ui/button'
 import { Checkbox } from './components/ui/checkbox'
 import { Input } from './components/ui/input'
-import { Trash2, Plus } from 'lucide-react'
+import { Trash2, Plus, X } from 'lucide-react'
 
 interface BuiltInAgentSettings {
   login: boolean
@@ -69,6 +69,7 @@ export default function App() {
   const [runningCounts, setRunningCounts] = useState<RunningCounts>({
     claude: 0, codex: 0, gemini: 0, cursor: 0, custom: {}
   })
+  const [isAdding, setIsAdding] = useState(false)
   const [newName, setNewName] = useState('')
   const [newCommand, setNewCommand] = useState('')
   const [nameError, setNameError] = useState('')
@@ -116,7 +117,7 @@ export default function App() {
 
   const validateName = (name: string): string => {
     const upper = name.toUpperCase()
-    if (upper.length === 0) return ''
+    if (upper.length === 0) return 'Name required'
     if (upper.length > 2) return 'Max 2 characters'
     if (!/^[A-Z]+$/.test(upper)) return 'Letters only'
     if (RESERVED_NAMES.includes(upper)) return 'Name already used'
@@ -130,17 +131,43 @@ export default function App() {
     setNameError(validateName(upper))
   }
 
-  const addCustomAgent = () => {
-    if (!settings || !newName || !newCommand || nameError) return
+  const handleAddClick = () => {
+    setIsAdding(true)
+    setNewName('')
+    setNewCommand('')
+    setNameError('')
+  }
+
+  const handleCancelAdd = () => {
+    setIsAdding(false)
+    setNewName('')
+    setNewCommand('')
+    setNameError('')
+  }
+
+  const handleSave = () => {
+    const error = validateName(newName)
+    if (error) {
+      setNameError(error)
+      return
+    }
+    if (!newCommand.trim()) {
+      setNameError('Command required')
+      return
+    }
+    if (!settings) return
+
     const newAgent: CustomAgentSettings = {
       name: newName.toUpperCase(),
-      command: newCommand,
+      command: newCommand.trim(),
       login: false,
       instances: 1
     }
     saveSettings({ ...settings, custom: [...settings.custom, newAgent] })
+    setIsAdding(false)
     setNewName('')
     setNewCommand('')
+    setNameError('')
   }
 
   const removeCustomAgent = (index: number) => {
@@ -155,26 +182,42 @@ export default function App() {
 
   return (
     <div className="space-y-8">
+      {/* Header */}
+      <header className="flex items-center justify-between pb-6 border-b border-[var(--border)]">
+        <div className="flex items-center gap-3">
+          <img src={icons.agents} alt="Agents" className="w-10 h-10" />
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight">Agents</h1>
+            <p className="text-sm text-[var(--muted-foreground)]">
+              Manage your AI coding agents
+            </p>
+          </div>
+        </div>
+        <span className="px-3 py-1 text-xs font-medium rounded-full bg-[var(--secondary)] text-[var(--muted-foreground)]">
+          Swarm
+        </span>
+      </header>
+
       {/* Running Now */}
       <section>
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)] mb-3">
+        <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
           Running Now
         </h2>
-        <div className="flex flex-wrap gap-4">
+        <div className="flex flex-wrap gap-3">
           {BUILT_IN_AGENTS.map(agent => (
-            <div key={agent.key} className="flex items-center gap-2 px-3 py-2 rounded border border-[var(--border)] bg-[var(--muted)]">
+            <div key={agent.key} className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-[var(--muted)]">
               <img src={agent.icon} alt={agent.name} className="w-5 h-5" />
-              <span className="text-sm">{agent.name}</span>
-              <span className="text-lg font-semibold text-[var(--primary)]">
+              <span className="text-sm font-medium">{agent.name}</span>
+              <span className="text-base font-semibold text-[var(--foreground)] tabular-nums">
                 {runningCounts[agent.key as keyof typeof runningCounts] as number}
               </span>
             </div>
           ))}
           {Object.entries(runningCounts.custom).map(([name, count]) => (
-            <div key={name} className="flex items-center gap-2 px-3 py-2 rounded border border-[var(--border)] bg-[var(--muted)]">
+            <div key={name} className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-[var(--muted)]">
               <img src={icons.agents} alt={name} className="w-5 h-5" />
-              <span className="text-sm">{name}</span>
-              <span className="text-lg font-semibold text-[var(--primary)]">{count}</span>
+              <span className="text-sm font-medium">{name}</span>
+              <span className="text-base font-semibold text-[var(--foreground)] tabular-nums">{count}</span>
             </div>
           ))}
         </div>
@@ -182,15 +225,27 @@ export default function App() {
 
       {/* Agents */}
       <section>
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)] mb-3">
-          Agents
-        </h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
+            Agents
+          </h2>
+          {!isAdding ? (
+            <Button variant="secondary" size="sm" onClick={handleAddClick}>
+              <Plus className="w-4 h-4 mr-1" />
+              Add
+            </Button>
+          ) : (
+            <Button size="sm" onClick={handleSave}>
+              Save
+            </Button>
+          )}
+        </div>
         <div className="space-y-2">
           {/* Built-in agents */}
           {BUILT_IN_AGENTS.map(agent => {
             const config = settings.builtIn[agent.key as keyof AgentSettings['builtIn']]
             return (
-              <div key={agent.key} className="flex items-center gap-4 px-3 py-2 rounded border border-[var(--border)] bg-[var(--muted)]">
+              <div key={agent.key} className="flex items-center gap-4 px-4 py-3 rounded-xl bg-[var(--muted)]">
                 <img src={agent.icon} alt={agent.name} className="w-5 h-5" />
                 <span className="text-sm font-medium w-20">{agent.name}</span>
                 <div className="flex items-center gap-2">
@@ -198,7 +253,7 @@ export default function App() {
                     checked={config.login}
                     onCheckedChange={(checked) => updateBuiltIn(agent.key as keyof AgentSettings['builtIn'], 'login', !!checked)}
                   />
-                  <label className="text-sm">Login</label>
+                  <label className="text-sm text-[var(--muted-foreground)]">Login</label>
                 </div>
                 {config.login && (
                   <div className="flex items-center gap-2 ml-4">
@@ -208,7 +263,7 @@ export default function App() {
                       max={10}
                       value={config.instances}
                       onChange={(e) => updateBuiltIn(agent.key as keyof AgentSettings['builtIn'], 'instances', Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
-                      className="w-16"
+                      className="w-14 text-center"
                     />
                     <span className="text-xs text-[var(--muted-foreground)]">
                       {config.instances === 1 ? 'instance' : 'instances'}
@@ -220,11 +275,8 @@ export default function App() {
           })}
 
           {/* Custom agents */}
-          {settings.custom.length > 0 && (
-            <div className="border-t border-[var(--border)] my-4" />
-          )}
           {settings.custom.map((agent, index) => (
-            <div key={index} className="flex items-center gap-4 px-3 py-2 rounded border border-[var(--border)] bg-[var(--muted)]">
+            <div key={index} className="flex items-center gap-4 px-4 py-3 rounded-xl bg-[var(--muted)]">
               <img src={icons.agents} alt={agent.name} className="w-5 h-5" />
               <span className="text-sm font-medium w-20">{agent.name}</span>
               <div className="flex items-center gap-2">
@@ -232,7 +284,7 @@ export default function App() {
                   checked={agent.login}
                   onCheckedChange={(checked) => updateCustom(index, 'login', !!checked)}
                 />
-                <label className="text-sm">Login</label>
+                <label className="text-sm text-[var(--muted-foreground)]">Login</label>
               </div>
               {agent.login && (
                 <div className="flex items-center gap-2 ml-4">
@@ -242,7 +294,7 @@ export default function App() {
                     max={10}
                     value={agent.instances}
                     onChange={(e) => updateCustom(index, 'instances', Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
-                    className="w-16"
+                    className="w-14 text-center"
                   />
                   <span className="text-xs text-[var(--muted-foreground)]">
                     {agent.instances === 1 ? 'instance' : 'instances'}
@@ -251,37 +303,37 @@ export default function App() {
               )}
               <div className="flex-1" />
               <Button variant="ghost" size="icon" onClick={() => removeCustomAgent(index)}>
-                <Trash2 className="w-4 h-4" />
+                <Trash2 className="w-4 h-4 text-[var(--muted-foreground)]" />
               </Button>
             </div>
           ))}
 
-          {/* Add custom agent */}
-          <div className="flex items-center gap-2 mt-4">
-            <Input
-              placeholder="XX"
-              value={newName}
-              onChange={(e) => handleNameChange(e.target.value)}
-              className="w-16 uppercase"
-              maxLength={2}
-            />
-            <Input
-              placeholder="command"
-              value={newCommand}
-              onChange={(e) => setNewCommand(e.target.value)}
-              className="flex-1"
-            />
-            <Button
-              onClick={addCustomAgent}
-              disabled={!newName || !newCommand || !!nameError}
-              size="sm"
-            >
-              <Plus className="w-4 h-4 mr-1" />
-              Add
-            </Button>
-          </div>
-          {nameError && (
-            <p className="text-xs text-red-500 mt-1">{nameError}</p>
+          {/* Inline add row */}
+          {isAdding && (
+            <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-[var(--muted)] border border-[var(--primary)]">
+              <img src={icons.agents} alt="New agent" className="w-5 h-5 opacity-50" />
+              <Input
+                placeholder="XX"
+                value={newName}
+                onChange={(e) => handleNameChange(e.target.value)}
+                className="w-16 uppercase text-center"
+                maxLength={2}
+                autoFocus
+              />
+              <Input
+                placeholder="command (e.g. my-agent-cli)"
+                value={newCommand}
+                onChange={(e) => setNewCommand(e.target.value)}
+                className="flex-1"
+                onKeyDown={(e) => e.key === 'Enter' && handleSave()}
+              />
+              <Button variant="ghost" size="icon" onClick={handleCancelAdd}>
+                <X className="w-4 h-4 text-[var(--muted-foreground)]" />
+              </Button>
+            </div>
+          )}
+          {isAdding && nameError && (
+            <p className="text-xs text-red-400 ml-4">{nameError}</p>
           )}
         </div>
       </section>
