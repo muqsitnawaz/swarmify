@@ -101,6 +101,9 @@ describe('Codex Live E2E', () => {
     expect(typeCounts['result']).toBe(1);
 
     const summary = summarizeEvents('live-agent', 'codex', 'completed', events, null);
+    const summaryFilePath = join(testdataDir, 'codex-summary-simple.jsonl');
+    writeFileSync(summaryFilePath, JSON.stringify(summary.toDict('detailed')) + '\n', 'utf-8');
+    console.log(`Saved summary to: ${summaryFilePath}`);
     console.log('Summary:', {
       toolCallCount: summary.toolCallCount,
       bashCommands: summary.bashCommands,
@@ -203,6 +206,9 @@ describe('Codex Live E2E', () => {
       expect(typeCounts['result']).toBe(1);
       
       const summary = summarizeEvents('comprehensive-agent', 'codex', 'completed', events, null);
+      const summaryFilePath = join(testdataDir, 'codex-summary-comprehensive.jsonl');
+      writeFileSync(summaryFilePath, JSON.stringify(summary.toDict('detailed')) + '\n', 'utf-8');
+      console.log(`Saved summary to: ${summaryFilePath}`);
       console.log('Summary:', {
         toolCallCount: summary.toolCallCount,
         filesCreated: Array.from(summary.filesCreated),

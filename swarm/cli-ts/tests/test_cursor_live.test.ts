@@ -90,6 +90,11 @@ describe('Cursor Live E2E', () => {
     expect(typeCounts['result']).toBe(1);
 
     const summary = summarizeEvents('live-agent', 'cursor', 'completed', events, null);
+    const testdataDir = join(__dirname, 'testdata');
+    const summaryFilePath = join(testdataDir, 'cursor-summary-simple.jsonl');
+    const { writeFileSync } = await import('fs');
+    writeFileSync(summaryFilePath, JSON.stringify(summary.toDict('detailed')) + '\n', 'utf-8');
+    console.log(`Saved summary to: ${summaryFilePath}`);
     console.log('Summary:', {
       toolCallCount: summary.toolCallCount,
       bashCommands: summary.bashCommands,
@@ -186,6 +191,9 @@ describe('Cursor Live E2E', () => {
       expect(typeCounts['result']).toBe(1);
       
       const summary = summarizeEvents('comprehensive-agent', 'cursor', 'completed', events, null);
+      const summaryFilePath = join(testdataDir, 'cursor-summary-comprehensive.jsonl');
+      writeFileSync(summaryFilePath, JSON.stringify(summary.toDict('detailed')) + '\n', 'utf-8');
+      console.log(`Saved summary to: ${summaryFilePath}`);
       console.log('Summary:', {
         toolCallCount: summary.toolCallCount,
         filesCreated: Array.from(summary.filesCreated),
