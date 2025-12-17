@@ -2,7 +2,7 @@ import { describe, test, expect } from 'bun:test';
 import { normalizeEvent } from '../src/parsers.js';
 
 describe('Codex Parser', () => {
-  it('should normalize thread.started event', () => {
+  test('should normalize thread.started event', () => {
     const raw = { type: 'thread.started', thread_id: 'test-123' };
     const event = normalizeEvent('codex', raw);
 
@@ -12,7 +12,7 @@ describe('Codex Parser', () => {
     expect(event.timestamp).toBeDefined();
   });
 
-  it('should normalize turn.started event', () => {
+  test('should normalize turn.started event', () => {
     const raw = { type: 'turn.started' };
     const event = normalizeEvent('codex', raw);
 
@@ -20,7 +20,7 @@ describe('Codex Parser', () => {
     expect(event.agent).toBe('codex');
   });
 
-  it('should normalize agent_message item', () => {
+  test('should normalize agent_message item', () => {
     const raw = {
       type: 'item.completed',
       item: {
@@ -36,7 +36,7 @@ describe('Codex Parser', () => {
     expect(event.complete).toBe(true);
   });
 
-  it('should normalize file write tool call', () => {
+  test('should normalize file write tool call', () => {
     const raw = {
       type: 'item.completed',
       item: {
@@ -53,7 +53,7 @@ describe('Codex Parser', () => {
     expect(event.path).toBe('src/auth.ts');
   });
 
-  it('should normalize file read tool call', () => {
+  test('should normalize file read tool call', () => {
     const raw = {
       type: 'item.completed',
       item: {
@@ -68,7 +68,7 @@ describe('Codex Parser', () => {
     expect(event.path).toBe('src/auth.ts');
   });
 
-  it('should normalize bash tool call', () => {
+  test('should normalize bash tool call', () => {
     const raw = {
       type: 'item.completed',
       item: {
@@ -84,7 +84,7 @@ describe('Codex Parser', () => {
     expect(event.command).toBe('npm install');
   });
 
-  it('should normalize turn.completed event', () => {
+  test('should normalize turn.completed event', () => {
     const raw = {
       type: 'turn.completed',
       usage: { input_tokens: 100, output_tokens: 50 },
@@ -98,7 +98,7 @@ describe('Codex Parser', () => {
     expect(event.usage.output_tokens).toBe(50);
   });
 
-  it('should normalize unknown tool call', () => {
+  test('should normalize unknown tool call', () => {
     const raw = {
       type: 'item.completed',
       item: {
@@ -116,7 +116,7 @@ describe('Codex Parser', () => {
 });
 
 describe('Cursor Parser', () => {
-  it('should normalize system/init event', () => {
+  test('should normalize system/init event', () => {
     const raw = {
       type: 'system',
       subtype: 'init',
@@ -131,7 +131,7 @@ describe('Cursor Parser', () => {
     expect(event.session_id).toBe('cursor-123');
   });
 
-  it('should normalize thinking complete event', () => {
+  test('should normalize thinking complete event', () => {
     const raw = {
       type: 'thinking',
       subtype: 'complete',
@@ -145,7 +145,7 @@ describe('Cursor Parser', () => {
     expect(event.complete).toBe(true);
   });
 
-  it('should normalize thinking delta event', () => {
+  test('should normalize thinking delta event', () => {
     const raw = {
       type: 'thinking',
       subtype: 'delta',
@@ -157,7 +157,7 @@ describe('Cursor Parser', () => {
     expect(event.complete).toBe(false);
   });
 
-  it('should normalize assistant message', () => {
+  test('should normalize assistant message', () => {
     const raw = {
       type: 'assistant',
       message: {
@@ -172,7 +172,7 @@ describe('Cursor Parser', () => {
     expect(events.complete).toBe(true);
   });
 
-  it('should normalize result success event', () => {
+  test('should normalize result success event', () => {
     const raw = {
       type: 'result',
       subtype: 'success',
@@ -187,7 +187,7 @@ describe('Cursor Parser', () => {
 });
 
 describe('Gemini Parser', () => {
-  it('should normalize init event', () => {
+  test('should normalize init event', () => {
     const raw = {
       type: 'init',
       timestamp: '2024-01-01T00:00:00Z',
@@ -202,7 +202,7 @@ describe('Gemini Parser', () => {
     expect(event.model).toBe('gemini-pro');
   });
 
-  it('should normalize complete message', () => {
+  test('should normalize complete message', () => {
     const raw = {
       type: 'message',
       role: 'assistant',
@@ -217,7 +217,7 @@ describe('Gemini Parser', () => {
     expect(event.complete).toBe(true);
   });
 
-  it('should normalize delta message', () => {
+  test('should normalize delta message', () => {
     const raw = {
       type: 'message',
       role: 'assistant',
@@ -230,7 +230,7 @@ describe('Gemini Parser', () => {
     expect(event.complete).toBe(false);
   });
 
-  it('should normalize file write tool call', () => {
+  test('should normalize file write tool call', () => {
     const raw = {
       type: 'tool_call',
       name: 'write_file',
@@ -242,7 +242,7 @@ describe('Gemini Parser', () => {
     expect(event.path).toBe('src/test.ts');
   });
 
-  it('should normalize bash tool call', () => {
+  test('should normalize bash tool call', () => {
     const raw = {
       type: 'tool_call',
       name: 'run_command',
@@ -256,7 +256,7 @@ describe('Gemini Parser', () => {
 });
 
 describe('Claude Parser', () => {
-  it('should use Cursor format', () => {
+  test('should use Cursor format', () => {
     const raw = {
       type: 'system',
       subtype: 'init',

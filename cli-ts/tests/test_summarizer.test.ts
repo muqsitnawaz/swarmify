@@ -8,7 +8,7 @@ import {
 } from '../src/summarizer.js';
 
 describe('SummarizeEvents', () => {
-  it('should handle empty events', () => {
+  test('should handle empty events', () => {
     const summary = summarizeEvents('test-1', 'codex', 'running', [], null);
 
     expect(summary.agentId).toBe('test-1');
@@ -19,7 +19,7 @@ describe('SummarizeEvents', () => {
     expect(summary.toolCallCount).toBe(0);
   });
 
-  it('should extract file operations', () => {
+  test('should extract file operations', () => {
     const events = [
       { type: 'file_write', path: 'src/auth.ts', timestamp: '2024-01-01' },
       { type: 'file_create', path: 'src/types.ts', timestamp: '2024-01-01' },
@@ -36,7 +36,7 @@ describe('SummarizeEvents', () => {
     expect(summary.toolCallCount).toBe(4);
   });
 
-  it('should track tool usage', () => {
+  test('should track tool usage', () => {
     const events = [
       { type: 'tool_use', tool: 'write_file', timestamp: '2024-01-01' },
       { type: 'tool_use', tool: 'read_file', timestamp: '2024-01-01' },
@@ -55,7 +55,7 @@ describe('SummarizeEvents', () => {
     expect(summary.bashCommands).toContain('npm test');
   });
 
-  it('should extract errors', () => {
+  test('should extract errors', () => {
     const events = [
       { type: 'error', message: 'File not found', timestamp: '2024-01-01' },
       {
@@ -71,7 +71,7 @@ describe('SummarizeEvents', () => {
     expect(summary.errors.length).toBeGreaterThan(0);
   });
 
-  it('should extract final message', () => {
+  test('should extract final message', () => {
     const events = [
       {
         type: 'message',
@@ -92,7 +92,7 @@ describe('SummarizeEvents', () => {
     expect(summary.finalMessage).toBe('Task completed successfully!');
   });
 
-  it('should extract duration from result event', () => {
+  test('should extract duration from result event', () => {
     const events = [
       {
         type: 'result',
@@ -107,7 +107,7 @@ describe('SummarizeEvents', () => {
     expect(summary.duration).toBe('7.5 seconds');
   });
 
-  it('should track event count', () => {
+  test('should track event count', () => {
     const events = Array(10).fill({ type: 'init', timestamp: '2024-01-01' });
 
     const summary = summarizeEvents('test-7', 'codex', 'running', events);
@@ -117,7 +117,7 @@ describe('SummarizeEvents', () => {
 });
 
 describe('SummaryToDict', () => {
-  it('should serialize brief detail level correctly', () => {
+  test('should serialize brief detail level correctly', () => {
     const events = [
       { type: 'file_write', path: 'src/auth.ts', timestamp: '2024-01-01' },
       { type: 'file_write', path: 'src/types.ts', timestamp: '2024-01-01' },
@@ -140,7 +140,7 @@ describe('SummaryToDict', () => {
     expect(result.last_activity).toBe('file_write');
   });
 
-  it('should serialize standard detail level correctly', () => {
+  test('should serialize standard detail level correctly', () => {
     const events = [
       { type: 'file_write', path: 'src/auth.ts', timestamp: '2024-01-01' },
       { type: 'tool_use', tool: 'write_file', timestamp: '2024-01-01' },
@@ -164,7 +164,7 @@ describe('SummaryToDict', () => {
     expect(result.final_message).toBeDefined();
   });
 
-  it('should serialize detailed detail level correctly', () => {
+  test('should serialize detailed detail level correctly', () => {
     const events = [
       { type: 'file_write', path: 'src/auth.ts', timestamp: '2024-01-01' },
       { type: 'file_read', path: 'src/config.ts', timestamp: '2024-01-01' },
@@ -187,7 +187,7 @@ describe('SummaryToDict', () => {
 });
 
 describe('GetDelta', () => {
-  it('should return no changes when no new events', () => {
+  test('should return no changes when no new events', () => {
     const events = [
       { type: 'init', timestamp: '2024-01-01' },
       { type: 'file_write', path: 'src/auth.ts', timestamp: '2024-01-01' },
@@ -200,7 +200,7 @@ describe('GetDelta', () => {
     expect(delta.since_event).toBe(2);
   });
 
-  it('should return new events in delta', () => {
+  test('should return new events in delta', () => {
     const events = [
       { type: 'init', timestamp: '2024-01-01' },
       { type: 'file_write', path: 'src/auth.ts', timestamp: '2024-01-01' },
@@ -217,7 +217,7 @@ describe('GetDelta', () => {
     expect(delta.new_tool_calls.length).toBeGreaterThan(0);
   });
 
-  it('should include latest message in delta', () => {
+  test('should include latest message in delta', () => {
     const events = [
       { type: 'init', timestamp: '2024-01-01' },
       {
@@ -235,7 +235,7 @@ describe('GetDelta', () => {
 });
 
 describe('EventPriorityFiltering', () => {
-  it('should filter to critical events only', () => {
+  test('should filter to critical events only', () => {
     const events = [
       { type: 'init', timestamp: '2024-01-01' },
       { type: 'file_write', path: 'src/auth.ts', timestamp: '2024-01-01' },
@@ -252,7 +252,7 @@ describe('EventPriorityFiltering', () => {
     expect(filtered.some(e => e.type === 'thinking')).toBe(false);
   });
 
-  it('should filter to critical and important events', () => {
+  test('should filter to critical and important events', () => {
     const events = [
       { type: 'init', timestamp: '2024-01-01' },
       { type: 'file_write', path: 'src/auth.ts', timestamp: '2024-01-01' },
@@ -271,7 +271,7 @@ describe('EventPriorityFiltering', () => {
 });
 
 describe('GetQuickStatus', () => {
-  it('should return correct counts for empty events', () => {
+  test('should return correct counts for empty events', () => {
     const status = getQuickStatus('test-1', 'codex', 'running', []);
 
     expect(status.agent_id).toBe('test-1');
@@ -284,7 +284,7 @@ describe('GetQuickStatus', () => {
     expect(status.has_errors).toBe(false);
   });
 
-  it('should count file operations correctly', () => {
+  test('should count file operations correctly', () => {
     const events = [
       { type: 'file_create', path: 'src/new.ts', timestamp: '2024-01-01' },
       { type: 'file_create', path: 'src/another.ts', timestamp: '2024-01-01' },
@@ -298,7 +298,7 @@ describe('GetQuickStatus', () => {
     expect(status.tool_count).toBe(3);
   });
 
-  it('should track last bash commands', () => {
+  test('should track last bash commands', () => {
     const events = [
       { type: 'bash', command: 'npm install', timestamp: '2024-01-01' },
       { type: 'bash', command: 'npm test', timestamp: '2024-01-01' },
@@ -315,7 +315,7 @@ describe('GetQuickStatus', () => {
     expect(status.last_commands).not.toContain('npm install');
   });
 
-  it('should truncate long commands', () => {
+  test('should truncate long commands', () => {
     const longCommand = 'a'.repeat(150);
     const events = [
       { type: 'bash', command: longCommand, timestamp: '2024-01-01' },
@@ -327,7 +327,7 @@ describe('GetQuickStatus', () => {
     expect(status.last_commands[0].endsWith('...')).toBe(true);
   });
 
-  it('should detect errors', () => {
+  test('should detect errors', () => {
     const events = [
       { type: 'error', message: 'Something went wrong', timestamp: '2024-01-01' },
     ];
@@ -337,7 +337,7 @@ describe('GetQuickStatus', () => {
     expect(status.has_errors).toBe(true);
   });
 
-  it('should detect errors from result events', () => {
+  test('should detect errors from result events', () => {
     const events = [
       { type: 'result', status: 'error', message: 'Task failed', timestamp: '2024-01-01' },
     ];
@@ -347,7 +347,7 @@ describe('GetQuickStatus', () => {
     expect(status.has_errors).toBe(true);
   });
 
-  it('should count other tool uses', () => {
+  test('should count other tool uses', () => {
     const events = [
       { type: 'tool_use', tool: 'read_file', timestamp: '2024-01-01' },
       { type: 'file_read', path: 'src/config.ts', timestamp: '2024-01-01' },

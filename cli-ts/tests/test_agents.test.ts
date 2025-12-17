@@ -13,19 +13,19 @@ import {
 const TESTDATA_DIR = path.join(__dirname, 'testdata');
 
 describe('Mode Resolution', () => {
-  it('should use default mode when no flags provided', () => {
+  test('should use default mode when no flags provided', () => {
     const [mode, yolo] = resolveModeFlags(null, null, 'yolo');
     expect(mode).toBe('yolo');
     expect(yolo).toBe(true);
   });
 
-  it('should reject non-boolean yolo values', () => {
+  test('should reject non-boolean yolo values', () => {
     expect(() => {
       resolveModeFlags(null, 'yes' as any, 'safe');
     }).toThrow('boolean');
   });
 
-  it('should reject invalid default modes', () => {
+  test('should reject invalid default modes', () => {
     expect(() => {
       resolveModeFlags(null, null, 'fast' as any);
     }).toThrow('default mode');
@@ -33,7 +33,7 @@ describe('Mode Resolution', () => {
 });
 
 describe('AgentProcess', () => {
-  it('should serialize to dict correctly', () => {
+  test('should serialize to dict correctly', () => {
     const agent = new AgentProcess(
       'test-1',
       'my-task',
@@ -59,7 +59,7 @@ describe('AgentProcess', () => {
     expect(result.duration).toBeDefined();
   });
 
-  it('should reflect yolo mode in serialization', () => {
+  test('should reflect yolo mode in serialization', () => {
     const agent = new AgentProcess(
       'test-yolo',
       'my-task',
@@ -76,7 +76,7 @@ describe('AgentProcess', () => {
     expect(result.mode).toBe('yolo');
   });
 
-  it('should calculate duration for completed agent', () => {
+  test('should calculate duration for completed agent', () => {
     const started = new Date('2024-01-01T00:00:00Z');
     const completed = new Date('2024-01-01T00:00:05Z');
 
@@ -97,7 +97,7 @@ describe('AgentProcess', () => {
     expect(duration).toBe('5 seconds');
   });
 
-  it('should calculate duration for running agent', () => {
+  test('should calculate duration for running agent', () => {
     const started = new Date();
 
     const agent = new AgentProcess(
@@ -119,21 +119,21 @@ describe('AgentProcess', () => {
 });
 
 describe('AgentCommands', () => {
-  it('should have commands for all agent types', () => {
+  test('should have commands for all agent types', () => {
     expect('codex' in AGENT_COMMANDS).toBe(true);
     expect('cursor' in AGENT_COMMANDS).toBe(true);
     expect('gemini' in AGENT_COMMANDS).toBe(true);
     expect('claude' in AGENT_COMMANDS).toBe(true);
   });
 
-  it('should have prompt placeholder in command templates', () => {
+  test('should have prompt placeholder in command templates', () => {
     for (const cmdTemplate of Object.values(AGENT_COMMANDS)) {
       const cmdStr = cmdTemplate.join(' ');
       expect(cmdStr).toContain('{prompt}');
     }
   });
 
-  it('should have correct Codex command structure', () => {
+  test('should have correct Codex command structure', () => {
     const cmd = AGENT_COMMANDS.codex;
     expect(cmd[0]).toBe('codex');
     expect(cmd).toContain('exec');
@@ -161,17 +161,17 @@ describe('AgentManager', () => {
     }
   });
 
-  it('should initialize with empty agent list', async () => {
+  test('should initialize with empty agent list', async () => {
     const all = await manager.listAll();
     expect(all.length).toBe(0);
   });
 
-  it('should return null for nonexistent agent', async () => {
+  test('should return null for nonexistent agent', async () => {
     const agent = await manager.get('nonexistent');
     expect(agent).toBeNull();
   });
 
-  it('should list running agents correctly', async () => {
+  test('should list running agents correctly', async () => {
     const running1 = new AgentProcess(
       'running-1',
       'task-1',
@@ -212,7 +212,7 @@ describe('AgentManager', () => {
     expect(running.every(a => a.status === AgentStatus.RUNNING)).toBe(true);
   });
 
-  it('should list completed agents correctly', async () => {
+  test('should list completed agents correctly', async () => {
     const running = new AgentProcess(
       'running-1',
       'task-1',
@@ -253,12 +253,12 @@ describe('AgentManager', () => {
     expect(completed.every(a => a.status !== AgentStatus.RUNNING)).toBe(true);
   });
 
-  it('should stop nonexistent agent and return false', async () => {
+  test('should stop nonexistent agent and return false', async () => {
     const success = await manager.stop('nonexistent');
     expect(success).toBe(false);
   });
 
-  it('should stop already completed agent and return false', async () => {
+  test('should stop already completed agent and return false', async () => {
     const agent = new AgentProcess(
       'completed-1',
       'task-1',
@@ -275,7 +275,7 @@ describe('AgentManager', () => {
     expect(success).toBe(false);
   });
 
-  it('should list agents by task name', async () => {
+  test('should list agents by task name', async () => {
     const agent1 = new AgentProcess(
       'agent-1',
       'task-a',
@@ -323,7 +323,7 @@ describe('AgentManager', () => {
     expect(taskCAgents.length).toBe(0);
   });
 
-  it('should stop all agents in a task', async () => {
+  test('should stop all agents in a task', async () => {
     const agent1 = new AgentProcess(
       'agent-1',
       'task-stop',

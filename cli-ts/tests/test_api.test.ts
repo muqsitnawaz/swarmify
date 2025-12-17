@@ -28,7 +28,7 @@ describe('API Integration Tests', () => {
   });
 
   describe('handleSpawn', () => {
-    it('should fail gracefully when CLI not installed', async () => {
+    test('should fail gracefully when CLI not installed', async () => {
       // This tests the REAL spawn path - it will fail because codex isn't installed
       // But we verify the error handling works correctly
       console.log('\n--- TEST: spawn with missing CLI ---');
@@ -56,7 +56,7 @@ describe('API Integration Tests', () => {
       }
     });
 
-    it('should check CLI availability before spawn', async () => {
+    test('should check CLI availability before spawn', async () => {
       console.log('\n--- TEST: CLI availability check ---');
 
       const [codexAvailable, codexPath] = checkCliAvailable('codex');
@@ -78,7 +78,7 @@ describe('API Integration Tests', () => {
   });
 
   describe('handleStatus', () => {
-    it('should return empty status for nonexistent task', async () => {
+    test('should return empty status for nonexistent task', async () => {
       console.log('\n--- TEST: status for nonexistent task ---');
 
       const result = await handleStatus(manager, 'nonexistent-task');
@@ -92,7 +92,7 @@ describe('API Integration Tests', () => {
       }
     });
 
-    it('should return status for task with agents', async () => {
+    test('should return status for task with agents', async () => {
       console.log('\n--- TEST: status for task with agents ---');
 
       // Manually add agents to test status (since we can't spawn real ones)
@@ -113,7 +113,7 @@ describe('API Integration Tests', () => {
       }
     });
 
-    it('should return detailed status for specific agent', async () => {
+    test('should return detailed status for specific agent', async () => {
       console.log('\n--- TEST: detailed status for specific agent ---');
 
       const agent = new AgentProcess('agent-123', 'detail-task', 'gemini', 'Complex work', null, false, null, AgentStatus.RUNNING);
@@ -131,7 +131,7 @@ describe('API Integration Tests', () => {
       }
     });
 
-    it('should return error for agent not in task', async () => {
+    test('should return error for agent not in task', async () => {
       console.log('\n--- TEST: agent not in requested task ---');
 
       const agent = new AgentProcess('agent-456', 'task-a', 'codex', 'Work', null, false, null, AgentStatus.RUNNING);
@@ -149,7 +149,7 @@ describe('API Integration Tests', () => {
   });
 
   describe('handleStop', () => {
-    it('should stop all agents in task', async () => {
+    test('should stop all agents in task', async () => {
       console.log('\n--- TEST: stop all agents in task ---');
 
       const agent1 = new AgentProcess('stop-1', 'stop-task', 'codex', 'Work', null, false, null, AgentStatus.RUNNING);
@@ -168,7 +168,7 @@ describe('API Integration Tests', () => {
       }
     });
 
-    it('should stop specific agent', async () => {
+    test('should stop specific agent', async () => {
       console.log('\n--- TEST: stop specific agent ---');
 
       const agent = new AgentProcess('single-stop', 'single-task', 'codex', 'Work', null, false, null, AgentStatus.COMPLETED);
@@ -184,7 +184,7 @@ describe('API Integration Tests', () => {
       }
     });
 
-    it('should return not_found for missing agent', async () => {
+    test('should return not_found for missing agent', async () => {
       console.log('\n--- TEST: stop missing agent ---');
 
       const result = await handleStop(manager, 'any-task', 'missing-agent');
@@ -199,7 +199,7 @@ describe('API Integration Tests', () => {
   });
 
   describe('handleRead', () => {
-    it('should read output for agent', async () => {
+    test('should read output for agent', async () => {
       console.log('\n--- TEST: read agent output ---');
 
       const agent = new AgentProcess('read-agent', 'read-task', 'codex', 'Work', null, false, null, AgentStatus.COMPLETED);
@@ -217,7 +217,7 @@ describe('API Integration Tests', () => {
       }
     });
 
-    it('should return error for missing agent', async () => {
+    test('should return error for missing agent', async () => {
       console.log('\n--- TEST: read missing agent ---');
 
       const result = await handleRead(manager, 'any-task', 'ghost-agent', 0);
@@ -230,7 +230,7 @@ describe('API Integration Tests', () => {
       }
     });
 
-    it('should respect offset parameter', async () => {
+    test('should respect offset parameter', async () => {
       console.log('\n--- TEST: read with offset ---');
 
       const agent = new AgentProcess('offset-agent', 'offset-task', 'cursor', 'Debug', null, false, null, AgentStatus.RUNNING);
@@ -248,7 +248,7 @@ describe('API Integration Tests', () => {
   });
 
   describe('Full Flow: spawn -> status -> read -> stop', () => {
-    it('should handle complete lifecycle (mocked agents)', async () => {
+    test('should handle complete lifecycle (mocked agents)', async () => {
       console.log('\n--- TEST: complete agent lifecycle ---');
 
       // Step 1: Add agents (simulating spawn since CLI may not be installed)

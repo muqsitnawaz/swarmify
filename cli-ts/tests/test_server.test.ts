@@ -28,7 +28,7 @@ describe('Task-Based API', () => {
   });
 
   describe('spawn - multiple agents same task', () => {
-    it('should allow spawning multiple agents under same task name', async () => {
+    test('should allow spawning multiple agents under same task name', async () => {
       const agent1 = new AgentProcess(
         'agent-1',
         'feature-auth',
@@ -69,7 +69,7 @@ describe('Task-Based API', () => {
       expect(taskAgents.map(a => a.agentType).sort()).toEqual(['codex', 'cursor', 'gemini']);
     });
 
-    it('should isolate agents by task name', async () => {
+    test('should isolate agents by task name', async () => {
       const agent1 = new AgentProcess('a1', 'task-a', 'codex', 'Task A work', null, false, null, AgentStatus.RUNNING);
       const agent2 = new AgentProcess('a2', 'task-a', 'cursor', 'Task A debug', null, false, null, AgentStatus.RUNNING);
       const agent3 = new AgentProcess('b1', 'task-b', 'codex', 'Task B work', null, false, null, AgentStatus.RUNNING);
@@ -89,7 +89,7 @@ describe('Task-Based API', () => {
   });
 
   describe('status - task level', () => {
-    it('should return quick status for all agents in task', async () => {
+    test('should return quick status for all agents in task', async () => {
       const events1 = [
         { type: 'file_create', path: 'src/auth.ts', timestamp: '2024-01-01' },
         { type: 'file_write', path: 'src/login.ts', timestamp: '2024-01-01' },
@@ -113,7 +113,7 @@ describe('Task-Based API', () => {
       expect(status2.has_errors).toBe(true);
     });
 
-    it('should count status correctly across multiple agents', async () => {
+    test('should count status correctly across multiple agents', async () => {
       const agent1 = new AgentProcess('a1', 'my-task', 'codex', 'Work 1', null, false, null, AgentStatus.RUNNING);
       const agent2 = new AgentProcess('a2', 'my-task', 'cursor', 'Work 2', null, false, null, AgentStatus.COMPLETED);
       const agent3 = new AgentProcess('a3', 'my-task', 'gemini', 'Work 3', null, false, null, AgentStatus.FAILED);
@@ -142,7 +142,7 @@ describe('Task-Based API', () => {
   });
 
   describe('status - agent level', () => {
-    it('should return detailed status for single agent', async () => {
+    test('should return detailed status for single agent', async () => {
       const events = [
         { type: 'file_create', path: 'src/new.ts', timestamp: '2024-01-01' },
         { type: 'file_write', path: 'src/existing.ts', timestamp: '2024-01-01' },
@@ -160,7 +160,7 @@ describe('Task-Based API', () => {
       expect(summary.toolCallCount).toBe(4);
     });
 
-    it('should verify agent belongs to task before returning status', async () => {
+    test('should verify agent belongs to task before returning status', async () => {
       const agent = new AgentProcess('agent-1', 'task-a', 'codex', 'Work', null, false, null, AgentStatus.RUNNING);
       manager['agents'].set('agent-1', agent);
 
@@ -176,7 +176,7 @@ describe('Task-Based API', () => {
   });
 
   describe('stop - task level', () => {
-    it('should stop all running agents in task', async () => {
+    test('should stop all running agents in task', async () => {
       const agent1 = new AgentProcess('a1', 'stop-task', 'codex', 'Work 1', null, false, null, AgentStatus.RUNNING);
       const agent2 = new AgentProcess('a2', 'stop-task', 'cursor', 'Work 2', null, false, null, AgentStatus.RUNNING);
       const agent3 = new AgentProcess('a3', 'stop-task', 'gemini', 'Work 3', null, false, null, AgentStatus.COMPLETED);
@@ -192,7 +192,7 @@ describe('Task-Based API', () => {
       expect(result.alreadyStopped).toContain('a3');
     });
 
-    it('should not affect agents in other tasks', async () => {
+    test('should not affect agents in other tasks', async () => {
       const agent1 = new AgentProcess('a1', 'task-to-stop', 'codex', 'Work', null, false, null, AgentStatus.RUNNING);
       const agent2 = new AgentProcess('a2', 'other-task', 'cursor', 'Work', null, false, null, AgentStatus.RUNNING);
 
@@ -207,7 +207,7 @@ describe('Task-Based API', () => {
   });
 
   describe('stop - agent level', () => {
-    it('should verify agent belongs to task before stopping', async () => {
+    test('should verify agent belongs to task before stopping', async () => {
       const agent = new AgentProcess('agent-1', 'task-a', 'codex', 'Work', null, false, null, AgentStatus.RUNNING);
       manager['agents'].set('agent-1', agent);
 
@@ -219,7 +219,7 @@ describe('Task-Based API', () => {
       expect(isInTask).toBe(false);
     });
 
-    it('should return already_stopped for completed agent', async () => {
+    test('should return already_stopped for completed agent', async () => {
       const agent = new AgentProcess('agent-1', 'my-task', 'codex', 'Work', null, false, null, AgentStatus.COMPLETED);
       manager['agents'].set('agent-1', agent);
 
@@ -229,7 +229,7 @@ describe('Task-Based API', () => {
   });
 
   describe('read - with offset', () => {
-    it('should return events from offset onwards', async () => {
+    test('should return events from offset onwards', async () => {
       const allEvents = [
         { type: 'init', timestamp: '2024-01-01' },
         { type: 'file_write', path: 'src/a.ts', timestamp: '2024-01-01' },
@@ -247,7 +247,7 @@ describe('Task-Based API', () => {
       expect(newEvents[0].path).toBe('src/b.ts');
     });
 
-    it('should return empty events when offset equals event count', async () => {
+    test('should return empty events when offset equals event count', async () => {
       const allEvents = [
         { type: 'init', timestamp: '2024-01-01' },
         { type: 'file_write', path: 'src/a.ts', timestamp: '2024-01-01' },
@@ -259,7 +259,7 @@ describe('Task-Based API', () => {
       expect(newEvents.length).toBe(0);
     });
 
-    it('should include summary even with offset', async () => {
+    test('should include summary even with offset', async () => {
       const allEvents = [
         { type: 'file_create', path: 'src/new.ts', timestamp: '2024-01-01' },
         { type: 'file_write', path: 'src/old.ts', timestamp: '2024-01-01' },
@@ -276,12 +276,12 @@ describe('Task-Based API', () => {
   });
 
   describe('edge cases', () => {
-    it('should return empty list for nonexistent task', async () => {
+    test('should return empty list for nonexistent task', async () => {
       const agents = await manager.listByTask('nonexistent-task');
       expect(agents.length).toBe(0);
     });
 
-    it('should handle task with no running agents', async () => {
+    test('should handle task with no running agents', async () => {
       const agent1 = new AgentProcess('a1', 'done-task', 'codex', 'Work 1', null, false, null, AgentStatus.COMPLETED);
       const agent2 = new AgentProcess('a2', 'done-task', 'cursor', 'Work 2', null, false, null, AgentStatus.FAILED);
 
@@ -294,7 +294,7 @@ describe('Task-Based API', () => {
       expect(result.alreadyStopped.length).toBe(2);
     });
 
-    it('should handle empty events for quick status', () => {
+    test('should handle empty events for quick status', () => {
       const status = getQuickStatus('agent-1', 'codex', 'running', []);
 
       expect(status.files_created).toBe(0);
@@ -304,7 +304,7 @@ describe('Task-Based API', () => {
       expect(status.has_errors).toBe(false);
     });
 
-    it('should truncate long commands in quick status', () => {
+    test('should truncate long commands in quick status', () => {
       const longCommand = 'npm run build -- --config=production --verbose --debug --output=/very/long/path/that/exceeds/one/hundred/characters/easily';
       const events = [
         { type: 'bash', command: longCommand, timestamp: '2024-01-01' },
