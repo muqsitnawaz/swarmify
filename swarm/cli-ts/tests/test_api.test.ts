@@ -314,20 +314,59 @@ describe('API Integration Tests', () => {
     });
   });
 
-  describe('Multi-Agent Status Polling', () => {
-    test('should spawn 3 agents and poll status until done', async () => {
-      console.log('\n--- TEST: multi-agent status polling ---');
+  describe('Multi-Agent Status Polling (Live)', () => {
+    test('should spawn claude, codex, and cursor agents with different tasks and poll status until done', async () => {
+      console.log('\n--- TEST: multi-agent status polling (live) ---');
       
       const testdataDir = path.join(__dirname, 'testdata');
       const statusLogPath = path.join(testdataDir, 'multi-agent-status-polling.jsonl');
-      const { writeFileSync, appendFileSync } = await import('fs');
+      const { writeFileSync, appendFileSync, mkdirSync } = await import('fs');
       
-      const taskName = `multi-agent-task-${Date.now()}`;
-      const agentTypes: Array<'codex' | 'cursor' | 'gemini' | 'claude'> = ['codex', 'cursor', 'gemini'];
-      const prompts = [
-        'Create a file /tmp/test-agent-1.txt with content "agent 1"',
-        'Create a file /tmp/test-agent-2.txt with content "agent 2"',
-        'Create a file /tmp/test-agent-3.txt with content "agent 3"'
+      const taskName = `multi-agent-live-${Date.now()}`;
+      const timestamp = Date.now();
+      
+      const codexTaskDir = path.join(testdataDir, `codex-task-${timestamp}`);
+      const cursorTaskDir = path.join(testdataDir, `cursor-task-${timestamp}`);
+      const claudeTaskDir = path.join(testdataDir, `claude-task-${timestamp}`);
+      
+      mkdirSync(codexTaskDir, { recursive: true });
+      mkdirSync(cursorTaskDir, { recursive: true });
+      mkdirSync(claudeTaskDir, { recursive: true });
+      
+      writeFileSync(path.join(codexTaskDir, 'input.txt'), 'Hello from codex task\n');
+      writeFileSync(path.join(cursorTaskDir, 'input.txt'), 'Hello from cursor task\n');
+      writeFileSync(path.join(claudeTaskDir, 'input.txt'), 'Hello from claude task\n');
+      
+      const agentConfigs = [
+        {
+          type: 'codex' as const,
+          taskDir: codexTaskDir,
+          prompt: `Working in ${codexTaskDir}, do the following:
+1. Read the file input.txt
+2. Create a new file output.txt with the content reversed
+3. Create a subdirectory called results
+4. Copy output.txt to results/copy.txt
+5. List all files in the directory`
+        },
+        {
+          type: 'cursor' as const,
+          taskDir: cursorTaskDir,
+          prompt: `Working in ${cursorTaskDir}, do the following:
+1. Read input.txt
+2. Create a file summary.md with a markdown summary of the input
+3. Create a file data.json with {"source": "input.txt", "processed": true}
+4. Count how many files are in the directory`
+        },
+        {
+          type: 'claude' as const,
+          taskDir: claudeTaskDir,
+          prompt: `Working in ${claudeTaskDir}, do the following:
+1. Read input.txt
+2. Create a file report.txt with the content from input.txt plus " - Processed by Claude"
+3. Create a subdirectory called archive
+4. Move input.txt to archive/input.txt
+5. Verify the move was successful`
+        }
       ];
       
       writeFileSync(statusLogPath, '', 'utf-8');
@@ -335,11 +374,11 @@ describe('API Integration Tests', () => {
       
       const agentIds: string[] = [];
       
-      console.log('\n[Step 1] Spawning 3 agents...');
-      for (let i = 0; i < 3; i++) {
-        const [available] = checkCliAvailable(agentTypes[i]);
+      console.log('\n[Step 1] Spawning 3 agents (codex, cursor, claude)...');
+      for (const config of agentConfigs) {
+        const [available] = checkCliAvailable(config.type);
         if (!available) {
-          console.log(`Skipping ${agentTypes[i]} - not installed`);
+          console.log(`Skipping ${config.type} - not installed`);
           continue;
         }
         
@@ -347,16 +386,16 @@ describe('API Integration Tests', () => {
           const result = await handleSpawn(
             manager,
             taskName,
-            agentTypes[i],
-            prompts[i],
-            null,
+            config.type,
+            config.prompt,
+            config.taskDir,
             null,
             null
           );
           agentIds.push(result.agent_id);
-          console.log(`Spawned ${agentTypes[i]} agent: ${result.agent_id}`);
+          console.log(`Spawned ${config.type} agent: ${result.agent_id} (working in ${config.taskDir})`);
         } catch (err: any) {
-          console.log(`Failed to spawn ${agentTypes[i]}: ${err.message}`);
+          console.log(`Failed to spawn ${config.type}: ${err.message}`);
         }
       }
       
@@ -367,7 +406,7 @@ describe('API Integration Tests', () => {
       
       console.log(`\n[Step 2] Polling status until all ${agentIds.length} agents are done...`);
       
-      const maxIterations = 120;
+      const maxIterations = 180;
       const pollIntervalMs = 2000;
       let iteration = 0;
       let allDone = false;
@@ -394,6 +433,12 @@ describe('API Integration Tests', () => {
           
           appendFileSync(statusLogPath, JSON.stringify(statusEntry) + '\n', 'utf-8');
           console.log(`Status: running=${statusResult.summary.running}, completed=${statusResult.summary.completed}, failed=${statusResult.summary.failed}, stopped=${statusResult.summary.stopped}`);
+          
+          for (const agent of statusResult.agents) {
+            if (agent.status === 'running') {
+              console.log(`  - ${agent.agent_id} (${agent.agent_type}): ${agent.status}, last_message: ${agent.last_message ? agent.last_message.substring(0, 50) + '...' : 'none'}`);
+            }
+          }
           
           allDone = statusResult.summary.running === 0;
           
@@ -423,9 +468,17 @@ describe('API Integration Tests', () => {
         };
         appendFileSync(statusLogPath, JSON.stringify(finalEntry) + '\n', 'utf-8');
         console.log('Final status:', JSON.stringify(finalStatus.summary, null, 2));
+        
+        for (const agent of finalStatus.agents) {
+          console.log(`  - ${agent.agent_id} (${agent.agent_type}): ${agent.status}, last_message: ${agent.last_message ? agent.last_message.substring(0, 100) : 'none'}`);
+        }
       }
       
       console.log(`\nStatus log saved to: ${statusLogPath}`);
-    }, 300000);
+      console.log(`Task directories:`);
+      console.log(`  - Codex: ${codexTaskDir}`);
+      console.log(`  - Cursor: ${cursorTaskDir}`);
+      console.log(`  - Claude: ${claudeTaskDir}`);
+    }, 600000);
   });
 });
