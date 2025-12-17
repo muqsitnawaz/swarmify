@@ -18,7 +18,7 @@ export const AGENT_COMMANDS: Record<AgentType, string[]> = {
   codex: ['codex', 'exec', '--sandbox', 'workspace-write', '{prompt}', '--full-auto', '--json'],
   cursor: ['cursor-agent', '-p', '--output-format', 'stream-json', '{prompt}'],
   gemini: ['gemini', '-p', '{prompt}', '--output-format', 'stream-json'],
-  claude: ['claude', '-p', '{prompt}', '--output-format', 'stream-json'],
+  claude: ['claude', '-p', '--verbose', '{prompt}', '--output-format', 'stream-json'],
 };
 
 const VALID_MODES = ['safe', 'yolo'] as const;

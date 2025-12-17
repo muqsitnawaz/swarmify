@@ -10,7 +10,7 @@ const __dirname = dirname(__filename);
 
 async function runClaudeAgent(prompt: string, timeoutMs: number = 60000): Promise<{ events: any[], rawEvents: any[], rawStdout: string }> {
   return new Promise((resolve, reject) => {
-    const args = ['-p', prompt, '--output-format', 'stream-json'];
+    const args = ['-p', '--verbose', prompt, '--output-format', 'stream-json'];
     const proc = spawn('claude', args, {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
