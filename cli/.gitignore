@@ -1,6 +1,0 @@
-**/__pycache__
-**/dist
-**/.venv
-**/.uv-cache
-**/.tmp_agents
-**/.pytest_cache
