@@ -29,10 +29,6 @@
         }
       },
       {
-        "command": "agentTabs.closeAll",
-        "title": "Agents: Close All Terminals"
-      },
-      {
         "command": "agentTabs.configure",
         "title": "Agents: Configure Counts"
       },

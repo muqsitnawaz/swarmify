@@ -500,10 +500,6 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('agentTabs.closeAll', closeAllTerminals)
-  );
-
-  context.subscriptions.push(
     vscode.commands.registerCommand('agentTabs.configure', configureCounts)
   );
 
@@ -696,15 +692,6 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
   }
 }
 
-function closeAllTerminals() {
-  for (const terminal of managedTerminals) {
-    terminal.dispose();
-    unregisterTerminalMetadata(terminal);
-  }
-  managedTerminals = [];
-  terminalMap.clear();
-}
-
 async function configureCounts() {
   const config = vscode.workspace.getConfiguration('agentTabs');
 
@@ -859,5 +846,10 @@ async function reloadActiveTerminal(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() {
-  closeAllTerminals();
+  for (const terminal of managedTerminals) {
+    terminal.dispose();
+    unregisterTerminalMetadata(terminal);
+  }
+  managedTerminals = [];
+  terminalMap.clear();
 }
