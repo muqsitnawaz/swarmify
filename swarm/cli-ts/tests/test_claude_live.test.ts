@@ -10,8 +10,8 @@ const __dirname = dirname(__filename);
 
 async function runClaudeAgent(prompt: string, timeoutMs: number = 60000): Promise<{ events: any[], rawEvents: any[], rawStdout: string }> {
   return new Promise((resolve, reject) => {
-    const args = ['-p', '--output-format', 'stream-json', prompt];
-    const proc = spawn('claude-agent', args, {
+    const args = ['-p', prompt, '--output-format', 'stream-json'];
+    const proc = spawn('claude', args, {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
@@ -28,14 +28,14 @@ async function runClaudeAgent(prompt: string, timeoutMs: number = 60000): Promis
 
     const timeout = setTimeout(() => {
       proc.kill('SIGTERM');
-      reject(new Error(`claude-agent timed out after ${timeoutMs}ms`));
+      reject(new Error(`claude timed out after ${timeoutMs}ms`));
     }, timeoutMs);
 
     proc.on('close', (code) => {
       clearTimeout(timeout);
 
       if (code !== 0 && !stdout) {
-        reject(new Error(`claude-agent exited with code ${code}: ${stderr}`));
+        reject(new Error(`claude exited with code ${code}: ${stderr}`));
         return;
       }
 
@@ -64,11 +64,11 @@ async function runClaudeAgent(prompt: string, timeoutMs: number = 60000): Promis
 }
 
 describe('Claude Live E2E', () => {
-  test('should spawn claude-agent and parse tool calls correctly', async () => {
+  test('should spawn claude and parse tool calls correctly', async () => {
     const testFile = `/tmp/claude-live-test-${Date.now()}.txt`;
     const prompt = `Create a file at ${testFile} with the content 'hello from live test' using echo command`;
 
-    console.log('Running claude-agent with prompt:', prompt);
+    console.log('Running claude with prompt:', prompt);
 
     const { events, rawEvents, rawStdout } = await runClaudeAgent(prompt, 120000);
 

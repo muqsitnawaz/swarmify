@@ -11,7 +11,7 @@ const __dirname = dirname(__filename);
 async function runGeminiAgent(prompt: string, timeoutMs: number = 60000): Promise<{ events: any[], rawEvents: any[], rawStdout: string }> {
   return new Promise((resolve, reject) => {
     const args = ['-p', prompt, '--output-format', 'stream-json'];
-    const proc = spawn('gemini-agent', args, {
+    const proc = spawn('gemini', args, {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
@@ -28,14 +28,14 @@ async function runGeminiAgent(prompt: string, timeoutMs: number = 60000): Promis
 
     const timeout = setTimeout(() => {
       proc.kill('SIGTERM');
-      reject(new Error(`gemini-agent timed out after ${timeoutMs}ms`));
+      reject(new Error(`gemini timed out after ${timeoutMs}ms`));
     }, timeoutMs);
 
     proc.on('close', (code) => {
       clearTimeout(timeout);
 
       if (code !== 0 && !stdout) {
-        reject(new Error(`gemini-agent exited with code ${code}: ${stderr}`));
+        reject(new Error(`gemini exited with code ${code}: ${stderr}`));
         return;
       }
 
@@ -64,11 +64,11 @@ async function runGeminiAgent(prompt: string, timeoutMs: number = 60000): Promis
 }
 
 describe('Gemini Live E2E', () => {
-  test('should spawn gemini-agent and parse tool calls correctly', async () => {
+  test('should spawn gemini and parse tool calls correctly', async () => {
     const testFile = `/tmp/gemini-live-test-${Date.now()}.txt`;
     const prompt = `Create a file at ${testFile} with the content 'hello from live test' using echo command`;
 
-    console.log('Running gemini-agent with prompt:', prompt);
+    console.log('Running gemini with prompt:', prompt);
 
     const { events, rawEvents, rawStdout } = await runGeminiAgent(prompt, 120000);
 
