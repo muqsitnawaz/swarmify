@@ -313,4 +313,119 @@ describe('API Integration Tests', () => {
       console.log('\n--- LIFECYCLE TEST COMPLETE ---');
     });
   });
+
+  describe('Multi-Agent Status Polling', () => {
+    test('should spawn 3 agents and poll status until done', async () => {
+      console.log('\n--- TEST: multi-agent status polling ---');
+      
+      const testdataDir = path.join(__dirname, 'testdata');
+      const statusLogPath = path.join(testdataDir, 'multi-agent-status-polling.jsonl');
+      const { writeFileSync, appendFileSync } = await import('fs');
+      
+      const taskName = `multi-agent-task-${Date.now()}`;
+      const agentTypes: Array<'codex' | 'cursor' | 'gemini' | 'claude'> = ['codex', 'cursor', 'gemini'];
+      const prompts = [
+        'Create a file /tmp/test-agent-1.txt with content "agent 1"',
+        'Create a file /tmp/test-agent-2.txt with content "agent 2"',
+        'Create a file /tmp/test-agent-3.txt with content "agent 3"'
+      ];
+      
+      writeFileSync(statusLogPath, '', 'utf-8');
+      console.log(`Status log file: ${statusLogPath}`);
+      
+      const agentIds: string[] = [];
+      
+      console.log('\n[Step 1] Spawning 3 agents...');
+      for (let i = 0; i < 3; i++) {
+        const [available] = checkCliAvailable(agentTypes[i]);
+        if (!available) {
+          console.log(`Skipping ${agentTypes[i]} - not installed`);
+          continue;
+        }
+        
+        try {
+          const result = await handleSpawn(
+            manager,
+            taskName,
+            agentTypes[i],
+            prompts[i],
+            null,
+            null,
+            null
+          );
+          agentIds.push(result.agent_id);
+          console.log(`Spawned ${agentTypes[i]} agent: ${result.agent_id}`);
+        } catch (err: any) {
+          console.log(`Failed to spawn ${agentTypes[i]}: ${err.message}`);
+        }
+      }
+      
+      if (agentIds.length === 0) {
+        console.log('No agents were spawned (CLIs not available). Skipping test.');
+        return;
+      }
+      
+      console.log(`\n[Step 2] Polling status until all ${agentIds.length} agents are done...`);
+      
+      const maxIterations = 120;
+      const pollIntervalMs = 2000;
+      let iteration = 0;
+      let allDone = false;
+      
+      while (!allDone && iteration < maxIterations) {
+        iteration++;
+        console.log(`\n[Poll ${iteration}] Checking status...`);
+        
+        const statusResult = await handleStatus(manager, taskName);
+        
+        if ('error' in statusResult) {
+          console.log(`Status error: ${statusResult.error}`);
+          break;
+        }
+        
+        if ('agents' in statusResult) {
+          const statusEntry = {
+            iteration,
+            timestamp: new Date().toISOString(),
+            task_name: statusResult.task_name,
+            summary: statusResult.summary,
+            agents: statusResult.agents
+          };
+          
+          appendFileSync(statusLogPath, JSON.stringify(statusEntry) + '\n', 'utf-8');
+          console.log(`Status: running=${statusResult.summary.running}, completed=${statusResult.summary.completed}, failed=${statusResult.summary.failed}, stopped=${statusResult.summary.stopped}`);
+          
+          allDone = statusResult.summary.running === 0;
+          
+          if (!allDone) {
+            await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+          }
+        } else {
+          console.log('Unexpected status result format');
+          break;
+        }
+      }
+      
+      if (allDone) {
+        console.log(`\n[Complete] All agents finished after ${iteration} polls`);
+      } else {
+        console.log(`\n[Timeout] Stopped polling after ${iteration} iterations`);
+      }
+      
+      const finalStatus = await handleStatus(manager, taskName);
+      if ('agents' in finalStatus) {
+        const finalEntry = {
+          iteration: 'final',
+          timestamp: new Date().toISOString(),
+          task_name: finalStatus.task_name,
+          summary: finalStatus.summary,
+          agents: finalStatus.agents
+        };
+        appendFileSync(statusLogPath, JSON.stringify(finalEntry) + '\n', 'utf-8');
+        console.log('Final status:', JSON.stringify(finalStatus.summary, null, 2));
+      }
+      
+      console.log(`\nStatus log saved to: ${statusLogPath}`);
+    }, 300000);
+  });
 });
