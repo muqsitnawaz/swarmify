@@ -920,13 +920,9 @@ async function reloadActiveTerminal(context: vscode.ExtensionContext) {
     }
 
     terminal.sendText('/quit');
-    terminal.sendText('\r');
-
-    await new Promise(resolve => setTimeout(resolve, 2500));
 
     try {
-      terminal.sendText('clear');
-      terminal.sendText(agentConfig.command);
+      terminal.sendText('clear && ' + agentConfig.command);
       terminal.sendText('\r');
       vscode.window.showInformationMessage(`Reloaded ${agentConfig.title} agent.`);
     } catch (sendError) {
@@ -1003,7 +999,11 @@ async function generateCommitMessage(sourceControl?: { rootUri?: vscode.Uri }) {
   const config = vscode.workspace.getConfiguration('agents');
   const apiKey = config.get<string>('apiKey');
   if (!apiKey) {
-    vscode.window.showErrorMessage('API key not set. Please set agents.apiKey in settings.');
+    vscode.window.showErrorMessage('API key not set', 'Open Settings').then(action => {
+      if (action === 'Open Settings') {
+        vscode.commands.executeCommand('workbench.action.openSettings', 'agents.apiKey');
+      }
+    });
     return;
   }
 
