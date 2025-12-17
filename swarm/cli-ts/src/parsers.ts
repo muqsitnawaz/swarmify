@@ -240,6 +240,24 @@ function normalizeCursor(raw: any): any[] {
         path: filePath,
         timestamp: timestamp,
       }];
+    } else if (toolCall?.deleteToolCall) {
+      const filePath = toolCall.deleteToolCall.args?.path || '';
+      return [{
+        type: 'file_delete',
+        agent: 'cursor',
+        tool: 'delete',
+        path: filePath,
+        timestamp: timestamp,
+      }];
+    } else if (toolCall?.listToolCall) {
+      const dirPath = toolCall.listToolCall.args?.path || '';
+      return [{
+        type: 'directory_list',
+        agent: 'cursor',
+        tool: 'list',
+        path: dirPath,
+        timestamp: timestamp,
+      }];
     }
 
     return [{

@@ -22,9 +22,10 @@ function extractErrorFromRawEvents(events: any[], maxChars: number = 500): strin
   return null;
 }
 
-function extractFileOpsFromBash(command: string): [string[], string[]] {
+function extractFileOpsFromBash(command: string): [string[], string[], string[]] {
   const filesRead: string[] = [];
   const filesWritten: string[] = [];
+  const filesDeleted: string[] = [];
 
   let unwrappedCommand = command;
   const shellWrapperMatch = command.match(/-[lc]+\s+["'](.+)["']$/);
@@ -51,7 +52,6 @@ function extractFileOpsFromBash(command: string): [string[], string[]] {
   const readPatterns = [
     /sed\s+-n\s+["'][^"']+["']\s+["']?([^\s"'|;&>]+)/,
     /(?:head|tail)\s+(?:-\w+\s+)*(?:\d+\s+)?([^\s"'|;&-][^\s"'|;&]*)/,
-    // cat without output redirection (reading a file)
     /^cat\s+(?:-[^\s]+\s+)*["']?([^\s"'|;&>]+)["']?(?:\s|$)/,
     /\|\s*cat\s+["']?([^\s"'|;&>]+)["']?/,
   ];
@@ -66,7 +66,22 @@ function extractFileOpsFromBash(command: string): [string[], string[]] {
     }
   }
 
-  return [filesRead, filesWritten];
+  const deletePatterns = [
+    /rm\s+(?:-[^\s]+\s+)*["']?([^\s"'|;&]+)["']?/,
+    /rm\s+(?:-[^\s]+\s+)*([^\s"'|;&-][^\s"'|;&]*)/,
+  ];
+
+  for (const pattern of deletePatterns) {
+    const matches = unwrappedCommand.matchAll(new RegExp(pattern, 'g'));
+    for (const match of matches) {
+      const path = match[1];
+      if (path && !path.startsWith('-') && !path.match(/^-[rf]+$/)) {
+        filesDeleted.push(path);
+      }
+    }
+  }
+
+  return [filesRead, filesWritten, filesDeleted];
 }
 
 export const PRIORITY: Record<string, string[]> = {
@@ -462,6 +477,8 @@ export function summarizeEvents(
         summary.filesDeleted.add(path);
         summary.toolCallCount++;
       }
+    } else if (eventType === 'directory_list') {
+      summary.toolCallCount++;
     } else if (eventType === 'tool_use') {
       const tool = event.tool || 'unknown';
       summary.toolsUsed.add(tool);
@@ -471,12 +488,15 @@ export function summarizeEvents(
       summary.toolsUsed.add('bash');
       if (command) {
         summary.bashCommands.push(command);
-        const [filesRead, filesWritten] = extractFileOpsFromBash(command);
+        const [filesRead, filesWritten, filesDeleted] = extractFileOpsFromBash(command);
         for (const path of filesRead) {
           summary.filesRead.add(path);
         }
         for (const path of filesWritten) {
           summary.filesModified.add(path);
+        }
+        for (const path of filesDeleted) {
+          summary.filesDeleted.add(path);
         }
       }
       summary.toolCallCount++;
@@ -628,6 +648,8 @@ export interface QuickStatus {
   status: string;
   files_created: number;
   files_modified: number;
+  files_deleted: number;
+  files_read: number;
   tool_count: number;
   last_commands: string[];
   has_errors: boolean;
@@ -641,6 +663,8 @@ export function getQuickStatus(
 ): QuickStatus {
   const filesCreatedSet = new Set<string>();
   const filesModifiedSet = new Set<string>();
+  const filesDeletedSet = new Set<string>();
+  const filesReadSet = new Set<string>();
   let toolCount = 0;
   let hasErrors = false;
   const commands: string[] = [];
@@ -660,17 +684,37 @@ export function getQuickStatus(
         filesModifiedSet.add(path);
       }
       toolCount++;
+    } else if (eventType === 'file_delete') {
+      const path = event.path || '';
+      if (path) {
+        filesDeletedSet.add(path);
+      }
+      toolCount++;
+    } else if (eventType === 'file_read') {
+      const path = event.path || '';
+      if (path) {
+        filesReadSet.add(path);
+      }
+      toolCount++;
     } else if (eventType === 'bash') {
       toolCount++;
       const cmd = event.command || '';
       if (cmd) {
         commands.push(cmd.length > 100 ? cmd.substring(0, 97) + '...' : cmd);
-        const [filesRead, filesWritten] = extractFileOpsFromBash(cmd);
+        const [filesRead, filesWritten, filesDeleted] = extractFileOpsFromBash(cmd);
+        for (const path of filesRead) {
+          filesReadSet.add(path);
+        }
         for (const path of filesWritten) {
           filesModifiedSet.add(path);
         }
+        for (const path of filesDeleted) {
+          filesDeletedSet.add(path);
+        }
       }
-    } else if (['tool_use', 'file_read', 'file_delete'].includes(eventType)) {
+    } else if (eventType === 'directory_list') {
+      toolCount++;
+    } else if (['tool_use'].includes(eventType)) {
       toolCount++;
     } else if (eventType === 'error' || (eventType === 'result' && event.status === 'error')) {
       hasErrors = true;
@@ -683,6 +727,8 @@ export function getQuickStatus(
     status: status,
     files_created: filesCreatedSet.size,
     files_modified: filesModifiedSet.size,
+    files_deleted: filesDeletedSet.size,
+    files_read: filesReadSet.size,
     tool_count: toolCount,
     last_commands: commands.slice(-3),
     has_errors: hasErrors,

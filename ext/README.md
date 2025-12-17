@@ -38,6 +38,10 @@ Enable Swarm to let agents spawn sub-agents within themselves. Get second opinio
 
 Label agents by task. The status bar shows the active agent and its label, so you always know which agent you're talking to.
 
+### Context-Aware Task Creation
+
+Select text in any terminal, hit a shortcut, and spawn a new agent with that context pre-loaded. The selected text becomes context for your task prompt - no copy-paste needed.
+
 ### AI Git Commits
 
 Generate commit messages from your staged changes. Learns from your commit style examples, then stages, commits, and pushes in one action.
@@ -53,6 +57,7 @@ Generate commit messages from your staged changes. Learns from your commit style
 | Shortcut | Action |
 | --- | --- |
 | `Cmd+Shift+A` | Spawn new agent |
+| `Cmd+Shift+N` | New task with context |
 | `Cmd+Shift+C` | Clear and restart agent |
 | `Cmd+L` | Label agent |
 | `Cmd+Shift+G` | Generate commit |

@@ -240,6 +240,56 @@ describe('Cursor Parser', () => {
     expect(event.path).toBe('/tmp/test-cursor-output-123.txt');
   });
 
+  test('should normalize delete tool_call completed event', () => {
+    const raw = {
+      type: 'tool_call',
+      subtype: 'completed',
+      call_id: 'tool_delete_123',
+      tool_call: {
+        deleteToolCall: {
+          args: {
+            path: '/tmp/file-to-delete.txt',
+          },
+          result: {
+            success: {},
+          },
+        },
+      },
+    };
+    const event = normalizeEvent('cursor', raw);
+
+    expect(event.type).toBe('file_delete');
+    expect(event.agent).toBe('cursor');
+    expect(event.tool).toBe('delete');
+    expect(event.path).toBe('/tmp/file-to-delete.txt');
+  });
+
+  test('should normalize list tool_call completed event', () => {
+    const raw = {
+      type: 'tool_call',
+      subtype: 'completed',
+      call_id: 'tool_list_123',
+      tool_call: {
+        listToolCall: {
+          args: {
+            path: '/tmp/testdir',
+          },
+          result: {
+            success: {
+              entries: [],
+            },
+          },
+        },
+      },
+    };
+    const event = normalizeEvent('cursor', raw);
+
+    expect(event.type).toBe('directory_list');
+    expect(event.agent).toBe('cursor');
+    expect(event.tool).toBe('list');
+    expect(event.path).toBe('/tmp/testdir');
+  });
+
   test('should ignore tool_call started events', () => {
     const raw = {
       type: 'tool_call',
