@@ -33,6 +33,11 @@ function buildSpawnDescription(): string {
 
 IMPORTANT: Avoid spawning the same agent type as yourself. If you are Claude, prefer cursor/codex/gemini instead.
 
+WAIT BEFORE CHECKING STATUS: Agents take time to execute (30+ seconds minimum). After spawning:
+- If you have other work to do, do that first
+- Do NOT immediately call status - it wastes tokens and returns nothing useful
+- Only check status after completing other work or waiting at least 30 seconds
+
 Agent selection (in order of preference):
 ${agentList}
 
@@ -56,15 +61,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     tools: [
       {
         name: 'spawn',
-        description: `Spawn an AI coding agent to work on a task.
-
-Agent selection guide (choose automatically - don't ask the user):
-- codex: Self-contained features, clean implementations, straightforward tasks with clear specs. Fast and cheap. Use for most feature work.
-- cursor: Debugging, bug fixes, investigating issues in existing code. Good at tracing through codebases and fixing broken things.
-- gemini: Complex features involving multiple subsystems, architectural changes, or tasks requiring coordination across many files.
-- claude: General purpose fallback, research, exploration, or when you need maximum capability.
-
-Default to codex for feature implementation. Use cursor for bugs. Use gemini for complex multi-system work.`,
+        description: buildSpawnDescription(),
         inputSchema: {
           type: 'object',
           properties: {
@@ -74,7 +71,7 @@ Default to codex for feature implementation. Use cursor for bugs. Use gemini for
             },
             agent_type: {
               type: 'string',
-              enum: ['codex', 'gemini', 'cursor', 'claude'],
+              enum: agentPreference,
               description: 'Type of agent to spawn',
             },
             prompt: {

@@ -4,6 +4,7 @@
 import * as vscode from 'vscode';
 import { AgentSettings, getDefaultSettings, CustomAgentConfig } from './settings';
 import * as terminals from './terminals.vscode';
+import * as swarm from './swarm.vscode';
 
 // Module state
 let settingsPanel: vscode.WebviewPanel | undefined;
@@ -72,14 +73,16 @@ export function openPanel(context: vscode.ExtensionContext): void {
     dark: vscode.Uri.joinPath(context.extensionUri, 'assets', 'agents.png')
   };
 
-  const updateWebview = () => {
+  const updateWebview = async () => {
     if (!settingsPanel) return;
     const settings = getSettings(context);
     const runningCounts = terminals.countRunning();
+    const swarmEnabled = await swarm.isSwarmEnabled();
     settingsPanel.webview.postMessage({
       type: 'init',
       settings,
-      runningCounts
+      runningCounts,
+      swarmEnabled
     });
   };
 

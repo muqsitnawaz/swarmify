@@ -6,6 +6,16 @@ import * as vscode from 'vscode';
 
 const execAsync = promisify(exec);
 
+// Check if Swarm MCP server is configured
+export async function isSwarmEnabled(): Promise<boolean> {
+  try {
+    const { stdout } = await execAsync('claude mcp list');
+    return stdout.includes('Swarm');
+  } catch {
+    return false;
+  }
+}
+
 export async function enableSwarm(_context: vscode.ExtensionContext): Promise<void> {
   // Hardcoded to source repo - cli-ts must be built there
   const cliTsPath = '/Users/muqsit/src/github.com/muqsitnawaz/CursorAgents/cli-ts/dist/index.js';

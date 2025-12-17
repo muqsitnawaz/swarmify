@@ -69,6 +69,7 @@ export default function App() {
   const [runningCounts, setRunningCounts] = useState<RunningCounts>({
     claude: 0, codex: 0, gemini: 0, cursor: 0, custom: {}
   })
+  const [swarmEnabled, setSwarmEnabled] = useState(false)
   const [isAdding, setIsAdding] = useState(false)
   const [newName, setNewName] = useState('')
   const [newCommand, setNewCommand] = useState('')
@@ -80,6 +81,7 @@ export default function App() {
       if (message.type === 'init') {
         setSettings(message.settings)
         setRunningCounts(message.runningCounts)
+        setSwarmEnabled(message.swarmEnabled ?? false)
       } else if (message.type === 'updateRunningCounts') {
         setRunningCounts(message.counts)
       }
@@ -193,8 +195,12 @@ export default function App() {
             </p>
           </div>
         </div>
-        <span className="px-3 py-1 text-xs font-medium rounded-full bg-[var(--secondary)] text-[var(--muted-foreground)]">
-          Swarm
+        <span className={`px-3 py-1 text-xs font-medium rounded-full ${
+          swarmEnabled
+            ? 'bg-green-500/20 text-green-400'
+            : 'bg-[var(--secondary)] text-[var(--muted-foreground)]'
+        }`}>
+          Swarm {swarmEnabled ? 'On' : 'Off'}
         </span>
       </header>
 
