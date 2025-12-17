@@ -3,7 +3,7 @@
  * These tests call the REAL handler functions with actual logging.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { tmpdir } from 'os';

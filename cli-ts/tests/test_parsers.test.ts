@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, test, expect } from 'bun:test';
 import { normalizeEvent } from '../src/parsers.js';
 
 describe('Codex Parser', () => {
