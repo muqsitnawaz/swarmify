@@ -14,14 +14,14 @@ const TESTDATA_DIR = path.join(__dirname, 'testdata');
 
 describe('Mode Resolution', () => {
   test('should use default mode when no flags provided', () => {
-    const [mode, yolo] = resolveModeFlags(null, null, 'yolo');
-    expect(mode).toBe('yolo');
+    const [mode, yolo] = resolveModeFlags(null, null, 'edit');
+    expect(mode).toBe('edit');
     expect(yolo).toBe(true);
   });
 
   test('should reject non-boolean yolo values', () => {
     expect(() => {
-      resolveModeFlags(null, 'yes' as any, 'safe');
+      resolveModeFlags(null, 'yes' as any, 'plan');
     }).toThrow('boolean');
   });
 
@@ -54,14 +54,14 @@ describe('AgentProcess', () => {
     expect(result.status).toBe('running');
     expect(result.event_count).toBe(0);
     expect(result.completed_at).toBeNull();
-    expect(result.mode).toBe('safe');
+    expect(result.mode).toBe('plan');
     expect(result.yolo).toBe(false);
     expect(result.duration).toBeDefined();
   });
 
-  test('should reflect yolo mode in serialization', () => {
+  test('should reflect edit mode in serialization', () => {
     const agent = new AgentProcess(
-      'test-yolo',
+      'test-edit',
       'my-task',
       'codex',
       'Test prompt',
@@ -73,7 +73,7 @@ describe('AgentProcess', () => {
     );
 
     const result = agent.toDict();
-    expect(result.mode).toBe('yolo');
+    expect(result.mode).toBe('edit');
   });
 
   test('should calculate duration for completed agent', () => {
@@ -137,8 +137,9 @@ describe('AgentCommands', () => {
     const cmd = AGENT_COMMANDS.codex;
     expect(cmd[0]).toBe('codex');
     expect(cmd).toContain('exec');
-    expect(cmd).toContain('--full-auto');
     expect(cmd).toContain('--json');
+    // --full-auto is only added in edit mode, not in plan mode base command
+    expect(cmd).not.toContain('--full-auto');
   });
 });
 

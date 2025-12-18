@@ -39,16 +39,11 @@ async function pollUntilComplete(
 }
 
 describe('Claude Live E2E', () => {
-  test('should spawn claude and parse tool calls correctly', async () => {
+  const [claudeAvailable, claudePathOrError] = checkCliAvailable('claude');
+  
+  (claudeAvailable ? test : test.skip)('should spawn claude and parse tool calls correctly', async () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'claude-test-'));
     const manager = new AgentManager(50, 10, tempDir);
-    
-    const [available, pathOrError] = checkCliAvailable('claude');
-    if (!available) {
-      console.warn(`Skipping test: ${pathOrError}`);
-      rmSync(tempDir, { recursive: true, force: true });
-      return;
-    }
     
     const testdataDir = join(__dirname, 'testdata');
     const testFile = join(testdataDir, `claude-live-test-${Date.now()}.txt`);
@@ -90,16 +85,9 @@ describe('Claude Live E2E', () => {
     rmSync(tempDir, { recursive: true, force: true });
   }, 120000);
 
-  test('should handle comprehensive file operations', async () => {
+  (claudeAvailable ? test : test.skip)('should handle comprehensive file operations', async () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'claude-test-'));
     const manager = new AgentManager(50, 10, tempDir);
-    
-    const [available, pathOrError] = checkCliAvailable('claude');
-    if (!available) {
-      console.warn(`Skipping test: ${pathOrError}`);
-      rmSync(tempDir, { recursive: true, force: true });
-      return;
-    }
     
     const testdataDir = join(__dirname, 'testdata');
     const testSubDir = join(testdataDir, `claude-comprehensive-test-${Date.now()}`);
@@ -178,16 +166,9 @@ describe('Claude Live E2E', () => {
     }
   }, 180000);
 
-  test('should work through MCP commands', async () => {
+  (claudeAvailable ? test : test.skip)(`should work through MCP commands${!claudeAvailable ? ` (skipped: ${claudePathOrError})` : ''}`, async () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'claude-mcp-test-'));
     const manager = new AgentManager(50, 10, tempDir);
-    
-    const [available, pathOrError] = checkCliAvailable('claude');
-    if (!available) {
-      console.warn(`Skipping test: ${pathOrError}`);
-      rmSync(tempDir, { recursive: true, force: true });
-      return;
-    }
     
     const testdataDir = join(__dirname, 'testdata');
     const testFile = join(testdataDir, `claude-mcp-test-${Date.now()}.txt`);

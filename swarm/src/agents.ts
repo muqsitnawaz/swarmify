@@ -156,7 +156,7 @@ export class AgentProcess {
   }
 
   get mode(): string {
-    return this.yolo ? 'yolo' : 'safe';
+    return this.yolo ? 'edit' : 'plan';
   }
 
   async getAgentDir(): Promise<string> {
@@ -292,7 +292,8 @@ export class AgentProcess {
       const meta = JSON.parse(metaContent);
 
       let yoloFromMeta = meta.yolo;
-      if (yoloFromMeta === null && meta.mode === 'yolo') {
+      // Backwards compatibility: support both 'yolo' (old) and 'edit' (new) mode names
+      if (yoloFromMeta === null && (meta.mode === 'yolo' || meta.mode === 'edit')) {
         yoloFromMeta = true;
       }
 
@@ -390,7 +391,7 @@ export class AgentManager {
     this.cleanupAgeDays = cleanupAgeDays;
     const resolvedDefaultMode = defaultMode ? normalizeModeValue(defaultMode) : defaultModeFromEnv();
     if (!resolvedDefaultMode) {
-      throw new Error(`Invalid default_mode '${defaultMode}'. Use 'safe' or 'yolo'.`);
+      throw new Error(`Invalid default_mode '${defaultMode}'. Use 'plan' or 'edit'.`);
     }
     this.defaultMode = resolvedDefaultMode;
 
@@ -573,7 +574,7 @@ export class AgentManager {
     }
 
     if (yolo) {
-      cmd = this.applyYoloMode(agentType, cmd);
+      cmd = this.applyEditMode(agentType, cmd);
     } else if (cmd.includes('--yolo')) {
       throw new Error('Safety: --yolo flag detected in command. Enable yolo=True to run in unsafe mode.');
     }
@@ -586,24 +587,35 @@ export class AgentManager {
     return /(^|\s)--\s*yolo(\s|$|[^\w-])/.test(normalized);
   }
 
-  private applyYoloMode(agentType: AgentType, cmd: string[]): string[] {
-    let replaced = false;
-    const yoloCmd: string[] = [];
+  private applyEditMode(agentType: AgentType, cmd: string[]): string[] {
+    const editCmd: string[] = [...cmd];
 
-    for (const part of cmd) {
-      if (part === '--full-auto') {
-        yoloCmd.push('--yolo');
-        replaced = true;
-      } else {
-        yoloCmd.push(part);
-      }
+    switch (agentType) {
+      case 'codex':
+        // Add --full-auto for edit mode (auto-approve with workspace sandbox)
+        editCmd.push('--full-auto');
+        break;
+
+      case 'cursor':
+        // Add -f (force) to auto-approve commands
+        editCmd.push('-f');
+        break;
+
+      case 'gemini':
+        // Add --yolo for edit mode
+        editCmd.push('--yolo');
+        break;
+
+      case 'claude':
+        // Replace --permission-mode plan with --permission-mode acceptEdits
+        const permModeIndex = editCmd.indexOf('--permission-mode');
+        if (permModeIndex !== -1 && permModeIndex + 1 < editCmd.length) {
+          editCmd[permModeIndex + 1] = 'acceptEdits';
+        }
+        break;
     }
 
-    if (!replaced && (agentType === 'codex' || agentType === 'gemini')) {
-      yoloCmd.push('--yolo');
-    }
-
-    return yoloCmd;
+    return editCmd;
   }
 
   async get(agentId: string): Promise<AgentProcess | null> {

@@ -38,16 +38,11 @@ async function pollUntilComplete(
 }
 
 describe('Cursor Live E2E', () => {
-  test('should spawn cursor-agent and parse tool calls correctly', async () => {
+  const [cursorAvailable, cursorPathOrError] = checkCliAvailable('cursor');
+  
+  (cursorAvailable ? test : test.skip)('should spawn cursor-agent and parse tool calls correctly', async () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'cursor-test-'));
     const manager = new AgentManager(50, 10, tempDir);
-    
-    const [available, pathOrError] = checkCliAvailable('cursor');
-    if (!available) {
-      console.warn(`Skipping test: ${pathOrError}`);
-      rmSync(tempDir, { recursive: true, force: true });
-      return;
-    }
     
     const testFile = `/tmp/cursor-live-test-${Date.now()}.txt`;
     const prompt = `Create a file at ${testFile} with the content 'hello from live test' using echo command`;
@@ -88,16 +83,9 @@ describe('Cursor Live E2E', () => {
     rmSync(tempDir, { recursive: true, force: true });
   }, 120000);
 
-  test('should handle comprehensive file operations', async () => {
+  (cursorAvailable ? test : test.skip)('should handle comprehensive file operations', async () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'cursor-test-'));
     const manager = new AgentManager(50, 10, tempDir);
-    
-    const [available, pathOrError] = checkCliAvailable('cursor');
-    if (!available) {
-      console.warn(`Skipping test: ${pathOrError}`);
-      rmSync(tempDir, { recursive: true, force: true });
-      return;
-    }
     
     const testDir = `/tmp/cursor-comprehensive-test-${Date.now()}`;
     const testDataPath = `${testDir}/tests/testdata`;

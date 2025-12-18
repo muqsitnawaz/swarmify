@@ -39,16 +39,11 @@ async function pollUntilComplete(
 }
 
 describe('Codex Live E2E', () => {
-  test('should spawn codex and parse tool calls correctly', async () => {
+  const [codexAvailable, codexPathOrError] = checkCliAvailable('codex');
+  
+  (codexAvailable ? test : test.skip)('should spawn codex and parse tool calls correctly', async () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'codex-test-'));
     const manager = new AgentManager(50, 10, tempDir);
-    
-    const [available, pathOrError] = checkCliAvailable('codex');
-    if (!available) {
-      console.warn(`Skipping test: ${pathOrError}`);
-      rmSync(tempDir, { recursive: true, force: true });
-      return;
-    }
     
     const testFile = `/tmp/codex-live-test-${Date.now()}.txt`;
     const prompt = `Create a file at ${testFile} with the content 'hello from live test' using echo command`;
@@ -89,16 +84,9 @@ describe('Codex Live E2E', () => {
     rmSync(tempDir, { recursive: true, force: true });
   }, 120000);
 
-  test('should spawn codex-agent and parse tool calls correctly', async () => {
+  (codexAvailable ? test : test.skip)('should spawn codex-agent and parse tool calls correctly', async () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'codex-test-'));
     const manager = new AgentManager(50, 10, tempDir);
-    
-    const [available, pathOrError] = checkCliAvailable('codex');
-    if (!available) {
-      console.warn(`Skipping test: ${pathOrError}`);
-      rmSync(tempDir, { recursive: true, force: true });
-      return;
-    }
     
     const testDir = `/tmp/codex-comprehensive-test-${Date.now()}`;
     const testDataPath = `${testDir}/tests/testdata`;
@@ -176,16 +164,9 @@ describe('Codex Live E2E', () => {
     }
   }, 180000);
 
-  test('should work through MCP commands', async () => {
+  (codexAvailable ? test : test.skip)(`should work through MCP commands${!codexAvailable ? ` (skipped: ${codexPathOrError})` : ''}`, async () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'codex-mcp-test-'));
     const manager = new AgentManager(50, 10, tempDir);
-    
-    const [available, pathOrError] = checkCliAvailable('codex');
-    if (!available) {
-      console.warn(`Skipping test: ${pathOrError}`);
-      rmSync(tempDir, { recursive: true, force: true });
-      return;
-    }
     
     const testFile = `/tmp/codex-mcp-test-${Date.now()}.txt`;
     const prompt = `Create a file at ${testFile} with the content 'hello from MCP test' using echo command`;

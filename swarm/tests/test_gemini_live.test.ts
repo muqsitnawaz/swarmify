@@ -39,16 +39,11 @@ async function pollUntilComplete(
 }
 
 describe('Gemini Live E2E', () => {
-  test('should spawn gemini and parse tool calls correctly', async () => {
+  const [geminiAvailable, geminiPathOrError] = checkCliAvailable('gemini');
+  
+  (geminiAvailable ? test : test.skip)('should spawn gemini and parse tool calls correctly', async () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'gemini-test-'));
     const manager = new AgentManager(50, 10, tempDir);
-    
-    const [available, pathOrError] = checkCliAvailable('gemini');
-    if (!available) {
-      console.warn(`Skipping test: ${pathOrError}`);
-      rmSync(tempDir, { recursive: true, force: true });
-      return;
-    }
     
     const testdataDir = join(__dirname, 'testdata');
     const testFile = join(testdataDir, `gemini-live-test-${Date.now()}.txt`);
@@ -56,7 +51,7 @@ describe('Gemini Live E2E', () => {
 
     console.log('Running gemini with prompt:', prompt);
 
-    const spawnResult = await handleSpawn(manager, 'test-gemini', 'gemini', prompt, null, 'yolo', null);
+    const spawnResult = await handleSpawn(manager, 'test-gemini', 'gemini', prompt, null, 'edit', null);
     console.log('Spawned agent:', spawnResult.agent_id);
     
     const statusResult = await pollUntilComplete(manager, 'test-gemini', spawnResult.agent_id, 90, 2000);
@@ -90,16 +85,9 @@ describe('Gemini Live E2E', () => {
     rmSync(tempDir, { recursive: true, force: true });
   }, 120000);
 
-  test('should handle comprehensive file operations', async () => {
+  (geminiAvailable ? test : test.skip)('should handle comprehensive file operations', async () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'gemini-test-'));
     const manager = new AgentManager(50, 10, tempDir);
-    
-    const [available, pathOrError] = checkCliAvailable('gemini');
-    if (!available) {
-      console.warn(`Skipping test: ${pathOrError}`);
-      rmSync(tempDir, { recursive: true, force: true });
-      return;
-    }
     
     const testdataDir = join(__dirname, 'testdata');
     const testSubDir = join(testdataDir, `gemini-comprehensive-test-${Date.now()}`);
@@ -138,7 +126,7 @@ describe('Gemini Live E2E', () => {
 
       console.log('Running comprehensive test with prompt:', prompt);
       
-      const spawnResult = await handleSpawn(manager, 'test-gemini', 'gemini', prompt, testDataPath, 'yolo', null);
+      const spawnResult = await handleSpawn(manager, 'test-gemini', 'gemini', prompt, testDataPath, 'edit', null);
       console.log('Spawned agent:', spawnResult.agent_id);
       
       const statusResult = await pollUntilComplete(manager, 'test-gemini', spawnResult.agent_id, 180, 2000);
@@ -186,16 +174,9 @@ describe('Gemini Live E2E', () => {
     }
   }, 180000);
 
-  test('should work through MCP commands', async () => {
+  (geminiAvailable ? test : test.skip)(`should work through MCP commands${!geminiAvailable ? ` (skipped: ${geminiPathOrError})` : ''}`, async () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'gemini-mcp-test-'));
     const manager = new AgentManager(50, 10, tempDir);
-    
-    const [available, pathOrError] = checkCliAvailable('gemini');
-    if (!available) {
-      console.warn(`Skipping test: ${pathOrError}`);
-      rmSync(tempDir, { recursive: true, force: true });
-      return;
-    }
     
     const testdataDir = join(__dirname, 'testdata');
     const testFile = join(testdataDir, `gemini-mcp-test-${Date.now()}.txt`);
@@ -247,7 +228,7 @@ describe('Gemini Live E2E', () => {
       task_name: 'test-gemini-mcp',
       agent_type: 'gemini',
       prompt: prompt,
-      mode: 'yolo',
+      mode: 'edit',
     });
     
     expect(spawnResult.agent_id).toBeDefined();

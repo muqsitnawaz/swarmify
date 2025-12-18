@@ -33,6 +33,8 @@ function buildSpawnDescription(): string {
 
 IMPORTANT: Avoid spawning the same agent type as yourself. If you are Claude, prefer cursor/codex/gemini instead.
 
+IMPORTANT: Pass mode='edit' if you want the agent to make any filesystem changes. Default is 'plan' (read-only).
+
 WAIT BEFORE CHECKING STATUS: After spawning all agents for this task, sleep for at least 2 minutes before checking status. Use: Bash(sleep 120 && echo "Done waiting on Swarm agents. Let's check status") timeout: 2m 30s
 
 Do NOT immediately call status - it wastes tokens and returns nothing useful.
