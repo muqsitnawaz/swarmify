@@ -1,10 +1,11 @@
-import { describe, test, expect } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 import {
+  buildSystemPrompt,
+  detectDirectoryMoves,
+  formatChangeStatus,
   getApiEndpoint,
   parseIgnorePatterns,
-  shouldIgnoreFile,
-  buildSystemPrompt,
-  formatChangeStatus
+  shouldIgnoreFile
 } from './git';
 
 describe('getApiEndpoint', () => {
@@ -120,5 +121,130 @@ describe('formatChangeStatus', () => {
   test('formats unknown status as Changed', () => {
     expect(formatChangeStatus(99, true)).toBe('Staged Changed');
     expect(formatChangeStatus(99, false)).toBe('Unstaged Changed');
+  });
+});
+
+describe('detectDirectoryMoves', () => {
+  test('returns null when not enough files', () => {
+    const deleted = ['cli-ts/file1.ts', 'cli-ts/file2.ts'];
+    const added = ['file1.ts', 'file2.ts'];
+    expect(detectDirectoryMoves(deleted, added)).toBeNull();
+  });
+
+  test('detects simple directory move', () => {
+    const deleted = [
+      'cli-ts/bun.lock',
+      'cli-ts/package.json',
+      'cli-ts/src/agents.ts',
+      'cli-ts/src/api.ts',
+      'cli-ts/src/file_ops.ts',
+      'cli-ts/tsconfig.json'
+    ];
+    const added = [
+      'bun.lock',
+      'package.json',
+      'src/agents.ts',
+      'src/api.ts',
+      'src/file_ops.ts',
+      'tsconfig.json'
+    ];
+    const result = detectDirectoryMoves(deleted, added);
+    expect(result).not.toBeNull();
+    expect(result?.fromPrefix).toBe('cli-ts/');
+    expect(result?.toPrefix).toBe('');
+    expect(result?.fileCount).toBe(6);
+    expect(result?.dirName).toBe('cli-ts');
+  });
+
+  test('returns null when files do not match', () => {
+    const deleted = [
+      'cli-ts/file1.ts',
+      'cli-ts/file2.ts',
+      'cli-ts/file3.ts',
+      'cli-ts/file4.ts',
+      'cli-ts/file5.ts',
+      'cli-ts/file6.ts'
+    ];
+    const added = [
+      'different1.ts',
+      'different2.ts',
+      'different3.ts',
+      'different4.ts',
+      'different5.ts',
+      'different6.ts'
+    ];
+    expect(detectDirectoryMoves(deleted, added)).toBeNull();
+  });
+
+  test('detects move with nested paths', () => {
+    const deleted = [
+      'cli-ts/src/agents.ts',
+      'cli-ts/src/api.ts',
+      'cli-ts/tests/test1.ts',
+      'cli-ts/tests/test2.ts',
+      'cli-ts/package.json'
+    ];
+    const added = [
+      'src/agents.ts',
+      'src/api.ts',
+      'tests/test1.ts',
+      'tests/test2.ts',
+      'package.json'
+    ];
+    const result = detectDirectoryMoves(deleted, added);
+    expect(result).not.toBeNull();
+    expect(result?.fromPrefix).toBe('cli-ts/');
+    expect(result?.fileCount).toBe(5);
+  });
+
+  test('returns null when partial match below threshold', () => {
+    const deleted = [
+      'cli-ts/file1.ts',
+      'cli-ts/file2.ts',
+      'cli-ts/file3.ts',
+      'cli-ts/file4.ts',
+      'cli-ts/file5.ts',
+      'cli-ts/file6.ts'
+    ];
+    const added = [
+      'file1.ts',
+      'file2.ts',
+      'file3.ts',
+      'different4.ts',
+      'different5.ts',
+      'different6.ts'
+    ];
+    expect(detectDirectoryMoves(deleted, added, 5)).toBeNull();
+  });
+
+  test('handles empty arrays', () => {
+    expect(detectDirectoryMoves([], [])).toBeNull();
+    expect(detectDirectoryMoves(['file1.ts'], [])).toBeNull();
+    expect(detectDirectoryMoves([], ['file1.ts'])).toBeNull();
+  });
+
+  test('detects move to parent directory', () => {
+    const deleted = [
+      'swarm/cli-ts/bun.lock',
+      'swarm/cli-ts/package.json',
+      'swarm/cli-ts/src/agents.ts',
+      'swarm/cli-ts/src/api.ts',
+      'swarm/cli-ts/src/file_ops.ts',
+      'swarm/cli-ts/tsconfig.json'
+    ];
+    const added = [
+      'swarm/bun.lock',
+      'swarm/package.json',
+      'swarm/src/agents.ts',
+      'swarm/src/api.ts',
+      'swarm/src/file_ops.ts',
+      'swarm/tsconfig.json'
+    ];
+    const result = detectDirectoryMoves(deleted, added);
+    expect(result).not.toBeNull();
+    expect(result?.fromPrefix).toBe('swarm/cli-ts/');
+    expect(result?.toPrefix).toBe('swarm/');
+    expect(result?.fileCount).toBe(6);
+    expect(result?.dirName).toBe('cli-ts');
   });
 });

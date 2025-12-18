@@ -2,11 +2,12 @@
 
 import * as vscode from 'vscode';
 import {
+  buildSystemPrompt,
+  formatChangeStatus,
   getApiEndpoint,
   parseIgnorePatterns,
-  shouldIgnoreFile,
-  buildSystemPrompt,
-  formatChangeStatus
+  prepareCommitContext,
+  shouldIgnoreFile
 } from './git';
 
 export async function generateCommitMessage(sourceControl?: { rootUri?: vscode.Uri }): Promise<void> {
@@ -48,7 +49,7 @@ export async function generateCommitMessage(sourceControl?: { rootUri?: vscode.U
 
   // If selected repo has no changes, find one that does
   const selectedHasChanges = (repo.state.workingTreeChanges || []).length > 0 ||
-                              (repo.state.indexChanges || []).length > 0;
+    (repo.state.indexChanges || []).length > 0;
   if (!selectedHasChanges && !sourceControl?.rootUri) {
     const repoWithChanges = gitApi.repositories.find((r: { state: { workingTreeChanges: unknown[]; indexChanges: unknown[] } }) => {
       const hasWorkingChanges = (r.state.workingTreeChanges || []).length > 0;
@@ -82,9 +83,6 @@ export async function generateCommitMessage(sourceControl?: { rootUri?: vscode.U
     cancellable: false
   }, async () => {
     try {
-      const unstagedDiffChanges = await repo.diff();
-      const stagedDiffChanges = await repo.diffWithHEAD();
-
       const workingTreeChanges = repo.state.workingTreeChanges || [];
       const indexChanges = repo.state.indexChanges || [];
 
@@ -98,6 +96,20 @@ export async function generateCommitMessage(sourceControl?: { rootUri?: vscode.U
         (c: { uri: vscode.Uri }) => !shouldIgnoreFile(c.uri.path, ignorePatterns)
       );
 
+      const deletedPaths: string[] = [];
+      const addedPaths: string[] = [];
+
+      for (const change of [...filteredWorkingTreeChanges, ...filteredIndexChanges]) {
+        const status = (change as { status: number }).status;
+        const path = (change as { uri: vscode.Uri }).uri.path;
+
+        if (status === 6) {
+          deletedPaths.push(path);
+        } else if (status === 7) {
+          addedPaths.push(path);
+        }
+      }
+
       const unstagedStatusChanges = filteredWorkingTreeChanges.map(
         (change: { status: number; uri: vscode.Uri }) =>
           `${formatChangeStatus(change.status, false)}: ${change.uri.path}`
@@ -110,25 +122,39 @@ export async function generateCommitMessage(sourceControl?: { rootUri?: vscode.U
 
       const allStatusChanges = [unstagedStatusChanges, stagedStatusChanges].filter(s => s.length > 0).join('\n');
 
-      const diffParts: string[] = [];
-      if (stagedDiffChanges) {
-        diffParts.push(`Staged Changes:\n${stagedDiffChanges}`);
-      }
-      if (unstagedDiffChanges) {
-        diffParts.push(`Unstaged Changes:\n${unstagedDiffChanges}`);
-      }
-      const allDiffChanges = diffParts.join('\n\n');
-
-      const hasChanges = (filteredWorkingTreeChanges.length > 0 || filteredIndexChanges.length > 0) ||
-                        (unstagedDiffChanges && unstagedDiffChanges.length > 0) ||
-                        (stagedDiffChanges && stagedDiffChanges.length > 0);
+      const hasChanges = filteredWorkingTreeChanges.length > 0 || filteredIndexChanges.length > 0;
 
       if (!hasChanges) {
         vscode.window.showInformationMessage('No changes to commit.');
         return;
       }
 
-      const fullChanges = `Status:\n${allStatusChanges}\n\nDiff:\n${allDiffChanges}`;
+      let unstagedDiffChanges: string | undefined;
+      let stagedDiffChanges: string | undefined;
+      let allDiffChanges: string | undefined;
+
+      const commitContext = prepareCommitContext(allStatusChanges, deletedPaths, addedPaths);
+
+      if (!commitContext.isMove) {
+        unstagedDiffChanges = await repo.diff();
+        stagedDiffChanges = await repo.diffWithHEAD();
+
+        const diffParts: string[] = [];
+        if (stagedDiffChanges) {
+          diffParts.push(`Staged Changes:\n${stagedDiffChanges}`);
+        }
+        if (unstagedDiffChanges) {
+          diffParts.push(`Unstaged Changes:\n${unstagedDiffChanges}`);
+        }
+        allDiffChanges = diffParts.join('\n\n');
+
+        const updatedContext = prepareCommitContext(allStatusChanges, deletedPaths, addedPaths, allDiffChanges);
+        commitContext.context = updatedContext.context;
+        commitContext.userPrompt = updatedContext.userPrompt;
+      }
+
+      const directoryMove = commitContext.moveInfo;
+
       const systemPrompt = buildSystemPrompt(commitMessageExamples);
 
       const endpoint = getApiEndpoint(provider);
@@ -142,7 +168,7 @@ export async function generateCommitMessage(sourceControl?: { rootUri?: vscode.U
           model: model,
           messages: [
             { role: "system", content: systemPrompt },
-            { role: "user", content: `Review the following git status + diff and generate a concise commit message:\n\n${fullChanges}` }
+            { role: "user", content: commitContext.userPrompt }
           ]
         })
       });
@@ -160,6 +186,32 @@ export async function generateCommitMessage(sourceControl?: { rootUri?: vscode.U
       if (allChangesToStage.length > 0) {
         const changePaths = allChangesToStage.map((change: { uri: vscode.Uri }) => change.uri.fsPath);
         await repo.add(changePaths);
+      }
+
+      // If directory move detected, ensure all new files/dirs are staged
+      if (directoryMove) {
+        const stagedPaths = new Set(
+          [...(repo.state.indexChanges || [])].map((change: { uri: vscode.Uri }) => change.uri.fsPath)
+        );
+
+        const newFilePaths = addedPaths
+          .map(path => {
+            const repoRoot = repo.rootUri.fsPath;
+            const fullPath = path.startsWith('/') ? path : `${repoRoot}/${path}`;
+            return fullPath;
+          })
+          .filter(path => {
+            try {
+              const fs = require('fs');
+              return fs.existsSync(path) && !stagedPaths.has(path);
+            } catch {
+              return false;
+            }
+          });
+
+        if (newFilePaths.length > 0) {
+          await repo.add(newFilePaths);
+        }
       }
 
       // Check if there are staged changes to commit
