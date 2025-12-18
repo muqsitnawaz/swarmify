@@ -1,11 +1,18 @@
 {
   "name": "agent-swarm-ts",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Give your AI coding agent the ability to spawn other agents (TypeScript port)",
   "main": "dist/index.js",
+  "bin": {
+    "agent-swarm": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
   "type": "module",
   "scripts": {
     "build": "tsc",
+    "prepublishOnly": "npm run build",
     "start": "node dist/index.js",
     "test": "bun test"
   },
