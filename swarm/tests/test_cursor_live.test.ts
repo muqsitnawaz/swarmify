@@ -62,11 +62,16 @@ describe('Cursor Live E2E', () => {
     console.log('Final status:', statusResult.status);
     console.log('Tool count:', statusResult.tool_count);
     console.log('Bash commands:', statusResult.bash_commands.length);
+    console.log('Last messages:', statusResult.last_messages.length);
     console.log('Files modified:', statusResult.files_modified);
     
     expect(statusResult.status).not.toBe(AgentStatus.RUNNING);
     expect(statusResult.tool_count).toBeGreaterThan(0);
+    expect(statusResult.bash_commands).toBeDefined();
+    expect(Array.isArray(statusResult.bash_commands)).toBe(true);
     expect(statusResult.bash_commands.length).toBeGreaterThan(0);
+    expect(statusResult.last_messages).toBeDefined();
+    expect(Array.isArray(statusResult.last_messages)).toBe(true);
     
     await handleStop(manager, 'test-cursor', spawnResult.agent_id);
     
@@ -136,11 +141,17 @@ describe('Cursor Live E2E', () => {
       console.log('Files modified:', statusResult.files_modified);
       console.log('Files read:', statusResult.files_read);
       console.log('Files deleted:', statusResult.files_deleted);
+      console.log('Bash commands:', statusResult.bash_commands.length);
+      console.log('Last messages:', statusResult.last_messages.length);
       
       expect(statusResult.status).not.toBe(AgentStatus.RUNNING);
       expect(statusResult.tool_count).toBeGreaterThan(0);
       expect(statusResult.files_read.length).toBeGreaterThanOrEqual(1);
       expect(statusResult.files_modified.length + statusResult.files_created.length).toBeGreaterThanOrEqual(1);
+      expect(statusResult.bash_commands).toBeDefined();
+      expect(Array.isArray(statusResult.bash_commands)).toBe(true);
+      expect(statusResult.last_messages).toBeDefined();
+      expect(Array.isArray(statusResult.last_messages)).toBe(true);
       
       await handleStop(manager, 'test-cursor', spawnResult.agent_id);
       
