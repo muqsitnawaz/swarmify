@@ -61,8 +61,8 @@ describe('Cursor Live E2E', () => {
     
     console.log('Final status:', statusResult.status);
     console.log('Tool count:', statusResult.tool_count);
-    console.log('Bash commands:', statusResult.bash_commands.length);
-    console.log('Last messages:', statusResult.last_messages.length);
+    console.log('Bash commands:', statusResult.bash_commands);
+    console.log('Last messages:', statusResult.last_messages);
     console.log('Files modified:', statusResult.files_modified);
     
     expect(statusResult.status).not.toBe(AgentStatus.RUNNING);
@@ -70,8 +70,13 @@ describe('Cursor Live E2E', () => {
     expect(statusResult.bash_commands).toBeDefined();
     expect(Array.isArray(statusResult.bash_commands)).toBe(true);
     expect(statusResult.bash_commands.length).toBeGreaterThan(0);
+    expect(statusResult.bash_commands.every(cmd => typeof cmd === 'string')).toBe(true);
+    expect(statusResult.bash_commands.some(cmd => cmd.includes('echo') || cmd.includes(testFile))).toBe(true);
     expect(statusResult.last_messages).toBeDefined();
     expect(Array.isArray(statusResult.last_messages)).toBe(true);
+    expect(statusResult.last_messages.length).toBeGreaterThan(0);
+    expect(statusResult.last_messages.length).toBeLessThanOrEqual(3);
+    expect(statusResult.last_messages.every(msg => typeof msg === 'string')).toBe(true);
     
     await handleStop(manager, 'test-cursor', spawnResult.agent_id);
     
@@ -141,8 +146,8 @@ describe('Cursor Live E2E', () => {
       console.log('Files modified:', statusResult.files_modified);
       console.log('Files read:', statusResult.files_read);
       console.log('Files deleted:', statusResult.files_deleted);
-      console.log('Bash commands:', statusResult.bash_commands.length);
-      console.log('Last messages:', statusResult.last_messages.length);
+      console.log('Bash commands:', statusResult.bash_commands);
+      console.log('Last messages:', statusResult.last_messages);
       
       expect(statusResult.status).not.toBe(AgentStatus.RUNNING);
       expect(statusResult.tool_count).toBeGreaterThan(0);
@@ -150,8 +155,14 @@ describe('Cursor Live E2E', () => {
       expect(statusResult.files_modified.length + statusResult.files_created.length).toBeGreaterThanOrEqual(1);
       expect(statusResult.bash_commands).toBeDefined();
       expect(Array.isArray(statusResult.bash_commands)).toBe(true);
+      expect(statusResult.bash_commands.length).toBeGreaterThan(0);
+      expect(statusResult.bash_commands.every(cmd => typeof cmd === 'string')).toBe(true);
+      expect(statusResult.bash_commands.some(cmd => cmd.includes('ls') || cmd.includes('rm') || cmd.includes('mkdir'))).toBe(true);
       expect(statusResult.last_messages).toBeDefined();
       expect(Array.isArray(statusResult.last_messages)).toBe(true);
+      expect(statusResult.last_messages.length).toBeGreaterThan(0);
+      expect(statusResult.last_messages.length).toBeLessThanOrEqual(3);
+      expect(statusResult.last_messages.every(msg => typeof msg === 'string')).toBe(true);
       
       await handleStop(manager, 'test-cursor', spawnResult.agent_id);
       
