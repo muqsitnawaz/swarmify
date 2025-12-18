@@ -4,7 +4,7 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import { AgentManager } from './agents.js';
+import { AgentManager, checkAllClis } from './agents.js';
 import { AgentType } from './parsers.js';
 import { handleSpawn, handleStatus, handleStop } from './api.js';
 
@@ -207,6 +207,20 @@ export async function runServer(): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error('Starting agent-swarm MCP server v0.2.0');
+
+  // Health check
+  const health = checkAllClis();
+  const available = Object.entries(health)
+    .filter(([_, status]) => status.installed)
+    .map(([agent]) => agent);
+  const missing = Object.entries(health)
+    .filter(([_, status]) => !status.installed)
+    .map(([agent]) => agent);
+
+  console.error('Available agents:', available.join(', '));
+  if (missing.length > 0) {
+    console.error('Missing agents (install CLIs to use):', missing.join(', '));
+  }
 }
 
 runServer();
