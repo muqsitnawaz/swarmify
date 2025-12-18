@@ -208,3 +208,5 @@ export async function runServer(): Promise<void> {
   await server.connect(transport);
   console.error('Starting agent-swarm MCP server v0.2.0');
 }
+
+runServer();

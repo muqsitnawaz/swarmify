@@ -1,11 +1,25 @@
-## Agent Spawning
+## Swarm MCP Server
 
-When asked to spawn agents or perform multi-agent tasks, use the Swarm MCP extension:
+### Building
+
+After making changes to `swarm/`, rebuild and restart Claude Code:
+```bash
+./swarm/scripts/build.sh
+```
+
+### API
 
 - `mcp__Swarm__spawn` - Spawn agents (codex, cursor, gemini, claude)
 - `mcp__Swarm__status` - Check agent status
-- `mcp__Swarm__read` - Read agent output
 - `mcp__Swarm__stop` - Stop agents
+
+### Mode Parameter (IMPORTANT)
+
+When spawning agents that need to write files, pass `mode: 'edit'`:
+- `mode: 'edit'` - Agent CAN modify files
+- `mode: 'plan'` - Agent is READ-ONLY (default)
+
+Do NOT use `'yolo'` or `'safe'` - those are invalid.
 
 Do NOT use built-in Claude Code agents (Task tool with Explore/Plan subagent_type) when Swarm agents are requested.
 
