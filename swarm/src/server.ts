@@ -33,7 +33,10 @@ function buildSpawnDescription(): string {
 
 IMPORTANT: Avoid spawning the same agent type as yourself. If you are Claude, prefer cursor/codex/gemini instead.
 
-IMPORTANT: Pass mode='edit' if you want the agent to make any filesystem changes. Default is 'plan' (read-only).
+MODE PARAMETER (required for writes):
+- mode='edit' - Agent CAN modify files (use this for implementation tasks)
+- mode='plan' - Agent is READ-ONLY (default, use for research/exploration)
+Do NOT use 'yolo' or 'safe' - those are invalid.
 
 WAIT BEFORE CHECKING STATUS: After spawning all agents for this task, sleep for at least 2 minutes before checking status. Use: Bash(sleep 120 && echo "Done waiting on Swarm agents. Let's check status") timeout: 2m 30s
 
@@ -86,7 +89,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             mode: {
               type: 'string',
               enum: ['plan', 'edit'],
-              description: "Agent mode. 'plan' is read-only, 'edit' can modify files.",
+              description: "REQUIRED FOR WRITES: 'edit' allows file modifications, 'plan' is read-only (default). Do NOT use 'yolo' or 'safe'.",
             },
             model: {
               type: 'string',

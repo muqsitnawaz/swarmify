@@ -61,7 +61,7 @@ export function resolveModeFlags(
   if (requestedMode !== null && requestedMode !== undefined) {
     const normalizedMode = normalizeModeValue(requestedMode);
     if (!normalizedMode) {
-      throw new Error(`Invalid mode '${requestedMode}'. Use 'plan' or 'edit'.`);
+      throw new Error(`Invalid mode '${requestedMode}'. Valid modes: 'plan' (read-only) or 'edit' (can write). Note: 'yolo' and 'safe' are no longer valid.`);
     }
     // 'edit' mode maps to yolo=true internally
     return [normalizedMode, normalizedMode === 'edit'];
