@@ -15,10 +15,10 @@ This is a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) serve
 
 ## Installation
 
-You can run this server directly using `npx`:
+You can run this server directly using `bunx`:
 
 ```bash
-npx agent-swarm
+bunx agent-swarm
 ```
 
 ## Configuration
@@ -45,7 +45,7 @@ Add this to your `claude_desktop_config.json`:
 {
   "mcpServers": {
     "swarm": {
-      "command": "npx",
+      "command": "bunx",
       "args": ["-y", "agent-swarm"],
       "env": {
         "AGENT_SWARM_DEFAULT_MODE": "plan"

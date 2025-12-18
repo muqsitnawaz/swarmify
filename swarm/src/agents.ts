@@ -566,11 +566,15 @@ export class AgentManager {
 
     let cmd = cmdTemplate.map(part => part.replace('{prompt}', prompt));
 
-    if (model && agentType === 'codex') {
-      const execIndex = cmd.indexOf('exec');
-      const sandboxIndex = cmd.indexOf('--sandbox');
-      const insertIndex = sandboxIndex !== -1 ? sandboxIndex : execIndex + 1;
-      cmd.splice(insertIndex, 0, '--model', model);
+    if (model) {
+      if (agentType === 'codex') {
+        const execIndex = cmd.indexOf('exec');
+        const sandboxIndex = cmd.indexOf('--sandbox');
+        const insertIndex = sandboxIndex !== -1 ? sandboxIndex : execIndex + 1;
+        cmd.splice(insertIndex, 0, '--model', model);
+      } else if (agentType === 'gemini' || agentType === 'claude') {
+        cmd.push('--model', model);
+      }
     }
 
     if (yolo) {
