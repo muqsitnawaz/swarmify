@@ -26,7 +26,8 @@ export function getSettings(context: vscode.ExtensionContext): AgentSettings {
         claude: { login: autoStart, instances: config.get<number>('claudeCount', 2) },
         codex: { login: autoStart, instances: config.get<number>('codexCount', 2) },
         gemini: { login: autoStart, instances: config.get<number>('geminiCount', 2) },
-        cursor: { login: autoStart, instances: config.get<number>('cursorCount', 2) }
+        cursor: { login: autoStart, instances: config.get<number>('cursorCount', 2) },
+        shell: { login: false, instances: 1 }
       },
       custom: (config.get<{ title: string; command: string; count: number }[]>('customAgents', []) || []).map(a => ({
         name: a.title,
@@ -150,6 +151,7 @@ function getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri): s
       codex: "${codexIcon}",
       gemini: "${geminiIcon}",
       cursor: "${cursorIcon}",
+      shell: "${agentsIcon}",
       agents: "${agentsIcon}"
     };
   </script>

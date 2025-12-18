@@ -94,6 +94,14 @@
       {
         "command": "agents.newTask",
         "title": "Agents: New Task"
+      },
+      {
+        "command": "agents.newShell",
+        "title": "Agents: New Shell",
+        "icon": {
+          "light": "assets/agents.png",
+          "dark": "assets/agents.png"
+        }
       }
     ],
     "configuration": {

@@ -60,9 +60,10 @@ const BUILT_IN_AGENTS = [
   { key: 'codex', name: 'Codex', icon: icons.codex },
   { key: 'gemini', name: 'Gemini', icon: icons.gemini },
   { key: 'cursor', name: 'Cursor', icon: icons.cursor },
+  { key: 'shell', name: 'Shell', icon: icons.shell },
 ] as const
 
-const RESERVED_NAMES = ['CC', 'CX', 'GX', 'CR']
+const RESERVED_NAMES = ['CC', 'CX', 'GX', 'CR', 'SH']
 
 export default function App() {
   const [settings, setSettings] = useState<AgentSettings | null>(null)

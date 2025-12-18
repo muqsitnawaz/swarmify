@@ -18,7 +18,7 @@ index abc..def 100644
 `;
     const summary = summarizeDiff(diff);
     expect(summary).toContain('File: src/app.ts');
-    expect(summary).toContain('1 changes');
+    expect(summary).toContain('1 lines changed');
     expect(summary).toContain('added line');
   });
 

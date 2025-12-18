@@ -326,7 +326,9 @@ async function openSingleAgent(context: vscode.ExtensionContext, agentConfig: Om
 
   const pid = await terminal.processId;
   terminals.register(terminal, terminalId, agentConfig, pid, context);
-  terminal.sendText(agentConfig.command);
+  if (agentConfig.command) {
+    terminal.sendText(agentConfig.command);
+  }
 }
 
 async function newTaskWithContext(context: vscode.ExtensionContext) {
@@ -391,7 +393,9 @@ async function openSingleAgentWithQueue(
   }
 
   // Send agent command
-  terminal.sendText(agentConfig.command);
+  if (agentConfig.command) {
+    terminal.sendText(agentConfig.command);
+  }
 
   // After delay, send queued messages
   setTimeout(() => {
@@ -435,7 +439,9 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
 
       const pid = await terminal.processId;
       terminals.register(terminal, terminalId, agent, pid, context);
-      terminal.sendText(agent.command);
+      if (agent.command) {
+        terminal.sendText(agent.command);
+      }
       totalCount++;
     }
   }

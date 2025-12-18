@@ -597,7 +597,7 @@ export class AgentManager {
       }
     }
 
-    if (!replaced && agentType === 'codex') {
+    if (!replaced && (agentType === 'codex' || agentType === 'gemini')) {
       yoloCmd.push('--yolo');
     }
 

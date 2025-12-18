@@ -5,7 +5,8 @@ import {
   CLAUDE_TITLE,
   CODEX_TITLE,
   GEMINI_TITLE,
-  CURSOR_TITLE
+  CURSOR_TITLE,
+  SHELL_TITLE
 } from './utils';
 
 // Built-in agent definition (static data)
@@ -22,7 +23,8 @@ export const BUILT_IN_AGENTS: BuiltInAgentDef[] = [
   { key: 'claude', title: CLAUDE_TITLE, command: 'claude', icon: 'claude.png', prefix: 'cc', commandId: 'agents.newClaude' },
   { key: 'codex', title: CODEX_TITLE, command: 'codex', icon: 'chatgpt.png', prefix: 'cx', commandId: 'agents.newCodex' },
   { key: 'gemini', title: GEMINI_TITLE, command: 'gemini', icon: 'gemini.png', prefix: 'gm', commandId: 'agents.newGemini' },
-  { key: 'cursor', title: CURSOR_TITLE, command: 'cursor-agent', icon: 'cursor.png', prefix: 'cr', commandId: 'agents.newCursor' }
+  { key: 'cursor', title: CURSOR_TITLE, command: 'cursor-agent', icon: 'cursor.png', prefix: 'cr', commandId: 'agents.newCursor' },
+  { key: 'shell', title: SHELL_TITLE, command: '', icon: 'agents.png', prefix: 'sh', commandId: 'agents.newShell' }
 ];
 
 // Lookup built-in agent by key (e.g., "claude", "codex")

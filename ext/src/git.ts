@@ -142,6 +142,90 @@ export function detectDirectoryMoves(
   return null;
 }
 
+export function summarizeDiff(diff: string): string {
+  if (!diff) return '';
+
+  const lines = diff.split('\n');
+  let output = '';
+  
+  const fileBlocks: string[][] = [];
+  let currentBlock: string[] = [];
+  
+  for (const line of lines) {
+      if (line.startsWith('diff --git ')) {
+          if (currentBlock.length > 0) {
+              fileBlocks.push(currentBlock);
+          }
+          currentBlock = [line];
+      } else {
+          currentBlock.push(line);
+      }
+  }
+  if (currentBlock.length > 0) {
+      fileBlocks.push(currentBlock);
+  }
+  
+  for (const block of fileBlocks) {
+      if (!block[0].startsWith('diff --git ')) {
+          continue; 
+      }
+      
+      let filePath = '';
+      const plusLine = block.find(l => l.startsWith('+++ b/'));
+      if (plusLine) {
+          filePath = plusLine.substring(6);
+      } else {
+           const minusLine = block.find(l => l.startsWith('--- a/'));
+           if (minusLine) filePath = minusLine.substring(6);
+           else {
+               const parts = block[0].split(' ');
+               if (parts.length >= 4) {
+                   const bPart = parts[parts.length-1];
+                   if (bPart.startsWith('b/')) filePath = bPart.substring(2);
+                   else filePath = bPart;
+               }
+           }
+      }
+      
+      if (!filePath) continue;
+      
+      let added = 0;
+      let removed = 0;
+      const preview: string[] = [];
+      let inHunk = false;
+      
+      for (const line of block) {
+          if (line.startsWith('@@ ')) {
+              inHunk = true;
+              continue; 
+          }
+          
+          if (!inHunk) continue;
+          
+          if (line.startsWith('+') && !line.startsWith('+++')) {
+              added++;
+              if (preview.length < 10) preview.push(line);
+          } else if (line.startsWith('-') && !line.startsWith('---')) {
+              removed++;
+              if (preview.length < 10) preview.push(line);
+          } else if (line.startsWith(' ')) {
+               if (preview.length < 10) preview.push(line);
+          }
+      }
+      
+      output += `File: ${filePath} (${added + removed} lines changed)\n`;
+      output += preview.join('\n');
+      if (preview.length > 0 && (preview.length < (added + removed) || preview.length === 10)) { 
+           output += '\n...';
+      } else if (preview.length === 0 && (added + removed) > 0) {
+           output += '\n...';
+      }
+      output += '\n\n';
+  }
+  
+  return output.trim();
+}
+
 export interface CommitContext {
   context: string;
   userPrompt: string;
@@ -184,26 +268,23 @@ export function prepareCommitContext(
       truncatedStatus = truncatedLines.join('\n') + `\n... and ${remaining} more files`;
     }
 
-    const fullChanges = `Status:\n${truncatedStatus}${diffChanges ? `\n\nDiff:\n${diffChanges}` : ''}`;
-
-    if (fullChanges.length > MAX_CONTEXT_SIZE && diffChanges) {
-      const statusPart = `Status:\n${truncatedStatus}`;
-      const maxDiffSize = MAX_CONTEXT_SIZE - statusPart.length - 200;
-      const truncatedDiff = diffChanges.length > maxDiffSize
-        ? diffChanges.slice(0, maxDiffSize) + '\n... (diff truncated)'
-        : diffChanges;
-      context = `${statusPart}\n\nDiff:\n${truncatedDiff}`;
-    } else {
-      context = fullChanges;
+    let diffSummary = '';
+    if (diffChanges) {
+        diffSummary = summarizeDiff(diffChanges);
     }
 
-    userPrompt = `Review the following git status + diff and generate a concise commit message:\n\n${context}`;
-  }
+    const fullChanges = `Status:\n${truncatedStatus}${diffSummary ? `\n\nDiff Summary:\n${diffSummary}` : ''}`;
 
-  if (context.length > MAX_CONTEXT_SIZE) {
-    const truncated = context.slice(0, MAX_CONTEXT_SIZE - 100) + '\n... (context truncated)';
-    context = truncated;
-    userPrompt = `Review the following git status + diff and generate a concise commit message:\n\n${context}`;
+    context = fullChanges;
+
+    // We can probably relax MAX_CONTEXT_SIZE or keep it as a safety net.
+    // Given the summarization, it's less likely to overflow, but if it does, we just truncate the end.
+    if (context.length > MAX_CONTEXT_SIZE) {
+      const truncated = context.slice(0, MAX_CONTEXT_SIZE - 100) + '\n... (context truncated)';
+      context = truncated;
+    }
+
+    userPrompt = `Review the following git status + diff summary and generate a concise commit message:\n\n${context}`;
   }
 
   return {

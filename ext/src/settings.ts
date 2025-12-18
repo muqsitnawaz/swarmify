@@ -21,6 +21,7 @@ export interface AgentSettings {
     codex: BuiltInAgentConfig;
     gemini: BuiltInAgentConfig;
     cursor: BuiltInAgentConfig;
+    shell: BuiltInAgentConfig;
   };
   custom: CustomAgentConfig[];
 }
@@ -32,7 +33,8 @@ export function getDefaultSettings(): AgentSettings {
       claude: { login: false, instances: 2 },
       codex: { login: false, instances: 2 },
       gemini: { login: false, instances: 2 },
-      cursor: { login: false, instances: 2 }
+      cursor: { login: false, instances: 2 },
+      shell: { login: false, instances: 1 }
     },
     custom: []
   };

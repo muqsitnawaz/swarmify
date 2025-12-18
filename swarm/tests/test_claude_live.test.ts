@@ -1,142 +1,100 @@
 import { describe, test, expect } from 'bun:test';
-import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { normalizeEvents } from '../src/parsers.js';
-import { summarizeEvents, getQuickStatus, getToolBreakdown } from '../src/summarizer.js';
+import { tmpdir } from 'os';
+import { mkdtempSync, rmSync, writeFileSync, unlinkSync } from 'fs';
+import { AgentManager, checkCliAvailable, AgentStatus } from '../src/agents.js';
+import { handleSpawn, handleStatus, handleStop, AgentStatusResult } from '../src/api.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-async function runClaudeAgent(prompt: string, timeoutMs: number = 60000, extraArgs: string[] = []): Promise<{ events: any[], rawEvents: any[], rawStdout: string }> {
-  return new Promise((resolve, reject) => {
-    const args = ['-p', '--verbose', ...extraArgs, prompt, '--output-format', 'stream-json'];
-    const proc = spawn('claude', args, {
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-
-    let stdout = '';
-    let stderr = '';
-
-    proc.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
-
-    proc.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
-
-    const timeout = setTimeout(() => {
-      proc.kill('SIGTERM');
-      reject(new Error(`claude timed out after ${timeoutMs}ms`));
-    }, timeoutMs);
-
-    proc.on('close', (code) => {
-      clearTimeout(timeout);
-
-      if (code !== 0 && !stdout) {
-        reject(new Error(`claude exited with code ${code}: ${stderr}`));
-        return;
-      }
-
-      const lines = stdout.split('\n').filter(line => line.trim());
-      const allEvents: any[] = [];
-      const rawEvents: any[] = [];
-
-      for (const line of lines) {
-        try {
-          const raw = JSON.parse(line);
-          rawEvents.push(raw);
-          const normalized = normalizeEvents('claude', raw);
-          allEvents.push(...normalized);
-        } catch (e) {
-        }
-      }
-
-      resolve({ events: allEvents, rawEvents, rawStdout: stdout });
-    });
-
-    proc.on('error', (err) => {
-      clearTimeout(timeout);
-      reject(err);
-    });
-  });
+async function pollUntilComplete(
+  manager: AgentManager,
+  taskName: string,
+  agentId: string,
+  maxIterations: number,
+  pollIntervalMs: number
+): Promise<AgentStatusResult> {
+  for (let i = 0; i < maxIterations; i++) {
+    const result = await handleStatus(manager, taskName, agentId);
+    if ('error' in result) {
+      throw new Error(result.error);
+    }
+    
+    const statusResult = result as AgentStatusResult;
+    if (statusResult.status !== AgentStatus.RUNNING) {
+      return statusResult;
+    }
+    
+    await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+  }
+  
+  const finalResult = await handleStatus(manager, taskName, agentId);
+  if ('error' in finalResult) {
+    throw new Error(finalResult.error);
+  }
+  return finalResult as AgentStatusResult;
 }
 
 describe('Claude Live E2E', () => {
   test('should spawn claude and parse tool calls correctly', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'claude-test-'));
+    const manager = new AgentManager(50, 10, tempDir);
+    
+    const [available, pathOrError] = checkCliAvailable('claude');
+    if (!available) {
+      console.warn(`Skipping test: ${pathOrError}`);
+      rmSync(tempDir, { recursive: true, force: true });
+      return;
+    }
+    
     const testdataDir = join(__dirname, 'testdata');
     const testFile = join(testdataDir, `claude-live-test-${Date.now()}.txt`);
     const prompt = `Create a file at ${testFile} with the content 'hello from live test' using echo command`;
-
+    
     console.log('Running claude with prompt:', prompt);
-
-    const { events, rawEvents, rawStdout } = await runClaudeAgent(prompt, 120000);
-    const logFilePath = join(testdataDir, 'claude-agent-log-simple.jsonl');
-    const { writeFileSync } = await import('fs');
-    writeFileSync(logFilePath, rawStdout, 'utf-8');
-    console.log(`Saved full stdout to: ${logFilePath}`);
-
-    const rawTypeCounts: Record<string, number> = {};
-    for (const raw of rawEvents) {
-      const rawType = raw.type || 'unknown';
-      rawTypeCounts[rawType] = (rawTypeCounts[rawType] || 0) + 1;
-      if (raw.subtype) {
-        const fullType = `${rawType}.${raw.subtype}`;
-        rawTypeCounts[fullType] = (rawTypeCounts[fullType] || 0) + 1;
-      }
-    }
-    console.log('Raw event type counts:', rawTypeCounts);
-    console.log('Sample raw events:', rawEvents.slice(0, 5).map(r => ({ type: r.type, subtype: r.subtype, tool_call: r.tool_call ? Object.keys(r.tool_call) : null })));
-
-    console.log('Total events:', events.length);
-
-    const typeCounts: Record<string, number> = {};
-    for (const event of events) {
-      typeCounts[event.type] = (typeCounts[event.type] || 0) + 1;
-    }
-    console.log('Event type counts:', typeCounts);
-
-    expect(events.length).toBeGreaterThan(0);
-    expect(typeCounts['bash']).toBeGreaterThanOrEqual(1);
-    expect(typeCounts['result']).toBe(1);
-
-    const summary = summarizeEvents('live-agent', 'claude', 'completed', events, null);
-    const summaryFilePath = join(testdataDir, 'claude-summary-simple.jsonl');
-    writeFileSync(summaryFilePath, JSON.stringify(summary.toDict('detailed')) + '\n', 'utf-8');
-    console.log(`Saved summary to: ${summaryFilePath}`);
-    console.log('Summary:', {
-      toolCallCount: summary.toolCallCount,
-      bashCommands: summary.bashCommands,
-      filesModified: Array.from(summary.filesModified),
-    });
-
-    expect(summary.toolCallCount).toBeGreaterThan(0);
-    expect(summary.bashCommands.length).toBeGreaterThan(0);
-
-    const quickStatus = getQuickStatus('live-agent', 'claude', 'completed', events);
-    console.log('Quick status:', quickStatus);
-
-    expect(quickStatus.tool_count).toBeGreaterThan(0);
-
-    const breakdown = getToolBreakdown(events);
-    console.log('Tool breakdown:', breakdown);
-
-    expect(breakdown['bash']).toBeGreaterThanOrEqual(1);
-
+    
+    const spawnResult = await handleSpawn(manager, 'test-claude', 'claude', prompt, null, null, null);
+    console.log('Spawned agent:', spawnResult.agent_id);
+    
+    const statusResult = await pollUntilComplete(manager, 'test-claude', spawnResult.agent_id, 90, 2000);
+    
+    console.log('Final status:', statusResult.status);
+    console.log('Tool count:', statusResult.tool_count);
+    console.log('Bash commands:', statusResult.bash_commands.length);
+    console.log('Files modified:', statusResult.files_modified);
+    
+    expect(statusResult.status).not.toBe(AgentStatus.RUNNING);
+    expect(statusResult.tool_count).toBeGreaterThan(0);
+    expect(statusResult.bash_commands.length).toBeGreaterThan(0);
+    
+    await handleStop(manager, 'test-claude', spawnResult.agent_id);
+    
     try {
-      const { unlinkSync } = await import('fs');
       unlinkSync(testFile);
     } catch {
     }
+    
+    rmSync(tempDir, { recursive: true, force: true });
   }, 120000);
 
   test('should handle comprehensive file operations', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'claude-test-'));
+    const manager = new AgentManager(50, 10, tempDir);
+    
+    const [available, pathOrError] = checkCliAvailable('claude');
+    if (!available) {
+      console.warn(`Skipping test: ${pathOrError}`);
+      rmSync(tempDir, { recursive: true, force: true });
+      return;
+    }
+    
     const testdataDir = join(__dirname, 'testdata');
     const testSubDir = join(testdataDir, `claude-comprehensive-test-${Date.now()}`);
     const testDataPath = testSubDir;
     
-    const { mkdirSync, writeFileSync, readFileSync, unlinkSync, rmdirSync } = await import('fs');
+    const { mkdirSync, writeFileSync, readFileSync } = await import('fs');
     
     try {
       mkdirSync(testDataPath, { recursive: true });
@@ -168,59 +126,25 @@ describe('Claude Live E2E', () => {
 8. Create a new file dir4/newfile.txt with content "new file"`;
 
       console.log('Running comprehensive test with prompt:', prompt);
-      console.log('Raw event types before normalization:');
       
-      const { events, rawEvents, rawStdout } = await runClaudeAgent(prompt, 180000, ['--permission-mode', 'bypassPermissions']);
+      const spawnResult = await handleSpawn(manager, 'test-claude', 'claude', prompt, testDataPath, null, null);
+      console.log('Spawned agent:', spawnResult.agent_id);
       
-      const logFilePath = join(testdataDir, 'claude-agent-log-comprehensive.jsonl');
-      writeFileSync(logFilePath, rawStdout, 'utf-8');
-      console.log(`Saved full stdout to: ${logFilePath}`);
+      const statusResult = await pollUntilComplete(manager, 'test-claude', spawnResult.agent_id, 180, 2000);
       
-      const rawTypeCounts: Record<string, number> = {};
-      for (const raw of rawEvents) {
-        const rawType = raw.type || 'unknown';
-        rawTypeCounts[rawType] = (rawTypeCounts[rawType] || 0) + 1;
-        if (raw.subtype) {
-          const fullType = `${rawType}.${raw.subtype}`;
-          rawTypeCounts[fullType] = (rawTypeCounts[fullType] || 0) + 1;
-        }
-      }
-      console.log('Raw event type counts:', rawTypeCounts);
-      console.log('Sample raw events:', rawEvents.slice(0, 5).map(r => ({ type: r.type, subtype: r.subtype, tool_call: r.tool_call ? Object.keys(r.tool_call) : null })));
+      console.log('Final status:', statusResult.status);
+      console.log('Tool count:', statusResult.tool_count);
+      console.log('Files created:', statusResult.files_created);
+      console.log('Files modified:', statusResult.files_modified);
+      console.log('Files read:', statusResult.files_read);
+      console.log('Files deleted:', statusResult.files_deleted);
       
-      console.log('Total normalized events:', events.length);
+      expect(statusResult.status).not.toBe(AgentStatus.RUNNING);
+      expect(statusResult.tool_count).toBeGreaterThan(0);
+      expect(statusResult.files_read.length).toBeGreaterThanOrEqual(1);
+      expect(statusResult.files_modified.length + statusResult.files_created.length).toBeGreaterThanOrEqual(1);
       
-      const typeCounts: Record<string, number> = {};
-      for (const event of events) {
-        typeCounts[event.type] = (typeCounts[event.type] || 0) + 1;
-      }
-      console.log('Normalized event type counts:', typeCounts);
-      
-      expect(events.length).toBeGreaterThan(0);
-      expect(typeCounts['result']).toBe(1);
-      
-      const summary = summarizeEvents('comprehensive-agent', 'claude', 'completed', events, null);
-      const summaryFilePath = join(testdataDir, 'claude-summary-comprehensive.jsonl');
-      writeFileSync(summaryFilePath, JSON.stringify(summary.toDict('detailed')) + '\n', 'utf-8');
-      console.log(`Saved summary to: ${summaryFilePath}`);
-      console.log('Summary:', {
-        toolCallCount: summary.toolCallCount,
-        filesCreated: Array.from(summary.filesCreated),
-        filesModified: Array.from(summary.filesModified),
-        filesRead: Array.from(summary.filesRead),
-        filesDeleted: Array.from(summary.filesDeleted),
-        bashCommands: summary.bashCommands.slice(-10),
-      });
-      
-      const quickStatus = getQuickStatus('comprehensive-agent', 'claude', 'completed', events);
-      console.log('Quick status:', quickStatus);
-      
-      expect(quickStatus.tool_count).toBeGreaterThan(0);
-      expect(typeCounts['file_read']).toBeGreaterThanOrEqual(1);
-      expect(typeCounts['file_write']).toBeGreaterThanOrEqual(1);
-      
-      const breakdown = getToolBreakdown(events);
-      console.log('Tool breakdown:', breakdown);
+      await handleStop(manager, 'test-claude', spawnResult.agent_id);
       
     } finally {
       try {
@@ -228,6 +152,7 @@ describe('Claude Live E2E', () => {
         rmSync(testSubDir, { recursive: true, force: true });
       } catch {
       }
+      rmSync(tempDir, { recursive: true, force: true });
     }
   }, 180000);
 });
