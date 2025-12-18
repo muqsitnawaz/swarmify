@@ -4,7 +4,7 @@ import { dirname, join } from 'path';
 import { tmpdir } from 'os';
 import { mkdtempSync, rmSync, writeFileSync, unlinkSync } from 'fs';
 import { AgentManager, checkCliAvailable, AgentStatus } from '../src/agents.js';
-import { handleSpawn, handleStatus, handleStop, AgentStatusResult, SpawnResult } from '../src/api.js';
+import { handleSpawn, handleStatus, handleStop, AgentStatusDetail, SpawnResult } from '../src/api.js';
 import { AgentType } from '../src/parsers.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -16,26 +16,27 @@ async function pollUntilComplete(
   agentId: string,
   maxIterations: number,
   pollIntervalMs: number
-): Promise<AgentStatusResult> {
+): Promise<AgentStatusDetail> {
   for (let i = 0; i < maxIterations; i++) {
-    const result = await handleStatus(manager, taskName, agentId);
-    if ('error' in result) {
-      throw new Error(result.error);
+    const result = await handleStatus(manager, taskName);
+    const agent = result.agents.find(a => a.agent_id === agentId);
+    if (!agent) {
+      throw new Error(`Agent ${agentId} not found in task ${taskName}`);
     }
-    
-    const statusResult = result as AgentStatusResult;
-    if (statusResult.status !== AgentStatus.RUNNING) {
-      return statusResult;
+
+    if (agent.status !== AgentStatus.RUNNING) {
+      return agent;
     }
-    
+
     await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
   }
-  
-  const finalResult = await handleStatus(manager, taskName, agentId);
-  if ('error' in finalResult) {
-    throw new Error(finalResult.error);
+
+  const finalResult = await handleStatus(manager, taskName);
+  const agent = finalResult.agents.find(a => a.agent_id === agentId);
+  if (!agent) {
+    throw new Error(`Agent ${agentId} not found in task ${taskName}`);
   }
-  return finalResult as AgentStatusResult;
+  return agent;
 }
 
 describe('Codex Live E2E', () => {
@@ -226,28 +227,29 @@ describe('Codex Live E2E', () => {
     
     console.log('Testing MCP status command');
     await pollUntilComplete(manager, 'test-codex-mcp', spawnResult.agent_id, 90, 2000);
-    
-    const mcpStatusResult: AgentStatusResult = await callMCPTool('status', {
+
+    const mcpTaskResult = await callMCPTool('status', {
       task_name: 'test-codex-mcp',
-      agent_id: spawnResult.agent_id,
     });
-    
+    const mcpStatusResult = mcpTaskResult.agents.find((a: any) => a.agent_id === spawnResult.agent_id);
+    expect(mcpStatusResult).toBeDefined();
+
     console.log('MCP status result:', mcpStatusResult.status);
     console.log('MCP bash commands:', mcpStatusResult.bash_commands);
     console.log('MCP last messages:', mcpStatusResult.last_messages);
-    
+
     expect(mcpStatusResult.status).not.toBe(AgentStatus.RUNNING);
     expect(mcpStatusResult.agent_id).toBe(spawnResult.agent_id);
     expect(mcpStatusResult.bash_commands).toBeDefined();
     expect(Array.isArray(mcpStatusResult.bash_commands)).toBe(true);
     expect(mcpStatusResult.bash_commands.length).toBeGreaterThan(0);
-    expect(mcpStatusResult.bash_commands.every(cmd => typeof cmd === 'string')).toBe(true);
-    expect(mcpStatusResult.bash_commands.some(cmd => cmd.includes('echo') || cmd.includes(testFile))).toBe(true);
+    expect(mcpStatusResult.bash_commands.every((cmd: string) => typeof cmd === 'string')).toBe(true);
+    expect(mcpStatusResult.bash_commands.some((cmd: string) => cmd.includes('echo') || cmd.includes(testFile))).toBe(true);
     expect(mcpStatusResult.last_messages).toBeDefined();
     expect(Array.isArray(mcpStatusResult.last_messages)).toBe(true);
     expect(mcpStatusResult.last_messages.length).toBeGreaterThan(0);
     expect(mcpStatusResult.last_messages.length).toBeLessThanOrEqual(3);
-    expect(mcpStatusResult.last_messages.every(msg => typeof msg === 'string')).toBe(true);
+    expect(mcpStatusResult.last_messages.every((msg: string) => typeof msg === 'string')).toBe(true);
     
     console.log('Testing MCP stop command');
     const stopResult = await callMCPTool('stop', {

@@ -98,25 +98,18 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: 'status',
-        description: `Get status of agents. Two modes:
-- status(task_name): Quick status of ALL agents in the task
-- status(task_name, agent_id): Detailed status of ONE specific agent including:
-  * Files created/modified/read/deleted
-  * Tools used with their arguments
-  * All bash commands executed
-  * Last 3 completed assistant messages
+        description: `Get status of all agents in a task with full details including:
+- Files created/modified/read/deleted (full paths)
+- All bash commands executed
+- Last 3 assistant messages
 
-Use this for polling. Returns comprehensive information about agent activity.`,
+Use this for polling agent progress.`,
         inputSchema: {
           type: 'object',
           properties: {
             task_name: {
               type: 'string',
               description: 'Task name to get status for',
-            },
-            agent_id: {
-              type: 'string',
-              description: 'Optional: specific agent ID for more detailed status',
             },
           },
           required: ['task_name'],
@@ -171,8 +164,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
       result = await handleStatus(
         manager,
-        args.task_name as string,
-        args.agent_id as string | undefined
+        args.task_name as string
       );
     } else if (name === 'stop') {
       if (!args) {

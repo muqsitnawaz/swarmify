@@ -4,7 +4,7 @@ import { dirname, join } from 'path';
 import { tmpdir } from 'os';
 import { mkdtempSync, rmSync, writeFileSync, unlinkSync } from 'fs';
 import { AgentManager, checkCliAvailable, AgentStatus } from '../src/agents.js';
-import { handleSpawn, handleStatus, handleStop, AgentStatusResult } from '../src/api.js';
+import { handleSpawn, handleStatus, handleStop, AgentStatusDetail } from '../src/api.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -15,26 +15,27 @@ async function pollUntilComplete(
   agentId: string,
   maxIterations: number,
   pollIntervalMs: number
-): Promise<AgentStatusResult> {
+): Promise<AgentStatusDetail> {
   for (let i = 0; i < maxIterations; i++) {
-    const result = await handleStatus(manager, taskName, agentId);
-    if ('error' in result) {
-      throw new Error(result.error);
+    const result = await handleStatus(manager, taskName);
+    const agent = result.agents.find(a => a.agent_id === agentId);
+    if (!agent) {
+      throw new Error(`Agent ${agentId} not found in task ${taskName}`);
     }
-    
-    const statusResult = result as AgentStatusResult;
-    if (statusResult.status !== AgentStatus.RUNNING) {
-      return statusResult;
+
+    if (agent.status !== AgentStatus.RUNNING) {
+      return agent;
     }
-    
+
     await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
   }
-  
-  const finalResult = await handleStatus(manager, taskName, agentId);
-  if ('error' in finalResult) {
-    throw new Error(finalResult.error);
+
+  const finalResult = await handleStatus(manager, taskName);
+  const agent = finalResult.agents.find(a => a.agent_id === agentId);
+  if (!agent) {
+    throw new Error(`Agent ${agentId} not found in task ${taskName}`);
   }
-  return finalResult as AgentStatusResult;
+  return agent;
 }
 
 describe('Cursor Live E2E', () => {

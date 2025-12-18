@@ -113,38 +113,26 @@ describe('API Integration Tests', () => {
       }
     });
 
-    test('should return detailed status for specific agent', async () => {
-      console.log('\n--- TEST: detailed status for specific agent ---');
+    test('should return full details for each agent in task', async () => {
+      console.log('\n--- TEST: full details for agents in task ---');
 
       const agent = new AgentProcess('agent-123', 'detail-task', 'gemini', 'Complex work', null, false, null, AgentStatus.RUNNING);
       manager['agents'].set('agent-123', agent);
 
-      const result = await handleStatus(manager, 'detail-task', 'agent-123');
+      const result = await handleStatus(manager, 'detail-task');
 
       console.log('Result:', JSON.stringify(result, null, 2));
 
-      expect('agent_id' in result).toBe(true);
-      if ('agent_id' in result) {
-        expect(result.agent_id).toBe('agent-123');
-        expect(result.agent_type).toBe('gemini');
-        expect(result.status).toBe('running');
-      }
-    });
-
-    test('should return error for agent not in task', async () => {
-      console.log('\n--- TEST: agent not in requested task ---');
-
-      const agent = new AgentProcess('agent-456', 'task-a', 'codex', 'Work', null, false, null, AgentStatus.RUNNING);
-      manager['agents'].set('agent-456', agent);
-
-      const result = await handleStatus(manager, 'task-b', 'agent-456');
-
-      console.log('Result:', JSON.stringify(result, null, 2));
-
-      expect('error' in result).toBe(true);
-      if ('error' in result) {
-        expect(result.error).toContain('not in task');
-      }
+      expect(result.agents.length).toBe(1);
+      const agentStatus = result.agents[0];
+      expect(agentStatus.agent_id).toBe('agent-123');
+      expect(agentStatus.agent_type).toBe('gemini');
+      expect(agentStatus.status).toBe('running');
+      // Verify full details are included
+      expect(agentStatus.files_created).toBeDefined();
+      expect(agentStatus.files_modified).toBeDefined();
+      expect(agentStatus.bash_commands).toBeDefined();
+      expect(agentStatus.last_messages).toBeDefined();
     });
   });
 
@@ -225,16 +213,15 @@ describe('API Integration Tests', () => {
         expect(taskStatus.summary.completed).toBe(1);
       }
 
-      // Step 3: Get individual agent status
+      // Step 3: Get individual agent status (by finding in task status)
       console.log('\n[Step 3] Getting detailed status for agent "flow-1"...');
-      const agentStatus = await handleStatus(manager, 'feature-x', 'flow-1');
+      const taskStatusForAgent = await handleStatus(manager, 'feature-x');
+      const agentStatus = taskStatusForAgent.agents.find(a => a.agent_id === 'flow-1');
       console.log('Agent status:', JSON.stringify(agentStatus, null, 2));
 
-      expect('agent_id' in agentStatus).toBe(true);
-      if ('agent_id' in agentStatus) {
-        expect(agentStatus.agent_id).toBe('flow-1');
-        expect(agentStatus.agent_type).toBe('codex');
-      }
+      expect(agentStatus).toBeDefined();
+      expect(agentStatus!.agent_id).toBe('flow-1');
+      expect(agentStatus!.agent_type).toBe('codex');
 
       // Step 4: Stop all agents in task
       console.log('\n[Step 5] Stopping all agents in task "feature-x"...');
@@ -378,7 +365,8 @@ describe('API Integration Tests', () => {
           
           for (const agent of statusResult.agents) {
             if (agent.status === 'running') {
-              console.log(`  - ${agent.agent_id} (${agent.agent_type}): ${agent.status}, last_message: ${agent.last_message ? agent.last_message.substring(0, 50) + '...' : 'none'}`);
+              const lastMsg = agent.last_messages?.length > 0 ? agent.last_messages[agent.last_messages.length - 1] : null;
+              console.log(`  - ${agent.agent_id} (${agent.agent_type}): ${agent.status}, last_message: ${lastMsg ? lastMsg.substring(0, 50) + '...' : 'none'}`);
             }
           }
           
@@ -412,7 +400,8 @@ describe('API Integration Tests', () => {
         console.log('Final status:', JSON.stringify(finalStatus.summary, null, 2));
         
         for (const agent of finalStatus.agents) {
-          console.log(`  - ${agent.agent_id} (${agent.agent_type}): ${agent.status}, last_message: ${agent.last_message ? agent.last_message.substring(0, 100) : 'none'}`);
+          const lastMsg = agent.last_messages?.length > 0 ? agent.last_messages[agent.last_messages.length - 1] : null;
+          console.log(`  - ${agent.agent_id} (${agent.agent_type}): ${agent.status}, last_message: ${lastMsg ? lastMsg.substring(0, 100) : 'none'}`);
         }
       }
       
