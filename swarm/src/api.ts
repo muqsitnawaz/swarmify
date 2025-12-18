@@ -5,7 +5,7 @@
 
 import { AgentManager, AgentStatus, resolveModeFlags } from './agents.js';
 import { AgentType } from './parsers.js';
-import { summarizeEvents, getQuickStatus, PRIORITY, collapseEvents, getToolBreakdown, groupAndFlattenEvents } from './summarizer.js';
+import { summarizeEvents, getQuickStatus, PRIORITY, collapseEvents, getToolBreakdown, groupAndFlattenEvents, getToolUses, getLastMessages } from './summarizer.js';
 
 export interface SpawnResult {
   task_name: string;
@@ -29,11 +29,13 @@ export interface AgentStatusResult {
   duration: string | null;
   files_created: string[];
   files_modified: string[];
+  files_read: string[];
+  files_deleted: string[];
+  tools_used: Array<{tool: string, args: any}>;
   tool_count: number;
-  last_commands: string[];
+  bash_commands: string[];
   has_errors: boolean;
-  final_message: string | null;
-  last_message: string | null;
+  last_messages: string[];
 }
 
 export interface StopResult {
@@ -41,27 +43,6 @@ export interface StopResult {
   stopped: string[];
   already_stopped: string[];
   not_found: string[];
-}
-
-export interface ReadResult {
-  task_name: string;
-  agent_id: string;
-  agent_type: string;
-  status: string;
-  duration: string | null;
-  files_created: string[];
-  files_modified: string[];
-  files_read: string[];
-  files_deleted: string[];
-  tools_used: string[];
-  tool_count: number;
-  tool_breakdown: Record<string, number>;
-  bash_commands: string[];
-  errors: string[];
-  final_message: string | null;
-  event_count: number;
-  offset: number;
-  events: any[];
 }
 
 export async function handleSpawn(
@@ -126,12 +107,9 @@ export async function handleStatus(
       events,
       agent.duration()
     );
-    const quickStatus = getQuickStatus(
-      agent.agentId,
-      agent.agentType,
-      agent.status,
-      events
-    );
+
+    const toolUses = getToolUses(events);
+    const lastMessages = getLastMessages(events, 3);
 
     console.log(`[status] Agent ${agentId}: status=${agent.status}, events=${events.length}, files_modified=${summary.filesModified.size}`);
 
@@ -143,15 +121,13 @@ export async function handleStatus(
       duration: agent.duration(),
       files_created: Array.from(summary.filesCreated),
       files_modified: Array.from(summary.filesModified),
+      files_read: Array.from(summary.filesRead),
+      files_deleted: Array.from(summary.filesDeleted),
+      tools_used: toolUses,
       tool_count: summary.toolCallCount,
-      last_commands: summary.bashCommands.slice(-3).map(cmd =>
-        cmd.length > 100 ? cmd.substring(0, 97) + '...' : cmd
-      ),
+      bash_commands: summary.bashCommands,
       has_errors: summary.errors.length > 0,
-      final_message: summary.finalMessage ?
-        (summary.finalMessage.length > 500 ? summary.finalMessage.substring(0, 497) + '...' : summary.finalMessage)
-        : null,
-      last_message: quickStatus.last_message,
+      last_messages: lastMessages,
     };
   } else {
     console.log(`[status] Getting status for all agents in task "${taskName}"...`);
@@ -243,65 +219,3 @@ export async function handleStop(
   }
 }
 
-export async function handleRead(
-  manager: AgentManager,
-  taskName: string,
-  agentId: string,
-  offset: number = 0,
-  detailLevel?: 'full'
-): Promise<ReadResult | { error: string }> {
-  console.log(`[read] Reading output for agent ${agentId} in task "${taskName}" (offset=${offset}, detailLevel=${detailLevel || 'summary'})...`);
-
-  const agent = await manager.get(agentId);
-  if (!agent) {
-    console.log(`[read] Agent ${agentId} not found`);
-    return { error: `Agent ${agentId} not found` };
-  }
-  if (agent.taskName !== taskName) {
-    console.log(`[read] Agent ${agentId} not in task ${taskName}`);
-    return { error: `Agent ${agentId} not in task ${taskName}` };
-  }
-
-  await agent.readNewEvents();
-  const allEvents = agent.events;
-  const newEvents = allEvents.slice(offset);
-
-  const summary = summarizeEvents(
-    agent.agentId,
-    agent.agentType,
-    agent.status,
-    allEvents,
-    agent.duration()
-  );
-
-  const toolBreakdown = getToolBreakdown(allEvents);
-
-  let events: any[] = [];
-  if (detailLevel === 'full') {
-    const filteredEvents = newEvents;
-    events = groupAndFlattenEvents(filteredEvents);
-  }
-
-  console.log(`[read] Agent ${agentId}: total_events=${allEvents.length}, new_events=${newEvents.length}, returned_events=${events.length}`);
-
-  return {
-    task_name: taskName,
-    agent_id: agent.agentId,
-    agent_type: agent.agentType,
-    status: agent.status,
-    duration: agent.duration(),
-    files_created: Array.from(summary.filesCreated),
-    files_modified: Array.from(summary.filesModified),
-    files_read: Array.from(summary.filesRead),
-    files_deleted: Array.from(summary.filesDeleted),
-    tools_used: Array.from(summary.toolsUsed),
-    tool_count: summary.toolCallCount,
-    tool_breakdown: toolBreakdown,
-    bash_commands: summary.bashCommands.slice(-10),
-    errors: summary.errors,
-    final_message: summary.finalMessage,
-    event_count: allEvents.length,
-    offset: offset,
-    events: events,
-  };
-}

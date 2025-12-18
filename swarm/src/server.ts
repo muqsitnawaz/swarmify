@@ -6,7 +6,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { AgentManager } from './agents.js';
 import { AgentType } from './parsers.js';
-import { handleSpawn, handleStatus, handleStop, handleRead } from './api.js';
+import { handleSpawn, handleStatus, handleStop } from './api.js';
 
 const manager = new AgentManager(50, 10, null, null, null, 7);
 
@@ -98,9 +98,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         name: 'status',
         description: `Get status of agents. Two modes:
 - status(task_name): Quick status of ALL agents in the task
-- status(task_name, agent_id): More detailed status of ONE specific agent
+- status(task_name, agent_id): Detailed status of ONE specific agent including:
+  * Files created/modified/read/deleted
+  * Tools used with their arguments
+  * All bash commands executed
+  * Last 3 completed assistant messages
 
-Use this for polling. Returns counts and last few commands (truncated for efficiency).`,
+Use this for polling. Returns comprehensive information about agent activity.`,
         inputSchema: {
           type: 'object',
           properties: {
@@ -134,40 +138,6 @@ Use this for polling. Returns counts and last few commands (truncated for effici
             },
           },
           required: ['task_name'],
-        },
-      },
-      {
-        name: 'read',
-        description: `Read output from a specific agent. By default returns summary-only (no events) for token efficiency.
-
-Default behavior (summary-only): Returns essential info (files changed, errors, final_message, tool breakdown) without events. Use this for most cases.
-
-Set detail_level='full' to get grouped/flattened events. This groups consecutive messages/thinking, file operations by path, and bash commands to reduce token usage by ~80% compared to raw events.
-
-Supports incremental reading via offset parameter - pass the event_count from previous read to get only new events.`,
-        inputSchema: {
-          type: 'object',
-          properties: {
-            task_name: {
-              type: 'string',
-              description: 'Task name',
-            },
-            agent_id: {
-              type: 'string',
-              description: 'Agent ID to read output from',
-            },
-            offset: {
-              type: 'integer',
-              default: 0,
-              description: 'Event offset - skip this many events (use for incremental reads)',
-            },
-            detail_level: {
-              type: 'string',
-              enum: ['full'],
-              description: 'Optional: set to "full" to include grouped/flattened events. Default is summary-only (no events).',
-            },
-          },
-          required: ['task_name', 'agent_id'],
         },
       },
     ],
@@ -210,17 +180,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         manager,
         args.task_name as string,
         args.agent_id as string | undefined
-      );
-    } else if (name === 'read') {
-      if (!args) {
-        throw new Error('Missing arguments for read');
-      }
-      result = await handleRead(
-        manager,
-        args.task_name as string,
-        args.agent_id as string,
-        (args.offset as number) || 0,
-        (args.detail_level as 'full' | undefined)
       );
     } else {
       result = { error: `Unknown tool: ${name}` };

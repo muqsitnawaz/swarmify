@@ -484,7 +484,7 @@ function normalizeGemini(raw: any): any[] {
         path: filePath,
         timestamp: timestamp,
       }];
-    } else if (['shell', 'bash', 'execute', 'run_command'].includes(toolNameLower)) {
+    } else if (['shell', 'bash', 'execute', 'run_command', 'run_shell_command'].includes(toolNameLower)) {
       if (!command.trim()) {
         return [];
       }

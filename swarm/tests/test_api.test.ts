@@ -8,7 +8,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { tmpdir } from 'os';
 import { AgentManager, AgentProcess, AgentStatus, checkCliAvailable } from '../src/agents.js';
-import { handleSpawn, handleStatus, handleStop, handleRead } from '../src/api.js';
+import { handleSpawn, handleStatus, handleStop } from '../src/api.js';
 
 describe('API Integration Tests', () => {
   let manager: AgentManager;
@@ -198,54 +198,6 @@ describe('API Integration Tests', () => {
     });
   });
 
-  describe('handleRead', () => {
-    test('should read output for agent', async () => {
-      console.log('\n--- TEST: read agent output ---');
-
-      const agent = new AgentProcess('read-agent', 'read-task', 'codex', 'Work', null, false, null, AgentStatus.COMPLETED);
-      manager['agents'].set('read-agent', agent);
-
-      const result = await handleRead(manager, 'read-task', 'read-agent', 0);
-
-      console.log('Result:', JSON.stringify(result, null, 2));
-
-      expect('agent_id' in result).toBe(true);
-      if ('agent_id' in result) {
-        expect(result.agent_id).toBe('read-agent');
-        expect(result.event_count).toBe(0);
-        expect(result.offset).toBe(0);
-      }
-    });
-
-    test('should return error for missing agent', async () => {
-      console.log('\n--- TEST: read missing agent ---');
-
-      const result = await handleRead(manager, 'any-task', 'ghost-agent', 0);
-
-      console.log('Result:', JSON.stringify(result, null, 2));
-
-      expect('error' in result).toBe(true);
-      if ('error' in result) {
-        expect(result.error).toContain('not found');
-      }
-    });
-
-    test('should respect offset parameter', async () => {
-      console.log('\n--- TEST: read with offset ---');
-
-      const agent = new AgentProcess('offset-agent', 'offset-task', 'cursor', 'Debug', null, false, null, AgentStatus.RUNNING);
-      manager['agents'].set('offset-agent', agent);
-
-      const result = await handleRead(manager, 'offset-task', 'offset-agent', 5);
-
-      console.log('Result:', JSON.stringify(result, null, 2));
-
-      expect('offset' in result).toBe(true);
-      if ('offset' in result) {
-        expect(result.offset).toBe(5);
-      }
-    });
-  });
 
   describe('Full Flow: spawn -> status -> read -> stop', () => {
     test('should handle complete lifecycle (mocked agents)', async () => {
@@ -284,17 +236,7 @@ describe('API Integration Tests', () => {
         expect(agentStatus.agent_type).toBe('codex');
       }
 
-      // Step 4: Read agent output
-      console.log('\n[Step 4] Reading output for agent "flow-2"...');
-      const readResult = await handleRead(manager, 'feature-x', 'flow-2', 0);
-      console.log('Read result:', JSON.stringify(readResult, null, 2));
-
-      expect('agent_id' in readResult).toBe(true);
-      if ('agent_id' in readResult) {
-        expect(readResult.agent_id).toBe('flow-2');
-      }
-
-      // Step 5: Stop all agents in task
+      // Step 4: Stop all agents in task
       console.log('\n[Step 5] Stopping all agents in task "feature-x"...');
       const stopResult = await handleStop(manager, 'feature-x');
       console.log('Stop result:', JSON.stringify(stopResult, null, 2));
@@ -305,8 +247,8 @@ describe('API Integration Tests', () => {
         expect(stopResult.already_stopped).toContain('flow-3');
       }
 
-      // Step 6: Verify final status
-      console.log('\n[Step 6] Verifying final status...');
+      // Step 5: Verify final status
+      console.log('\n[Step 5] Verifying final status...');
       const finalStatus = await handleStatus(manager, 'feature-x');
       console.log('Final status:', JSON.stringify(finalStatus, null, 2));
 

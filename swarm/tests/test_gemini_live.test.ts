@@ -71,7 +71,7 @@ describe('Gemini Live E2E', () => {
 
     console.log('Running gemini with prompt:', prompt);
 
-    const { events, rawEvents, rawStdout } = await runGeminiAgent(prompt, 120000);
+    const { events, rawEvents, rawStdout } = await runGeminiAgent(prompt, 120000, ['--yolo']);
     const logFilePath = join(testdataDir, 'gemini-agent-log-simple.jsonl');
     const { writeFileSync } = await import('fs');
     writeFileSync(logFilePath, rawStdout, 'utf-8');

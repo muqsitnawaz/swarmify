@@ -595,6 +595,36 @@ export interface QuickStatus {
   last_message: string | null;
 }
 
+export function getToolUses(events: any[]): Array<{tool: string, args: any}> {
+  const toolUses: Array<{tool: string, args: any}> = [];
+  
+  for (const event of events) {
+    if (event.type === 'tool_use') {
+      const tool = event.tool || 'unknown';
+      const args = event.args || {};
+      toolUses.push({ tool, args });
+    }
+  }
+  
+  return toolUses;
+}
+
+export function getLastMessages(events: any[], count: number = 3): string[] {
+  const messages: string[] = [];
+  
+  for (let i = events.length - 1; i >= 0 && messages.length < count; i--) {
+    const event = events[i];
+    if (event.type === 'message' && event.complete === true) {
+      const content = event.content || '';
+      if (content.trim()) {
+        messages.unshift(content);
+      }
+    }
+  }
+  
+  return messages;
+}
+
 export function getQuickStatus(
   agentId: string,
   agentType: string,
