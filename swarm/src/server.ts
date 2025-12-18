@@ -83,8 +83,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             mode: {
               type: 'string',
-              enum: ['safe', 'yolo'],
-              description: "Automation mode. 'yolo' is unsafe but faster.",
+              enum: ['plan', 'edit'],
+              description: "Agent mode. 'plan' is read-only, 'edit' can modify files.",
             },
             model: {
               type: 'string',

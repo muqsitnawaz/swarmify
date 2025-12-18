@@ -14,14 +14,15 @@ export enum AgentStatus {
 
 export type { AgentType } from './parsers.js';
 
+// Base commands for plan mode (read-only, may prompt for confirmation)
 export const AGENT_COMMANDS: Record<AgentType, string[]> = {
-  codex: ['codex', 'exec', '--sandbox', 'workspace-write', '{prompt}', '--full-auto', '--json'],
+  codex: ['codex', 'exec', '--sandbox', 'workspace-write', '{prompt}', '--json'],
   cursor: ['cursor-agent', '-p', '--output-format', 'stream-json', '{prompt}'],
-  gemini: ['gemini', '-p', '{prompt}', '--output-format', 'stream-json'],
-  claude: ['claude', '-p', '--verbose', '{prompt}', '--output-format', 'stream-json'],
+  gemini: ['gemini', '{prompt}', '--output-format', 'stream-json'],
+  claude: ['claude', '-p', '--verbose', '{prompt}', '--output-format', 'stream-json', '--permission-mode', 'plan'],
 };
 
-const VALID_MODES = ['safe', 'yolo'] as const;
+const VALID_MODES = ['plan', 'edit'] as const;
 type Mode = typeof VALID_MODES[number];
 
 function normalizeModeValue(modeValue: string | null | undefined): Mode | null {
@@ -41,38 +42,39 @@ function defaultModeFromEnv(): Mode {
       return parsed;
     }
     if (rawValue) {
-      console.warn(`Invalid ${envVar}='${rawValue}'. Use 'safe' or 'yolo'. Falling back to safe mode.`);
+      console.warn(`Invalid ${envVar}='${rawValue}'. Use 'plan' or 'edit'. Falling back to plan mode.`);
     }
   }
-  return 'safe';
+  return 'plan';
 }
 
 export function resolveModeFlags(
   requestedMode: string | null | undefined,
   requestedYolo: boolean | null | undefined,
-  defaultMode: Mode = 'safe'
+  defaultMode: Mode = 'plan'
 ): [Mode, boolean] {
   const normalizedDefault = normalizeModeValue(defaultMode);
   if (!normalizedDefault) {
-    throw new Error(`Invalid default mode '${defaultMode}'. Use 'safe' or 'yolo'.`);
+    throw new Error(`Invalid default mode '${defaultMode}'. Use 'plan' or 'edit'.`);
   }
 
   if (requestedMode !== null && requestedMode !== undefined) {
     const normalizedMode = normalizeModeValue(requestedMode);
     if (!normalizedMode) {
-      throw new Error(`Invalid mode '${requestedMode}'. Use 'safe' or 'yolo'.`);
+      throw new Error(`Invalid mode '${requestedMode}'. Use 'plan' or 'edit'.`);
     }
-    return [normalizedMode, normalizedMode === 'yolo'];
+    // 'edit' mode maps to yolo=true internally
+    return [normalizedMode, normalizedMode === 'edit'];
   }
 
   if (requestedYolo !== null && requestedYolo !== undefined) {
     if (typeof requestedYolo !== 'boolean') {
       throw new Error('Invalid yolo flag - expected a boolean.');
     }
-    return [requestedYolo ? 'yolo' : 'safe', requestedYolo];
+    return [requestedYolo ? 'edit' : 'plan', requestedYolo];
   }
 
-  return [normalizedDefault, normalizedDefault === 'yolo'];
+  return [normalizedDefault, normalizedDefault === 'edit'];
 }
 
 export function checkCliAvailable(agentType: AgentType): [boolean, string | null] {
