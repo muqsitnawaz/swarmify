@@ -1,11 +1,9 @@
-{"type":"init","timestamp":"2025-12-18T06:40:08.601Z","session_id":"a5211fe6-308a-4878-917c-26d2399261a7","model":"auto-gemini-3"}
-{"type":"message","timestamp":"2025-12-18T06:40:08.602Z","role":"user","content":"Create a file at /Users/muqsit/src/github.com/muqsitnawaz/CursorAgents/swarm/tests/testdata/gemini-live-test-1766040005667.txt with the content 'hello from live test' using echo command"}
-{"type":"message","timestamp":"2025-12-18T06:40:12.876Z","role":"assistant","content":"I will create the specified file with the provided content using the `echo` command.","delta":true}
-{"type":"tool_use","timestamp":"2025-12-18T06:40:12.894Z","tool_name":"run_shell_command","tool_id":"run_shell_command-1766040012893-2e06b4bca9be5","parameters":{"description":"Creating a file with specific content using echo.","command":"echo 'hello from live test' > /Users/muqsit/src/github.com/muqsitnawaz/CursorAgents/swarm/tests/testdata/gemini-live-test-1766040005667.txt"}}
-{"type":"tool_result","timestamp":"2025-12-18T06:40:13.094Z","tool_id":"run_shell_command-1766040012893-2e06b4bca9be5","status":"success","output":""}
-{"type":"message","timestamp":"2025-12-18T06:40:14.736Z","role":"assistant","content":"I'll verify that the file was created correctly.","delta":true}
-{"type":"tool_use","timestamp":"2025-12-18T06:40:14.762Z","tool_name":"run_shell_command","tool_id":"run_shell_command-1766040014762-f70379d14872c8","parameters":{"description":"Verifying the content of the newly created file.","command":"cat /Users/muqsit/src/github.com/muqsitnawaz/CursorAgents/swarm/tests/testdata/gemini-live-test-1766040005667.txt"}}
-{"type":"tool_result","timestamp":"2025-12-18T06:40:14.825Z","tool_id":"run_shell_command-1766040014762-f70379d14872c8","status":"success","output":"hello from live test"}
-{"type":"message","timestamp":"2025-12-18T06:40:16.041Z","role":"assistant","content":"The file","delta":true}
-{"type":"message","timestamp":"2025-12-18T06:40:16.056Z","role":"assistant","content":" has been successfully created with the requested content.","delta":true}
-{"type":"result","timestamp":"2025-12-18T06:40:16.068Z","status":"success","stats":{"total_tokens":20790,"input_tokens":20205,"output_tokens":252,"duration_ms":7467,"tool_calls":2}}
+{"type":"init","timestamp":"2025-12-18T06:41:23.305Z","session_id":"5ac670ab-b24d-42da-a5f0-42f19f13703a","model":"auto-gemini-3"}
+{"type":"message","timestamp":"2025-12-18T06:41:23.306Z","role":"user","content":"Create a file at /Users/muqsit/src/github.com/muqsitnawaz/CursorAgents/swarm/tests/testdata/gemini-live-test-1766040080142.txt with the content 'hello from live test' using echo command"}
+{"type":"message","timestamp":"2025-12-18T06:41:27.445Z","role":"assistant","content":"I will create the file with the specified content using the `echo` command.\n\n","delta":true}
+{"type":"tool_use","timestamp":"2025-12-18T06:41:27.462Z","tool_name":"run_shell_command","tool_id":"run_shell_command-1766040087462-955480570fc388","parameters":{"command":"echo 'hello from live test' > /Users/muqsit/src/github.com/muqsitnawaz/CursorAgents/swarm/tests/testdata/gemini-live-test-1766040080142.txt","description":"Create a text file with content 'hello from live test' using echo."}}
+{"type":"tool_result","timestamp":"2025-12-18T06:41:27.552Z","tool_id":"run_shell_command-1766040087462-955480570fc388","status":"success","output":""}
+{"type":"message","timestamp":"2025-12-18T06:41:29.252Z","role":"assistant","content":"I have created the file at `/Users/muqsit/src/github","delta":true}
+{"type":"message","timestamp":"2025-12-18T06:41:29.252Z","role":"assistant","content":".com/muqsitnawaz/CursorAgents/swarm/tests/testdata/gemini-live-test-17660","delta":true}
+{"type":"message","timestamp":"2025-12-18T06:41:29.270Z","role":"assistant","content":"40080142.txt` with the content 'hello from live test'.","delta":true}
+{"type":"result","timestamp":"2025-12-18T06:41:29.283Z","status":"success","stats":{"total_tokens":14631,"input_tokens":14090,"output_tokens":221,"duration_ms":5978,"tool_calls":1}}
