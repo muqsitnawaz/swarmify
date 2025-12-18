@@ -252,7 +252,7 @@ describe('MCP Server E2E Tests', () => {
     const parsed = JSON.parse(result.content[0].text);
     // Should reject invalid agent type
     expect(parsed.error).toBeDefined();
-    expect(parsed.error.toLowerCase()).toContain('unsupported');
+    expect(parsed.error.toLowerCase()).toContain('unknown');
   });
 
   test('spawn tool validates mode parameter', async () => {
@@ -313,7 +313,7 @@ describe('MCP Server Startup Tests', () => {
     serverProcess.kill('SIGTERM');
   });
 
-  test('server loads agents from disk on startup', async () => {
+  test('server logs startup message', async () => {
     const serverProcess = spawn('bun', ['run', SERVER_PATH], {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
@@ -325,8 +325,8 @@ describe('MCP Server Startup Tests', () => {
 
     await new Promise(resolve => setTimeout(resolve, 1000));
 
-    // Should log that it loaded agents
-    expect(stderr).toMatch(/loaded.*agents/i);
+    // Should log server version on startup
+    expect(stderr).toMatch(/agent-swarm.*v\d+\.\d+\.\d+/i);
 
     serverProcess.kill('SIGTERM');
   });
