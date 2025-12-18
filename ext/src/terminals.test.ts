@@ -4,7 +4,7 @@ import {
   generateTerminalId,
   RunningCounts
 } from './terminals';
-import { CLAUDE_TITLE, CODEX_TITLE, GEMINI_TITLE, CURSOR_TITLE } from './utils';
+import { CLAUDE_TITLE, CODEX_TITLE, GEMINI_TITLE, CURSOR_TITLE, SHELL_TITLE } from './utils';
 
 describe('generateTerminalId', () => {
   test('creates id with prefix and counter', () => {
@@ -36,6 +36,7 @@ describe('countRunningFromNames', () => {
     expect(counts.codex).toBe(0);
     expect(counts.gemini).toBe(0);
     expect(counts.cursor).toBe(0);
+    expect(counts.shell).toBe(0);
     expect(Object.keys(counts.custom)).toHaveLength(0);
   });
 
@@ -66,12 +67,14 @@ describe('countRunningFromNames', () => {
       CODEX_TITLE,
       GEMINI_TITLE,
       CURSOR_TITLE,
-      CLAUDE_TITLE
+      CLAUDE_TITLE,
+      SHELL_TITLE
     ]);
     expect(counts.claude).toBe(2);
     expect(counts.codex).toBe(1);
     expect(counts.gemini).toBe(1);
     expect(counts.cursor).toBe(1);
+    expect(counts.shell).toBe(1);
   });
 
   test('ignores non-agent terminals', () => {
@@ -80,6 +83,7 @@ describe('countRunningFromNames', () => {
     expect(counts.codex).toBe(0);
     expect(counts.gemini).toBe(0);
     expect(counts.cursor).toBe(0);
+    expect(counts.shell).toBe(0);
   });
 
   test('handles terminals with labels', () => {

@@ -20,6 +20,17 @@ Spawn any agent instantly as an editor tab - not buried in the bottom panel. Eac
 
 Built-in support for Claude Code, Codex, Gemini, and Cursor. Add custom agents through the settings panel with a 2-letter code and shell command.
 
+### Agent Safety Modes
+
+When using Swarm to spawn agents, you can choose between `safe` and `yolo` modes:
+
+- **safe**: Agents prompt for confirmation before executing commands
+- **yolo**: Agents auto-approve all tool calls (faster, less secure)
+
+**Gemini CLI specifics**: When running in `yolo` mode, Gemini automatically enables sandbox mode which restricts writes to the project directory. Read access is more permissive, but file modifications are confined to the working directory. This provides a balance between speed and safety.
+
+For more granular control, Gemini also supports `--allowed-tools` to whitelist specific tools (e.g., `run_shell_command,read_file,write_file`) instead of using full `yolo` mode.
+
 ### Easy Reload & Restart
 
 One command clears and restarts a stuck agent. No more killing terminals and retyping commands.
