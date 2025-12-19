@@ -98,7 +98,7 @@ export async function handleStatus(
       events,
       agent.duration()
     );
-    const lastMessages = getLastMessages(events, 3);
+    const lastMessages = getLastMessages(events, 5);
 
     agentStatuses.push({
       agent_id: agent.agentId,

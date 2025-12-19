@@ -611,18 +611,43 @@ export function getToolUses(events: any[]): Array<{tool: string, args: any}> {
 
 export function getLastMessages(events: any[], count: number = 3): string[] {
   const messages: string[] = [];
-  
-  for (let i = events.length - 1; i >= 0 && messages.length < count; i--) {
-    const event = events[i];
-    if (event.type === 'message' && event.complete === true) {
+  let currentBuffer = '';
+  let isCollecting = false;
+
+  for (const event of events) {
+    if (event.type === 'message') {
       const content = event.content || '';
-      if (content.trim()) {
-        messages.unshift(content);
+      // For streaming events (delta=true), content fragments should be joined.
+      // We don't add newlines because these are likely parts of the same sentence/block.
+      currentBuffer += content;
+      isCollecting = true;
+      
+      // If we hit an explicitly complete message, treat it as a boundary
+      if (event.complete) {
+        if (currentBuffer.trim()) {
+          messages.push(currentBuffer);
+        }
+        currentBuffer = '';
+        isCollecting = false;
+      }
+    } else {
+      // Any non-message event breaks the message stream
+      if (isCollecting) {
+        if (currentBuffer.trim()) {
+          messages.push(currentBuffer);
+        }
+        currentBuffer = '';
+        isCollecting = false;
       }
     }
   }
+
+  // Handle any remaining buffer at the end
+  if (isCollecting && currentBuffer.trim()) {
+    messages.push(currentBuffer);
+  }
   
-  return messages;
+  return messages.slice(-count);
 }
 
 export function getQuickStatus(

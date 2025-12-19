@@ -5,7 +5,68 @@ import {
   getDelta,
   filterEventsByPriority,
   getQuickStatus,
+  getLastMessages,
 } from '../src/summarizer.js';
+
+describe('GetLastMessages', () => {
+  test('should return standard complete messages', () => {
+    const events = [
+      { type: 'message', content: 'First', complete: true },
+      { type: 'message', content: 'Second', complete: true },
+      { type: 'message', content: 'Third', complete: true },
+    ];
+    
+    const messages = getLastMessages(events, 3);
+    expect(messages).toEqual(['First', 'Second', 'Third']);
+  });
+
+  test('should return last N messages', () => {
+    const events = [
+      { type: 'message', content: 'One', complete: true },
+      { type: 'message', content: 'Two', complete: true },
+      { type: 'message', content: 'Three', complete: true },
+      { type: 'message', content: 'Four', complete: true },
+    ];
+    
+    const messages = getLastMessages(events, 2);
+    expect(messages).toEqual(['Three', 'Four']);
+  });
+
+  test('should concatenate streaming messages', () => {
+    const events = [
+      { type: 'message', content: 'Hello', complete: false },
+      { type: 'message', content: ' World', complete: false },
+      { type: 'tool_use', tool: 'test' }, // Break stream
+      { type: 'message', content: 'Another', complete: false },
+      { type: 'message', content: ' message', complete: false },
+      { type: 'result', status: 'success' } // Break stream
+    ];
+    
+    const messages = getLastMessages(events, 3);
+    expect(messages).toEqual(['Hello World', 'Another message']);
+  });
+
+  test('should handle mixed complete and streaming messages', () => {
+    const events = [
+      { type: 'message', content: 'Complete msg', complete: true },
+      { type: 'message', content: 'Stream', complete: false },
+      { type: 'message', content: 'ing', complete: false },
+      { type: 'tool_use', tool: 'test' }
+    ];
+    
+    const messages = getLastMessages(events, 3);
+    expect(messages).toEqual(['Complete msg', 'Streaming']);
+  });
+  
+  test('should handle streaming messages at the very end', () => {
+      const events = [
+          { type: 'message', content: 'Start', complete: false },
+          { type: 'message', content: 'ing', complete: false }
+      ];
+      const messages = getLastMessages(events, 3);
+      expect(messages).toEqual(['Starting']);
+  });
+});
 
 describe('SummarizeEvents', () => {
   test('should handle empty events', () => {
