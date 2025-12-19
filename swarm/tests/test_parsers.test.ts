@@ -446,6 +446,67 @@ describe('Gemini Parser', () => {
     expect(event.type).toBe('bash');
     expect(event.command).toBe('npm test');
   });
+
+  test('should normalize replace tool as file_write', () => {
+    const raw = {
+      type: 'tool_use',
+      timestamp: '2025-12-19T11:41:46.699Z',
+      tool_name: 'replace',
+      tool_id: 'replace-123',
+      parameters: {
+        instruction: 'Add a goodbye function',
+        old_string: 'function hello() { return "world"; }\n',
+        new_string: 'function hello() { return "world"; }\n\nfunction goodbye() { return "farewell"; }\n',
+        file_path: 'sample.ts',
+      },
+    };
+    const event = normalizeEvent('gemini', raw);
+
+    expect(event.type).toBe('file_write');
+    expect(event.agent).toBe('gemini');
+    expect(event.tool).toBe('replace');
+    expect(event.path).toBe('sample.ts');
+  });
+
+  test('should normalize read_file tool', () => {
+    const raw = {
+      type: 'tool_use',
+      timestamp: '2025-12-19T11:41:44.991Z',
+      tool_name: 'read_file',
+      tool_id: 'read_file-123',
+      parameters: { file_path: 'sample.ts' },
+    };
+    const event = normalizeEvent('gemini', raw);
+
+    expect(event.type).toBe('file_read');
+    expect(event.agent).toBe('gemini');
+    expect(event.tool).toBe('read_file');
+    expect(event.path).toBe('sample.ts');
+  });
+
+  test('should normalize edit tool as file_write', () => {
+    const raw = {
+      type: 'tool_call',
+      name: 'edit',
+      parameters: { file_path: 'src/main.ts', content: 'new content' },
+    };
+    const event = normalizeEvent('gemini', raw);
+
+    expect(event.type).toBe('file_write');
+    expect(event.path).toBe('src/main.ts');
+  });
+
+  test('should normalize patch tool as file_write', () => {
+    const raw = {
+      type: 'tool_call',
+      name: 'patch',
+      args: { path: 'config.json' },
+    };
+    const event = normalizeEvent('gemini', raw);
+
+    expect(event.type).toBe('file_write');
+    expect(event.path).toBe('config.json');
+  });
 });
 
 describe('Claude Parser', () => {

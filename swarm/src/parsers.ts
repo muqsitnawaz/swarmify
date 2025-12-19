@@ -451,7 +451,9 @@ function normalizeGemini(raw: any): any[] {
     const filePath = toolArgs?.file_path || toolArgs?.path || '';
     const command = toolArgs?.command || '';
 
-    if (toolNameLower.includes('write') && toolNameLower.includes('file')) {
+    // File write/edit tools - Gemini uses 'replace', 'edit', 'patch', 'write_file', etc.
+    const writeTools = ['replace', 'edit', 'patch', 'write_file', 'edit_file', 'update_file', 'modify_file'];
+    if (writeTools.includes(toolNameLower) || (toolNameLower.includes('write') && toolNameLower.includes('file'))) {
       if (!filePath.trim()) {
         return [];
       }
@@ -462,7 +464,11 @@ function normalizeGemini(raw: any): any[] {
         path: filePath,
         timestamp: timestamp,
       }];
-    } else if (toolNameLower.includes('read') && toolNameLower.includes('file')) {
+    }
+
+    // File read tools
+    const readTools = ['read_file', 'view_file', 'cat_file', 'get_file'];
+    if (readTools.includes(toolNameLower) || (toolNameLower.includes('read') && toolNameLower.includes('file'))) {
       if (!filePath.trim()) {
         return [];
       }
@@ -473,7 +479,11 @@ function normalizeGemini(raw: any): any[] {
         path: filePath,
         timestamp: timestamp,
       }];
-    } else if (toolNameLower.includes('delete') && toolNameLower.includes('file')) {
+    }
+
+    // File delete tools
+    const deleteTools = ['delete_file', 'remove_file', 'rm_file'];
+    if (deleteTools.includes(toolNameLower) || (toolNameLower.includes('delete') && toolNameLower.includes('file'))) {
       if (!filePath.trim()) {
         return [];
       }
@@ -484,7 +494,10 @@ function normalizeGemini(raw: any): any[] {
         path: filePath,
         timestamp: timestamp,
       }];
-    } else if (['shell', 'bash', 'execute', 'run_command', 'run_shell_command'].includes(toolNameLower)) {
+    }
+
+    // Shell/bash tools
+    if (['shell', 'bash', 'execute', 'run_command', 'run_shell_command'].includes(toolNameLower)) {
       if (!command.trim()) {
         return [];
       }

@@ -54,3 +54,11 @@ Add this to your `claude_desktop_config.json`:
   }
 }
 ```
+
+---
+
+### Built by [Novier Aurex](https://novieraurex.com)
+
+We build **Rush** — AI teammates for startups.
+If you like this low-level orchestration tool, you'll love our dedicated macOS app that gives you a full AI team (Content Writer, Revenue Analyst, Deep Researcher) that works while you sleep.
+

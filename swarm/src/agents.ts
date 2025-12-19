@@ -22,6 +22,14 @@ export const AGENT_COMMANDS: Record<AgentType, string[]> = {
   claude: ['claude', '-p', '--verbose', '{prompt}', '--output-format', 'stream-json', '--permission-mode', 'plan'],
 };
 
+// Suffix appended to all prompts to ensure agents provide a summary
+const PROMPT_SUFFIX = `
+
+When you're done, provide a brief summary of:
+1. What you did (1-2 sentences)
+2. Key files modified and why
+3. Any important classes, functions, or components you added/changed`;
+
 const VALID_MODES = ['plan', 'edit'] as const;
 type Mode = typeof VALID_MODES[number];
 
@@ -564,7 +572,10 @@ export class AgentManager {
       throw new Error('Safety: --yolo flag requires explicit yolo=True (default mode is --full-auto).');
     }
 
-    let cmd = cmdTemplate.map(part => part.replace('{prompt}', prompt));
+    // Append summary request to prompt
+    const fullPrompt = prompt + PROMPT_SUFFIX;
+
+    let cmd = cmdTemplate.map(part => part.replace('{prompt}', fullPrompt));
 
     if (model) {
       if (agentType === 'codex') {
