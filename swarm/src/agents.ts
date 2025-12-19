@@ -30,6 +30,11 @@ When you're done, provide a brief summary of:
 2. Key files modified and why
 3. Any important classes, functions, or components you added/changed`;
 
+// Prefix for Claude agents in plan mode - explains the headless plan mode restrictions
+const CLAUDE_PLAN_MODE_PREFIX = `You are running in HEADLESS PLAN MODE. This mode works like normal plan mode with one exception: you cannot write to ~/.claude/plans/ directory. Instead of writing a plan file, output your complete plan/response as your final message.
+
+`;
+
 const VALID_MODES = ['plan', 'edit'] as const;
 type Mode = typeof VALID_MODES[number];
 
@@ -572,8 +577,13 @@ export class AgentManager {
       throw new Error('Safety: --yolo flag requires explicit yolo=True (default mode is --full-auto).');
     }
 
-    // Append summary request to prompt
-    const fullPrompt = prompt + PROMPT_SUFFIX;
+    // Build the full prompt with prefix (for plan mode) and suffix
+    let fullPrompt = prompt + PROMPT_SUFFIX;
+
+    // For Claude in plan mode, add prefix explaining headless plan mode restrictions
+    if (agentType === 'claude' && !yolo) {
+      fullPrompt = CLAUDE_PLAN_MODE_PREFIX + fullPrompt;
+    }
 
     let cmd = cmdTemplate.map(part => part.replace('{prompt}', fullPrompt));
 
