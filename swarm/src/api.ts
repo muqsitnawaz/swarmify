@@ -50,12 +50,13 @@ export async function handleSpawn(
   prompt: string,
   cwd: string | null,
   mode: string | null,
-  model: string | null
+  model: string | null,
+  effort: 'medium' | 'high' = 'medium'
 ): Promise<SpawnResult> {
   const defaultMode = manager.getDefaultMode();
   const resolvedMode = resolveMode(mode, defaultMode);
 
-  console.log(`[spawn] Spawning ${agentType} agent for task "${taskName}" [${resolvedMode}]...`);
+  console.log(`[spawn] Spawning ${agentType} agent for task "${taskName}" [${resolvedMode}] effort=${effort}...`);
 
   const agent = await manager.spawn(
     taskName,
@@ -63,7 +64,8 @@ export async function handleSpawn(
     prompt,
     cwd,
     resolvedMode,
-    model
+    model,
+    effort
   );
 
   console.log(`[spawn] Spawned ${agentType} agent ${agent.agentId} for task "${taskName}"`);

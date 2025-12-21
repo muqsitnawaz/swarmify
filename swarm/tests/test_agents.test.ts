@@ -7,8 +7,10 @@ import {
   AgentProcess,
   AgentStatus,
   AGENT_COMMANDS,
+  EFFORT_MODEL_MAP,
   resolveMode,
 } from '../src/agents.js';
+import type { EffortLevel } from '../src/agents.js';
 
 const TESTDATA_DIR = path.join(__dirname, 'testdata');
 
@@ -118,6 +120,50 @@ describe('AgentProcess', () => {
     const duration = agent.duration();
     expect(duration).not.toBeNull();
     expect(duration).toMatch(/seconds|minutes/);
+  });
+});
+
+describe('Effort Model Mapping', () => {
+  test('should have mappings for all effort levels', () => {
+    expect('medium' in EFFORT_MODEL_MAP).toBe(true);
+    expect('high' in EFFORT_MODEL_MAP).toBe(true);
+  });
+
+  test('should have models for all agent types at each effort level', () => {
+    const agentTypes = ['codex', 'cursor', 'gemini', 'claude'] as const;
+    const effortLevels: EffortLevel[] = ['medium', 'high'];
+
+    for (const effort of effortLevels) {
+      for (const agentType of agentTypes) {
+        expect(EFFORT_MODEL_MAP[effort][agentType]).toBeDefined();
+        expect(typeof EFFORT_MODEL_MAP[effort][agentType]).toBe('string');
+        expect(EFFORT_MODEL_MAP[effort][agentType].length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  test('should have correct medium effort models', () => {
+    expect(EFFORT_MODEL_MAP.medium.codex).toBe('gpt-5.2-codex');
+    expect(EFFORT_MODEL_MAP.medium.gemini).toBe('gemini-3-flash-preview');
+    expect(EFFORT_MODEL_MAP.medium.claude).toBe('opus-4.5');
+    expect(EFFORT_MODEL_MAP.medium.cursor).toBe('composer-1');
+  });
+
+  test('should have correct high effort models', () => {
+    expect(EFFORT_MODEL_MAP.high.codex).toBe('gpt-5.1-codex-max');
+    expect(EFFORT_MODEL_MAP.high.gemini).toBe('gemini-3-pro-preview');
+    expect(EFFORT_MODEL_MAP.high.claude).toBe('opus-4.5');
+    expect(EFFORT_MODEL_MAP.high.cursor).toBe('composer-1');
+  });
+
+  test('claude should use opus-4.5 for both effort levels', () => {
+    expect(EFFORT_MODEL_MAP.medium.claude).toBe(EFFORT_MODEL_MAP.high.claude);
+    expect(EFFORT_MODEL_MAP.medium.claude).toBe('opus-4.5');
+  });
+
+  test('cursor should use composer-1 for both effort levels', () => {
+    expect(EFFORT_MODEL_MAP.medium.cursor).toBe(EFFORT_MODEL_MAP.high.cursor);
+    expect(EFFORT_MODEL_MAP.medium.cursor).toBe('composer-1');
   });
 });
 

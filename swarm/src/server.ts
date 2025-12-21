@@ -92,7 +92,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             model: {
               type: 'string',
-              description: 'Model to use (for codex: gpt-5-codex, gpt-5-codex-mini, etc.)',
+              description: 'Model to use (overrides effort-based selection)',
+            },
+            effort: {
+              type: 'string',
+              enum: ['medium', 'high'],
+              description: "Effort level: 'medium' (default) uses balanced models, 'high' uses max-capability models.",
             },
           },
           required: ['task_name', 'agent_type', 'prompt'],
@@ -158,7 +163,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         args.prompt as string,
         (args.cwd as string) || null,
         (args.mode as string) || null,
-        (args.model as string) || null
+        (args.model as string) || null,
+        (args.effort as 'medium' | 'high') || 'medium'
       );
     } else if (name === 'status') {
       if (!args) {

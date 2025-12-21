@@ -23,6 +23,28 @@ export const AGENT_COMMANDS: Record<AgentType, string[]> = {
   claude: ['claude', '-p', '--verbose', '{prompt}', '--output-format', 'stream-json', '--permission-mode', 'plan'],
 };
 
+// Effort level type
+export type EffortLevel = 'medium' | 'high';
+
+// Model mappings by effort level per agent type
+// - medium: balanced models (default)
+// - high: max-capability models
+// Note: cursor always uses composer-1, claude always uses opus-4.5
+export const EFFORT_MODEL_MAP: Record<EffortLevel, Record<AgentType, string>> = {
+  medium: {
+    codex: 'gpt-5.2-codex',
+    gemini: 'gemini-3-flash-preview',
+    claude: 'opus-4.5',
+    cursor: 'composer-1',
+  },
+  high: {
+    codex: 'gpt-5.1-codex-max',
+    gemini: 'gemini-3-pro-preview',
+    claude: 'opus-4.5',
+    cursor: 'composer-1',
+  },
+};
+
 // Suffix appended to all prompts to ensure agents provide a summary
 const PROMPT_SUFFIX = `
 
@@ -464,10 +486,14 @@ export class AgentManager {
     prompt: string,
     cwd: string | null = null,
     mode: Mode | null = null,
-    model: string | null = null
+    model: string | null = null,
+    effort: EffortLevel = 'medium'
   ): Promise<AgentProcess> {
     await this.initialize();
     const resolvedMode = resolveMode(mode, this.defaultMode);
+
+    // Resolve model from effort if not explicitly provided
+    const resolvedModel: string = model || EFFORT_MODEL_MAP[effort][agentType];
 
     const running = await this.listRunning();
     if (running.length >= this.maxConcurrent) {
@@ -495,7 +521,7 @@ export class AgentManager {
     }
 
     const agentId = randomUUID().substring(0, 8);
-    const cmd = this.buildCommand(agentType, prompt, resolvedMode, model, resolvedCwd);
+    const cmd = this.buildCommand(agentType, prompt, resolvedMode, resolvedModel, resolvedCwd);
 
     const agent = new AgentProcess(
       agentId,
@@ -555,7 +581,7 @@ export class AgentManager {
     agentType: AgentType,
     prompt: string,
     mode: Mode,
-    model: string | null = null,
+    model: string,
     cwd: string | null = null
   ): string[] {
     const cmdTemplate = AGENT_COMMANDS[agentType];
@@ -586,15 +612,16 @@ export class AgentManager {
       }
     }
 
-    if (model) {
-      if (agentType === 'codex') {
-        const execIndex = cmd.indexOf('exec');
-        const sandboxIndex = cmd.indexOf('--sandbox');
-        const insertIndex = sandboxIndex !== -1 ? sandboxIndex : execIndex + 1;
-        cmd.splice(insertIndex, 0, '--model', model);
-      } else if (agentType === 'gemini' || agentType === 'claude') {
-        cmd.push('--model', model);
-      }
+    // Add model flag for each agent type
+    if (agentType === 'codex') {
+      const execIndex = cmd.indexOf('exec');
+      const sandboxIndex = cmd.indexOf('--sandbox');
+      const insertIndex = sandboxIndex !== -1 ? sandboxIndex : execIndex + 1;
+      cmd.splice(insertIndex, 0, '--model', model);
+    } else if (agentType === 'cursor') {
+      cmd.push('--model', model);
+    } else if (agentType === 'gemini' || agentType === 'claude') {
+      cmd.push('--model', model);
     }
 
     if (isEditMode) {
