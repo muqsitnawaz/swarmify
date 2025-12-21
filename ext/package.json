@@ -3,7 +3,7 @@
   "displayName": "Agents",
   "publisher": "muqsitnawaz",
   "description": "Manage multiple Claude Code, Codex, Gemini, and Cursor terminal agents in the editor",
-  "version": "0.9.36",
+  "version": "0.9.38",
   "license": "MIT",
   "author": "Muqsit Nawaz <dev@muqsitnawaz.com>",
   "icon": "assets/agents.png",
