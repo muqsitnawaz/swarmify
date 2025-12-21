@@ -300,7 +300,6 @@ async function openSingleAgent(context: vscode.ExtensionContext, agentConfig: Om
   const terminal = vscode.window.createTerminal({
     iconPath: agentConfig.iconPath,
     location: editorLocation,
-    isTransient: true,
     name: agentConfig.title,
     env: {
       AGENT_TERMINAL_ID: terminalId,
@@ -360,7 +359,6 @@ async function openSingleAgentWithQueue(
   const terminal = vscode.window.createTerminal({
     iconPath: agentConfig.iconPath,
     location: editorLocation,
-    isTransient: true,
     name: agentConfig.title,
     env: {
       AGENT_TERMINAL_ID: terminalId,
@@ -413,7 +411,6 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
       const terminal = vscode.window.createTerminal({
         iconPath: agent.iconPath,
         location: editorLocation,
-        isTransient: true,
         name: agent.title,
         env: {
           AGENT_TERMINAL_ID: terminalId,
