@@ -21,6 +21,25 @@ export async function isSwarmEnabled(): Promise<boolean> {
   }
 }
 
+// Check if /swarm slash command is installed
+export function isSwarmCommandInstalled(): boolean {
+  const commandPath = path.join(os.homedir(), '.claude', 'commands', 'swarm.md');
+  return fs.existsSync(commandPath);
+}
+
+export interface SwarmStatus {
+  mcpEnabled: boolean;
+  commandInstalled: boolean;
+}
+
+// Get full swarm integration status
+export async function getSwarmStatus(): Promise<SwarmStatus> {
+  return {
+    mcpEnabled: await isSwarmEnabled(),
+    commandInstalled: isSwarmCommandInstalled(),
+  };
+}
+
 // Find agent-swarm binary in common locations
 async function findSwarmBinary(): Promise<string | null> {
   const home = os.homedir();

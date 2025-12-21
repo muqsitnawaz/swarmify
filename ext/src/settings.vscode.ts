@@ -78,12 +78,12 @@ export function openPanel(context: vscode.ExtensionContext): void {
     if (!settingsPanel) return;
     const settings = getSettings(context);
     const runningCounts = terminals.countRunning();
-    const swarmEnabled = await swarm.isSwarmEnabled();
+    const swarmStatus = await swarm.getSwarmStatus();
     settingsPanel.webview.postMessage({
       type: 'init',
       settings,
       runningCounts,
-      swarmEnabled
+      swarmStatus
     });
   };
 
@@ -96,6 +96,10 @@ export function openPanel(context: vscode.ExtensionContext): void {
         break;
       case 'saveSettings':
         await saveSettings(context, message.settings);
+        break;
+      case 'enableSwarm':
+        await swarm.enableSwarm(context);
+        updateWebview();
         break;
     }
   }, undefined, context.subscriptions);

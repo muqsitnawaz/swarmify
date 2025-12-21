@@ -1,6 +1,7 @@
 import { spawn, execSync, ChildProcess } from 'child_process';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import * as os from 'os';
 import { randomUUID } from 'crypto';
 import { resolveAgentsDir, isWritableAsync, hasAgentData } from './persistence.js';
 import { normalizeEvents, AgentType } from './parsers.js';
@@ -586,6 +587,12 @@ export class AgentManager {
     }
 
     let cmd = cmdTemplate.map(part => part.replace('{prompt}', fullPrompt));
+
+    // For Claude agents, load user's settings.json to inherit permissions
+    if (agentType === 'claude') {
+      const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
+      cmd.push('--settings', settingsPath);
+    }
 
     if (model) {
       if (agentType === 'codex') {

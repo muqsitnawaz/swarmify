@@ -34,6 +34,11 @@ interface RunningCounts {
   custom: Record<string, number>
 }
 
+interface SwarmStatus {
+  mcpEnabled: boolean
+  commandInstalled: boolean
+}
+
 declare function acquireVsCodeApi(): {
   postMessage(message: unknown): void
   getState(): unknown
@@ -70,7 +75,9 @@ export default function App() {
   const [runningCounts, setRunningCounts] = useState<RunningCounts>({
     claude: 0, codex: 0, gemini: 0, cursor: 0, custom: {}
   })
-  const [swarmEnabled, setSwarmEnabled] = useState(false)
+  const [swarmStatus, setSwarmStatus] = useState<SwarmStatus>({
+    mcpEnabled: false, commandInstalled: false
+  })
   const [isAdding, setIsAdding] = useState(false)
   const [newName, setNewName] = useState('')
   const [newCommand, setNewCommand] = useState('')
@@ -82,7 +89,9 @@ export default function App() {
       if (message.type === 'init') {
         setSettings(message.settings)
         setRunningCounts(message.runningCounts)
-        setSwarmEnabled(message.swarmEnabled ?? false)
+        if (message.swarmStatus) {
+          setSwarmStatus(message.swarmStatus)
+        }
       } else if (message.type === 'updateRunningCounts') {
         setRunningCounts(message.counts)
       }
@@ -93,6 +102,10 @@ export default function App() {
 
     return () => window.removeEventListener('message', handleMessage)
   }, [])
+
+  const handleEnableSwarm = () => {
+    vscode.postMessage({ type: 'enableSwarm' })
+  }
 
   const saveSettings = (newSettings: AgentSettings) => {
     setSettings(newSettings)
@@ -196,14 +209,41 @@ export default function App() {
             </p>
           </div>
         </div>
-        <span className={`px-3 py-1 text-xs font-medium rounded-full ${
-          swarmEnabled
-            ? 'bg-green-500/20 text-green-400'
-            : 'bg-[var(--secondary)] text-[var(--muted-foreground)]'
-        }`}>
-          Swarm {swarmEnabled ? 'On' : 'Off'}
-        </span>
       </header>
+
+      {/* Swarm Integration */}
+      <section>
+        <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
+          Swarm Integration
+        </h2>
+        <div className="px-4 py-3 rounded-xl bg-[var(--muted)] space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm">MCP Server</span>
+            <span className={`px-2 py-0.5 text-xs font-medium rounded ${
+              swarmStatus.mcpEnabled
+                ? 'bg-green-500/20 text-green-400'
+                : 'bg-[var(--secondary)] text-[var(--muted-foreground)]'
+            }`}>
+              {swarmStatus.mcpEnabled ? 'Installed' : 'Not installed'}
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm">/swarm Command</span>
+            <span className={`px-2 py-0.5 text-xs font-medium rounded ${
+              swarmStatus.commandInstalled
+                ? 'bg-green-500/20 text-green-400'
+                : 'bg-[var(--secondary)] text-[var(--muted-foreground)]'
+            }`}>
+              {swarmStatus.commandInstalled ? 'Installed' : 'Not installed'}
+            </span>
+          </div>
+          {(!swarmStatus.mcpEnabled || !swarmStatus.commandInstalled) && (
+            <Button onClick={handleEnableSwarm} className="w-full mt-2">
+              Enable Swarm
+            </Button>
+          )}
+        </div>
+      </section>
 
       {/* Running Now */}
       <section>
