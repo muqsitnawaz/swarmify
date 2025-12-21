@@ -89,7 +89,8 @@ export function register(
   id: string,
   agentConfig: Omit<AgentConfig, 'count'> | null,
   pid?: number,
-  context?: vscode.ExtensionContext
+  context?: vscode.ExtensionContext,
+  initialLabel?: string
 ): void {
   const entry: EditorTerminal = {
     id,
@@ -105,7 +106,13 @@ export function register(
     const persistedLabel = persistedLabels[pid];
     if (persistedLabel) {
       entry.label = persistedLabel;
+    } else if (initialLabel) {
+      entry.label = initialLabel;
+      // Also persist this label since we found it on a restored terminal
+      saveStatusBarLabel(context, pid, initialLabel);
     }
+  } else if (initialLabel) {
+    entry.label = initialLabel;
   }
 
   editorTerminals.set(id, entry);
@@ -195,9 +202,9 @@ export async function scanExisting(
       console.log(`[TERMINALS] Could not retrieve PID for terminal "${terminal.name}"`);
     }
 
-    register(terminal, id, agentConfig, pid, context);
+    register(terminal, id, agentConfig, pid, context, info.label || undefined);
     registeredCount++;
-    console.log(`[TERMINALS] Registered: id=${id}, prefix=${info.prefix}, pid=${pid}`);
+    console.log(`[TERMINALS] Registered: id=${id}, prefix=${info.prefix}, pid=${pid}, label=${info.label}`);
   }
 
   console.log(`[TERMINALS] Scan complete. Registered ${registeredCount} agent terminals.`);

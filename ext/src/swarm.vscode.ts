@@ -67,7 +67,30 @@ async function hasBun(): Promise<boolean> {
   }
 }
 
-// Install agent-swarm globally
+// Install /swarm slash command from bundled asset
+function installSwarmCommand(context: vscode.ExtensionContext): boolean {
+  const commandsDir = path.join(os.homedir(), '.claude', 'commands');
+  const targetPath = path.join(commandsDir, 'swarm.md');
+
+  // Create commands dir if needed
+  if (!fs.existsSync(commandsDir)) {
+    fs.mkdirSync(commandsDir, { recursive: true });
+  }
+
+  // Read from bundled asset
+  const sourcePath = path.join(context.extensionPath, 'assets', 'swarm.md');
+  if (!fs.existsSync(sourcePath)) {
+    return false;
+  }
+
+  const content = fs.readFileSync(sourcePath, 'utf-8');
+
+  // Always overwrite to ensure latest version
+  fs.writeFileSync(targetPath, content);
+  return true;
+}
+
+// Install swarm-mcp globally
 async function installSwarm(): Promise<boolean> {
   const useBun = await hasBun();
   const installCmd = useBun
@@ -95,10 +118,17 @@ async function installSwarm(): Promise<boolean> {
   }
 }
 
-export async function enableSwarm(_context: vscode.ExtensionContext): Promise<void> {
-  // Check if already enabled
+export async function enableSwarm(context: vscode.ExtensionContext): Promise<void> {
+  // Install /swarm slash command
+  const commandInstalled = installSwarmCommand(context);
+
+  // Check if MCP already enabled
   if (await isSwarmEnabled()) {
-    vscode.window.showInformationMessage('Swarm is already enabled.');
+    if (commandInstalled) {
+      vscode.window.showInformationMessage('Swarm /swarm command updated.');
+    } else {
+      vscode.window.showInformationMessage('Swarm is already enabled.');
+    }
     return;
   }
 
@@ -133,7 +163,7 @@ export async function enableSwarm(_context: vscode.ExtensionContext): Promise<vo
   try {
     // Use claude mcp add to register the server
     await execAsync(`claude mcp add --scope user Swarm "${binaryPath}"`);
-    vscode.window.showInformationMessage('Multi-agent support enabled. Reload Claude Code.');
+    vscode.window.showInformationMessage('Swarm MCP + /swarm command installed. Reload Claude Code.');
   } catch (err) {
     const error = err as Error & { stderr?: string };
     vscode.window.showErrorMessage(`Failed to enable swarm: ${error.stderr || error.message}`);
