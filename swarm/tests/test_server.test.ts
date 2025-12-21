@@ -35,7 +35,7 @@ describe('Task-Based API', () => {
         'codex',
         'Implement login',
         null,
-        false,
+        'plan',
         null,
         AgentStatus.RUNNING
       );
@@ -45,7 +45,7 @@ describe('Task-Based API', () => {
         'cursor',
         'Fix auth bug',
         null,
-        false,
+        'plan',
         null,
         AgentStatus.RUNNING
       );
@@ -55,7 +55,7 @@ describe('Task-Based API', () => {
         'gemini',
         'Refactor auth module',
         null,
-        false,
+        'plan',
         null,
         AgentStatus.RUNNING
       );
@@ -70,9 +70,9 @@ describe('Task-Based API', () => {
     });
 
     test('should isolate agents by task name', async () => {
-      const agent1 = new AgentProcess('a1', 'task-a', 'codex', 'Task A work', null, false, null, AgentStatus.RUNNING);
-      const agent2 = new AgentProcess('a2', 'task-a', 'cursor', 'Task A debug', null, false, null, AgentStatus.RUNNING);
-      const agent3 = new AgentProcess('b1', 'task-b', 'codex', 'Task B work', null, false, null, AgentStatus.RUNNING);
+      const agent1 = new AgentProcess('a1', 'task-a', 'codex', 'Task A work', null, 'plan', null, AgentStatus.RUNNING);
+      const agent2 = new AgentProcess('a2', 'task-a', 'cursor', 'Task A debug', null, 'plan', null, AgentStatus.RUNNING);
+      const agent3 = new AgentProcess('b1', 'task-b', 'codex', 'Task B work', null, 'plan', null, AgentStatus.RUNNING);
 
       manager['agents'].set('a1', agent1);
       manager['agents'].set('a2', agent2);
@@ -114,10 +114,10 @@ describe('Task-Based API', () => {
     });
 
     test('should count status correctly across multiple agents', async () => {
-      const agent1 = new AgentProcess('a1', 'my-task', 'codex', 'Work 1', null, false, null, AgentStatus.RUNNING);
-      const agent2 = new AgentProcess('a2', 'my-task', 'cursor', 'Work 2', null, false, null, AgentStatus.COMPLETED);
-      const agent3 = new AgentProcess('a3', 'my-task', 'gemini', 'Work 3', null, false, null, AgentStatus.FAILED);
-      const agent4 = new AgentProcess('a4', 'my-task', 'claude', 'Work 4', null, false, null, AgentStatus.STOPPED);
+      const agent1 = new AgentProcess('a1', 'my-task', 'codex', 'Work 1', null, 'plan', null, AgentStatus.RUNNING);
+      const agent2 = new AgentProcess('a2', 'my-task', 'cursor', 'Work 2', null, 'plan', null, AgentStatus.COMPLETED);
+      const agent3 = new AgentProcess('a3', 'my-task', 'gemini', 'Work 3', null, 'plan', null, AgentStatus.FAILED);
+      const agent4 = new AgentProcess('a4', 'my-task', 'claude', 'Work 4', null, 'plan', null, AgentStatus.STOPPED);
 
       manager['agents'].set('a1', agent1);
       manager['agents'].set('a2', agent2);
@@ -161,7 +161,7 @@ describe('Task-Based API', () => {
     });
 
     test('should verify agent belongs to task before returning status', async () => {
-      const agent = new AgentProcess('agent-1', 'task-a', 'codex', 'Work', null, false, null, AgentStatus.RUNNING);
+      const agent = new AgentProcess('agent-1', 'task-a', 'codex', 'Work', null, 'plan', null, AgentStatus.RUNNING);
       manager['agents'].set('agent-1', agent);
 
       const retrieved = await manager.get('agent-1');
@@ -177,9 +177,9 @@ describe('Task-Based API', () => {
 
   describe('stop - task level', () => {
     test('should stop all running agents in task', async () => {
-      const agent1 = new AgentProcess('a1', 'stop-task', 'codex', 'Work 1', null, false, null, AgentStatus.RUNNING);
-      const agent2 = new AgentProcess('a2', 'stop-task', 'cursor', 'Work 2', null, false, null, AgentStatus.RUNNING);
-      const agent3 = new AgentProcess('a3', 'stop-task', 'gemini', 'Work 3', null, false, null, AgentStatus.COMPLETED);
+      const agent1 = new AgentProcess('a1', 'stop-task', 'codex', 'Work 1', null, 'plan', null, AgentStatus.RUNNING);
+      const agent2 = new AgentProcess('a2', 'stop-task', 'cursor', 'Work 2', null, 'plan', null, AgentStatus.RUNNING);
+      const agent3 = new AgentProcess('a3', 'stop-task', 'gemini', 'Work 3', null, 'plan', null, AgentStatus.COMPLETED);
 
       manager['agents'].set('a1', agent1);
       manager['agents'].set('a2', agent2);
@@ -193,8 +193,8 @@ describe('Task-Based API', () => {
     });
 
     test('should not affect agents in other tasks', async () => {
-      const agent1 = new AgentProcess('a1', 'task-to-stop', 'codex', 'Work', null, false, null, AgentStatus.RUNNING);
-      const agent2 = new AgentProcess('a2', 'other-task', 'cursor', 'Work', null, false, null, AgentStatus.RUNNING);
+      const agent1 = new AgentProcess('a1', 'task-to-stop', 'codex', 'Work', null, 'plan', null, AgentStatus.RUNNING);
+      const agent2 = new AgentProcess('a2', 'other-task', 'cursor', 'Work', null, 'plan', null, AgentStatus.RUNNING);
 
       manager['agents'].set('a1', agent1);
       manager['agents'].set('a2', agent2);
@@ -208,7 +208,7 @@ describe('Task-Based API', () => {
 
   describe('stop - agent level', () => {
     test('should verify agent belongs to task before stopping', async () => {
-      const agent = new AgentProcess('agent-1', 'task-a', 'codex', 'Work', null, false, null, AgentStatus.RUNNING);
+      const agent = new AgentProcess('agent-1', 'task-a', 'codex', 'Work', null, 'plan', null, AgentStatus.RUNNING);
       manager['agents'].set('agent-1', agent);
 
       const retrieved = await manager.get('agent-1');
@@ -220,7 +220,7 @@ describe('Task-Based API', () => {
     });
 
     test('should return already_stopped for completed agent', async () => {
-      const agent = new AgentProcess('agent-1', 'my-task', 'codex', 'Work', null, false, null, AgentStatus.COMPLETED);
+      const agent = new AgentProcess('agent-1', 'my-task', 'codex', 'Work', null, 'plan', null, AgentStatus.COMPLETED);
       manager['agents'].set('agent-1', agent);
 
       const success = await manager.stop('agent-1');
@@ -282,8 +282,8 @@ describe('Task-Based API', () => {
     });
 
     test('should handle task with no running agents', async () => {
-      const agent1 = new AgentProcess('a1', 'done-task', 'codex', 'Work 1', null, false, null, AgentStatus.COMPLETED);
-      const agent2 = new AgentProcess('a2', 'done-task', 'cursor', 'Work 2', null, false, null, AgentStatus.FAILED);
+      const agent1 = new AgentProcess('a1', 'done-task', 'codex', 'Work 1', null, 'plan', null, AgentStatus.COMPLETED);
+      const agent2 = new AgentProcess('a2', 'done-task', 'cursor', 'Work 2', null, 'plan', null, AgentStatus.FAILED);
 
       manager['agents'].set('a1', agent1);
       manager['agents'].set('a2', agent2);

@@ -96,8 +96,8 @@ describe('API Integration Tests', () => {
       console.log('\n--- TEST: status for task with agents ---');
 
       // Manually add agents to test status (since we can't spawn real ones)
-      const agent1 = new AgentProcess('agent-1', 'my-task', 'codex', 'Work 1', null, false, null, AgentStatus.RUNNING);
-      const agent2 = new AgentProcess('agent-2', 'my-task', 'cursor', 'Work 2', null, false, null, AgentStatus.COMPLETED);
+      const agent1 = new AgentProcess('agent-1', 'my-task', 'codex', 'Work 1', null, 'plan', null, AgentStatus.RUNNING);
+      const agent2 = new AgentProcess('agent-2', 'my-task', 'cursor', 'Work 2', null, 'plan', null, AgentStatus.COMPLETED);
       manager['agents'].set('agent-1', agent1);
       manager['agents'].set('agent-2', agent2);
 
@@ -116,7 +116,7 @@ describe('API Integration Tests', () => {
     test('should return full details for each agent in task', async () => {
       console.log('\n--- TEST: full details for agents in task ---');
 
-      const agent = new AgentProcess('agent-123', 'detail-task', 'gemini', 'Complex work', null, false, null, AgentStatus.RUNNING);
+      const agent = new AgentProcess('agent-123', 'detail-task', 'gemini', 'Complex work', null, 'plan', null, AgentStatus.RUNNING);
       manager['agents'].set('agent-123', agent);
 
       const result = await handleStatus(manager, 'detail-task');
@@ -140,8 +140,8 @@ describe('API Integration Tests', () => {
     test('should stop all agents in task', async () => {
       console.log('\n--- TEST: stop all agents in task ---');
 
-      const agent1 = new AgentProcess('stop-1', 'stop-task', 'codex', 'Work', null, false, null, AgentStatus.RUNNING);
-      const agent2 = new AgentProcess('stop-2', 'stop-task', 'cursor', 'Work', null, false, null, AgentStatus.COMPLETED);
+      const agent1 = new AgentProcess('stop-1', 'stop-task', 'codex', 'Work', null, 'plan', null, AgentStatus.RUNNING);
+      const agent2 = new AgentProcess('stop-2', 'stop-task', 'cursor', 'Work', null, 'plan', null, AgentStatus.COMPLETED);
       manager['agents'].set('stop-1', agent1);
       manager['agents'].set('stop-2', agent2);
 
@@ -159,7 +159,7 @@ describe('API Integration Tests', () => {
     test('should stop specific agent', async () => {
       console.log('\n--- TEST: stop specific agent ---');
 
-      const agent = new AgentProcess('single-stop', 'single-task', 'codex', 'Work', null, false, null, AgentStatus.COMPLETED);
+      const agent = new AgentProcess('single-stop', 'single-task', 'codex', 'Work', null, 'plan', null, AgentStatus.COMPLETED);
       manager['agents'].set('single-stop', agent);
 
       const result = await handleStop(manager, 'single-task', 'single-stop');
@@ -193,9 +193,9 @@ describe('API Integration Tests', () => {
 
       // Step 1: Add agents (simulating spawn since CLI may not be installed)
       console.log('\n[Step 1] Adding 3 agents to task "feature-x"...');
-      const agent1 = new AgentProcess('flow-1', 'feature-x', 'codex', 'Build feature', null, false, null, AgentStatus.RUNNING);
-      const agent2 = new AgentProcess('flow-2', 'feature-x', 'cursor', 'Fix bugs', null, false, null, AgentStatus.RUNNING);
-      const agent3 = new AgentProcess('flow-3', 'feature-x', 'gemini', 'Refactor', null, false, null, AgentStatus.COMPLETED);
+      const agent1 = new AgentProcess('flow-1', 'feature-x', 'codex', 'Build feature', null, 'plan', null, AgentStatus.RUNNING);
+      const agent2 = new AgentProcess('flow-2', 'feature-x', 'cursor', 'Fix bugs', null, 'plan', null, AgentStatus.RUNNING);
+      const agent3 = new AgentProcess('flow-3', 'feature-x', 'gemini', 'Refactor', null, 'plan', null, AgentStatus.COMPLETED);
       manager['agents'].set('flow-1', agent1);
       manager['agents'].set('flow-2', agent2);
       manager['agents'].set('flow-3', agent3);

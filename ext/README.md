@@ -70,7 +70,7 @@ Generate commit messages from your staged changes. Learns from your commit style
 | `Cmd+Shift+A` | Spawn new agent |
 | `Cmd+Shift+N` | New task with context |
 | `Cmd+Shift+C` | Clear and restart agent |
-| `Cmd+L` | Label agent |
+| `Cmd+Shift+L` | Label agent |
 | `Cmd+Shift+G` | Generate commit |
 
 ## Requirements

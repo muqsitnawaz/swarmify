@@ -177,8 +177,8 @@
       },
       {
         "command": "agents.setTitle",
-        "key": "ctrl+l",
-        "mac": "cmd+l"
+        "key": "ctrl+shift+l",
+        "mac": "cmd+shift+l"
       },
       {
         "command": "agents.clear",

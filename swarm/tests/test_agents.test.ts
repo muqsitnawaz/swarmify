@@ -7,28 +7,32 @@ import {
   AgentProcess,
   AgentStatus,
   AGENT_COMMANDS,
-  resolveModeFlags,
+  resolveMode,
 } from '../src/agents.js';
 
 const TESTDATA_DIR = path.join(__dirname, 'testdata');
 
 describe('Mode Resolution', () => {
   test('should use default mode when no flags provided', () => {
-    const [mode, yolo] = resolveModeFlags(null, null, 'edit');
+    const mode = resolveMode(null, 'edit');
     expect(mode).toBe('edit');
-    expect(yolo).toBe(true);
   });
 
-  test('should reject non-boolean yolo values', () => {
+  test('should return plan mode by default', () => {
+    const mode = resolveMode(null, 'plan');
+    expect(mode).toBe('plan');
+  });
+
+  test('should reject invalid mode values', () => {
     expect(() => {
-      resolveModeFlags(null, 'yes' as any, 'plan');
-    }).toThrow('boolean');
+      resolveMode('invalid' as any, 'plan');
+    }).toThrow('Invalid mode');
   });
 
   test('should reject invalid default modes', () => {
     expect(() => {
-      resolveModeFlags(null, null, 'fast' as any);
-    }).toThrow('default mode');
+      resolveMode(null, 'fast' as any);
+    }).toThrow('Invalid default mode');
   });
 });
 
@@ -40,7 +44,7 @@ describe('AgentProcess', () => {
       'codex',
       'Test prompt',
       null,
-      false,
+      'plan',
       null,
       AgentStatus.RUNNING,
       new Date('2024-01-01T00:00:00Z')
@@ -55,7 +59,6 @@ describe('AgentProcess', () => {
     expect(result.event_count).toBe(0);
     expect(result.completed_at).toBeNull();
     expect(result.mode).toBe('plan');
-    expect(result.yolo).toBe(false);
     expect(result.duration).toBeDefined();
   });
 
@@ -66,7 +69,7 @@ describe('AgentProcess', () => {
       'codex',
       'Test prompt',
       null,
-      true,
+      'edit',
       null,
       AgentStatus.RUNNING,
       new Date('2024-01-01T00:00:00Z')
@@ -86,7 +89,7 @@ describe('AgentProcess', () => {
       'codex',
       'Test',
       null,
-      false,
+      'plan',
       null,
       AgentStatus.COMPLETED,
       started,
@@ -106,7 +109,7 @@ describe('AgentProcess', () => {
       'codex',
       'Test',
       null,
-      false,
+      'plan',
       null,
       AgentStatus.RUNNING,
       started
@@ -179,7 +182,7 @@ describe('AgentManager', () => {
       'codex',
       'Test',
       null,
-      false,
+      'plan',
       null,
       AgentStatus.RUNNING
     );
@@ -189,7 +192,7 @@ describe('AgentManager', () => {
       'gemini',
       'Test',
       null,
-      false,
+      'plan',
       null,
       AgentStatus.RUNNING
     );
@@ -199,7 +202,7 @@ describe('AgentManager', () => {
       'codex',
       'Test',
       null,
-      false,
+      'plan',
       null,
       AgentStatus.COMPLETED
     );
@@ -220,7 +223,7 @@ describe('AgentManager', () => {
       'codex',
       'Test',
       null,
-      false,
+      'plan',
       null,
       AgentStatus.RUNNING
     );
@@ -230,7 +233,7 @@ describe('AgentManager', () => {
       'codex',
       'Test',
       null,
-      false,
+      'plan',
       null,
       AgentStatus.COMPLETED
     );
@@ -240,7 +243,7 @@ describe('AgentManager', () => {
       'codex',
       'Test',
       null,
-      false,
+      'plan',
       null,
       AgentStatus.FAILED
     );
@@ -266,7 +269,7 @@ describe('AgentManager', () => {
       'codex',
       'Test',
       null,
-      false,
+      'plan',
       null,
       AgentStatus.COMPLETED
     );
@@ -283,7 +286,7 @@ describe('AgentManager', () => {
       'codex',
       'Test',
       null,
-      false,
+      'plan',
       null,
       AgentStatus.RUNNING
     );
@@ -293,7 +296,7 @@ describe('AgentManager', () => {
       'gemini',
       'Test',
       null,
-      false,
+      'plan',
       null,
       AgentStatus.RUNNING
     );
@@ -303,7 +306,7 @@ describe('AgentManager', () => {
       'codex',
       'Test',
       null,
-      false,
+      'plan',
       null,
       AgentStatus.RUNNING
     );
@@ -331,7 +334,7 @@ describe('AgentManager', () => {
       'codex',
       'Test',
       null,
-      false,
+      'plan',
       12345,
       AgentStatus.RUNNING
     );
@@ -341,7 +344,7 @@ describe('AgentManager', () => {
       'gemini',
       'Test',
       null,
-      false,
+      'plan',
       null,
       AgentStatus.COMPLETED
     );
@@ -351,7 +354,7 @@ describe('AgentManager', () => {
       'codex',
       'Test',
       null,
-      false,
+      'plan',
       null,
       AgentStatus.RUNNING
     );

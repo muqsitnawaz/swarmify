@@ -396,6 +396,10 @@ export default function App() {
             <span className="text-[var(--muted-foreground)]">New agent</span>
           </div>
           <div className="flex items-center gap-4">
+            <kbd className="px-2 py-1 rounded bg-[var(--secondary)] text-[var(--muted-foreground)] font-mono text-xs">Cmd+Shift+L</kbd>
+            <span className="text-[var(--muted-foreground)]">Label agent</span>
+          </div>
+          <div className="flex items-center gap-4">
             <kbd className="px-2 py-1 rounded bg-[var(--secondary)] text-[var(--muted-foreground)] font-mono text-xs">Cmd+Shift+G</kbd>
             <span className="text-[var(--muted-foreground)]">Commit & push</span>
           </div>
