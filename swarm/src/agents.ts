@@ -62,11 +62,10 @@ function defaultModeFromEnv(): Mode {
   return 'plan';
 }
 
-export function resolveModeFlags(
+export function resolveMode(
   requestedMode: string | null | undefined,
-  requestedYolo: boolean | null | undefined,
   defaultMode: Mode = 'plan'
-): [Mode, boolean] {
+): Mode {
   const normalizedDefault = normalizeModeValue(defaultMode);
   if (!normalizedDefault) {
     throw new Error(`Invalid default mode '${defaultMode}'. Use 'plan' or 'edit'.`);
@@ -75,20 +74,12 @@ export function resolveModeFlags(
   if (requestedMode !== null && requestedMode !== undefined) {
     const normalizedMode = normalizeModeValue(requestedMode);
     if (!normalizedMode) {
-      throw new Error(`Invalid mode '${requestedMode}'. Valid modes: 'plan' (read-only) or 'edit' (can write). Note: 'yolo' and 'safe' are no longer valid.`);
+      throw new Error(`Invalid mode '${requestedMode}'. Valid modes: 'plan' (read-only) or 'edit' (can write).`);
     }
-    // 'edit' mode maps to yolo=true internally
-    return [normalizedMode, normalizedMode === 'edit'];
+    return normalizedMode;
   }
 
-  if (requestedYolo !== null && requestedYolo !== undefined) {
-    if (typeof requestedYolo !== 'boolean') {
-      throw new Error('Invalid yolo flag - expected a boolean.');
-    }
-    return [requestedYolo ? 'edit' : 'plan', requestedYolo];
-  }
-
-  return [normalizedDefault, normalizedDefault === 'edit'];
+  return normalizedDefault;
 }
 
 export function checkCliAvailable(agentType: AgentType): [boolean, string | null] {
@@ -134,7 +125,7 @@ export class AgentProcess {
   agentType: AgentType;
   prompt: string;
   cwd: string | null;
-  yolo: boolean = false;
+  mode: Mode = 'plan';
   pid: number | null = null;
   status: AgentStatus = AgentStatus.RUNNING;
   startedAt: Date = new Date();
@@ -149,7 +140,7 @@ export class AgentProcess {
     agentType: AgentType,
     prompt: string,
     cwd: string | null = null,
-    yolo: boolean = false,
+    mode: Mode = 'plan',
     pid: number | null = null,
     status: AgentStatus = AgentStatus.RUNNING,
     startedAt: Date = new Date(),
@@ -161,7 +152,7 @@ export class AgentProcess {
     this.agentType = agentType;
     this.prompt = prompt;
     this.cwd = cwd;
-    this.yolo = yolo;
+    this.mode = mode;
     this.pid = pid;
     this.status = status;
     this.startedAt = startedAt;
@@ -169,8 +160,8 @@ export class AgentProcess {
     this.baseDir = baseDir;
   }
 
-  get mode(): string {
-    return this.yolo ? 'edit' : 'plan';
+  get isEditMode(): boolean {
+    return this.mode === 'edit';
   }
 
   async getAgentDir(): Promise<string> {
@@ -197,7 +188,6 @@ export class AgentProcess {
       event_count: this.events.length,
       duration: this.duration(),
       mode: this.mode,
-      yolo: this.yolo,
     };
   }
 
@@ -279,7 +269,6 @@ export class AgentProcess {
       agent_type: this.agentType,
       prompt: this.prompt,
       cwd: this.cwd,
-      yolo: this.yolo,
       mode: this.mode,
       pid: this.pid,
       status: this.status,
@@ -305,19 +294,13 @@ export class AgentProcess {
       const metaContent = await fs.readFile(metaPath, 'utf-8');
       const meta = JSON.parse(metaContent);
 
-      let yoloFromMeta = meta.yolo;
-      // Backwards compatibility: support both 'yolo' (old) and 'edit' (new) mode names
-      if (yoloFromMeta === null && (meta.mode === 'yolo' || meta.mode === 'edit')) {
-        yoloFromMeta = true;
-      }
-
       const agent = new AgentProcess(
         meta.agent_id,
         meta.task_name || 'default',
         meta.agent_type,
         meta.prompt,
         meta.cwd || null,
-        yoloFromMeta !== null && yoloFromMeta !== undefined ? Boolean(yoloFromMeta) : false,
+        meta.mode === 'edit' ? 'edit' : 'plan',
         meta.pid || null,
         AgentStatus[meta.status as keyof typeof AgentStatus] || AgentStatus.RUNNING,
         new Date(meta.started_at),
@@ -326,7 +309,6 @@ export class AgentProcess {
       );
       return agent;
     } catch {
-      // Skip agents with corrupt/legacy data
       return null;
     }
   }
@@ -481,12 +463,11 @@ export class AgentManager {
     agentType: AgentType,
     prompt: string,
     cwd: string | null = null,
-    yolo: boolean | null = null,
     mode: Mode | null = null,
     model: string | null = null
   ): Promise<AgentProcess> {
     await this.initialize();
-    const [resolvedMode, resolvedYolo] = resolveModeFlags(mode, yolo, this.defaultMode);
+    const resolvedMode = resolveMode(mode, this.defaultMode);
 
     const running = await this.listRunning();
     if (running.length >= this.maxConcurrent) {
@@ -500,9 +481,11 @@ export class AgentManager {
       throw new Error(pathOrError || 'CLI tool not available');
     }
 
+    // Resolve and validate cwd
+    let resolvedCwd: string | null = null;
     if (cwd !== null) {
-      const cwdPath = path.resolve(cwd);
-      const stat = await fs.stat(cwdPath).catch(() => null);
+      resolvedCwd = path.resolve(cwd);
+      const stat = await fs.stat(resolvedCwd).catch(() => null);
       if (!stat) {
         throw new Error(`Working directory does not exist: ${cwd}`);
       }
@@ -512,15 +495,15 @@ export class AgentManager {
     }
 
     const agentId = randomUUID().substring(0, 8);
-    const cmd = this.buildCommand(agentType, prompt, resolvedYolo, model);
+    const cmd = this.buildCommand(agentType, prompt, resolvedMode, model, resolvedCwd);
 
     const agent = new AgentProcess(
       agentId,
       taskName,
       agentType,
       prompt,
-      cwd,
-      resolvedYolo,
+      resolvedCwd,
+      resolvedMode,
       null,
       AgentStatus.RUNNING,
       new Date(),
@@ -545,7 +528,7 @@ export class AgentManager {
 
       const childProcess = spawn(cmd[0], cmd.slice(1), {
         stdio: ['ignore', stdoutFd, stdoutFd],
-        cwd: cwd || undefined,
+        cwd: resolvedCwd || undefined,
         detached: true,
       });
 
@@ -568,30 +551,39 @@ export class AgentManager {
     return agent;
   }
 
-  private buildCommand(agentType: AgentType, prompt: string, yolo: boolean, model: string | null = null): string[] {
+  private buildCommand(
+    agentType: AgentType,
+    prompt: string,
+    mode: Mode,
+    model: string | null = null,
+    cwd: string | null = null
+  ): string[] {
     const cmdTemplate = AGENT_COMMANDS[agentType];
     if (!cmdTemplate) {
       throw new Error(`Unknown agent type: ${agentType}`);
     }
 
-    if (!yolo && this.promptHasYoloFlag(prompt)) {
-      throw new Error('Safety: --yolo flag requires explicit yolo=True (default mode is --full-auto).');
-    }
+    const isEditMode = mode === 'edit';
 
     // Build the full prompt with prefix (for plan mode) and suffix
     let fullPrompt = prompt + PROMPT_SUFFIX;
 
     // For Claude in plan mode, add prefix explaining headless plan mode restrictions
-    if (agentType === 'claude' && !yolo) {
+    if (agentType === 'claude' && !isEditMode) {
       fullPrompt = CLAUDE_PLAN_MODE_PREFIX + fullPrompt;
     }
 
     let cmd = cmdTemplate.map(part => part.replace('{prompt}', fullPrompt));
 
     // For Claude agents, load user's settings.json to inherit permissions
+    // and grant access to the working directory
     if (agentType === 'claude') {
       const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
       cmd.push('--settings', settingsPath);
+
+      if (cwd) {
+        cmd.push('--add-dir', cwd);
+      }
     }
 
     if (model) {
@@ -605,18 +597,11 @@ export class AgentManager {
       }
     }
 
-    if (yolo) {
+    if (isEditMode) {
       cmd = this.applyEditMode(agentType, cmd);
-    } else if (cmd.includes('--yolo')) {
-      throw new Error('Safety: --yolo flag detected in command. Enable yolo=True to run in unsafe mode.');
     }
 
     return cmd;
-  }
-
-  private promptHasYoloFlag(prompt: string): boolean {
-    const normalized = prompt.toLowerCase();
-    return /(^|\s)--\s*yolo(\s|$|[^\w-])/.test(normalized);
   }
 
   private applyEditMode(agentType: AgentType, cmd: string[]): string[] {
@@ -624,22 +609,19 @@ export class AgentManager {
 
     switch (agentType) {
       case 'codex':
-        // Add --full-auto for edit mode (auto-approve with workspace sandbox)
         editCmd.push('--full-auto');
         break;
 
       case 'cursor':
-        // Add -f (force) to auto-approve commands
         editCmd.push('-f');
         break;
 
       case 'gemini':
-        // Add --yolo for edit mode
+        // Gemini CLI uses --yolo flag for auto-approve
         editCmd.push('--yolo');
         break;
 
       case 'claude':
-        // Replace --permission-mode plan with --permission-mode acceptEdits
         const permModeIndex = editCmd.indexOf('--permission-mode');
         if (permModeIndex !== -1 && permModeIndex + 1 < editCmd.length) {
           editCmd[permModeIndex + 1] = 'acceptEdits';

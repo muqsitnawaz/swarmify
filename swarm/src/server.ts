@@ -36,7 +36,6 @@ IMPORTANT: Avoid spawning the same agent type as yourself. If you are Claude, pr
 MODE PARAMETER (required for writes):
 - mode='edit' - Agent CAN modify files (use this for implementation tasks)
 - mode='plan' - Agent is READ-ONLY (default, use for research/exploration)
-Do NOT use 'yolo' or 'safe' - those are invalid.
 
 WAIT BEFORE CHECKING STATUS: After spawning all agents for this task, sleep for at least 2 minutes before checking status. Use: Bash(sleep 120 && echo "Done waiting on Swarm agents. Let's check status") timeout: 2m 30s
 
@@ -89,7 +88,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             mode: {
               type: 'string',
               enum: ['plan', 'edit'],
-              description: "REQUIRED FOR WRITES: 'edit' allows file modifications, 'plan' is read-only (default). Do NOT use 'yolo' or 'safe'.",
+              description: "'edit' allows file modifications, 'plan' is read-only (default).",
             },
             model: {
               type: 'string',

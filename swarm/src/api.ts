@@ -3,7 +3,7 @@
  * These functions can be called directly in tests with a custom AgentManager.
  */
 
-import { AgentManager, AgentStatus, resolveModeFlags } from './agents.js';
+import { AgentManager, AgentStatus, resolveMode } from './agents.js';
 import { AgentType } from './parsers.js';
 import { summarizeEvents, getLastMessages } from './summarizer.js';
 
@@ -53,17 +53,16 @@ export async function handleSpawn(
   model: string | null
 ): Promise<SpawnResult> {
   const defaultMode = manager.getDefaultMode();
-  const [resolvedMode, resolvedYolo] = resolveModeFlags(mode, undefined, defaultMode);
+  const resolvedMode = resolveMode(mode, defaultMode);
 
-  console.log(`[spawn] Spawning ${agentType} agent for task "${taskName}"...`);
+  console.log(`[spawn] Spawning ${agentType} agent for task "${taskName}" [${resolvedMode}]...`);
 
   const agent = await manager.spawn(
     taskName,
     agentType,
     prompt,
     cwd,
-    resolvedYolo,
-    resolvedMode as any,
+    resolvedMode,
     model
   );
 
