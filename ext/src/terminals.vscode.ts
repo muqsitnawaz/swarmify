@@ -166,55 +166,38 @@ export async function scanExisting(
   inferAgentConfig: (name: string) => Omit<AgentConfig, 'count'> | null,
   context?: vscode.ExtensionContext
 ): Promise<number> {
-  console.log('[TERMINALS] Scanning terminals in editor area...');
+  console.log('[TERMINALS] Scanning all terminals...');
   let registeredCount = 0;
 
-  // Build terminal name -> instance map
-  const terminalsByName = new Map<string, vscode.Terminal>();
   for (const terminal of vscode.window.terminals) {
-    terminalsByName.set(terminal.name, terminal);
-    console.log(`[TERMINALS] Available terminal: "${terminal.name}"`);
-  }
+    console.log(`[TERMINALS] Checking terminal: "${terminal.name}"`);
 
-  for (const group of vscode.window.tabGroups.all) {
-    console.log(`[TERMINALS] Tab group ${group.viewColumn}: ${group.tabs.length} tabs`);
-
-    for (const tab of group.tabs) {
-      if (tab.input instanceof vscode.TabInputTerminal) {
-        console.log(`[TERMINALS] Found editor terminal tab: label="${tab.label}"`);
-
-        const info = getTerminalDisplayInfo(tab.label);
-        console.log(`[TERMINALS] Display info for "${tab.label}": isAgent=${info.isAgent}, prefix=${info.prefix}`);
-
-        if (!info.isAgent || !info.prefix) continue;
-
-        const terminal = terminalsByName.get(tab.label);
-        if (!terminal) {
-          console.log(`[TERMINALS] No matching terminal found for label "${tab.label}"`);
-          continue;
-        }
-
-        // Skip if already registered
-        if (terminalToId.has(terminal)) {
-          console.log(`[TERMINALS] Already registered, skipping`);
-          continue;
-        }
-
-        const agentConfig = inferAgentConfig(tab.label);
-        const id = nextId(info.prefix);
-
-        let pid: number | undefined;
-        try {
-          pid = await terminal.processId;
-        } catch (error) {
-          console.log(`[TERMINALS] Could not retrieve PID for terminal "${tab.label}"`);
-        }
-
-        register(terminal, id, agentConfig, pid, context);
-        registeredCount++;
-        console.log(`[TERMINALS] Registered: id=${id}, prefix=${info.prefix}, pid=${pid}`);
-      }
+    // Skip if already registered
+    if (terminalToId.has(terminal)) {
+      console.log(`[TERMINALS] Already registered, skipping`);
+      continue;
     }
+
+    const info = getTerminalDisplayInfo(terminal.name);
+    console.log(`[TERMINALS] Display info for "${terminal.name}": isAgent=${info.isAgent}, prefix=${info.prefix}`);
+
+    if (!info.isAgent || !info.prefix) continue;
+
+    const agentConfig = inferAgentConfig(terminal.name);
+    if (!agentConfig) continue;
+
+    const id = nextId(info.prefix);
+
+    let pid: number | undefined;
+    try {
+      pid = await terminal.processId;
+    } catch (error) {
+      console.log(`[TERMINALS] Could not retrieve PID for terminal "${terminal.name}"`);
+    }
+
+    register(terminal, id, agentConfig, pid, context);
+    registeredCount++;
+    console.log(`[TERMINALS] Registered: id=${id}, prefix=${info.prefix}, pid=${pid}`);
   }
 
   console.log(`[TERMINALS] Scan complete. Registered ${registeredCount} agent terminals.`);

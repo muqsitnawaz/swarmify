@@ -269,22 +269,7 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.executeCommand('workbench.action.terminal.scrollToBottom');
       }
 
-      // Check for status bar label in terminals module (manual status bar label takes precedence over auto-generated)
-      const entry = terminals.getByTerminal(terminal);
-      const displayLabel = entry?.label || entry?.autoLabel;
-      if (displayLabel && entry?.agentConfig) {
-        const expandedName = getExpandedAgentName(entry.agentConfig.title);
-        agentStatusBarItem.text = `Agents: ${expandedName} - ${displayLabel}`;
-        return;
-      }
-
-      // Fall back to parsing terminal name directly
-      const info = getTerminalDisplayInfo(terminal.name);
-      if (info.isAgent && info.expandedName) {
-        agentStatusBarItem.text = `Agents: ${info.expandedName}`;
-      } else {
-        agentStatusBarItem.text = 'Agents';
-      }
+      updateStatusBarForTerminal(terminal, context.extensionPath);
     })
   );
 
@@ -451,14 +436,22 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
   }
 }
 
+function getRunningAgentsSummary(): string {
+  const running = terminals.countRunning();
+  const names: string[] = [];
+  if (running.claude > 0) names.push('Claude');
+  if (running.codex > 0) names.push('Codex');
+  if (running.gemini > 0) names.push('Gemini');
+  if (running.cursor > 0) names.push('Cursor');
+  if (running.shell > 0) names.push('Shell');
+  for (const customName in running.custom) {
+    if (running.custom[customName] > 0) names.push(customName);
+  }
+  return names.length > 0 ? names.join('|') : '';
+}
+
 function updateStatusBarForTerminal(terminal: vscode.Terminal, extensionPath: string) {
   if (!agentStatusBarItem) return;
-
-  const info = identifyAgentTerminal(terminal, extensionPath);
-  if (!info.isAgent) {
-    agentStatusBarItem.text = 'Agents';
-    return;
-  }
 
   // Check for status bar label in terminals module (manual label takes precedence over auto-generated)
   const entry = terminals.getByTerminal(terminal);
@@ -469,10 +462,10 @@ function updateStatusBarForTerminal(terminal: vscode.Terminal, extensionPath: st
     return;
   }
 
-  // Fall back to parsing terminal name directly
-  const terminalInfo = getTerminalDisplayInfo(terminal.name);
-  if (terminalInfo.isAgent && terminalInfo.expandedName) {
-    agentStatusBarItem.text = `Agents: ${terminalInfo.expandedName}`;
+  // Fall back to running agents summary
+  const summary = getRunningAgentsSummary();
+  if (summary) {
+    agentStatusBarItem.text = `Agents: ${summary}`;
   } else {
     agentStatusBarItem.text = 'Agents';
   }
@@ -500,6 +493,18 @@ function setStatusBarLabelForActiveTerminal(context: vscode.ExtensionContext) {
   }).then(async (input) => {
     if (input === undefined) {
       return;
+    }
+
+    // Ensure terminal is registered before setting label
+    let entry = terminals.getByTerminal(terminal);
+    if (!entry && info.prefix) {
+      const def = getBuiltInDefByTitle(info.prefix);
+      if (def) {
+        const agentConfig = createAgentConfig(context.extensionPath, def.title, def.command, def.icon, def.prefix);
+        const id = terminals.nextId(info.prefix);
+        const pid = await terminal.processId;
+        terminals.register(terminal, id, agentConfig, pid, context);
+      }
     }
 
     const cleaned = sanitizeLabel(input.trim());

@@ -2,9 +2,14 @@
 
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import * as os from 'os';
+import * as path from 'path';
+import * as fs from 'fs';
 import * as vscode from 'vscode';
 
 const execAsync = promisify(exec);
+
+const SWARM_PACKAGE = 'agent-swarm-ts';
 
 // Check if Swarm MCP server is configured
 export async function isSwarmEnabled(): Promise<boolean> {
@@ -16,13 +21,118 @@ export async function isSwarmEnabled(): Promise<boolean> {
   }
 }
 
+// Find agent-swarm binary in common locations
+async function findSwarmBinary(): Promise<string | null> {
+  const home = os.homedir();
+
+  // Check common global install locations
+  const candidates = [
+    // Bun global
+    path.join(home, '.bun', 'bin', 'agent-swarm'),
+    // npm/yarn global (macOS/Linux)
+    path.join(home, '.npm-global', 'bin', 'agent-swarm'),
+    '/usr/local/bin/agent-swarm',
+    // npm global (Windows)
+    path.join(process.env.APPDATA || '', 'npm', 'agent-swarm.cmd'),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  // Try which/where command
+  try {
+    const cmd = process.platform === 'win32' ? 'where' : 'which';
+    const { stdout } = await execAsync(`${cmd} agent-swarm`);
+    const found = stdout.trim().split('\n')[0];
+    if (found && fs.existsSync(found)) {
+      return found;
+    }
+  } catch {
+    // Not found via which/where
+  }
+
+  return null;
+}
+
+// Check if bun is available
+async function hasBun(): Promise<boolean> {
+  try {
+    await execAsync('bun --version');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Install agent-swarm globally
+async function installSwarm(): Promise<boolean> {
+  const useBun = await hasBun();
+  const installCmd = useBun
+    ? `bun add -g ${SWARM_PACKAGE}`
+    : `npm install -g ${SWARM_PACKAGE}`;
+
+  try {
+    await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: `Installing ${SWARM_PACKAGE}...`,
+        cancellable: false,
+      },
+      async () => {
+        await execAsync(installCmd);
+      }
+    );
+    return true;
+  } catch (err) {
+    const error = err as Error & { stderr?: string };
+    vscode.window.showErrorMessage(
+      `Failed to install ${SWARM_PACKAGE}: ${error.stderr || error.message}`
+    );
+    return false;
+  }
+}
+
 export async function enableSwarm(_context: vscode.ExtensionContext): Promise<void> {
-  // Hardcoded to source repo - swarm must be built there
-  const cliTsPath = '/Users/muqsit/src/github.com/muqsitnawaz/CursorAgents/swarm/dist/index.js';
+  // Check if already enabled
+  if (await isSwarmEnabled()) {
+    vscode.window.showInformationMessage('Swarm is already enabled.');
+    return;
+  }
+
+  // Find or install agent-swarm
+  let binaryPath = await findSwarmBinary();
+
+  if (!binaryPath) {
+    const choice = await vscode.window.showInformationMessage(
+      `${SWARM_PACKAGE} is not installed. Install it now?`,
+      'Install',
+      'Cancel'
+    );
+
+    if (choice !== 'Install') {
+      return;
+    }
+
+    const installed = await installSwarm();
+    if (!installed) {
+      return;
+    }
+
+    binaryPath = await findSwarmBinary();
+    if (!binaryPath) {
+      vscode.window.showErrorMessage(
+        `Installed ${SWARM_PACKAGE} but could not find binary. Try running manually: claude mcp add Swarm npx ${SWARM_PACKAGE}`
+      );
+      return;
+    }
+  }
 
   try {
     // Use claude mcp add to register the server
-    await execAsync(`claude mcp add --scope user Swarm node "${cliTsPath}"`);
+    await execAsync(`claude mcp add --scope user Swarm "${binaryPath}"`);
     vscode.window.showInformationMessage('Multi-agent support enabled. Reload Claude Code.');
   } catch (err) {
     const error = err as Error & { stderr?: string };

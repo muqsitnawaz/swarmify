@@ -3,6 +3,7 @@
   "version": "0.2.0",
   "description": "Give your AI coding agent the ability to spawn other agents (TypeScript port)",
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "bin": {
     "agent-swarm": "./dist/index.js"
   },
@@ -10,9 +11,18 @@
     "dist"
   ],
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/muqsitnawaz/CursorAgents.git",
+    "directory": "swarm"
+  },
+  "homepage": "https://github.com/muqsitnawaz/CursorAgents/tree/main/swarm#readme",
+  "bugs": {
+    "url": "https://github.com/muqsitnawaz/CursorAgents/issues"
+  },
   "scripts": {
     "build": "tsc",
-    "prepublishOnly": "bun run build",
+    "prepublishOnly": "tsc",
     "start": "node dist/index.js",
     "test": "bun test"
   },
