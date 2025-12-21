@@ -454,8 +454,8 @@ function updateStatusBarForTerminal(terminal: vscode.Terminal, extensionPath: st
     return;
   }
 
-  // Not an agent terminal
-  agentStatusBarItem.text = 'Agents';
+  // Not an agent terminal - show "Terminal" for regular shells
+  agentStatusBarItem.text = 'Agents: Terminal';
 }
 
 function setStatusBarLabelForActiveTerminal(context: vscode.ExtensionContext) {
