@@ -14,6 +14,10 @@ export interface CustomAgentConfig {
   instances: number;
 }
 
+// Swarm agent types (subset of built-in agents that support swarm)
+export type SwarmAgentType = 'cursor' | 'codex' | 'claude' | 'gemini';
+export const ALL_SWARM_AGENTS: SwarmAgentType[] = ['cursor', 'codex', 'claude', 'gemini'];
+
 // Full agent settings structure
 export interface AgentSettings {
   builtIn: {
@@ -24,6 +28,7 @@ export interface AgentSettings {
     shell: BuiltInAgentConfig;
   };
   custom: CustomAgentConfig[];
+  swarmEnabledAgents: SwarmAgentType[];
 }
 
 // Default settings (pure function)
@@ -36,7 +41,8 @@ export function getDefaultSettings(): AgentSettings {
       cursor: { login: false, instances: 2 },
       shell: { login: false, instances: 1 }
     },
-    custom: []
+    custom: [],
+    swarmEnabledAgents: [...ALL_SWARM_AGENTS]
   };
 }
 

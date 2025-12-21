@@ -50,7 +50,6 @@ export async function handleSpawn(
   prompt: string,
   cwd: string | null,
   mode: string | null,
-  model: string | null,
   effort: 'medium' | 'high' = 'medium'
 ): Promise<SpawnResult> {
   const defaultMode = manager.getDefaultMode();
@@ -64,7 +63,6 @@ export async function handleSpawn(
     prompt,
     cwd,
     resolvedMode,
-    model,
     effort
   );
 

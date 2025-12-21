@@ -16,6 +16,9 @@ interface CustomAgentSettings {
   instances: number
 }
 
+type SwarmAgentType = 'cursor' | 'codex' | 'claude' | 'gemini'
+const ALL_SWARM_AGENTS: SwarmAgentType[] = ['cursor', 'codex', 'claude', 'gemini']
+
 interface AgentSettings {
   builtIn: {
     claude: BuiltInAgentSettings
@@ -24,6 +27,7 @@ interface AgentSettings {
     cursor: BuiltInAgentSettings
   }
   custom: CustomAgentSettings[]
+  swarmEnabledAgents: SwarmAgentType[]
 }
 
 interface RunningCounts {
@@ -129,6 +133,21 @@ export default function App() {
     const newCustom = [...settings.custom]
     newCustom[index] = { ...newCustom[index], [field]: value }
     saveSettings({ ...settings, custom: newCustom })
+  }
+
+  const toggleSwarmAgent = (agent: SwarmAgentType, enabled: boolean) => {
+    if (!settings) return
+    const current = settings.swarmEnabledAgents || ALL_SWARM_AGENTS
+    const newEnabled = enabled
+      ? [...current, agent].filter((v, i, a) => a.indexOf(v) === i)
+      : current.filter(a => a !== agent)
+    saveSettings({ ...settings, swarmEnabledAgents: newEnabled })
+  }
+
+  const isSwarmAgentEnabled = (agent: SwarmAgentType): boolean => {
+    if (!settings) return true
+    const enabled = settings.swarmEnabledAgents || ALL_SWARM_AGENTS
+    return enabled.includes(agent)
   }
 
   const validateName = (name: string): string => {
@@ -242,6 +261,24 @@ export default function App() {
               Enable Swarm
             </Button>
           )}
+        </div>
+      </section>
+
+      {/* Swarm Agents */}
+      <section>
+        <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
+          Swarm Agents
+        </h2>
+        <div className="flex flex-wrap gap-3">
+          {(['cursor', 'codex', 'claude', 'gemini'] as SwarmAgentType[]).map(agent => (
+            <div key={agent} className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-[var(--muted)]">
+              <Checkbox
+                checked={isSwarmAgentEnabled(agent)}
+                onCheckedChange={(checked) => toggleSwarmAgent(agent, !!checked)}
+              />
+              <span className="text-sm font-medium capitalize">{agent}</span>
+            </div>
+          ))}
         </div>
       </section>
 

@@ -1,86 +1,46 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { tmpdir, homedir } from 'os';
+import { homedir } from 'os';
+import { AgentType } from './parsers.js';
 
+// All supported swarm agent types
+const ALL_AGENTS: AgentType[] = ['cursor', 'codex', 'claude', 'gemini'];
 
-export async function isWritableAsync(directory: string): Promise<boolean> {
-  try {
-    await fs.mkdir(directory, { recursive: true });
-    const probe = path.join(directory, '.write_test');
-    await fs.writeFile(probe, '');
-    await fs.unlink(probe);
-    return true;
-  } catch {
-    return false;
-  }
-}
+// Base directory for all swarm data
+const SWARM_DIR = path.join(homedir(), '.agent-swarm');
+const AGENTS_DIR = path.join(SWARM_DIR, 'agents');
+const CONFIG_PATH = path.join(SWARM_DIR, 'config.json');
 
-export async function hasAgentData(directory: string): Promise<boolean> {
-  try {
-    const entries = await fs.readdir(directory);
-    for (const entry of entries) {
-      const entryPath = path.join(directory, entry);
-      const stat = await fs.stat(entryPath);
-      if (stat.isDirectory()) {
-        const metaPath = path.join(entryPath, 'meta.json');
-        try {
-          await fs.access(metaPath);
-          return true;
-        } catch {
-          continue;
-        }
-      }
-    }
-    return false;
-  } catch {
-    return false;
-  }
+// Config file structure
+interface SwarmConfig {
+  enabledAgents: AgentType[];
 }
 
 export async function resolveAgentsDir(): Promise<string> {
-  const envDir = process.env.AGENT_SWARM_DIR;
-  if (envDir) {
-    const envPath = path.resolve(envDir.replace(/^~/, homedir()));
-    if (await isWritableAsync(envPath)) {
-      return envPath;
+  await fs.mkdir(AGENTS_DIR, { recursive: true });
+  return AGENTS_DIR;
+}
+
+// Read swarm config, returns all agents enabled if config doesn't exist
+export async function readConfig(): Promise<SwarmConfig> {
+  try {
+    const data = await fs.readFile(CONFIG_PATH, 'utf-8');
+    const config = JSON.parse(data) as SwarmConfig;
+    // Validate that enabledAgents only contains valid agent types
+    if (config.enabledAgents && Array.isArray(config.enabledAgents)) {
+      config.enabledAgents = config.enabledAgents.filter(a => ALL_AGENTS.includes(a));
+    } else {
+      config.enabledAgents = [...ALL_AGENTS];
     }
+    return config;
+  } catch {
+    // Config doesn't exist or is invalid, return default (all agents)
+    return { enabledAgents: [...ALL_AGENTS] };
   }
+}
 
-  const homeDir = homedir();
-  const canonical = path.join(homeDir, '.agent-swarm', 'agents');
-  const candidates: string[] = [
-    canonical,
-    path.join(homeDir, '.claude', 'agent-swarm', 'agents'),
-  ];
-
-  const xdgStateHome = process.env.XDG_STATE_HOME;
-  if (xdgStateHome) {
-    candidates.push(path.join(xdgStateHome, 'agent-swarm', 'agents'));
-  }
-
-  candidates.push(
-    path.join(process.cwd(), '.agent-swarm', 'agents'),
-    path.join(tmpdir(), 'agent-swarm', 'agents')
-  );
-
-  for (const candidate of candidates) {
-    if (await isWritableAsync(candidate)) {
-      const hasData = await hasAgentData(candidate);
-      if (hasData && candidate !== canonical) {
-        return candidate;
-      }
-    }
-  }
-
-  for (const candidate of candidates) {
-    if (await isWritableAsync(candidate)) {
-      if (candidate !== canonical) {
-        return candidate;
-      }
-      return candidate;
-    }
-  }
-
-  const tried = candidates.join(', ');
-  throw new Error(`Unable to find a writable agent storage directory. Tried: ${tried}`);
+// Write swarm config
+export async function writeConfig(config: SwarmConfig): Promise<void> {
+  await fs.mkdir(SWARM_DIR, { recursive: true });
+  await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 2));
 }

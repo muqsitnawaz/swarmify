@@ -3,7 +3,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 import { randomUUID } from 'crypto';
-import { resolveAgentsDir, isWritableAsync, hasAgentData } from './persistence.js';
+import { resolveAgentsDir } from './persistence.js';
 import { normalizeEvents, AgentType } from './parsers.js';
 
 export enum AgentStatus {
@@ -486,14 +486,13 @@ export class AgentManager {
     prompt: string,
     cwd: string | null = null,
     mode: Mode | null = null,
-    model: string | null = null,
     effort: EffortLevel = 'medium'
   ): Promise<AgentProcess> {
     await this.initialize();
     const resolvedMode = resolveMode(mode, this.defaultMode);
 
-    // Resolve model from effort if not explicitly provided
-    const resolvedModel: string = model || EFFORT_MODEL_MAP[effort][agentType];
+    // Resolve model from effort level
+    const resolvedModel: string = EFFORT_MODEL_MAP[effort][agentType];
 
     const running = await this.listRunning();
     if (running.length >= this.maxConcurrent) {

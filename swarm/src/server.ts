@@ -7,14 +7,13 @@ import {
 import { AgentManager, checkAllClis } from './agents.js';
 import { AgentType } from './parsers.js';
 import { handleSpawn, handleStatus, handleStop } from './api.js';
+import { readConfig } from './persistence.js';
 
 const manager = new AgentManager(50, 10, null, null, null, 7);
 
-// Agent preference order (configurable via AGENT_SWARM_PREFERENCE env var)
-const defaultPreference: AgentType[] = ['cursor', 'codex', 'claude', 'gemini'];
-const agentPreference: AgentType[] = process.env.AGENT_SWARM_PREFERENCE
-  ? (process.env.AGENT_SWARM_PREFERENCE.split(',').map(s => s.trim()) as AgentType[])
-  : defaultPreference;
+// Enabled agents (loaded from ~/.agent-swarm/config.json)
+const defaultAgents: AgentType[] = ['cursor', 'codex', 'claude', 'gemini'];
+let enabledAgents: AgentType[] = [...defaultAgents];
 
 // Agent descriptions for dynamic tool description
 const agentDescriptions: Record<AgentType, string> = {
@@ -25,7 +24,7 @@ const agentDescriptions: Record<AgentType, string> = {
 };
 
 function buildSpawnDescription(): string {
-  const agentList = agentPreference
+  const agentList = enabledAgents
     .map((agent, i) => `${i + 1}. ${agent} - ${agentDescriptions[agent]}`)
     .join('\n');
 
@@ -74,7 +73,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             agent_type: {
               type: 'string',
-              enum: agentPreference,
+              enum: enabledAgents,
               description: 'Type of agent to spawn',
             },
             prompt: {
@@ -89,10 +88,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: 'string',
               enum: ['plan', 'edit'],
               description: "'edit' allows file modifications, 'plan' is read-only (default).",
-            },
-            model: {
-              type: 'string',
-              description: 'Model to use (overrides effort-based selection)',
             },
             effort: {
               type: 'string',
@@ -163,7 +158,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         args.prompt as string,
         (args.cwd as string) || null,
         (args.mode as string) || null,
-        (args.model as string) || null,
         (args.effort as 'medium' | 'high') || 'medium'
       );
     } else if (name === 'status') {
@@ -209,6 +203,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 });
 
 export async function runServer(): Promise<void> {
+  // Load enabled agents from config
+  const config = await readConfig();
+  enabledAgents = config.enabledAgents.length > 0 ? config.enabledAgents : [...defaultAgents];
+  console.error('Enabled agents:', enabledAgents.join(', '));
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error('Starting agent-swarm MCP server v0.2.0');

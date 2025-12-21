@@ -2,17 +2,42 @@
 // Pure types are in settings.ts
 
 import * as vscode from 'vscode';
-import { AgentSettings, getDefaultSettings, CustomAgentConfig } from './settings';
+import * as fs from 'fs';
+import * as path from 'path';
+import { homedir } from 'os';
+import { AgentSettings, getDefaultSettings, CustomAgentConfig, SwarmAgentType, ALL_SWARM_AGENTS } from './settings';
 import * as terminals from './terminals.vscode';
 import * as swarm from './swarm.vscode';
 
 // Module state
 let settingsPanel: vscode.WebviewPanel | undefined;
 
+// Swarm config file path
+const SWARM_CONFIG_DIR = path.join(homedir(), '.agent-swarm');
+const SWARM_CONFIG_PATH = path.join(SWARM_CONFIG_DIR, 'config.json');
+
+// Write swarm config file with enabled agents
+export function writeSwarmConfig(enabledAgents: SwarmAgentType[]): void {
+  try {
+    fs.mkdirSync(SWARM_CONFIG_DIR, { recursive: true });
+    const config = { enabledAgents };
+    fs.writeFileSync(SWARM_CONFIG_PATH, JSON.stringify(config, null, 2));
+  } catch (err) {
+    console.error('Failed to write swarm config:', err);
+  }
+}
+
 // Load settings from global state, with migration from old format
 export function getSettings(context: vscode.ExtensionContext): AgentSettings {
   const stored = context.globalState.get<AgentSettings>('agentSettings');
-  if (stored) return stored;
+  if (stored) {
+    // Migrate: add swarmEnabledAgents if missing
+    if (!stored.swarmEnabledAgents) {
+      stored.swarmEnabledAgents = [...ALL_SWARM_AGENTS];
+      context.globalState.update('agentSettings', stored);
+    }
+    return stored;
+  }
 
   // Migrate from old settings if they exist
   const config = vscode.workspace.getConfiguration('agents');
@@ -34,7 +59,8 @@ export function getSettings(context: vscode.ExtensionContext): AgentSettings {
         command: a.command,
         login: false,
         instances: a.count
-      }))
+      })),
+      swarmEnabledAgents: [...ALL_SWARM_AGENTS]
     };
     context.globalState.update('agentSettings', migrated);
     return migrated;
@@ -43,9 +69,10 @@ export function getSettings(context: vscode.ExtensionContext): AgentSettings {
   return getDefaultSettings();
 }
 
-// Save settings to global state
+// Save settings to global state and write swarm config
 export async function saveSettings(context: vscode.ExtensionContext, settings: AgentSettings): Promise<void> {
   await context.globalState.update('agentSettings', settings);
+  writeSwarmConfig(settings.swarmEnabledAgents);
 }
 
 // Open the settings webview panel
