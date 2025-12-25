@@ -528,6 +528,17 @@ async function clearActiveTerminal(context: vscode.ExtensionContext) {
 
     try {
       terminal.sendText('clear && ' + agentConfig.command);
+
+      // Clear status bar label (user-set and auto-generated)
+      await terminals.setLabel(terminal, undefined, context);
+      terminals.setAutoLabel(terminal, undefined);
+
+      // Unpin the terminal if pinned
+      await vscode.commands.executeCommand('workbench.action.unpinEditor');
+
+      // Update status bar to reflect cleared label
+      updateStatusBarForTerminal(terminal, context.extensionPath);
+
       const entry = terminals.getByTerminal(terminal);
       const agentNum = entry?.id ? entry.id.split('-').pop() : '';
       const numSuffix = agentNum ? ` agent # ${agentNum}` : ' agent';
