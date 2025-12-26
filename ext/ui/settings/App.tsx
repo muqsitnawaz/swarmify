@@ -429,28 +429,28 @@ export default function App() {
         </h2>
         <div className="space-y-2 text-sm">
           <div className="flex items-center gap-4">
-            <kbd className="px-2 py-1 rounded bg-[var(--secondary)] text-[var(--foreground)] font-mono text-xs">Cmd+Shift+A</kbd>
-            <span className="text-[var(--muted-foreground)]">New agent</span>
+            <kbd className="px-2 py-1 rounded bg-[var(--muted)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs min-w-[120px] text-center">Cmd+Shift+A</kbd>
+            <span>New agent</span>
           </div>
           <div className="flex items-center gap-4">
-            <kbd className="px-2 py-1 rounded bg-[var(--secondary)] text-[var(--foreground)] font-mono text-xs">Cmd+Shift+L</kbd>
-            <span className="text-[var(--muted-foreground)]">Label agent</span>
+            <kbd className="px-2 py-1 rounded bg-[var(--muted)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs min-w-[120px] text-center">Cmd+Shift+L</kbd>
+            <span>Label agent</span>
           </div>
           <div className="flex items-center gap-4">
-            <kbd className="px-2 py-1 rounded bg-[var(--secondary)] text-[var(--foreground)] font-mono text-xs">Cmd+Shift+G</kbd>
-            <span className="text-[var(--muted-foreground)]">Commit & push</span>
+            <kbd className="px-2 py-1 rounded bg-[var(--muted)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs min-w-[120px] text-center">Cmd+Shift+G</kbd>
+            <span>Commit & push</span>
           </div>
           <div className="flex items-center gap-4">
-            <kbd className="px-2 py-1 rounded bg-[var(--secondary)] text-[var(--foreground)] font-mono text-xs">Cmd+Shift+C</kbd>
-            <span className="text-[var(--muted-foreground)]">Clear & restart</span>
+            <kbd className="px-2 py-1 rounded bg-[var(--muted)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs min-w-[120px] text-center">Cmd+Shift+C</kbd>
+            <span>Clear & restart</span>
           </div>
           <div className="flex items-center gap-4">
-            <kbd className="px-2 py-1 rounded bg-[var(--secondary)] text-[var(--foreground)] font-mono text-xs">Cmd+R</kbd>
-            <span className="text-[var(--muted-foreground)]">Next agent</span>
+            <kbd className="px-2 py-1 rounded bg-[var(--muted)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs min-w-[120px] text-center">Cmd+R</kbd>
+            <span>Next agent</span>
           </div>
           <div className="flex items-center gap-4">
-            <kbd className="px-2 py-1 rounded bg-[var(--secondary)] text-[var(--foreground)] font-mono text-xs">Cmd+E</kbd>
-            <span className="text-[var(--muted-foreground)]">Previous agent</span>
+            <kbd className="px-2 py-1 rounded bg-[var(--muted)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs min-w-[120px] text-center">Cmd+E</kbd>
+            <span>Previous agent</span>
           </div>
         </div>
       </section>
