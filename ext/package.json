@@ -18,10 +18,24 @@
     "Other"
   ],
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished",
+    "onLanguage:markdown",
+    "onCustomEditor:agents.markdownEditor"
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "customEditors": [
+      {
+        "viewType": "agents.markdownEditor",
+        "displayName": "Agents Markdown Editor",
+        "selector": [
+          {
+            "filenamePattern": "*.md"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
     "configurationDefaults": {
       "terminal.integrated.confirmOnKill": "panel"
     },
@@ -105,6 +119,10 @@
           "light": "assets/agents.png",
           "dark": "assets/agents.png"
         }
+      },
+      {
+        "command": "agents.swarmDocument",
+        "title": "Agents: Swarm Document"
       }
     ],
     "configuration": {
@@ -138,6 +156,11 @@
           "type": "string",
           "default": "node_modules,dist,build,out,.git,*.lock,bun.lock,package-lock.json",
           "description": "Comma-separated patterns of files to ignore in diffs"
+        },
+        "agents.editor.assetFolder": {
+          "type": "string",
+          "default": ".assets",
+          "description": "Folder for storing images and attachments from the markdown editor"
         }
       }
     },
@@ -190,6 +213,12 @@
         "key": "ctrl+shift+n",
         "mac": "cmd+shift+n",
         "when": "terminalEditorFocus"
+      },
+      {
+        "command": "agents.swarmDocument",
+        "key": "ctrl+shift+s",
+        "mac": "cmd+shift+s",
+        "when": "activeCustomEditorId == 'agents.markdownEditor'"
       }
     ]
   },

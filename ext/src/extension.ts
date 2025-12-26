@@ -7,6 +7,7 @@ import {
   getBuiltInByTitle
 } from './agents.vscode';
 import * as claudemd from './claudemd.vscode';
+import { AgentsMarkdownEditorProvider, swarmCurrentDocument } from './customEditor';
 import * as git from './git.vscode';
 import { AgentSettings, hasLoginEnabled } from './settings';
 import * as settings from './settings.vscode';
@@ -178,6 +179,23 @@ export function activate(context: vscode.ExtensionContext) {
         }
       }
     })
+  );
+
+  // Register custom markdown editor
+  context.subscriptions.push(
+    AgentsMarkdownEditorProvider.register(context)
+  );
+
+  // Swarm document command (Cmd+Shift+S in custom editor)
+  context.subscriptions.push(
+    vscode.commands.registerCommand('agents.swarmDocument', () =>
+      swarmCurrentDocument(context)
+    )
+  );
+
+  // New shell command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('agents.newShell', () => openNewShell())
   );
 
   // Register commands
@@ -553,6 +571,18 @@ async function clearActiveTerminal(context: vscode.ExtensionContext) {
 }
 
 // Git functions are now in ./git.vscode
+
+function openNewShell() {
+  const editorLocation: vscode.TerminalEditorLocationOptions = {
+    viewColumn: vscode.ViewColumn.Active,
+    preserveFocus: false
+  };
+
+  vscode.window.createTerminal({
+    location: editorLocation,
+    name: 'Shell'
+  });
+}
 
 export function deactivate() {
   // Dispose all tracked terminals
