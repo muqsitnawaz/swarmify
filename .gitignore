@@ -9,3 +9,5 @@
 **/.uv-cache
 **/.tmp_agents
 **/.pytest_cache
+**/.gemini-clipboard
+**/.cursor

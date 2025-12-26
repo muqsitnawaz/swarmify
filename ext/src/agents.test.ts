@@ -5,11 +5,11 @@ import {
   getBuiltInByPrefix,
   getBuiltInDefByTitle
 } from './agents';
-import { CLAUDE_TITLE, CODEX_TITLE, GEMINI_TITLE, CURSOR_TITLE } from './utils';
+import { CLAUDE_TITLE, CODEX_TITLE, GEMINI_TITLE, CURSOR_TITLE, SHELL_TITLE } from './utils';
 
 describe('BUILT_IN_AGENTS', () => {
-  test('has 4 built-in agents', () => {
-    expect(BUILT_IN_AGENTS).toHaveLength(4);
+  test('has 5 built-in agents', () => {
+    expect(BUILT_IN_AGENTS).toHaveLength(5);
   });
 
   test('claude agent has correct properties', () => {
@@ -21,11 +21,21 @@ describe('BUILT_IN_AGENTS', () => {
     expect(claude!.commandId).toBe('agents.newClaude');
   });
 
+  test('shell agent has correct properties', () => {
+    const shell = BUILT_IN_AGENTS.find(a => a.key === 'shell');
+    expect(shell).toBeDefined();
+    expect(shell!.title).toBe(SHELL_TITLE);
+    expect(shell!.command).toBe(''); // Shell has no command
+    expect(shell!.prefix).toBe('sh');
+    expect(shell!.commandId).toBe('agents.newShell');
+  });
+
   test('all agents have required fields', () => {
     for (const agent of BUILT_IN_AGENTS) {
       expect(agent.key).toBeTruthy();
       expect(agent.title).toBeTruthy();
-      expect(agent.command).toBeTruthy();
+      // command can be empty for shell
+      expect(agent.command).toBeDefined();
       expect(agent.icon).toMatch(/\.png$/);
       expect(agent.prefix).toBeTruthy();
       expect(agent.commandId).toMatch(/^agents\.new/);

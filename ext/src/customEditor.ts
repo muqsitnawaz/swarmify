@@ -74,7 +74,7 @@ export class AgentsMarkdownEditorProvider implements vscode.CustomTextEditorProv
         break;
 
       case 'sendToAgent':
-        return this.handleSendToAgent(message, webview);
+        return this.handleSendToAgent(message, document, webview);
 
       case 'triggerAgent':
         return this.handleAgentTrigger(message, webview);
@@ -84,15 +84,72 @@ export class AgentsMarkdownEditorProvider implements vscode.CustomTextEditorProv
     }
   }
 
-  private async handleSendToAgent(message: any, webview: vscode.Webview): Promise<void> {
+  private async handleSendToAgent(
+    message: any,
+    document: vscode.TextDocument,
+    webview: vscode.Webview
+  ): Promise<void> {
     const { selection } = message;
 
     try {
-      // Copy selection to clipboard for context
-      await vscode.env.clipboard.writeText(selection);
+      // Format message with file context
+      const filePath = document.uri.fsPath;
+      const contextMessage = `<context>
+Source file: ${filePath}
 
-      // Trigger the newTask command which opens a new Claude terminal with context
-      await vscode.commands.executeCommand('agents.newTask');
+Selected text:
+${selection}
+</context>
+
+The user selected the above text from a markdown file. Help them with whatever they need regarding this content.`;
+
+      // Import dynamically to avoid circular dependencies
+      const { getBuiltInByTitle } = await import('./agents.vscode');
+      const { CLAUDE_TITLE } = await import('./utils');
+      const terminals = await import('./terminals.vscode');
+
+      const agentConfig = getBuiltInByTitle(this.context.extensionPath, CLAUDE_TITLE);
+      if (!agentConfig) {
+        vscode.window.showErrorMessage('Could not find Claude agent configuration');
+        return;
+      }
+
+      // Create new terminal
+      const editorLocation: vscode.TerminalEditorLocationOptions = {
+        viewColumn: vscode.ViewColumn.Active,
+        preserveFocus: false
+      };
+
+      const terminalId = terminals.nextId(agentConfig.prefix);
+      const terminal = vscode.window.createTerminal({
+        iconPath: agentConfig.iconPath,
+        location: editorLocation,
+        name: agentConfig.title,
+        env: {
+          AGENT_TERMINAL_ID: terminalId,
+          DISABLE_AUTO_TITLE: 'true',
+          PROMPT_COMMAND: ''
+        }
+      });
+
+      const pid = await terminal.processId;
+      terminals.register(terminal, terminalId, agentConfig, pid, this.context);
+
+      // Queue the context message
+      terminals.queueMessage(terminal, contextMessage);
+
+      // Send agent command
+      if (agentConfig.command) {
+        terminal.sendText(agentConfig.command);
+      }
+
+      // After delay, send queued messages
+      setTimeout(() => {
+        const queued = terminals.flushQueue(terminal);
+        for (const msg of queued) {
+          terminal.sendText(msg);
+        }
+      }, 2000);
 
       webview.postMessage({
         type: 'agentResult',

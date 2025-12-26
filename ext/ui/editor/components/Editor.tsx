@@ -33,9 +33,7 @@ interface EditorProps {
   initialContent: string;
   onChange: (content: string) => void;
   onSaveAsset: (data: string, fileName: string) => void;
-  onAIAction: (action: string, selection: string) => void;
   onSendToAgent: (selection: string) => void;
-  aiResult: { action: string; result: string } | null;
 }
 
 export interface EditorRef {
@@ -43,7 +41,7 @@ export interface EditorRef {
 }
 
 const Editor = forwardRef<EditorRef, EditorProps>(
-  ({ initialContent, onChange, onSaveAsset, onAIAction, onSendToAgent, aiResult }, ref) => {
+  ({ initialContent, onChange, onSaveAsset, onSendToAgent }, ref) => {
     const isUpdatingRef = useRef(false);
 
     const editor = useEditor({
@@ -254,7 +252,7 @@ const Editor = forwardRef<EditorRef, EditorProps>(
     return (
       <div className="editor-container">
         <BubbleMenu editor={editor} />
-        <AIBubbleMenu editor={editor} onAIAction={onAIAction} onSendToAgent={onSendToAgent} />
+        <AIBubbleMenu editor={editor} onSendToAgent={onSendToAgent} />
         <EditorContent editor={editor} />
       </div>
     );

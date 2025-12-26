@@ -311,7 +311,7 @@ export default function App() {
       <section>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
-            Agents
+            Open on Startup
           </h2>
           {!isAdding ? (
             <Button variant="secondary" size="sm" onClick={handleAddClick}>
@@ -337,7 +337,7 @@ export default function App() {
                     checked={config.login}
                     onCheckedChange={(checked) => updateBuiltIn(agent.key as keyof AgentSettings['builtIn'], 'login', !!checked)}
                   />
-                  <label className="text-sm text-[var(--muted-foreground)]">Login</label>
+                  <label className="text-sm text-[var(--muted-foreground)]">Open on Startup</label>
                 </div>
                 {config.login && (
                   <div className="flex items-center gap-2 ml-4">
@@ -368,7 +368,7 @@ export default function App() {
                   checked={agent.login}
                   onCheckedChange={(checked) => updateCustom(index, 'login', !!checked)}
                 />
-                <label className="text-sm text-[var(--muted-foreground)]">Login</label>
+                <label className="text-sm text-[var(--muted-foreground)]">Open on Startup</label>
               </div>
               {agent.login && (
                 <div className="flex items-center gap-2 ml-4">
@@ -429,20 +429,28 @@ export default function App() {
         </h2>
         <div className="space-y-2 text-sm">
           <div className="flex items-center gap-4">
-            <kbd className="px-2 py-1 rounded bg-[var(--secondary)] text-[var(--muted-foreground)] font-mono text-xs">Cmd+Shift+A</kbd>
+            <kbd className="px-2 py-1 rounded bg-[var(--secondary)] text-[var(--foreground)] font-mono text-xs">Cmd+Shift+A</kbd>
             <span className="text-[var(--muted-foreground)]">New agent</span>
           </div>
           <div className="flex items-center gap-4">
-            <kbd className="px-2 py-1 rounded bg-[var(--secondary)] text-[var(--muted-foreground)] font-mono text-xs">Cmd+Shift+L</kbd>
+            <kbd className="px-2 py-1 rounded bg-[var(--secondary)] text-[var(--foreground)] font-mono text-xs">Cmd+Shift+L</kbd>
             <span className="text-[var(--muted-foreground)]">Label agent</span>
           </div>
           <div className="flex items-center gap-4">
-            <kbd className="px-2 py-1 rounded bg-[var(--secondary)] text-[var(--muted-foreground)] font-mono text-xs">Cmd+Shift+G</kbd>
+            <kbd className="px-2 py-1 rounded bg-[var(--secondary)] text-[var(--foreground)] font-mono text-xs">Cmd+Shift+G</kbd>
             <span className="text-[var(--muted-foreground)]">Commit & push</span>
           </div>
           <div className="flex items-center gap-4">
-            <kbd className="px-2 py-1 rounded bg-[var(--secondary)] text-[var(--muted-foreground)] font-mono text-xs">Cmd+Shift+C</kbd>
+            <kbd className="px-2 py-1 rounded bg-[var(--secondary)] text-[var(--foreground)] font-mono text-xs">Cmd+Shift+C</kbd>
             <span className="text-[var(--muted-foreground)]">Clear & restart</span>
+          </div>
+          <div className="flex items-center gap-4">
+            <kbd className="px-2 py-1 rounded bg-[var(--secondary)] text-[var(--foreground)] font-mono text-xs">Cmd+R</kbd>
+            <span className="text-[var(--muted-foreground)]">Next agent</span>
+          </div>
+          <div className="flex items-center gap-4">
+            <kbd className="px-2 py-1 rounded bg-[var(--secondary)] text-[var(--foreground)] font-mono text-xs">Cmd+E</kbd>
+            <span className="text-[var(--muted-foreground)]">Previous agent</span>
           </div>
         </div>
       </section>
