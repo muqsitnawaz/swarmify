@@ -60,7 +60,9 @@ let terminalIdCounter = 0;
 
 export function getByTerminal(t: vscode.Terminal): EditorTerminal | undefined {
   const id = terminalToId.get(t);
-  return id ? editorTerminals.get(id) : undefined;
+  const entry = id ? editorTerminals.get(id) : undefined;
+  console.log(`[DEBUG getByTerminal] terminal="${t.name}" -> id=${id}, entry.label="${entry?.label}"`);
+  return entry;
 }
 
 export function getById(id: string): EditorTerminal | undefined {
@@ -92,6 +94,8 @@ export function register(
   context?: vscode.ExtensionContext,
   initialLabel?: string
 ): void {
+  console.log(`[DEBUG register] Registering terminal: name="${terminal.name}", id=${id}, pid=${pid}, initialLabel=${initialLabel}`);
+
   const entry: EditorTerminal = {
     id,
     terminal,
@@ -103,7 +107,9 @@ export function register(
 
   if (pid !== undefined && context) {
     const persistedLabels = loadStatusBarLabels(context);
+    console.log(`[DEBUG register] All persisted labels in globalState:`, JSON.stringify(persistedLabels));
     const persistedLabel = persistedLabels[pid];
+    console.log(`[DEBUG register] Persisted label for PID ${pid}: "${persistedLabel}"`);
     if (persistedLabel) {
       entry.label = persistedLabel;
     } else if (initialLabel) {
@@ -115,8 +121,10 @@ export function register(
     entry.label = initialLabel;
   }
 
+  console.log(`[DEBUG register] Final entry.label: "${entry.label}"`);
   editorTerminals.set(id, entry);
   terminalToId.set(terminal, id);
+  console.log(`[DEBUG register] editorTerminals now has ${editorTerminals.size} entries`);
 }
 
 export function unregister(terminal: vscode.Terminal): void {
@@ -132,12 +140,17 @@ export async function setLabel(
   label: string | undefined,
   context?: vscode.ExtensionContext
 ): Promise<void> {
+  console.log(`[DEBUG setLabel] Setting label for terminal "${terminal.name}" to "${label}"`);
   const entry = getByTerminal(terminal);
+  console.log(`[DEBUG setLabel] Found entry: id=${entry?.id}, pid=${entry?.pid}, currentLabel="${entry?.label}"`);
   if (entry) {
     entry.label = label;
     if (entry.pid !== undefined && context) {
+      console.log(`[DEBUG setLabel] Persisting label "${label}" for PID ${entry.pid}`);
       await saveStatusBarLabel(context, entry.pid, label);
     }
+  } else {
+    console.log(`[DEBUG setLabel] No entry found for terminal - label NOT saved!`);
   }
 }
 
