@@ -15,8 +15,8 @@ export interface CustomAgentConfig {
 }
 
 // Swarm agent types (subset of built-in agents that support swarm)
-export type SwarmAgentType = 'cursor' | 'codex' | 'claude' | 'gemini';
-export const ALL_SWARM_AGENTS: SwarmAgentType[] = ['cursor', 'codex', 'claude', 'gemini'];
+export type SwarmAgentType = 'cursor' | 'codex' | 'claude' | 'gemini' | 'opencode';
+export const ALL_SWARM_AGENTS: SwarmAgentType[] = ['cursor', 'codex', 'claude', 'gemini', 'opencode'];
 
 // Full agent settings structure
 export interface AgentSettings {
@@ -24,6 +24,7 @@ export interface AgentSettings {
     claude: BuiltInAgentConfig;
     codex: BuiltInAgentConfig;
     gemini: BuiltInAgentConfig;
+    opencode: BuiltInAgentConfig;
     cursor: BuiltInAgentConfig;
     shell: BuiltInAgentConfig;
   };
@@ -38,6 +39,7 @@ export function getDefaultSettings(): AgentSettings {
       claude: { login: false, instances: 2 },
       codex: { login: false, instances: 2 },
       gemini: { login: false, instances: 2 },
+      opencode: { login: false, instances: 2 },
       cursor: { login: false, instances: 2 },
       shell: { login: false, instances: 1 }
     },

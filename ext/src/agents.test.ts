@@ -5,11 +5,11 @@ import {
   getBuiltInByPrefix,
   getBuiltInDefByTitle
 } from './agents';
-import { CLAUDE_TITLE, CODEX_TITLE, GEMINI_TITLE, CURSOR_TITLE, SHELL_TITLE } from './utils';
+import { CLAUDE_TITLE, CODEX_TITLE, GEMINI_TITLE, OPENCODE_TITLE, CURSOR_TITLE, SHELL_TITLE } from './utils';
 
 describe('BUILT_IN_AGENTS', () => {
-  test('has 5 built-in agents', () => {
-    expect(BUILT_IN_AGENTS).toHaveLength(5);
+  test('has 6 built-in agents', () => {
+    expect(BUILT_IN_AGENTS).toHaveLength(6);
   });
 
   test('claude agent has correct properties', () => {
@@ -68,6 +68,12 @@ describe('getBuiltInByKey', () => {
     expect(agent!.title).toBe(CURSOR_TITLE);
   });
 
+  test('returns opencode agent', () => {
+    const agent = getBuiltInByKey('opencode');
+    expect(agent).toBeDefined();
+    expect(agent!.title).toBe(OPENCODE_TITLE);
+  });
+
   test('returns undefined for unknown key', () => {
     const agent = getBuiltInByKey('unknown');
     expect(agent).toBeUndefined();
@@ -99,6 +105,12 @@ describe('getBuiltInByPrefix', () => {
     expect(agent!.key).toBe('cursor');
   });
 
+  test('returns opencode for oc prefix', () => {
+    const agent = getBuiltInByPrefix('oc');
+    expect(agent).toBeDefined();
+    expect(agent!.key).toBe('opencode');
+  });
+
   test('returns undefined for unknown prefix', () => {
     const agent = getBuiltInByPrefix('xx');
     expect(agent).toBeUndefined();
@@ -116,6 +128,12 @@ describe('getBuiltInDefByTitle', () => {
     const agent = getBuiltInDefByTitle(CODEX_TITLE);
     expect(agent).toBeDefined();
     expect(agent!.key).toBe('codex');
+  });
+
+  test('returns opencode for OC title', () => {
+    const agent = getBuiltInDefByTitle(OPENCODE_TITLE);
+    expect(agent).toBeDefined();
+    expect(agent!.key).toBe('opencode');
   });
 
   test('returns undefined for unknown title', () => {

@@ -103,6 +103,16 @@ Users can label any agent terminal to track what task it's working on. Labels ar
 
 Note the ` - ` separator between agent name and label.
 
+### Terminal Quick Pick (`Cmd+Shift+S`)
+
+`agents.goToTerminal` shows a quick pick menu for navigating between agent terminals:
+
+- **Tab order**: Uses `vscode.window.tabGroups.all` to get terminals in visual tab bar order
+- **Matching tabs to terminals**: Correlates `tab.label` with `terminal.name`
+- **Format**: `1. Claude`, `2. Codex` (numbered + expanded name), label in description
+- **Filtering**: `matchOnDescription: true` enables fuzzy search on both agent name and label
+- **Context**: `terminalEditorFocus` (no conflict with `agents.swarmDocument` which uses `activeCustomEditorId == 'agents.markdownEditor'`)
+
 ### Strict Agent Identification
 
 Agent terminals are identified by exact prefix match (CC, CX, etc.) or the pattern "PREFIX - label". Loose matching (checking if name contains "claude") is avoided to prevent false positives. This ensures commands like Reload only affect actual agent terminals.

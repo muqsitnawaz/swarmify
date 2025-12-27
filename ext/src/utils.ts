@@ -3,11 +3,12 @@
 export const CLAUDE_TITLE = 'CC';
 export const CODEX_TITLE = 'CX';
 export const GEMINI_TITLE = 'GX';
+export const OPENCODE_TITLE = 'OC';
 export const CURSOR_TITLE = 'CR';
 export const SHELL_TITLE = 'SH';
 export const LABEL_MAX_WORDS = 5;
 
-export const KNOWN_PREFIXES = [CLAUDE_TITLE, CODEX_TITLE, GEMINI_TITLE, CURSOR_TITLE, SHELL_TITLE];
+export const KNOWN_PREFIXES = [CLAUDE_TITLE, CODEX_TITLE, GEMINI_TITLE, OPENCODE_TITLE, CURSOR_TITLE, SHELL_TITLE];
 
 export interface ParsedTerminalName {
   isAgent: boolean;
@@ -58,6 +59,7 @@ export function getExpandedAgentName(prefix: string): string {
     [CLAUDE_TITLE]: 'Claude',
     [CODEX_TITLE]: 'Codex',
     [GEMINI_TITLE]: 'Gemini',
+    [OPENCODE_TITLE]: 'OpenCode',
     [CURSOR_TITLE]: 'Cursor',
     [SHELL_TITLE]: 'Shell'
   };
@@ -72,6 +74,7 @@ export function getIconFilename(prefix: string): string | null {
     [CLAUDE_TITLE]: 'claude.png',
     [CODEX_TITLE]: 'chatgpt.png',
     [GEMINI_TITLE]: 'gemini.png',
+    [OPENCODE_TITLE]: 'opencode.png',
     [CURSOR_TITLE]: 'cursor.png',
     [SHELL_TITLE]: 'agents.png'
   };

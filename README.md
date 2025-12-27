@@ -4,7 +4,7 @@ VS Code extension for managing multiple AI agent terminal instances in the edito
 
 ## Features
 
-- Built-in support for Claude Code, Codex, and Gemini terminals
+- Built-in support for Claude Code, Codex, Gemini, and OpenCode terminals
 - Add custom AI agents (e.g., Gemini CLI, GPT-4 CLI, etc.)
 - Configure starting instance counts per agent
 - Individual commands to open single agent instances
@@ -20,6 +20,7 @@ VS Code extension for managing multiple AI agent terminal instances in the edito
 - **Agents: New Claude Code** - Opens a single Claude Code terminal
 - **Agents: New Codex** - Opens a single Codex terminal
 - **Agents: New Gemini Agent** - Opens a single Gemini terminal
+- **Agents: New OpenCode** - Opens a single OpenCode terminal
 - **Agents: Close All Terminals** - Closes all managed terminals
 - **Agents: Configure Counts** - Interactive configuration dialog
 

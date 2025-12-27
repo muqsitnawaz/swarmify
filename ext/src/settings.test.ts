@@ -13,6 +13,7 @@ describe('getDefaultSettings', () => {
     expect(settings.builtIn.claude).toBeDefined();
     expect(settings.builtIn.codex).toBeDefined();
     expect(settings.builtIn.gemini).toBeDefined();
+    expect(settings.builtIn.opencode).toBeDefined();
     expect(settings.builtIn.cursor).toBeDefined();
     expect(settings.custom).toEqual([]);
   });
@@ -23,6 +24,7 @@ describe('getDefaultSettings', () => {
     expect(settings.builtIn.claude.login).toBe(false);
     expect(settings.builtIn.codex.login).toBe(false);
     expect(settings.builtIn.gemini.login).toBe(false);
+    expect(settings.builtIn.opencode.login).toBe(false);
     expect(settings.builtIn.cursor.login).toBe(false);
   });
 
@@ -32,6 +34,7 @@ describe('getDefaultSettings', () => {
     expect(settings.builtIn.claude.instances).toBe(2);
     expect(settings.builtIn.codex.instances).toBe(2);
     expect(settings.builtIn.gemini.instances).toBe(2);
+    expect(settings.builtIn.opencode.instances).toBe(2);
     expect(settings.builtIn.cursor.instances).toBe(2);
   });
 });

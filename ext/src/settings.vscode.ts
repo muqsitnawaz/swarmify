@@ -35,6 +35,13 @@ export function getSettings(context: vscode.ExtensionContext): AgentSettings {
     if (!stored.swarmEnabledAgents) {
       stored.swarmEnabledAgents = [...ALL_SWARM_AGENTS];
       context.globalState.update('agentSettings', stored);
+    } else if (!stored.swarmEnabledAgents.includes('opencode')) {
+      stored.swarmEnabledAgents = [...stored.swarmEnabledAgents, 'opencode'];
+      context.globalState.update('agentSettings', stored);
+    }
+    if (!stored.builtIn.opencode) {
+      stored.builtIn.opencode = { login: false, instances: 2 };
+      context.globalState.update('agentSettings', stored);
     }
     return stored;
   }
@@ -51,6 +58,7 @@ export function getSettings(context: vscode.ExtensionContext): AgentSettings {
         claude: { login: autoStart, instances: config.get<number>('claudeCount', 2) },
         codex: { login: autoStart, instances: config.get<number>('codexCount', 2) },
         gemini: { login: autoStart, instances: config.get<number>('geminiCount', 2) },
+        opencode: { login: autoStart, instances: 2 },
         cursor: { login: autoStart, instances: config.get<number>('cursorCount', 2) },
         shell: { login: false, instances: 1 }
       },
@@ -166,6 +174,7 @@ function getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri): s
   const claudeIcon = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'claude.png'));
   const codexIcon = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'chatgpt.png'));
   const geminiIcon = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'gemini.png'));
+  const opencodeIcon = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'opencode.png'));
   const cursorIcon = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'cursor.png'));
   const agentsIcon = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'agents.png'));
 
@@ -181,6 +190,7 @@ function getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri): s
       claude: "${claudeIcon}",
       codex: "${codexIcon}",
       gemini: "${geminiIcon}",
+      opencode: "${opencodeIcon}",
       cursor: "${cursorIcon}",
       shell: "${agentsIcon}",
       agents: "${agentsIcon}"

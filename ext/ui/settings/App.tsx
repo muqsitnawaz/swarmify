@@ -16,15 +16,17 @@ interface CustomAgentSettings {
   instances: number
 }
 
-type SwarmAgentType = 'cursor' | 'codex' | 'claude' | 'gemini'
-const ALL_SWARM_AGENTS: SwarmAgentType[] = ['cursor', 'codex', 'claude', 'gemini']
+type SwarmAgentType = 'cursor' | 'codex' | 'claude' | 'gemini' | 'opencode'
+const ALL_SWARM_AGENTS: SwarmAgentType[] = ['cursor', 'codex', 'claude', 'gemini', 'opencode']
 
 interface AgentSettings {
   builtIn: {
     claude: BuiltInAgentSettings
     codex: BuiltInAgentSettings
     gemini: BuiltInAgentSettings
+    opencode: BuiltInAgentSettings
     cursor: BuiltInAgentSettings
+    shell: BuiltInAgentSettings
   }
   custom: CustomAgentSettings[]
   swarmEnabledAgents: SwarmAgentType[]
@@ -34,7 +36,9 @@ interface RunningCounts {
   claude: number
   codex: number
   gemini: number
+  opencode: number
   cursor: number
+  shell: number
   custom: Record<string, number>
 }
 
@@ -55,8 +59,10 @@ declare global {
       claude: string
       codex: string
       gemini: string
+      opencode: string
       cursor: string
       agents: string
+      shell: string
     }
   }
 }
@@ -68,16 +74,24 @@ const BUILT_IN_AGENTS = [
   { key: 'claude', name: 'Claude', icon: icons.claude },
   { key: 'codex', name: 'Codex', icon: icons.codex },
   { key: 'gemini', name: 'Gemini', icon: icons.gemini },
+  { key: 'opencode', name: 'OpenCode', icon: icons.opencode },
   { key: 'cursor', name: 'Cursor', icon: icons.cursor },
   { key: 'shell', name: 'Shell', icon: icons.shell },
 ] as const
 
-const RESERVED_NAMES = ['CC', 'CX', 'GX', 'CR', 'SH']
+const RESERVED_NAMES = ['CC', 'CX', 'GX', 'OC', 'CR', 'SH']
+const SWARM_AGENT_LABELS: Record<SwarmAgentType, string> = {
+  cursor: 'Cursor',
+  codex: 'Codex',
+  claude: 'Claude',
+  gemini: 'Gemini',
+  opencode: 'OpenCode'
+}
 
 export default function App() {
   const [settings, setSettings] = useState<AgentSettings | null>(null)
   const [runningCounts, setRunningCounts] = useState<RunningCounts>({
-    claude: 0, codex: 0, gemini: 0, cursor: 0, custom: {}
+    claude: 0, codex: 0, gemini: 0, opencode: 0, cursor: 0, shell: 0, custom: {}
   })
   const [swarmStatus, setSwarmStatus] = useState<SwarmStatus>({
     mcpEnabled: false, commandInstalled: false
@@ -270,13 +284,13 @@ export default function App() {
           Swarm Agents
         </h2>
         <div className="flex flex-wrap gap-3">
-          {(['cursor', 'codex', 'claude', 'gemini'] as SwarmAgentType[]).map(agent => (
+          {(['cursor', 'codex', 'claude', 'gemini', 'opencode'] as SwarmAgentType[]).map(agent => (
             <div key={agent} className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-[var(--muted)]">
               <Checkbox
                 checked={isSwarmAgentEnabled(agent)}
                 onCheckedChange={(checked) => toggleSwarmAgent(agent, !!checked)}
               />
-              <span className="text-sm font-medium capitalize">{agent}</span>
+              <span className="text-sm font-medium">{SWARM_AGENT_LABELS[agent]}</span>
             </div>
           ))}
         </div>

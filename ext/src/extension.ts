@@ -13,6 +13,7 @@ import { AgentSettings, hasLoginEnabled } from './settings';
 import * as settings from './settings.vscode';
 import * as swarm from './swarm.vscode';
 import * as terminals from './terminals.vscode';
+import * as workbench from './workbench.vscode';
 import {
   CLAUDE_TITLE,
   findTerminalNameByTabLabel,
@@ -194,11 +195,6 @@ export function activate(context: vscode.ExtensionContext) {
     )
   );
 
-  // New shell command
-  context.subscriptions.push(
-    vscode.commands.registerCommand('agents.newShell', () => openNewShell())
-  );
-
   // Register commands
   context.subscriptions.push(
     vscode.commands.registerCommand('agents.open', () => openAgentTerminals(context))
@@ -240,6 +236,15 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('agents.goToTerminal', () => goToTerminal(context))
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('agents.streamline', async () => {
+      const enabled = await workbench.toggleStreamlineLayout();
+      vscode.window.showInformationMessage(
+        enabled ? 'Streamline layout enabled' : 'Streamline layout disabled'
+      );
+    })
   );
 
   // Register built-in individual agent commands
@@ -301,12 +306,31 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
-  // Reset status bar when a text editor becomes active (switching away from terminal)
+  // Update status bar when active editor changes
   context.subscriptions.push(
     vscode.window.onDidChangeActiveTextEditor((editor) => {
-      // Only reset if switching to a real text editor (not undefined)
-      if (agentStatusBarItem && editor) {
+      if (!agentStatusBarItem) return;
+
+      if (editor) {
+        // Switching to a real text editor - reset status bar
         agentStatusBarItem.text = 'Agents';
+      } else {
+        // editor is undefined - could be switching to a terminal tab
+        // Check if active tab is a terminal and update status bar accordingly
+        const activeGroup = vscode.window.tabGroups.activeTabGroup;
+        const activeTab = activeGroup?.activeTab;
+
+        if (activeTab?.input instanceof vscode.TabInputTerminal) {
+          const terminalNames = vscode.window.terminals.map(t => t.name);
+          const matchedName = findTerminalNameByTabLabel(terminalNames, activeTab.label);
+          if (matchedName) {
+            const matchedTerminal = vscode.window.terminals.find(t => t.name === matchedName);
+            if (matchedTerminal) {
+              updateStatusBarForTerminal(matchedTerminal, context.extensionPath);
+              return;
+            }
+          }
+        }
       }
     })
   );
@@ -665,18 +689,6 @@ async function clearActiveTerminal(context: vscode.ExtensionContext) {
 }
 
 // Git functions are now in ./git.vscode
-
-function openNewShell() {
-  const editorLocation: vscode.TerminalEditorLocationOptions = {
-    viewColumn: vscode.ViewColumn.Active,
-    preserveFocus: false
-  };
-
-  vscode.window.createTerminal({
-    location: editorLocation,
-    name: 'Shell'
-  });
-}
 
 export function deactivate() {
   // Dispose all tracked terminals

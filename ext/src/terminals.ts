@@ -5,6 +5,7 @@ import {
   CLAUDE_TITLE,
   CODEX_TITLE,
   GEMINI_TITLE,
+  OPENCODE_TITLE,
   CURSOR_TITLE,
   SHELL_TITLE,
   getTerminalDisplayInfo
@@ -15,6 +16,7 @@ export interface RunningCounts {
   claude: number;
   codex: number;
   gemini: number;
+  opencode: number;
   cursor: number;
   shell: number;
   custom: Record<string, number>;
@@ -26,6 +28,7 @@ export function countRunningFromNames(terminalNames: string[]): RunningCounts {
     claude: 0,
     codex: 0,
     gemini: 0,
+    opencode: 0,
     cursor: 0,
     shell: 0,
     custom: {}
@@ -44,6 +47,9 @@ export function countRunningFromNames(terminalNames: string[]): RunningCounts {
         break;
       case GEMINI_TITLE:
         counts.gemini++;
+        break;
+      case OPENCODE_TITLE:
+        counts.opencode++;
         break;
       case CURSOR_TITLE:
         counts.cursor++;

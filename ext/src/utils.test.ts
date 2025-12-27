@@ -11,6 +11,7 @@ import {
   CLAUDE_TITLE,
   CODEX_TITLE,
   GEMINI_TITLE,
+  OPENCODE_TITLE,
   CURSOR_TITLE
 } from './utils';
 
@@ -19,6 +20,7 @@ describe('parseTerminalName', () => {
     expect(parseTerminalName('CC')).toEqual({ isAgent: true, prefix: 'CC', label: null });
     expect(parseTerminalName('CX')).toEqual({ isAgent: true, prefix: 'CX', label: null });
     expect(parseTerminalName('GX')).toEqual({ isAgent: true, prefix: 'GX', label: null });
+    expect(parseTerminalName('OC')).toEqual({ isAgent: true, prefix: 'OC', label: null });
     expect(parseTerminalName('CR')).toEqual({ isAgent: true, prefix: 'CR', label: null });
   });
 
@@ -94,6 +96,7 @@ describe('getExpandedAgentName', () => {
     expect(getExpandedAgentName(CLAUDE_TITLE)).toBe('Claude');
     expect(getExpandedAgentName(CODEX_TITLE)).toBe('Codex');
     expect(getExpandedAgentName(GEMINI_TITLE)).toBe('Gemini');
+    expect(getExpandedAgentName(OPENCODE_TITLE)).toBe('OpenCode');
     expect(getExpandedAgentName(CURSOR_TITLE)).toBe('Cursor');
   });
 
@@ -108,6 +111,7 @@ describe('getIconFilename', () => {
     expect(getIconFilename(CLAUDE_TITLE)).toBe('claude.png');
     expect(getIconFilename(CODEX_TITLE)).toBe('chatgpt.png');
     expect(getIconFilename(GEMINI_TITLE)).toBe('gemini.png');
+    expect(getIconFilename(OPENCODE_TITLE)).toBe('opencode.png');
     expect(getIconFilename(CURSOR_TITLE)).toBe('cursor.png');
   });
 
@@ -142,6 +146,14 @@ describe('getTerminalDisplayInfo', () => {
       expandedName: 'Gemini',
       statusBarText: 'Gemini',
       iconFilename: 'gemini.png'
+    });
+    expect(getTerminalDisplayInfo('OC')).toEqual({
+      isAgent: true,
+      prefix: 'OC',
+      label: null,
+      expandedName: 'OpenCode',
+      statusBarText: 'OpenCode',
+      iconFilename: 'opencode.png'
     });
     expect(getTerminalDisplayInfo('CR')).toEqual({
       isAgent: true,
