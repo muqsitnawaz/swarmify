@@ -15,6 +15,7 @@ import * as swarm from './swarm.vscode';
 import * as terminals from './terminals.vscode';
 import {
   CLAUDE_TITLE,
+  findTerminalNameByTabLabel,
   getExpandedAgentName,
   getTerminalDisplayInfo,
   parseTerminalName,
@@ -237,6 +238,10 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('agents.newTask', () => newTaskWithContext(context))
   );
 
+  context.subscriptions.push(
+    vscode.commands.registerCommand('agents.goToTerminal', () => goToTerminal(context))
+  );
+
   // Register built-in individual agent commands
   for (const def of BUILT_IN_AGENTS) {
     context.subscriptions.push(
@@ -298,9 +303,37 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Reset status bar when a text editor becomes active (switching away from terminal)
   context.subscriptions.push(
-    vscode.window.onDidChangeActiveTextEditor(() => {
-      if (agentStatusBarItem) {
+    vscode.window.onDidChangeActiveTextEditor((editor) => {
+      // Only reset if switching to a real text editor (not undefined)
+      if (agentStatusBarItem && editor) {
         agentStatusBarItem.text = 'Agents';
+      }
+    })
+  );
+
+  // Listen for tab changes to catch editor-area terminal switches
+  // (onDidChangeActiveTerminal doesn't fire reliably for terminal editor tabs)
+  context.subscriptions.push(
+    vscode.window.tabGroups.onDidChangeTabs(() => {
+      if (!agentStatusBarItem) return;
+
+      // Check if the active tab in the active group is a terminal
+      const activeGroup = vscode.window.tabGroups.activeTabGroup;
+      const activeTab = activeGroup?.activeTab;
+
+      if (!activeTab || !(activeTab.input instanceof vscode.TabInputTerminal)) {
+        // Not a terminal tab - already handled by onDidChangeActiveTextEditor
+        return;
+      }
+
+      // Find the terminal that matches this tab by name
+      const terminalNames = vscode.window.terminals.map(t => t.name);
+      const matchedName = findTerminalNameByTabLabel(terminalNames, activeTab.label);
+      if (matchedName) {
+        const matchedTerminal = vscode.window.terminals.find(t => t.name === matchedName);
+        if (matchedTerminal) {
+          updateStatusBarForTerminal(matchedTerminal, context.extensionPath);
+        }
       }
     })
   );
@@ -365,6 +398,62 @@ async function newTaskWithContext(context: vscode.ExtensionContext) {
   const agentConfig = getBuiltInByTitle(context.extensionPath, CLAUDE_TITLE);
   if (agentConfig) {
     await openSingleAgentWithQueue(context, agentConfig, [message]);
+  }
+}
+
+interface TerminalQuickPickItem extends vscode.QuickPickItem {
+  terminal: vscode.Terminal;
+}
+
+async function goToTerminal(context: vscode.ExtensionContext) {
+  // Build ordered list of terminal tabs from tab groups
+  const terminalTabs: { tab: vscode.Tab; terminal: vscode.Terminal }[] = [];
+
+  // Get tab order from VS Code's tab groups API
+  for (const group of vscode.window.tabGroups.all) {
+    for (const tab of group.tabs) {
+      if (tab.input instanceof vscode.TabInputTerminal) {
+        // Match tab to terminal by comparing labels
+        const matchedTerminal = vscode.window.terminals.find(t => t.name === tab.label);
+        if (matchedTerminal) {
+          terminalTabs.push({ tab, terminal: matchedTerminal });
+        }
+      }
+    }
+  }
+
+  // Filter to agent terminals only and build quick pick items
+  const items: TerminalQuickPickItem[] = [];
+  let index = 1;
+
+  for (const { terminal } of terminalTabs) {
+    const info = identifyAgentTerminal(terminal, context.extensionPath);
+    if (!info.isAgent) continue;
+
+    const expandedName = getExpandedAgentName(info.prefix!);
+    const entry = terminals.getByTerminal(terminal);
+    const label = entry?.label || entry?.autoLabel;
+
+    items.push({
+      label: `${index}. ${expandedName}`,
+      description: label || '',
+      terminal
+    });
+    index++;
+  }
+
+  if (items.length === 0) {
+    vscode.window.showInformationMessage('No agent terminals open');
+    return;
+  }
+
+  const selected = await vscode.window.showQuickPick(items, {
+    placeHolder: 'Go to terminal',
+    matchOnDescription: true
+  });
+
+  if (selected) {
+    selected.terminal.show();
   }
 }
 

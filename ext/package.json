@@ -3,7 +3,7 @@
   "displayName": "Agents",
   "publisher": "muqsitnawaz",
   "description": "Manage multiple Claude Code, Codex, Gemini, and Cursor terminal agents in the editor",
-  "version": "0.9.48",
+  "version": "0.9.49",
   "license": "MIT",
   "author": "Muqsit Nawaz <dev@muqsitnawaz.com>",
   "icon": "assets/agents.png",
@@ -123,6 +123,10 @@
       {
         "command": "agents.swarmDocument",
         "title": "Agents: Swarm Document"
+      },
+      {
+        "command": "agents.goToTerminal",
+        "title": "Agents: Go to Terminal"
       }
     ],
     "configuration": {
@@ -219,6 +223,12 @@
         "key": "ctrl+shift+s",
         "mac": "cmd+shift+s",
         "when": "activeCustomEditorId == 'agents.markdownEditor'"
+      },
+      {
+        "command": "agents.goToTerminal",
+        "key": "ctrl+shift+s",
+        "mac": "cmd+shift+s",
+        "when": "terminalEditorFocus"
       }
     ]
   },

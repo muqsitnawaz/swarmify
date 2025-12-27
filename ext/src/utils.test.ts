@@ -5,6 +5,7 @@ import {
   getExpandedAgentName,
   getIconFilename,
   getTerminalDisplayInfo,
+  findTerminalNameByTabLabel,
   mergeMcpConfig,
   createSwarmServerConfig,
   CLAUDE_TITLE,
@@ -272,5 +273,55 @@ describe('mergeMcpConfig', () => {
     const result = mergeMcpConfig(existing, 'swarm', newConfig);
 
     expect(result.mcpServers!['swarm'].args).toEqual(['/new/path/index.js']);
+  });
+});
+
+describe('findTerminalNameByTabLabel', () => {
+  test('finds exact match for agent terminal', () => {
+    const terminalNames = ['CC', 'CX', 'GX', 'bash'];
+    expect(findTerminalNameByTabLabel(terminalNames, 'CC')).toBe('CC');
+    expect(findTerminalNameByTabLabel(terminalNames, 'CX')).toBe('CX');
+    expect(findTerminalNameByTabLabel(terminalNames, 'GX')).toBe('GX');
+  });
+
+  test('finds terminal with label in name', () => {
+    const terminalNames = ['CC', 'CC - auth feature', 'CX - bug fix'];
+    expect(findTerminalNameByTabLabel(terminalNames, 'CC - auth feature')).toBe('CC - auth feature');
+    expect(findTerminalNameByTabLabel(terminalNames, 'CX - bug fix')).toBe('CX - bug fix');
+  });
+
+  test('returns null when no match found', () => {
+    const terminalNames = ['CC', 'CX', 'GX'];
+    expect(findTerminalNameByTabLabel(terminalNames, 'bash')).toBeNull();
+    expect(findTerminalNameByTabLabel(terminalNames, 'CR')).toBeNull();
+    expect(findTerminalNameByTabLabel(terminalNames, 'CC - nonexistent')).toBeNull();
+  });
+
+  test('returns null for empty terminal list', () => {
+    expect(findTerminalNameByTabLabel([], 'CC')).toBeNull();
+  });
+
+  test('handles multiple terminals with same base prefix', () => {
+    // Simulates having multiple Claude terminals open
+    const terminalNames = ['CC', 'CC', 'CC - task 1', 'CC - task 2'];
+    // Should find first exact match
+    expect(findTerminalNameByTabLabel(terminalNames, 'CC')).toBe('CC');
+    expect(findTerminalNameByTabLabel(terminalNames, 'CC - task 1')).toBe('CC - task 1');
+    expect(findTerminalNameByTabLabel(terminalNames, 'CC - task 2')).toBe('CC - task 2');
+  });
+
+  test('matches are case-sensitive', () => {
+    const terminalNames = ['CC', 'Cc', 'cc'];
+    expect(findTerminalNameByTabLabel(terminalNames, 'CC')).toBe('CC');
+    expect(findTerminalNameByTabLabel(terminalNames, 'Cc')).toBe('Cc');
+    expect(findTerminalNameByTabLabel(terminalNames, 'cc')).toBe('cc');
+    expect(findTerminalNameByTabLabel(terminalNames, 'cC')).toBeNull();
+  });
+
+  test('does not match partial strings', () => {
+    const terminalNames = ['CC - auth feature'];
+    expect(findTerminalNameByTabLabel(terminalNames, 'CC')).toBeNull();
+    expect(findTerminalNameByTabLabel(terminalNames, 'CC - auth')).toBeNull();
+    expect(findTerminalNameByTabLabel(terminalNames, 'auth feature')).toBeNull();
   });
 });
