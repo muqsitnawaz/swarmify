@@ -432,14 +432,18 @@ interface TerminalQuickPickItem extends vscode.QuickPickItem {
 async function goToTerminal(context: vscode.ExtensionContext) {
   // Build ordered list of terminal tabs from tab groups
   const terminalTabs: { tab: vscode.Tab; terminal: vscode.Terminal }[] = [];
+  const matchedTerminals = new Set<vscode.Terminal>();
 
   // Get tab order from VS Code's tab groups API
   for (const group of vscode.window.tabGroups.all) {
     for (const tab of group.tabs) {
       if (tab.input instanceof vscode.TabInputTerminal) {
-        // Match tab to terminal by comparing labels
-        const matchedTerminal = vscode.window.terminals.find(t => t.name === tab.label);
+        // Match tab to terminal by comparing labels, excluding already matched
+        const matchedTerminal = vscode.window.terminals.find(
+          t => t.name === tab.label && !matchedTerminals.has(t)
+        );
         if (matchedTerminal) {
+          matchedTerminals.add(matchedTerminal);
           terminalTabs.push({ tab, terminal: matchedTerminal });
         }
       }
@@ -455,8 +459,9 @@ async function goToTerminal(context: vscode.ExtensionContext) {
     if (!info.isAgent) continue;
 
     const expandedName = getExpandedAgentName(info.prefix!);
+    // Use info.label (from entry or name parsing), fall back to autoLabel from entry
     const entry = terminals.getByTerminal(terminal);
-    const label = entry?.label || entry?.autoLabel;
+    const label = info.label || entry?.autoLabel;
 
     items.push({
       label: `${index}. ${expandedName}`,
