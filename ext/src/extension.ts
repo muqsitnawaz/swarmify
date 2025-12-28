@@ -215,6 +215,19 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
+    vscode.commands.registerCommand('agents.newAgentSplit', async () => {
+      // Create horizontal split (new editor group below current)
+      await vscode.commands.executeCommand('workbench.action.splitEditorDown');
+
+      // Open default agent in the new (active) group
+      const agentConfig = getBuiltInByTitle(context.extensionPath, CLAUDE_TITLE);
+      if (agentConfig) {
+        openSingleAgent(context, agentConfig);
+      }
+    })
+  );
+
+  context.subscriptions.push(
     vscode.commands.registerCommand('agents.setTitle', () => setStatusBarLabelForActiveTerminal(context))
   );
 

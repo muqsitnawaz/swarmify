@@ -139,6 +139,10 @@
       {
         "command": "agents.streamline",
         "title": "Agents: Streamline"
+      },
+      {
+        "command": "agents.newAgentSplit",
+        "title": "Agents: New Split"
       }
     ],
     "configuration": {
@@ -246,6 +250,12 @@
         "command": "agents.goToTerminal",
         "key": "ctrl+shift+i",
         "mac": "cmd+shift+i"
+      },
+      {
+        "command": "agents.newAgentSplit",
+        "key": "ctrl+shift+b",
+        "mac": "cmd+shift+b",
+        "when": "terminalEditorFocus"
       }
     ]
   },
