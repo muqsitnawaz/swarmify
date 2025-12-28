@@ -29,6 +29,7 @@ export class AgentsMarkdownEditorProvider implements vscode.CustomTextEditorProv
       enableScripts: true,
       localResourceRoots: [
         vscode.Uri.joinPath(this.context.extensionUri, 'out', 'ui', 'editor'),
+        vscode.Uri.joinPath(this.context.extensionUri, 'assets'),
         vscode.Uri.file(path.dirname(document.uri.fsPath)),
       ],
     };
@@ -143,13 +144,13 @@ The user selected the above text from a markdown file. Help them with whatever t
         terminal.sendText(agentConfig.command);
       }
 
-      // After delay, send queued messages
+      // After delay, send queued messages (5s to ensure agent is fully loaded)
       setTimeout(() => {
         const queued = terminals.flushQueue(terminal);
         for (const msg of queued) {
           terminal.sendText(msg);
         }
-      }, 2000);
+      }, 5000);
 
       webview.postMessage({
         type: 'agentResult',
@@ -323,6 +324,9 @@ The user selected the above text from a markdown file. Help them with whatever t
     const styleUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this.context.extensionUri, 'out', 'ui', 'editor', 'assets', 'index.css')
     );
+    const agentsIconUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this.context.extensionUri, 'assets', 'agents.png')
+    );
 
     const nonce = getNonce();
 
@@ -341,7 +345,7 @@ The user selected the above text from a markdown file. Help them with whatever t
   <title>Agents Markdown Editor</title>
 </head>
 <body>
-  <div id="root"></div>
+  <div id="root" data-agents-icon="${agentsIconUri}"></div>
   <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;
@@ -438,13 +442,13 @@ async function sendSwarmCommand(content: string, context: vscode.ExtensionContex
     terminal.sendText(agentConfig.command);
   }
 
-  // After delay, send queued messages
+  // After delay, send queued messages (5s to ensure agent is fully loaded)
   setTimeout(() => {
     const queued = terminals.flushQueue(terminal);
     for (const msg of queued) {
       terminal.sendText(msg);
     }
-  }, 2000);
+  }, 5000);
 
   vscode.window.showInformationMessage('Swarming document with Claude...');
 }

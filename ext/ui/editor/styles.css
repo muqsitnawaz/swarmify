@@ -206,6 +206,59 @@ body {
   line-height: 1.5;
 }
 
+/* Syntax highlighting - using VS Code theme-aware colors */
+.notion-code-block .hljs-keyword,
+.notion-code-block .hljs-selector-tag,
+.notion-code-block .hljs-built_in,
+.notion-code-block .hljs-name {
+  color: var(--vscode-debugTokenExpression-name, #c586c0);
+}
+
+.notion-code-block .hljs-string,
+.notion-code-block .hljs-attr,
+.notion-code-block .hljs-symbol,
+.notion-code-block .hljs-bullet {
+  color: var(--vscode-debugTokenExpression-string, #ce9178);
+}
+
+.notion-code-block .hljs-number,
+.notion-code-block .hljs-literal {
+  color: var(--vscode-debugTokenExpression-number, #b5cea8);
+}
+
+.notion-code-block .hljs-comment,
+.notion-code-block .hljs-quote {
+  color: var(--vscode-descriptionForeground, #6a9955);
+  font-style: italic;
+}
+
+.notion-code-block .hljs-function,
+.notion-code-block .hljs-title {
+  color: var(--vscode-symbolIcon-functionForeground, #dcdcaa);
+}
+
+.notion-code-block .hljs-variable,
+.notion-code-block .hljs-template-variable {
+  color: var(--vscode-symbolIcon-variableForeground, #9cdcfe);
+}
+
+.notion-code-block .hljs-type,
+.notion-code-block .hljs-class .hljs-title {
+  color: var(--vscode-symbolIcon-classForeground, #4ec9b0);
+}
+
+.notion-code-block .hljs-meta {
+  color: var(--vscode-textPreformat-foreground, #569cd6);
+}
+
+.notion-code-block .hljs-emphasis {
+  font-style: italic;
+}
+
+.notion-code-block .hljs-strong {
+  font-weight: bold;
+}
+
 /* Links */
 .notion-link {
   color: var(--vscode-textLink-foreground);
@@ -433,6 +486,10 @@ body {
   margin: 0 4px;
 }
 
+.bubble-menu .agents-button img {
+  display: block;
+}
+
 /* Slash Commands Menu */
 .slash-commands-menu {
   background-color: var(--vscode-editorWidget-background);
@@ -497,52 +554,3 @@ body {
   background: var(--vscode-scrollbarSlider-activeBackground);
 }
 
-/* AI Bubble Menu */
-.ai-bubble-menu {
-  display: flex;
-  background-color: var(--vscode-editorWidget-background);
-  border: 1px solid var(--vscode-editorWidget-border);
-  border-radius: 8px;
-  padding: 6px;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
-  gap: 4px;
-  z-index: 100;
-}
-
-.ai-menu-button {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 8px 12px;
-  border-radius: 6px;
-  color: var(--vscode-editor-foreground);
-  font-size: 13px;
-  font-weight: 500;
-  transition: all 0.2s;
-  white-space: nowrap;
-}
-
-.ai-menu-button:hover {
-  background-color: var(--vscode-list-hoverBackground);
-}
-
-.ai-menu-button svg {
-  flex-shrink: 0;
-}
-
-.ai-menu-button span {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-}
-
-/* Task button special styling */
-.ai-menu-button.task-button {
-  background-color: var(--vscode-button-secondaryBackground);
-  color: var(--vscode-button-secondaryForeground);
-}
-
-.ai-menu-button.task-button:hover {
-  background-color: var(--vscode-button-secondaryHoverBackground);
-}

@@ -11,9 +11,18 @@ import {
 
 interface BubbleMenuProps {
   editor: Editor;
+  onSendToAgent: (selection: string) => void;
 }
 
-function BubbleMenu({ editor }: BubbleMenuProps) {
+// Get agents icon URI from data attribute set by extension
+const getAgentsIconUri = (): string | null => {
+  const root = document.getElementById('root');
+  return root?.dataset.agentsIcon || null;
+};
+
+function BubbleMenu({ editor, onSendToAgent }: BubbleMenuProps) {
+  const agentsIconUri = getAgentsIconUri();
+
   const setLink = () => {
     const previousUrl = editor.getAttributes('link').href;
     const url = window.prompt('URL', previousUrl);
@@ -28,6 +37,14 @@ function BubbleMenu({ editor }: BubbleMenuProps) {
     }
 
     editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
+  };
+
+  const handleSendToAgent = () => {
+    const { from, to } = editor.state.selection;
+    const selection = editor.state.doc.textBetween(from, to, ' ');
+    if (selection) {
+      onSendToAgent(selection);
+    }
   };
 
   return (
@@ -84,6 +101,20 @@ function BubbleMenu({ editor }: BubbleMenuProps) {
         title="Highlight"
       >
         <Highlighter size={16} />
+      </button>
+
+      <div className="separator" />
+
+      <button
+        onClick={handleSendToAgent}
+        className="agents-button"
+        title="Open new agent with selection"
+      >
+        {agentsIconUri ? (
+          <img src={agentsIconUri} alt="Agents" width={16} height={16} />
+        ) : (
+          <span>A</span>
+        )}
       </button>
     </TiptapBubbleMenu>
   );

@@ -19,7 +19,6 @@ import { useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
 import { Markdown } from 'tiptap-markdown';
 import { Editor as TiptapEditor } from '@tiptap/core';
 import BubbleMenu from './BubbleMenu';
-import AIBubbleMenu from './AIBubbleMenu';
 import SlashCommands from '../extensions/SlashCommands';
 import Callout from '../extensions/Callout';
 import Toggle from '../extensions/Toggle';
@@ -251,8 +250,7 @@ const Editor = forwardRef<EditorRef, EditorProps>(
 
     return (
       <div className="editor-container">
-        <BubbleMenu editor={editor} />
-        <AIBubbleMenu editor={editor} onSendToAgent={onSendToAgent} />
+        <BubbleMenu editor={editor} onSendToAgent={onSendToAgent} />
         <EditorContent editor={editor} />
       </div>
     );

@@ -12,7 +12,8 @@ import {
   CODEX_TITLE,
   GEMINI_TITLE,
   OPENCODE_TITLE,
-  CURSOR_TITLE
+  CURSOR_TITLE,
+  SHELL_TITLE
 } from './utils';
 
 describe('parseTerminalName', () => {
@@ -22,6 +23,7 @@ describe('parseTerminalName', () => {
     expect(parseTerminalName('GX')).toEqual({ isAgent: true, prefix: 'GX', label: null });
     expect(parseTerminalName('OC')).toEqual({ isAgent: true, prefix: 'OC', label: null });
     expect(parseTerminalName('CR')).toEqual({ isAgent: true, prefix: 'CR', label: null });
+    expect(parseTerminalName('SH')).toEqual({ isAgent: true, prefix: 'SH', label: null });
   });
 
   test('identifies agent prefixes with labels', () => {
@@ -98,6 +100,7 @@ describe('getExpandedAgentName', () => {
     expect(getExpandedAgentName(GEMINI_TITLE)).toBe('Gemini');
     expect(getExpandedAgentName(OPENCODE_TITLE)).toBe('OpenCode');
     expect(getExpandedAgentName(CURSOR_TITLE)).toBe('Cursor');
+    expect(getExpandedAgentName(SHELL_TITLE)).toBe('Shell');
   });
 
   test('returns prefix as-is for unknown values', () => {
@@ -113,6 +116,7 @@ describe('getIconFilename', () => {
     expect(getIconFilename(GEMINI_TITLE)).toBe('gemini.png');
     expect(getIconFilename(OPENCODE_TITLE)).toBe('opencode.png');
     expect(getIconFilename(CURSOR_TITLE)).toBe('cursor.png');
+    expect(getIconFilename(SHELL_TITLE)).toBe('agents.png');
   });
 
   test('returns null for unknown prefixes', () => {
@@ -162,6 +166,14 @@ describe('getTerminalDisplayInfo', () => {
       expandedName: 'Cursor',
       statusBarText: 'Cursor',
       iconFilename: 'cursor.png'
+    });
+    expect(getTerminalDisplayInfo('SH')).toEqual({
+      isAgent: true,
+      prefix: 'SH',
+      label: null,
+      expandedName: 'Shell',
+      statusBarText: 'Shell',
+      iconFilename: 'agents.png'
     });
   });
 

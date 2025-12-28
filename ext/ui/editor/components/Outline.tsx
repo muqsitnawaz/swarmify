@@ -37,11 +37,11 @@ function Outline({ editor }: OutlineProps) {
     // Initial update
     updateOutline();
 
-    // Listen for changes
-    editor.on('update', updateOutline);
+    // Listen for changes (transaction fires on ALL changes, including programmatic setContent)
+    editor.on('transaction', updateOutline);
 
     return () => {
-      editor.off('update', updateOutline);
+      editor.off('transaction', updateOutline);
     };
   }, [editor]);
 
