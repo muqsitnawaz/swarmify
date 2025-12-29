@@ -461,7 +461,6 @@ async function goToTerminal(context: vscode.ExtensionContext) {
 
   // Filter to agent terminals and build quick pick items
   const items: TerminalQuickPickItem[] = [];
-  let index = 1;
 
   for (const entry of allEntries) {
     // Skip non-agent terminals
@@ -471,11 +470,10 @@ async function goToTerminal(context: vscode.ExtensionContext) {
     const label = entry.label || entry.autoLabel;
 
     items.push({
-      label: `${index}. ${expandedName}`,
+      label: expandedName,
       description: label || '',
       terminal: entry.terminal
     });
-    index++;
   }
 
   if (items.length === 0) {
