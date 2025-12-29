@@ -141,8 +141,12 @@
         "title": "Agents: Streamline"
       },
       {
-        "command": "agents.newAgentSplit",
-        "title": "Agents: New Split"
+        "command": "agents.newAgentHSplit",
+        "title": "Agents: New Split (Below)"
+      },
+      {
+        "command": "agents.newAgentVSplit",
+        "title": "Agents: New Split (Side)"
       }
     ],
     "configuration": {
@@ -251,9 +255,14 @@
         "mac": "cmd+shift+i"
       },
       {
-        "command": "agents.newAgentSplit",
-        "key": "ctrl+shift+b",
-        "mac": "cmd+shift+b"
+        "command": "agents.newAgentHSplit",
+        "key": "ctrl+shift+h",
+        "mac": "cmd+shift+h"
+      },
+      {
+        "command": "agents.newAgentVSplit",
+        "key": "ctrl+shift+v",
+        "mac": "cmd+shift+v"
       }
     ]
   },
