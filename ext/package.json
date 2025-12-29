@@ -243,8 +243,7 @@
       {
         "command": "agents.newShell",
         "key": "ctrl+shift+s",
-        "mac": "cmd+shift+s",
-        "when": "terminalEditorFocus"
+        "mac": "cmd+shift+s"
       },
       {
         "command": "agents.goToTerminal",
