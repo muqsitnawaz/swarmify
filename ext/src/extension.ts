@@ -443,43 +443,24 @@ interface TerminalQuickPickItem extends vscode.QuickPickItem {
 }
 
 async function goToTerminal(context: vscode.ExtensionContext) {
-  // Build ordered list of terminal tabs from tab groups
-  const terminalTabs: { tab: vscode.Tab; terminal: vscode.Terminal }[] = [];
-  const matchedTerminals = new Set<vscode.Terminal>();
+  // Use internal registry - each entry has unique ID, no ambiguous matching needed
+  const allEntries = terminals.getAllTerminals();
 
-  // Get tab order from VS Code's tab groups API
-  for (const group of vscode.window.tabGroups.all) {
-    for (const tab of group.tabs) {
-      if (tab.input instanceof vscode.TabInputTerminal) {
-        // Match tab to terminal by comparing labels, excluding already matched
-        const matchedTerminal = vscode.window.terminals.find(
-          t => t.name === tab.label && !matchedTerminals.has(t)
-        );
-        if (matchedTerminal) {
-          matchedTerminals.add(matchedTerminal);
-          terminalTabs.push({ tab, terminal: matchedTerminal });
-        }
-      }
-    }
-  }
-
-  // Filter to agent terminals only and build quick pick items
+  // Filter to agent terminals and build quick pick items
   const items: TerminalQuickPickItem[] = [];
   let index = 1;
 
-  for (const { terminal } of terminalTabs) {
-    const info = identifyAgentTerminal(terminal, context.extensionPath);
-    if (!info.isAgent) continue;
+  for (const entry of allEntries) {
+    // Skip non-agent terminals
+    if (!entry.agentConfig) continue;
 
-    const expandedName = getExpandedAgentName(info.prefix!);
-    // Use info.label (from entry or name parsing), fall back to autoLabel from entry
-    const entry = terminals.getByTerminal(terminal);
-    const label = info.label || entry?.autoLabel;
+    const expandedName = getExpandedAgentName(entry.agentConfig.prefix);
+    const label = entry.label || entry.autoLabel;
 
     items.push({
       label: `${index}. ${expandedName}`,
       description: label || '',
-      terminal
+      terminal: entry.terminal
     });
     index++;
   }
