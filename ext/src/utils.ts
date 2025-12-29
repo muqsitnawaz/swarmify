@@ -55,13 +55,21 @@ export function sanitizeLabel(raw: string): string {
  * Get the expanded human-readable name for an agent prefix.
  */
 export function getExpandedAgentName(prefix: string): string {
+  // Map both title (CC) and prefix (cc) to expanded names
   const expandedNames: Record<string, string> = {
     [CLAUDE_TITLE]: 'Claude',
     [CODEX_TITLE]: 'Codex',
     [GEMINI_TITLE]: 'Gemini',
     [OPENCODE_TITLE]: 'OpenCode',
     [CURSOR_TITLE]: 'Cursor',
-    [SHELL_TITLE]: 'Shell'
+    [SHELL_TITLE]: 'Shell',
+    // Also map lowercase prefixes from agents.ts
+    'cc': 'Claude',
+    'cx': 'Codex',
+    'gm': 'Gemini',
+    'oc': 'OpenCode',
+    'cr': 'Cursor',
+    'sh': 'Shell'
   };
   return expandedNames[prefix] || prefix;
 }
