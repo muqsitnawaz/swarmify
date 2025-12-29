@@ -528,13 +528,13 @@ async function openSingleAgentWithQueue(
     terminal.sendText(agentConfig.command);
   }
 
-  // After delay, send queued messages
+  // After delay, send queued messages (5s to ensure agent process fully loaded)
   setTimeout(() => {
     const queued = terminals.flushQueue(terminal);
     for (const msg of queued) {
       terminal.sendText(msg);
     }
-  }, 2000); // 2s delay for agent to initialize
+  }, 5000);
 }
 
 async function openAgentTerminals(context: vscode.ExtensionContext) {
