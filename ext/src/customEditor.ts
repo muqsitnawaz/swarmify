@@ -144,7 +144,7 @@ The user selected the above text from a markdown file. Help them with whatever t
         terminal.sendText(agentConfig.command);
       }
 
-      // After delay, send queued messages (5s to ensure agent is fully loaded)
+      // After delay, send queued messages (5s to ensure agent process fully loaded)
       setTimeout(() => {
         const queued = terminals.flushQueue(terminal);
         for (const msg of queued) {
@@ -442,7 +442,7 @@ async function sendSwarmCommand(content: string, context: vscode.ExtensionContex
     terminal.sendText(agentConfig.command);
   }
 
-  // After delay, send queued messages (5s to ensure agent is fully loaded)
+  // After delay, send queued messages (5s to ensure agent process fully loaded)
   setTimeout(() => {
     const queued = terminals.flushQueue(terminal);
     for (const msg of queued) {
