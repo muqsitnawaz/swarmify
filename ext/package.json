@@ -253,8 +253,7 @@
       {
         "command": "agents.newAgentSplit",
         "key": "ctrl+shift+b",
-        "mac": "cmd+shift+b",
-        "when": "terminalEditorFocus"
+        "mac": "cmd+shift+b"
       }
     ]
   },
