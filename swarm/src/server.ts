@@ -113,6 +113,11 @@ Use this for polling agent progress.`,
               type: 'string',
               description: 'Task name to get status for',
             },
+            filter: {
+              type: 'string',
+              enum: ['running', 'completed', 'failed', 'stopped'],
+              description: 'Optional: filter agents by status. Omit to get all agents.',
+            },
           },
           required: ['task_name'],
         },
@@ -166,7 +171,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
       result = await handleStatus(
         manager,
-        args.task_name as string
+        args.task_name as string,
+        args.filter as string | undefined
       );
     } else if (name === 'stop') {
       if (!args) {

@@ -79,14 +79,31 @@ export async function handleSpawn(
 
 export async function handleStatus(
   manager: AgentManager,
-  taskName: string
+  taskName: string,
+  filter?: string
 ): Promise<TaskStatusResult> {
-  console.log(`[status] Getting status for all agents in task "${taskName}"...`);
+  const filterDesc = filter ? ` (filter=${filter})` : '';
+  console.log(`[status] Getting status for agents in task "${taskName}"${filterDesc}...`);
 
-  const agents = await manager.listByTask(taskName);
+  const allAgents = await manager.listByTask(taskName);
+
+  // Filter agents by status if filter is provided
+  const agents = filter
+    ? allAgents.filter((a) => a.status === filter)
+    : allAgents;
+
   const agentStatuses: AgentStatusDetail[] = [];
   const counts = { running: 0, completed: 0, failed: 0, stopped: 0 };
 
+  // Count ALL agents for summary (not just filtered)
+  for (const agent of allAgents) {
+    if (agent.status === AgentStatus.RUNNING) counts.running++;
+    else if (agent.status === AgentStatus.COMPLETED) counts.completed++;
+    else if (agent.status === AgentStatus.FAILED) counts.failed++;
+    else if (agent.status === AgentStatus.STOPPED) counts.stopped++;
+  }
+
+  // Build details only for filtered agents
   for (const agent of agents) {
     await agent.readNewEvents();
     const events = agent.events;
@@ -113,14 +130,9 @@ export async function handleStatus(
       tool_count: summary.toolCallCount,
       has_errors: summary.errors.length > 0,
     });
-
-    if (agent.status === AgentStatus.RUNNING) counts.running++;
-    else if (agent.status === AgentStatus.COMPLETED) counts.completed++;
-    else if (agent.status === AgentStatus.FAILED) counts.failed++;
-    else if (agent.status === AgentStatus.STOPPED) counts.stopped++;
   }
 
-  console.log(`[status] Task "${taskName}": ${agents.length} agents (running=${counts.running}, completed=${counts.completed}, failed=${counts.failed}, stopped=${counts.stopped})`);
+  console.log(`[status] Task "${taskName}": returning ${agents.length}/${allAgents.length} agents (running=${counts.running}, completed=${counts.completed}, failed=${counts.failed}, stopped=${counts.stopped})`);
 
   return {
     task_name: taskName,
