@@ -82,15 +82,16 @@ export async function handleStatus(
   taskName: string,
   filter?: string
 ): Promise<TaskStatusResult> {
-  const filterDesc = filter ? ` (filter=${filter})` : '';
-  console.log(`[status] Getting status for agents in task "${taskName}"${filterDesc}...`);
+  // Default to 'running' to reduce context bloat
+  const effectiveFilter = filter || 'running';
+  console.log(`[status] Getting status for agents in task "${taskName}" (filter=${effectiveFilter})...`);
 
   const allAgents = await manager.listByTask(taskName);
 
-  // Filter agents by status if filter is provided
-  const agents = filter
-    ? allAgents.filter((a) => a.status === filter)
-    : allAgents;
+  // Filter agents by status ('all' shows everything)
+  const agents = effectiveFilter === 'all'
+    ? allAgents
+    : allAgents.filter((a) => a.status === effectiveFilter);
 
   const agentStatuses: AgentStatusDetail[] = [];
   const counts = { running: 0, completed: 0, failed: 0, stopped: 0 };

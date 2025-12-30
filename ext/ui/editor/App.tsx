@@ -1,6 +1,7 @@
-import { useEffect, useState, useRef } from 'react';
-import Editor, { EditorRef } from './components/Editor';
+import { useEffect, useState } from 'react';
+import Editor from './components/Editor';
 import Outline from './components/Outline';
+import { Editor as TiptapEditor } from '@tiptap/core';
 
 declare const acquireVsCodeApi: () => any;
 const vscode = acquireVsCodeApi();
@@ -8,7 +9,7 @@ const vscode = acquireVsCodeApi();
 function App() {
   const [content, setContent] = useState<string>('');
   const [isReady, setIsReady] = useState(false);
-  const editorRef = useRef<EditorRef>(null);
+  const [editor, setEditor] = useState<TiptapEditor | null>(null);
 
   useEffect(() => {
     // Handle messages from extension
@@ -74,17 +75,15 @@ function App() {
     );
   }
 
-  const editor = editorRef.current?.getEditor() ?? null;
-
   return (
     <div className="editor-layout">
       <Outline editor={editor} />
       <Editor
-        ref={editorRef}
         initialContent={content}
         onChange={handleContentChange}
         onSaveAsset={handleSaveAsset}
         onSendToAgent={handleSendToAgent}
+        onEditorReady={setEditor}
       />
     </div>
   );

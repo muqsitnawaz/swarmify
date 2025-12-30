@@ -15,7 +15,7 @@ import TextAlign from '@tiptap/extension-text-align';
 import Youtube from '@tiptap/extension-youtube';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import { common, createLowlight } from 'lowlight';
-import { useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { Markdown } from 'tiptap-markdown';
 import { Editor as TiptapEditor } from '@tiptap/core';
 import BubbleMenu from './BubbleMenu';
@@ -33,15 +33,11 @@ interface EditorProps {
   onChange: (content: string) => void;
   onSaveAsset: (data: string, fileName: string) => void;
   onSendToAgent: (selection: string) => void;
+  onEditorReady: (editor: TiptapEditor) => void;
 }
 
-export interface EditorRef {
-  getEditor: () => TiptapEditor | null;
-}
-
-const Editor = forwardRef<EditorRef, EditorProps>(
-  ({ initialContent, onChange, onSaveAsset, onSendToAgent }, ref) => {
-    const isUpdatingRef = useRef(false);
+function Editor({ initialContent, onChange, onSaveAsset, onSendToAgent, onEditorReady }: EditorProps) {
+  const isUpdatingRef = useRef(false);
 
     const editor = useEditor({
       extensions: [
@@ -164,6 +160,9 @@ const Editor = forwardRef<EditorRef, EditorProps>(
           return false;
         },
       },
+      onCreate: ({ editor }) => {
+        onEditorReady(editor);
+      },
       onUpdate: ({ editor }) => {
         if (!isUpdatingRef.current) {
           const markdown = editor.storage.markdown.getMarkdown();
@@ -171,11 +170,6 @@ const Editor = forwardRef<EditorRef, EditorProps>(
         }
       },
     });
-
-    // Expose editor instance to parent
-    useImperativeHandle(ref, () => ({
-      getEditor: () => editor,
-    }));
 
     // Update editor when content changes externally
     useEffect(() => {
@@ -248,15 +242,12 @@ const Editor = forwardRef<EditorRef, EditorProps>(
       return null;
     }
 
-    return (
-      <div className="editor-container">
-        <BubbleMenu editor={editor} onSendToAgent={onSendToAgent} />
-        <EditorContent editor={editor} />
-      </div>
-    );
-  }
-);
-
-Editor.displayName = 'Editor';
+  return (
+    <div className="editor-container">
+      <BubbleMenu editor={editor} onSendToAgent={onSendToAgent} />
+      <EditorContent editor={editor} />
+    </div>
+  );
+}
 
 export default Editor;
