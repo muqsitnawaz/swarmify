@@ -2,6 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap");
+
 :root {
   --bg: #0a0a0a;
   --bg-secondary: #111111;
@@ -25,7 +27,7 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: "Space Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
 ::selection {
@@ -59,4 +61,37 @@ body {
 
 .glow {
   box-shadow: 0 0 60px rgba(59, 130, 246, 0.15);
+}
+
+.hero-heading {
+  transition: text-shadow 0.35s ease, background-position 0.6s ease;
+}
+
+.hero-heading:hover {
+  background-image: linear-gradient(110deg, rgba(255,255,255,0.95), rgba(59,130,246,0.9), rgba(255,255,255,0.95));
+  background-size: 200% 200%;
+  background-position: 100% 50%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 0 18px rgba(255, 255, 255, 0.35);
+}
+
+.hero-heading:hover .hero-muted {
+  color: rgba(226, 232, 240, 0.85);
+  -webkit-text-fill-color: rgba(226, 232, 240, 0.85);
+}
+
+.editor-mockup {
+  transition: box-shadow 0.35s ease, transform 0.35s ease;
+}
+
+.editor-mockup:hover {
+  box-shadow: 0 0 80px rgba(59, 130, 246, 0.25);
+  transform: translateY(-2px);
+}
+
+.editor-mockup:hover .editor-title-highlight {
+  color: #ffffff;
+  text-shadow: 0 0 10px rgba(59, 130, 246, 0.6);
 }
