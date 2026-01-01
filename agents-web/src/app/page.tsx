@@ -92,46 +92,71 @@ export default function Home() {
           <p className="text-[#888] text-center mb-12 max-w-2xl mx-auto">
             The flexibility of CLI agents. The visibility of your editor. No tradeoffs.
           </p>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="rounded-2xl border border-[#1a1a1a] bg-gradient-to-br from-[#0b1116] via-[#0b0f14] to-[#0a0a0a] p-1 overflow-x-auto">
+            <table className="w-full text-sm border-separate border-spacing-0 rounded-xl overflow-hidden">
               <thead>
-                <tr className="border-b border-[#1a1a1a]">
-                  <th className="text-left py-4 px-4 text-[#888] font-medium"></th>
-                  <th className="text-left py-4 px-4 text-[#888] font-medium">CLI Agents</th>
-                  <th className="text-left py-4 px-4 text-[#888] font-medium">IDE-native Agents</th>
-                  <th className="text-left py-4 px-4 font-medium text-white">Swarmify</th>
+                <tr className="bg-[#0f141a]">
+                  <th className="text-left py-4 px-4 text-[11px] uppercase tracking-wider text-[#9bb0bf] font-semibold"></th>
+                  <th className="text-left py-4 px-4 text-[11px] uppercase tracking-wider text-[#9bb0bf] font-semibold">CLI Agents</th>
+                  <th className="text-left py-4 px-4 text-[11px] uppercase tracking-wider text-[#9bb0bf] font-semibold">IDE-native Agents</th>
+                  <th className="text-left py-4 px-4 text-[11px] uppercase tracking-wider text-[#cfe6f1] font-semibold bg-gradient-to-r from-[#13202b] to-[#0f1a22]">Swarmify</th>
                 </tr>
               </thead>
               <tbody className="text-[#ccc]">
-                <tr className="border-b border-[#1a1a1a]">
-                  <td className="py-4 px-4 text-[#888]">Strength</td>
+                <tr className="border-b border-[#1a1a1a] hover:bg-[#0f141a]/60 transition-colors">
+                  <td className="py-4 px-4 text-[#cbd5e1]">
+                    <span className="inline-flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full bg-[#60a5fa]" />
+                      Strength
+                    </span>
+                  </td>
                   <td className="py-4 px-4">Powerful, flexible, scriptable</td>
                   <td className="py-4 px-4">Visual, integrated</td>
-                  <td className="py-4 px-4 text-white">Both</td>
+                  <td className="py-4 px-4 text-white bg-[#0f1a22]">Both</td>
                 </tr>
-                <tr className="border-b border-[#1a1a1a]">
-                  <td className="py-4 px-4 text-[#888]">At scale</td>
+                <tr className="border-b border-[#1a1a1a] hover:bg-[#0f141a]/60 transition-colors">
+                  <td className="py-4 px-4 text-[#cbd5e1]">
+                    <span className="inline-flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full bg-[#fbbf24]" />
+                      At scale
+                    </span>
+                  </td>
                   <td className="py-4 px-4">tmux panes, mental overhead</td>
                   <td className="py-4 px-4">Often single-agent per window</td>
-                  <td className="py-4 px-4 text-white">Multiple agents as editor tabs</td>
+                  <td className="py-4 px-4 text-white bg-[#0f1a22]">Multiple agents as editor tabs</td>
                 </tr>
-                <tr className="border-b border-[#1a1a1a]">
-                  <td className="py-4 px-4 text-[#888]">Labeling</td>
+                <tr className="border-b border-[#1a1a1a] hover:bg-[#0f141a]/60 transition-colors">
+                  <td className="py-4 px-4 text-[#cbd5e1]">
+                    <span className="inline-flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full bg-[#22c55e]" />
+                      Labeling
+                    </span>
+                  </td>
                   <td className="py-4 px-4">Escape sequences, fragile</td>
                   <td className="py-4 px-4">Varies by tool</td>
-                  <td className="py-4 px-4 text-white">Name agents by task</td>
+                  <td className="py-4 px-4 text-white bg-[#0f1a22]">Name agents by task</td>
                 </tr>
-                <tr className="border-b border-[#1a1a1a]">
-                  <td className="py-4 px-4 text-[#888]">Markdown output</td>
+                <tr className="border-b border-[#1a1a1a] hover:bg-[#0f141a]/60 transition-colors">
+                  <td className="py-4 px-4 text-[#cbd5e1]">
+                    <span className="inline-flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full bg-[#a78bfa]" />
+                      Markdown output
+                    </span>
+                  </td>
                   <td className="py-4 px-4">Raw tags in terminal</td>
                   <td className="py-4 px-4">Varies by tool</td>
-                  <td className="py-4 px-4 text-white">Rendered like Notion</td>
+                  <td className="py-4 px-4 text-white bg-[#0f1a22]">Rendered like Notion</td>
                 </tr>
-                <tr>
-                  <td className="py-4 px-4 text-[#888]">Diff review</td>
+                <tr className="hover:bg-[#0f141a]/60 transition-colors">
+                  <td className="py-4 px-4 text-[#cbd5e1]">
+                    <span className="inline-flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full bg-[#f97316]" />
+                      Diff review
+                    </span>
+                  </td>
                   <td className="py-4 px-4">Scrolling stdout</td>
                   <td className="py-4 px-4">Native diff panels</td>
-                  <td className="py-4 px-4 text-white">Native diffs as agents work</td>
+                  <td className="py-4 px-4 text-white bg-[#0f1a22]">Native diffs as agents work</td>
                 </tr>
               </tbody>
             </table>

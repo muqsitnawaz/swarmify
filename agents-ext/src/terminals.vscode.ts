@@ -180,6 +180,16 @@ export function flushQueue(terminal: vscode.Terminal): string[] {
   return [];
 }
 
+// Rename a terminal tab title (must be active)
+export async function renameTerminal(terminal: vscode.Terminal, newName: string): Promise<void> {
+  try {
+    terminal.show(false);
+    await vscode.commands.executeCommand('workbench.action.terminal.renameWithArg', newName);
+  } catch (err) {
+    console.error('[TERMINALS] Failed to rename terminal', err);
+  }
+}
+
 // Lifecycle
 
 export async function scanExisting(

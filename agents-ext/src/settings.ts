@@ -42,7 +42,19 @@ export interface AgentSettings {
   custom: CustomAgentConfig[];
   swarmEnabledAgents: SwarmAgentType[];
   prompts: PromptEntry[];
+  display: DisplayPreferences;
 }
+
+// Display preferences for terminal titles and labels
+export interface DisplayPreferences {
+  showFullAgentNames: boolean;
+  showLabelsInTitles: boolean;
+}
+
+export const DEFAULT_DISPLAY_PREFERENCES: DisplayPreferences = {
+  showFullAgentNames: true,
+  showLabelsInTitles: true
+};
 
 // Default settings (pure function)
 export function getDefaultSettings(): AgentSettings {
@@ -57,7 +69,8 @@ export function getDefaultSettings(): AgentSettings {
     },
     custom: [],
     swarmEnabledAgents: [...ALL_SWARM_AGENTS],
-    prompts: []
+    prompts: [],
+    display: { ...DEFAULT_DISPLAY_PREFERENCES }
   };
 }
 

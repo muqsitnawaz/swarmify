@@ -16,6 +16,7 @@ describe('getDefaultSettings', () => {
     expect(settings.builtIn.opencode).toBeDefined();
     expect(settings.builtIn.cursor).toBeDefined();
     expect(settings.custom).toEqual([]);
+    expect(settings.display).toBeDefined();
   });
 
   test('all built-in agents have login disabled by default', () => {
@@ -26,6 +27,12 @@ describe('getDefaultSettings', () => {
     expect(settings.builtIn.gemini.login).toBe(false);
     expect(settings.builtIn.opencode.login).toBe(false);
     expect(settings.builtIn.cursor.login).toBe(false);
+  });
+
+  test('display preferences defaults', () => {
+    const settings = getDefaultSettings();
+    expect(settings.display.showFullAgentNames).toBe(true);
+    expect(settings.display.showLabelsInTitles).toBe(true);
   });
 
   test('all built-in agents have 2 instances by default', () => {

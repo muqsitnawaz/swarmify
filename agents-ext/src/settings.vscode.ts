@@ -5,10 +5,11 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { homedir } from 'os';
-import { AgentSettings, getDefaultSettings, CustomAgentConfig, SwarmAgentType, ALL_SWARM_AGENTS, PromptEntry } from './settings';
+import { AgentSettings, getDefaultSettings, CustomAgentConfig, SwarmAgentType, ALL_SWARM_AGENTS, PromptEntry, DEFAULT_DISPLAY_PREFERENCES } from './settings';
 import { readPromptsFromPath, writePromptsToPath, DEFAULT_PROMPTS } from './prompts';
 import * as terminals from './terminals.vscode';
 import * as swarm from './swarm.vscode';
+import { formatTerminalTitle, parseTerminalName } from './utils';
 
 // Module state
 let settingsPanel: vscode.WebviewPanel | undefined;
@@ -61,6 +62,20 @@ export function getSettings(context: vscode.ExtensionContext): AgentSettings {
       stored.builtIn.opencode = { login: false, instances: 2 };
       context.globalState.update('agentSettings', stored);
     }
+    // Migrate: add display preferences
+    if (!stored.display) {
+      stored.display = { ...DEFAULT_DISPLAY_PREFERENCES };
+      context.globalState.update('agentSettings', stored);
+    } else {
+      // Backfill any missing keys
+      if (stored.display.showFullAgentNames === undefined) {
+        stored.display.showFullAgentNames = DEFAULT_DISPLAY_PREFERENCES.showFullAgentNames;
+      }
+      if (stored.display.showLabelsInTitles === undefined) {
+        stored.display.showLabelsInTitles = DEFAULT_DISPLAY_PREFERENCES.showLabelsInTitles;
+      }
+      context.globalState.update('agentSettings', stored);
+    }
     // Migrate: load prompts from file (persists across uninstall)
     if (!stored.prompts || stored.prompts.length === 0) {
       stored.prompts = readPrompts();
@@ -92,7 +107,8 @@ export function getSettings(context: vscode.ExtensionContext): AgentSettings {
         instances: a.count
       })),
       swarmEnabledAgents: [...ALL_SWARM_AGENTS],
-      prompts: readPrompts()
+      prompts: readPrompts(),
+      display: { ...DEFAULT_DISPLAY_PREFERENCES }
     };
     context.globalState.update('agentSettings', migrated);
     return migrated;
@@ -159,7 +175,10 @@ export function openPanel(context: vscode.ExtensionContext): void {
         updateWebview();
         break;
       case 'saveSettings':
+        // Compare display prefs to decide if we need to retitle open terminals
+        const previous = getSettings(context);
         await saveSettings(context, message.settings);
+        maybeUpdateTerminalTitles(previous, message.settings);
         break;
       case 'enableSwarm':
         await swarm.enableSwarm(context);
@@ -242,6 +261,28 @@ function openGuide(context: vscode.ExtensionContext, guide: string): void {
       });
     }
   );
+}
+
+// Update titles of existing agent terminals when display preferences change
+function maybeUpdateTerminalTitles(oldSettings: AgentSettings, newSettings: AgentSettings): void {
+  const oldDisplay = oldSettings.display ?? DEFAULT_DISPLAY_PREFERENCES;
+  const newDisplay = newSettings.display ?? DEFAULT_DISPLAY_PREFERENCES;
+
+  const changed =
+    oldDisplay.showFullAgentNames !== newDisplay.showFullAgentNames ||
+    oldDisplay.showLabelsInTitles !== newDisplay.showLabelsInTitles;
+
+  if (!changed) return;
+
+  for (const entry of terminals.getAllTerminals()) {
+    // Skip if we don't have an agent config
+    const prefix = entry.agentConfig?.title || parseTerminalName(entry.terminal.name).prefix;
+    if (!prefix) continue;
+
+    const label = newDisplay.showLabelsInTitles ? (entry.label || entry.autoLabel) : null;
+    const newTitle = formatTerminalTitle(prefix, { label, display: newDisplay });
+    terminals.renameTerminal(entry.terminal, newTitle);
+  }
 }
 
 // Generate webview HTML content

@@ -21,7 +21,8 @@ import {
   getExpandedAgentName,
   getTerminalDisplayInfo,
   parseTerminalName,
-  sanitizeLabel
+  sanitizeLabel,
+  formatTerminalTitle
 } from './utils';
 import {
   createTmuxTerminal,
@@ -31,6 +32,7 @@ import {
   tmuxSplitH,
   tmuxSplitV
 } from './tmux';
+import { DEFAULT_DISPLAY_PREFERENCES } from './settings';
 
 // Settings types are now imported from ./settings
 // Settings functions are in ./settings.vscode
@@ -55,6 +57,15 @@ function generateId(): string {
 function truncateText(text: string, maxLen: number): string {
   if (text.length <= maxLen) return text;
   return text.substring(0, maxLen - 3) + '...';
+}
+
+function getDisplayPrefs(context: vscode.ExtensionContext) {
+  return settings.getSettings(context).display || DEFAULT_DISPLAY_PREFERENCES;
+}
+
+function buildTerminalTitle(prefix: string, label: string | undefined | null, context: vscode.ExtensionContext): string {
+  const display = getDisplayPrefs(context);
+  return formatTerminalTitle(prefix, { label: label || undefined, display });
 }
 
 interface PromptQuickPickItem extends vscode.QuickPickItem {
@@ -611,11 +622,12 @@ async function openSingleAgent(context: vscode.ExtensionContext, agentConfig: Om
   const enableTmux = config.get<boolean>('enableTmux', false);
 
   if (enableTmux) {
+    const title = buildTerminalTitle(agentConfig.title, undefined, context);
     const terminalId = terminals.nextId(agentConfig.prefix);
     const builtInDef = getBuiltInDefByTitle(agentConfig.title);
     const agentType = builtInDef?.key ?? agentConfig.title;
     const terminal = createTmuxTerminal(
-      agentConfig.title,
+      title,
       agentType,
       agentConfig.command || '',
       {
@@ -642,10 +654,11 @@ async function openSingleAgent(context: vscode.ExtensionContext, agentConfig: Om
 
   // Generate ID first for env var
   const terminalId = terminals.nextId(agentConfig.prefix);
+  const title = buildTerminalTitle(agentConfig.title, undefined, context);
   const terminal = vscode.window.createTerminal({
     iconPath: agentConfig.iconPath,
     location: editorLocation,
-    name: agentConfig.title,
+    name: title,
     env: {
       AGENT_TERMINAL_ID: terminalId,
       DISABLE_AUTO_TITLE: 'true',
@@ -741,10 +754,11 @@ async function openSingleAgentWithQueue(
   };
 
   const terminalId = terminals.nextId(agentConfig.prefix);
+  const title = buildTerminalTitle(agentConfig.title, undefined, context);
   const terminal = vscode.window.createTerminal({
     iconPath: agentConfig.iconPath,
     location: editorLocation,
-    name: agentConfig.title,
+    name: title,
     env: {
       AGENT_TERMINAL_ID: terminalId,
       DISABLE_AUTO_TITLE: 'true',
@@ -793,10 +807,11 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
     for (let i = 0; i < agent.count; i++) {
       // Generate ID first for env var
       const terminalId = terminals.nextId(agent.prefix);
+      const title = buildTerminalTitle(agent.title, undefined, context);
       const terminal = vscode.window.createTerminal({
         iconPath: agent.iconPath,
         location: editorLocation,
-        name: agent.title,
+        name: title,
         env: {
           AGENT_TERMINAL_ID: terminalId,
           DISABLE_AUTO_TITLE: 'true',
@@ -881,6 +896,13 @@ function setStatusBarLabelForActiveTerminal(context: vscode.ExtensionContext) {
 
     // Update status bar only (don't rename terminal tab)
     updateStatusBarForTerminal(terminal, context.extensionPath);
+
+    // Optionally update tab title when labels are shown in titles
+    const display = getDisplayPrefs(context);
+    if (display.showLabelsInTitles && info.prefix) {
+      const newTitle = buildTerminalTitle(info.prefix, cleaned || undefined, context);
+      await terminals.renameTerminal(terminal, newTitle);
+    }
   });
 }
 
@@ -923,6 +945,13 @@ async function clearActiveTerminal(context: vscode.ExtensionContext) {
 
       // Update status bar to reflect cleared label
       updateStatusBarForTerminal(terminal, context.extensionPath);
+
+      // If labels were shown in titles, reset the tab title to base
+      const display = getDisplayPrefs(context);
+      if (display.showLabelsInTitles && agentConfig.title) {
+        const baseTitle = buildTerminalTitle(agentConfig.title, null, context);
+        await terminals.renameTerminal(terminal, baseTitle);
+      }
 
       const entry = terminals.getByTerminal(terminal);
       const agentNum = entry?.id ? entry.id.split('-').pop() : '';

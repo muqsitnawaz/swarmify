@@ -10,6 +10,39 @@ export const LABEL_MAX_WORDS = 5;
 
 export const KNOWN_PREFIXES = [CLAUDE_TITLE, CODEX_TITLE, GEMINI_TITLE, OPENCODE_TITLE, CURSOR_TITLE, SHELL_TITLE];
 
+// Mapping of acceptable terminal base names to canonical prefixes
+const NAME_TO_PREFIX: Record<string, string> = {
+  [CLAUDE_TITLE]: CLAUDE_TITLE,
+  'CLAUDE': CLAUDE_TITLE,
+  'Claude': CLAUDE_TITLE,
+  'claude': CLAUDE_TITLE,
+  [CODEX_TITLE]: CODEX_TITLE,
+  'CODEX': CODEX_TITLE,
+  'Codex': CODEX_TITLE,
+  'codex': CODEX_TITLE,
+  [GEMINI_TITLE]: GEMINI_TITLE,
+  'GEMINI': GEMINI_TITLE,
+  'Gemini': GEMINI_TITLE,
+  'gemini': GEMINI_TITLE,
+  [OPENCODE_TITLE]: OPENCODE_TITLE,
+  'OPENCODE': OPENCODE_TITLE,
+  'OpenCode': OPENCODE_TITLE,
+  'opencode': OPENCODE_TITLE,
+  [CURSOR_TITLE]: CURSOR_TITLE,
+  'CURSOR': CURSOR_TITLE,
+  'Cursor': CURSOR_TITLE,
+  'cursor': CURSOR_TITLE,
+  [SHELL_TITLE]: SHELL_TITLE,
+  'SHELL': SHELL_TITLE,
+  'Shell': SHELL_TITLE,
+  'shell': SHELL_TITLE
+};
+
+export interface DisplayPreferences {
+  showFullAgentNames: boolean;
+  showLabelsInTitles: boolean;
+}
+
 export interface ParsedTerminalName {
   isAgent: boolean;
   prefix: string | null;
@@ -23,15 +56,18 @@ export interface ParsedTerminalName {
 export function parseTerminalName(name: string): ParsedTerminalName {
   const trimmed = name.trim();
 
-  for (const prefix of KNOWN_PREFIXES) {
-    // Exact match: "CC"
-    if (trimmed === prefix) {
-      return { isAgent: true, prefix, label: null };
+  // Support both short codes (CC) and full names (Claude)
+  for (const [candidate, canonicalPrefix] of Object.entries(NAME_TO_PREFIX)) {
+    // Exact match
+    if (trimmed === candidate) {
+      return { isAgent: true, prefix: canonicalPrefix, label: null };
     }
-    // Match with label: "CC - some label"
-    if (trimmed.startsWith(`${prefix} - `)) {
-      const label = trimmed.substring(prefix.length + 3).trim();
-      return { isAgent: true, prefix, label: label || null };
+    // Match with label
+    if (trimmed.startsWith(`${candidate} - `)) {
+      const label = trimmed.substring(candidate.length + 3).trim();
+      if (label) {
+        return { isAgent: true, prefix: canonicalPrefix, label };
+      }
     }
   }
 
@@ -69,7 +105,14 @@ export function getExpandedAgentName(prefix: string): string {
     'gm': 'Gemini',
     'oc': 'OpenCode',
     'cr': 'Cursor',
-    'sh': 'Shell'
+    'sh': 'Shell',
+    // Allow already-expanded names to pass through
+    'claude': 'Claude',
+    'codex': 'Codex',
+    'gemini': 'Gemini',
+    'opencode': 'OpenCode',
+    'cursor': 'Cursor',
+    'shell': 'Shell'
   };
   return expandedNames[prefix] || prefix;
 }
@@ -87,6 +130,27 @@ export function getIconFilename(prefix: string): string | null {
     [SHELL_TITLE]: 'agents.png'
   };
   return iconMap[prefix] || null;
+}
+
+export interface TerminalTitleOptions {
+  display?: DisplayPreferences;
+  label?: string | null;
+}
+
+/**
+ * Build the terminal tab title based on display preferences.
+ * Canonical prefix should be one of the KNOWN_PREFIXES.
+ */
+export function formatTerminalTitle(prefix: string, options?: TerminalTitleOptions): string {
+  const display = options?.display;
+  const base = display?.showFullAgentNames ? getExpandedAgentName(prefix) : prefix;
+
+  const label = options?.label?.trim();
+  if (!display?.showLabelsInTitles || !label) {
+    return base;
+  }
+
+  return `${base} - ${label}`;
 }
 
 export interface TerminalDisplayInfo {
