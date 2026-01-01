@@ -4,7 +4,16 @@ import { useState } from "react";
 
 type AgentType = "claude" | "codex" | "gemini" | "cursor";
 
+const agents: { id: AgentType; name: string; logo: string }[] = [
+  { id: "claude", name: "Claude", logo: "/claude.png" },
+  { id: "codex", name: "Codex", logo: "/codex.png" },
+  { id: "gemini", name: "Gemini", logo: "/gemini.png" },
+  { id: "cursor", name: "Cursor", logo: "/cursor.png" },
+];
+
 export default function Home() {
+  const [activeAgent, setActiveAgent] = useState<AgentType>("claude");
+
   return (
     <main className="min-h-screen">
       {/* Hero */}
@@ -25,19 +34,29 @@ export default function Home() {
             <span className="text-[#888]">inside your IDE</span>
           </h1>
           <p className="text-xl text-[#888] max-w-xl mb-10">
-            Run Claude, Codex, Gemini, and Cursor as editor tabs. See diffs,
-            previews, and files in the same window—no terminal juggling.
+            Watch agents work while you code, review diffs, or preview changes.
+            Cycle through multiple agents and quickly review their work.
           </p>
         </div>
 
-        {/* Agents supported */}
+        {/* Agents supported - clickable */}
         <div className="animate-fade-in-delay-1 flex items-center gap-4 mb-8">
           <span className="text-[#666] text-sm">Agents</span>
           <div className="flex items-center gap-2">
-            <img src="/claude.png" alt="Claude" width={28} height={28} className="rounded" title="Claude" />
-            <img src="/codex.png" alt="Codex" width={28} height={28} className="rounded" title="Codex" />
-            <img src="/gemini.png" alt="Gemini" width={28} height={28} className="rounded" title="Gemini" />
-            <img src="/cursor.png" alt="Cursor" width={28} height={28} className="rounded" title="Cursor" />
+            {agents.map((agent) => (
+              <button
+                key={agent.id}
+                onClick={() => setActiveAgent(agent.id)}
+                className={`rounded transition-all ${
+                  activeAgent === agent.id
+                    ? "ring-2 ring-white ring-offset-2 ring-offset-black"
+                    : "opacity-60 hover:opacity-100"
+                }`}
+                title={agent.name}
+              >
+                <img src={agent.logo} alt={agent.name} width={28} height={28} className="rounded" />
+              </button>
+            ))}
           </div>
         </div>
 
@@ -58,7 +77,7 @@ export default function Home() {
 
         {/* Editor mockup */}
         <div className="animate-fade-in-delay-2 glow rounded-xl overflow-hidden border border-[#222]">
-          <EditorMockup />
+          <EditorMockup activeAgent={activeAgent} setActiveAgent={setActiveAgent} />
         </div>
       </section>
 
@@ -332,16 +351,13 @@ function Shortcut({ keys, action }: { keys: string; action: string }) {
   );
 }
 
-function EditorMockup() {
-  const [activeAgent, setActiveAgent] = useState<AgentType>("claude");
-
-  const agents: { id: AgentType; name: string; logo: string }[] = [
-    { id: "claude", name: "Claude", logo: "/claude.png" },
-    { id: "codex", name: "Codex", logo: "/codex.png" },
-    { id: "gemini", name: "Gemini", logo: "/gemini.png" },
-    { id: "cursor", name: "Cursor", logo: "/cursor.png" },
-  ];
-
+function EditorMockup({
+  activeAgent,
+  setActiveAgent
+}: {
+  activeAgent: AgentType;
+  setActiveAgent: (agent: AgentType) => void;
+}) {
   return (
     <div className="bg-[#0d0d0d]">
       {/* Title bar */}
