@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+:root {
+  /* Dark mode palette with coral accent from logo */
+  --background: #000000;
+  --foreground: #f5f5f7;
+  --muted: #1c1c1e;
+  --muted-foreground: #86868b;
+  --border: #38383a;
+  --input: #1c1c1e;
+  --ring: #e85d5d;
+  --primary: #e85d5d;
+  --primary-foreground: #ffffff;
+  --secondary: #2c2c2e;
+  --secondary-foreground: #f5f5f7;
+  --accent: #2c2c2e;
+  --accent-foreground: #f5f5f7;
+  --card: #1c1c1e;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+  margin: 0;
+  padding: 32px 24px;
+  -webkit-font-smoothing: antialiased;
+  display: flex;
+  justify-content: center;
+}
+
+#root {
+  width: 100%;
+  max-width: 640px;
+}
+
+/* Refined input styling */
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}

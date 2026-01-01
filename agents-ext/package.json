@@ -1,0 +1,295 @@
+{
+  "name": "swarm-ext",
+  "displayName": "Agents",
+  "publisher": "swarmify",
+  "description": "Manage multiple Claude Code, Codex, Gemini, and Cursor terminal agents in the editor",
+  "version": "0.9.77",
+  "license": "MIT",
+  "author": "Muqsit Nawaz <dev@muqsitnawaz.com>",
+  "icon": "assets/agents.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/muqsitnawaz/swarmify"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onLanguage:markdown",
+    "onCustomEditor:agents.markdownEditor"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "agents.markdownEditor",
+        "displayName": "Agents Markdown Editor",
+        "selector": [
+          {
+            "filenamePattern": "*.md"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
+    "configurationDefaults": {
+      "terminal.integrated.confirmOnKill": "panel"
+    },
+    "commands": [
+      {
+        "command": "agents.open",
+        "title": "Run Agents",
+        "icon": {
+          "light": "assets/agents.png",
+          "dark": "assets/agents.png"
+        }
+      },
+      {
+        "command": "agents.configure",
+        "title": "Agents: Settings"
+      },
+      {
+        "command": "agents.newAgent",
+        "title": "Agents: New"
+      },
+      {
+        "command": "agents.newClaude",
+        "title": "Agents: New Claude",
+        "icon": {
+          "light": "assets/claude.png",
+          "dark": "assets/claude.png"
+        }
+      },
+      {
+        "command": "agents.newCodex",
+        "title": "Agents: New Codex",
+        "icon": {
+          "light": "assets/chatgpt.png",
+          "dark": "assets/chatgpt.png"
+        }
+      },
+      {
+        "command": "agents.newGemini",
+        "title": "Agents: New Gemini",
+        "icon": {
+          "light": "assets/gemini.png",
+          "dark": "assets/gemini.png"
+        }
+      },
+      {
+        "command": "agents.newOpenCode",
+        "title": "Agents: New OpenCode",
+        "icon": {
+          "light": "assets/opencode.png",
+          "dark": "assets/opencode.png"
+        }
+      },
+      {
+        "command": "agents.newCursor",
+        "title": "Agents: New Cursor",
+        "icon": {
+          "light": "assets/cursor.png",
+          "dark": "assets/cursor.png"
+        }
+      },
+      {
+        "command": "agents.setTitle",
+        "title": "Agents: Label"
+      },
+      {
+        "command": "agents.clear",
+        "title": "Agents: Clear"
+      },
+      {
+        "command": "agents.autogit",
+        "title": "Agents: Autogit",
+        "icon": {
+          "light": "assets/agents.png",
+          "dark": "assets/agents.png"
+        }
+      },
+      {
+        "command": "agents.enableSwarm",
+        "title": "Agents: Enable Swarm"
+      },
+      {
+        "command": "agents.enableNotifications",
+        "title": "Agents: Enable Notifications"
+      },
+      {
+        "command": "agents.enableTmux",
+        "title": "Agents: Enable Tmux"
+      },
+      {
+        "command": "agents.newTask",
+        "title": "Agents: New Task"
+      },
+      {
+        "command": "agents.newShell",
+        "title": "Agents: New Shell",
+        "icon": {
+          "light": "assets/agents.png",
+          "dark": "assets/agents.png"
+        }
+      },
+      {
+        "command": "agents.openAgent",
+        "title": "Agents: Open"
+      },
+      {
+        "command": "agents.enableView",
+        "title": "Agents: Enable View"
+      },
+      {
+        "command": "agents.newAgentHSplit",
+        "title": "Agents: New Split (Below)"
+      },
+      {
+        "command": "agents.newAgentVSplit",
+        "title": "Agents: New Split (Side)"
+      },
+      {
+        "command": "agents.prompts",
+        "title": "Agents: Prompts"
+      }
+    ],
+    "configuration": {
+      "title": "Agents: Autogit",
+      "properties": {
+        "agents.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Your OpenAI API key"
+        },
+        "agents.commitMessageExamples": {
+          "type": "array",
+          "default": [
+            "feat: add user authentication with jwt tokens",
+            "fix: resolve null pointer exception in payment handler",
+            "docs: update api reference for v2 endpoints",
+            "build: configure webpack for production optimization",
+            "refactor: extract validation logic into separate module",
+            "fix: correct timezone handling in date formatter",
+            "feat: implement real-time notifications via websockets",
+            "release: bump version to 1.2.0 for stable release",
+            "refactor: simplify error handling in api client",
+            "docs: add examples for configuration options"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "Example commit messages to guide the AI style"
+        },
+        "agents.ignoreFiles": {
+          "type": "string",
+          "default": "node_modules,dist,build,out,.git,*.lock,bun.lock,package-lock.json",
+          "description": "Comma-separated patterns of files to ignore in diffs"
+        },
+        "agents.editor.assetFolder": {
+          "type": "string",
+          "default": ".assets",
+          "description": "Folder for storing images and attachments from the markdown editor"
+        },
+        "agents.enableTmux": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable tmux for per-tab splits in agent terminals. When enabled, Cmd+Shift+H/V create tmux panes instead of VS Code editor splits."
+        }
+      }
+    },
+    "menus": {
+      "editor/title": [
+        {
+          "command": "agents.open",
+          "group": "navigation",
+          "when": "true"
+        }
+      ],
+      "scm/title": [
+        {
+          "command": "agents.autogit",
+          "group": "navigation",
+          "when": "scmProvider == git"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "agents.newGemini",
+          "when": "true",
+          "group": "navigation@2"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "agents.autogit",
+        "key": "ctrl+shift+g",
+        "mac": "cmd+shift+g"
+      },
+      {
+        "command": "agents.newAgent",
+        "key": "ctrl+shift+a",
+        "mac": "cmd+shift+a"
+      },
+      {
+        "command": "agents.setTitle",
+        "key": "ctrl+shift+l",
+        "mac": "cmd+shift+l"
+      },
+      {
+        "command": "agents.clear",
+        "key": "ctrl+shift+c",
+        "mac": "cmd+shift+c"
+      },
+      {
+        "command": "agents.newTask",
+        "key": "ctrl+shift+n",
+        "mac": "cmd+shift+n"
+      },
+      {
+        "command": "agents.newShell",
+        "key": "ctrl+shift+s",
+        "mac": "cmd+shift+s"
+      },
+      {
+        "command": "agents.openAgent",
+        "key": "ctrl+shift+i",
+        "mac": "cmd+shift+i"
+      },
+      {
+        "command": "agents.newAgentHSplit",
+        "key": "ctrl+shift+h",
+        "mac": "cmd+shift+h"
+      },
+      {
+        "command": "agents.newAgentVSplit",
+        "key": "ctrl+shift+v",
+        "mac": "cmd+shift+v"
+      },
+      {
+        "command": "agents.prompts",
+        "key": "ctrl+shift+'",
+        "mac": "cmd+shift+'"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./ && cd ui && bun run build",
+    "compile:ext": "tsc -p ./",
+    "compile:ui": "cd ui && bun run build",
+    "watch": "tsc -watch -p ./",
+    "package": "bun run compile && vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.x",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "@vscode/webview-ui-toolkit": "^1.4.0"
+  }
+}

@@ -1,10 +1,10 @@
-## Swarm MCP Server
+## Agents MCP Server
 
 ### Building
 
-After making changes to `swarm/`, rebuild and restart Claude Code:
+After making changes to `agents-mcp/`, rebuild and restart Claude Code:
 ```bash
-./swarm/scripts/build.sh
+./agents-mcp/scripts/build.sh
 ```
 
 ### API
@@ -117,7 +117,7 @@ Note the ` - ` separator between agent name and label.
 
 Agent terminals are identified by exact prefix match (CC, CX, etc.) or the pattern "PREFIX - label". Loose matching (checking if name contains "claude") is avoided to prevent false positives. This ensures commands like Reload only affect actual agent terminals.
 
-### Shared Utilities (`ext/src/utils.ts`)
+### Shared Utilities (`agents-ext/src/utils.ts`)
 
 All pure logic lives in `utils.ts` for consistent behavior across commands:
 
@@ -125,4 +125,4 @@ All pure logic lives in `utils.ts` for consistent behavior across commands:
 - **Consistency** - Single source of truth for parsing, validation, and mapping
 - **Maintainability** - Changes propagate to all commands automatically
 
-VS Code API interactions stay in `extension.ts`. Run `bun test` in `ext/` to verify behavior.
+VS Code API interactions stay in `extension.ts`. Run `bun test` in `agents-ext/` to verify behavior.

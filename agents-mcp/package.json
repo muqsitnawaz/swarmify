@@ -1,0 +1,49 @@
+{
+  "name": "@swarmify/agents-mcp",
+  "version": "0.2.0",
+  "description": "True multi-agent coding in your IDE. Spawn Claude, Codex, Gemini, and Cursor agents from a single MCP server.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "agents-mcp": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/muqsitnawaz/swarmify.git"
+  },
+  "homepage": "https://swarmify.co",
+  "bugs": {
+    "url": "https://github.com/muqsitnawaz/swarmify/issues"
+  },
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "tsc",
+    "start": "node dist/index.js",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.x",
+    "typescript": "^5.3.0"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "ai-agents",
+    "multi-agent",
+    "claude-code",
+    "codex",
+    "gemini-cli",
+    "cursor",
+    "orchestration",
+    "swarm"
+  ],
+  "author": "Swarmify <dev@swarmify.co>",
+  "license": "MIT"
+}
