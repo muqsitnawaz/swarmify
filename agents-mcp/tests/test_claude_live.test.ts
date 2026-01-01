@@ -18,7 +18,8 @@ async function pollUntilComplete(
   pollIntervalMs: number
 ): Promise<AgentStatusDetail> {
   for (let i = 0; i < maxIterations; i++) {
-    const result = await handleStatus(manager, taskName);
+    // Use 'all' filter to see completed agents, not just running
+    const result = await handleStatus(manager, taskName, 'all');
     const agent = result.agents.find(a => a.agent_id === agentId);
     if (!agent) {
       throw new Error(`Agent ${agentId} not found in task ${taskName}`);
@@ -31,7 +32,7 @@ async function pollUntilComplete(
     await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
   }
 
-  const finalResult = await handleStatus(manager, taskName);
+  const finalResult = await handleStatus(manager, taskName, 'all');
   const agent = finalResult.agents.find(a => a.agent_id === agentId);
   if (!agent) {
     throw new Error(`Agent ${agentId} not found in task ${taskName}`);
