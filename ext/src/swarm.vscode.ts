@@ -12,7 +12,8 @@ const execAsync = promisify(exec);
 // Agent swarm data directory
 const AGENT_SWARM_DIR = path.join(os.homedir(), '.agent-swarm', 'agents');
 
-const SWARM_PACKAGE = 'swarm-mcp';
+const SWARM_PACKAGE = '@swarmify/agents-mcp';
+const SWARM_BINARY = 'agents-mcp';
 
 // Check if Swarm MCP server is configured
 export async function isSwarmEnabled(): Promise<boolean> {
@@ -50,12 +51,12 @@ async function findSwarmBinary(): Promise<string | null> {
   // Check common global install locations
   const candidates = [
     // Bun global
-    path.join(home, '.bun', 'bin', 'swarm-mcp'),
+    path.join(home, '.bun', 'bin', SWARM_BINARY),
     // npm/yarn global (macOS/Linux)
-    path.join(home, '.npm-global', 'bin', 'swarm-mcp'),
-    '/usr/local/bin/swarm-mcp',
+    path.join(home, '.npm-global', 'bin', SWARM_BINARY),
+    `/usr/local/bin/${SWARM_BINARY}`,
     // npm global (Windows)
-    path.join(process.env.APPDATA || '', 'npm', 'swarm-mcp.cmd'),
+    path.join(process.env.APPDATA || '', 'npm', `${SWARM_BINARY}.cmd`),
   ];
 
   for (const candidate of candidates) {
@@ -67,7 +68,7 @@ async function findSwarmBinary(): Promise<string | null> {
   // Try which/where command
   try {
     const cmd = process.platform === 'win32' ? 'where' : 'which';
-    const { stdout } = await execAsync(`${cmd} swarm-mcp`);
+    const { stdout } = await execAsync(`${cmd} ${SWARM_BINARY}`);
     const found = stdout.trim().split('\n')[0];
     if (found && fs.existsSync(found)) {
       return found;
@@ -176,7 +177,7 @@ export async function enableSwarm(context: vscode.ExtensionContext): Promise<voi
     binaryPath = await findSwarmBinary();
     if (!binaryPath) {
       vscode.window.showErrorMessage(
-        `Installed ${SWARM_PACKAGE} but could not find binary. Try: claude mcp add Swarm npx ${SWARM_PACKAGE}`
+        `Installed ${SWARM_PACKAGE} but could not find binary. Try: claude mcp add Swarm npx -y ${SWARM_PACKAGE}`
       );
       return;
     }

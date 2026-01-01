@@ -2,7 +2,6 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import * as YAML from 'yaml';
 import { PromptEntry } from './settings';
 
 // Built-in default prompts
@@ -28,7 +27,7 @@ export const DEFAULT_PROMPTS: PromptEntry[] = [
 ];
 
 /**
- * Read prompts from a YAML file.
+ * Read prompts from a JSON file.
  * Returns default prompts if file doesn't exist, is empty, or is corrupted.
  * Automatically migrates old prompts missing accessedAt field.
  */
@@ -36,7 +35,7 @@ export function readPromptsFromPath(filePath: string): { prompts: PromptEntry[];
   try {
     if (fs.existsSync(filePath)) {
       const data = fs.readFileSync(filePath, 'utf-8');
-      const parsed = YAML.parse(data);
+      const parsed = JSON.parse(data);
 
       if (Array.isArray(parsed) && parsed.length > 0) {
         // Migrate: add accessedAt if missing
@@ -48,7 +47,7 @@ export function readPromptsFromPath(filePath: string): { prompts: PromptEntry[];
       }
     }
   } catch (err) {
-    // File corrupted or invalid YAML - fall through to defaults
+    // File corrupted or invalid JSON - fall through to defaults
     console.error('Failed to read prompts:', err);
   }
 
@@ -56,7 +55,7 @@ export function readPromptsFromPath(filePath: string): { prompts: PromptEntry[];
 }
 
 /**
- * Write prompts to a YAML file.
+ * Write prompts to a JSON file.
  * Creates parent directories if they don't exist.
  * Returns true on success, false on failure.
  */
@@ -64,7 +63,7 @@ export function writePromptsToPath(filePath: string, prompts: PromptEntry[]): bo
   try {
     const dir = path.dirname(filePath);
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(filePath, YAML.stringify(prompts));
+    fs.writeFileSync(filePath, JSON.stringify(prompts, null, 2));
     return true;
   } catch (err) {
     console.error('Failed to write prompts:', err);

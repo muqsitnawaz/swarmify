@@ -36,13 +36,13 @@ describe('prompts I/O', () => {
 
   describe('readPromptsFromPath', () => {
     test('returns defaults when file does not exist', () => {
-      const result = readPromptsFromPath(testPath('nonexistent.yaml'));
+      const result = readPromptsFromPath(testPath('nonexistent.json'));
       expect(result.usedDefaults).toBe(true);
       expect(result.prompts).toEqual(DEFAULT_PROMPTS);
     });
 
     test('returns defaults when file is empty', () => {
-      const filePath = testPath('empty.yaml');
+      const filePath = testPath('empty.json');
       fs.writeFileSync(filePath, '');
 
       const result = readPromptsFromPath(filePath);
@@ -51,7 +51,7 @@ describe('prompts I/O', () => {
     });
 
     test('returns defaults when file contains empty array', () => {
-      const filePath = testPath('empty-array.yaml');
+      const filePath = testPath('empty-array.json');
       fs.writeFileSync(filePath, '[]');
 
       const result = readPromptsFromPath(filePath);
@@ -59,18 +59,18 @@ describe('prompts I/O', () => {
       expect(result.prompts).toEqual(DEFAULT_PROMPTS);
     });
 
-    test('returns defaults when file contains invalid YAML', () => {
-      const filePath = testPath('invalid.yaml');
-      fs.writeFileSync(filePath, '{ not valid yaml [[[');
+    test('returns defaults when file contains invalid JSON', () => {
+      const filePath = testPath('invalid.json');
+      fs.writeFileSync(filePath, '{ not valid json [[[');
 
       const result = readPromptsFromPath(filePath);
       expect(result.usedDefaults).toBe(true);
       expect(result.prompts).toEqual(DEFAULT_PROMPTS);
     });
 
-    test('returns defaults when file contains non-array YAML', () => {
-      const filePath = testPath('not-array.yaml');
-      fs.writeFileSync(filePath, 'key: value\nother: data');
+    test('returns defaults when file contains non-array JSON', () => {
+      const filePath = testPath('not-array.json');
+      fs.writeFileSync(filePath, '{"key": "value", "other": "data"}');
 
       const result = readPromptsFromPath(filePath);
       expect(result.usedDefaults).toBe(true);
@@ -78,7 +78,7 @@ describe('prompts I/O', () => {
     });
 
     test('reads valid prompts from file', () => {
-      const filePath = testPath('valid.yaml');
+      const filePath = testPath('valid.json');
       const prompts: PromptEntry[] = [
         {
           id: 'test-1',
@@ -90,14 +90,7 @@ describe('prompts I/O', () => {
           accessedAt: 3000
         }
       ];
-      fs.writeFileSync(filePath, `- id: test-1
-  title: Test Prompt
-  content: Test content
-  isFavorite: false
-  createdAt: 1000
-  updatedAt: 2000
-  accessedAt: 3000
-`);
+      fs.writeFileSync(filePath, JSON.stringify(prompts, null, 2));
 
       const result = readPromptsFromPath(filePath);
       expect(result.usedDefaults).toBe(false);
@@ -105,14 +98,16 @@ describe('prompts I/O', () => {
     });
 
     test('migrates old prompts missing accessedAt field', () => {
-      const filePath = testPath('old-format.yaml');
-      fs.writeFileSync(filePath, `- id: old-prompt
-  title: Old Prompt
-  content: Old content
-  isFavorite: true
-  createdAt: 1000
-  updatedAt: 2000
-`);
+      const filePath = testPath('old-format.json');
+      const oldPrompts = [{
+        id: 'old-prompt',
+        title: 'Old Prompt',
+        content: 'Old content',
+        isFavorite: true,
+        createdAt: 1000,
+        updatedAt: 2000
+      }];
+      fs.writeFileSync(filePath, JSON.stringify(oldPrompts, null, 2));
 
       const result = readPromptsFromPath(filePath);
       expect(result.usedDefaults).toBe(false);
@@ -120,24 +115,29 @@ describe('prompts I/O', () => {
       expect(result.prompts[0].id).toBe('old-prompt');
     });
 
-    test('handles file with mixed valid/invalid entries gracefully', () => {
-      const filePath = testPath('mixed.yaml');
-      // YAML parser will parse this as array of objects
-      fs.writeFileSync(filePath, `- id: valid-1
-  title: Valid
-  content: Content
-  isFavorite: false
-  createdAt: 1000
-  updatedAt: 2000
-  accessedAt: 3000
-- id: valid-2
-  title: Valid 2
-  content: Content 2
-  isFavorite: true
-  createdAt: 1000
-  updatedAt: 2000
-  accessedAt: 4000
-`);
+    test('handles file with multiple entries', () => {
+      const filePath = testPath('multiple.json');
+      const prompts: PromptEntry[] = [
+        {
+          id: 'valid-1',
+          title: 'Valid',
+          content: 'Content',
+          isFavorite: false,
+          createdAt: 1000,
+          updatedAt: 2000,
+          accessedAt: 3000
+        },
+        {
+          id: 'valid-2',
+          title: 'Valid 2',
+          content: 'Content 2',
+          isFavorite: true,
+          createdAt: 1000,
+          updatedAt: 2000,
+          accessedAt: 4000
+        }
+      ];
+      fs.writeFileSync(filePath, JSON.stringify(prompts, null, 2));
 
       const result = readPromptsFromPath(filePath);
       expect(result.usedDefaults).toBe(false);
@@ -147,7 +147,7 @@ describe('prompts I/O', () => {
 
   describe('writePromptsToPath', () => {
     test('creates directory if it does not exist', () => {
-      const filePath = testPath('nested/deep/prompts.yaml');
+      const filePath = testPath('nested/deep/prompts.json');
       const prompts: PromptEntry[] = [{
         id: 'test',
         title: 'Test',
@@ -163,8 +163,8 @@ describe('prompts I/O', () => {
       expect(fs.existsSync(filePath)).toBe(true);
     });
 
-    test('writes valid YAML that can be read back', () => {
-      const filePath = testPath('roundtrip.yaml');
+    test('writes valid JSON that can be read back', () => {
+      const filePath = testPath('roundtrip.json');
       const prompts: PromptEntry[] = [
         {
           id: 'prompt-1',
@@ -194,7 +194,7 @@ describe('prompts I/O', () => {
     });
 
     test('overwrites existing file', () => {
-      const filePath = testPath('overwrite.yaml');
+      const filePath = testPath('overwrite.json');
 
       // Write initial
       writePromptsToPath(filePath, [{
@@ -225,7 +225,7 @@ describe('prompts I/O', () => {
     });
 
     test('writes empty array successfully', () => {
-      const filePath = testPath('empty-write.yaml');
+      const filePath = testPath('empty-write.json');
       const success = writePromptsToPath(filePath, []);
       expect(success).toBe(true);
 
@@ -237,7 +237,7 @@ describe('prompts I/O', () => {
     test('returns false on write failure (invalid path)', () => {
       // Try to write to a path where we can't create directories
       // On Unix, /proc is read-only
-      const invalidPath = '/proc/invalid/path/prompts.yaml';
+      const invalidPath = '/proc/invalid/path/prompts.json';
       const success = writePromptsToPath(invalidPath, DEFAULT_PROMPTS);
       expect(success).toBe(false);
     });

@@ -3,13 +3,13 @@
   "displayName": "Agents",
   "publisher": "muqsitnawaz",
   "description": "Manage multiple Claude Code, Codex, Gemini, and Cursor terminal agents in the editor",
-  "version": "0.9.74",
+  "version": "0.9.75",
   "license": "MIT",
   "author": "Muqsit Nawaz <dev@muqsitnawaz.com>",
   "icon": "assets/agents.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/muqsitnawaz/swarm"
+    "url": "https://github.com/muqsitnawaz/swarmify"
   },
   "engines": {
     "vscode": "^1.85.0"
@@ -290,7 +290,6 @@
     "typescript": "^5.3.3"
   },
   "dependencies": {
-    "@vscode/webview-ui-toolkit": "^1.4.0",
-    "yaml": "^2.7.0"
+    "@vscode/webview-ui-toolkit": "^1.4.0"
   }
 }

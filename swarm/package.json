@@ -1,11 +1,11 @@
 {
-  "name": "swarm-mcp",
+  "name": "@swarmify/agents-mcp",
   "version": "0.2.0",
-  "description": "Give your AI coding agent the ability to spawn other agents (TypeScript port)",
+  "description": "Give your AI coding agent the ability to spawn other agents",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "swarm-mcp": "./dist/index.js"
+    "agents-mcp": "./dist/index.js"
   },
   "files": [
     "dist"
@@ -13,11 +13,11 @@
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/muqsitnawaz/swarm.git"
+    "url": "git+https://github.com/muqsitnawaz/swarmify.git"
   },
-  "homepage": "https://github.com/muqsitnawaz/swarm#readme",
+  "homepage": "https://github.com/muqsitnawaz/swarmify#readme",
   "bugs": {
-    "url": "https://github.com/muqsitnawaz/swarm/issues"
+    "url": "https://github.com/muqsitnawaz/swarmify/issues"
   },
   "scripts": {
     "build": "tsc",
