@@ -1,64 +1,127 @@
-# Agent Swarm MCP Server
+# @swarmify/agents-mcp
 
-Give your AI coding agent the ability to spawn, orchestrate, and manage other AI agents.
+True multi-agent coding in your IDE. Spawn Claude, Codex, Gemini, and Cursor agents from a single MCP server.
 
-This is a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that exposes tools for spawning separate terminal-based AI agents (like Claude Code, Codex, Gemini CLI, etc.) to handle sub-tasks.
-
-## Features
-
-- **Spawn Agents**: Create new agent instances for specific tasks (e.g., "fix bug in auth", "refactor api").
-- **Orchestration**: Manage multiple agents running in parallel.
-- **Safety Modes**:
-  - `plan` (default): Read-only mode for research and exploration.
-  - `edit`: Write access enabled for implementation tasks.
-- **Agent Support**: Designed to work with CLI tools like `claude`, `cursor-agent`, `codex`, and `gemini`.
+This [Model Context Protocol](https://modelcontextprotocol.io/) server gives your AI coding agent the ability to spawn, orchestrate, and manage other AI agents. CLI-first, token-optimized, and works with any MCP-compatible host.
 
 ## Installation
 
-You can run this server directly using `bunx`:
-
 ```bash
-bunx agent-swarm
+# Claude Code
+claude mcp add swarmify-agents -- npx -y @swarmify/agents-mcp
+
+# Gemini CLI
+gemini mcp add swarmify-agents -- npx -y @swarmify/agents-mcp
+
+# OpenCode (interactive)
+opencode mcp add
+# Name: swarmify-agents
+# Type: Local
+# Command: npx -y @swarmify/agents-mcp
 ```
 
-## Configuration
+The server auto-discovers which agent CLIs you have installed and makes them available.
 
-### Environment Variables
+## Tools
 
-- `AGENT_SWARM_PREFERENCE`: Comma-separated list of agent types to prefer (default: `cursor,codex,claude,gemini`).
-- `AGENT_SWARM_DEFAULT_MODE`: Set default safety mode (`plan` or `edit`).
+| Tool | Description |
+|------|-------------|
+| `spawn` | Start an agent on a task. Returns immediately with agent ID. |
+| `status` | Get agent progress: files changed, commands run, last messages. |
+| `stop` | Stop one agent or all agents in a task. |
+| `list_tasks` | List all tasks with their agents and activity. |
 
-### Prerequisites
+### spawn
 
-This server orchestrates *other* CLI tools. You must have the relevant agent CLIs installed and available in your system `PATH`:
-
-- `claude` (Claude Code)
-- `codex` (OpenAI CLI)
-- `gemini` (Google Gemini CLI)
-- `cursor-agent` (Cursor CLI)
-
-## Usage with Claude Desktop
-
-Add this to your `claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "swarm": {
-      "command": "bunx",
-      "args": ["-y", "agent-swarm"],
-      "env": {
-        "AGENT_SWARM_DEFAULT_MODE": "plan"
-      }
-    }
-  }
-}
+```
+spawn(task_name, agent_type, prompt, mode?, cwd?, effort?)
 ```
 
----
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `task_name` | Yes | Groups related agents (e.g., "auth-feature") |
+| `agent_type` | Yes | `claude`, `codex`, `gemini`, or `cursor` |
+| `prompt` | Yes | The task for the agent |
+| `mode` | No | `plan` (read-only, default) or `edit` (can write files) |
+| `cwd` | No | Working directory for the agent |
+| `effort` | No | `medium` (default) or `high` for max-capability models |
 
-### Built by [Novier Aurex](https://novieraurex.com)
+### status
 
-We build **Rush** — AI teammates for startups.
-If you like this low-level orchestration tool, you'll love our dedicated macOS app that gives you a full AI team (Content Writer, Revenue Analyst, Deep Researcher) that works while you sleep.
+```
+status(task_name, filter?)
+```
 
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `task_name` | Yes | Task to check |
+| `filter` | No | `running` (default), `completed`, `failed`, `stopped`, or `all` |
+
+Returns files created/modified/read/deleted, bash commands executed, and last messages.
+
+### stop
+
+```
+stop(task_name, agent_id?)
+```
+
+Stop all agents in a task, or a specific agent by ID.
+
+### list_tasks
+
+```
+list_tasks(limit?)
+```
+
+List all tasks sorted by most recent activity.
+
+## Token Optimization
+
+This server is designed to minimize token usage for the calling agent:
+
+| Optimization | Benefit |
+|--------------|---------|
+| Status defaults to `filter='running'` | Only shows active agents, not completed history |
+| Bash commands truncated to 120 chars | Heredocs collapsed to `cat <<EOF > path` |
+| Last 5 messages only | Not full conversation history |
+| File operations deduplicated | Sets of created/modified/read/deleted paths |
+| Spawn returns immediately | No blocking, poll with status later |
+
+## Supported Agents
+
+The server auto-discovers installed CLIs at startup:
+
+| Agent | CLI | Best For |
+|-------|-----|----------|
+| Claude | `claude` | Maximum capability, research, exploration |
+| Codex | `codex` | Fast, cheap. Self-contained features |
+| Gemini | `gemini` | Complex multi-system features, architectural changes |
+| Cursor | `cursor-agent` | Debugging, bug fixes, tracing through codebases |
+
+Install the CLIs you want to use. The server reports available and missing agents on startup.
+
+## Modes
+
+| Mode | File Access | Use Case |
+|------|-------------|----------|
+| `plan` | Read-only | Research, exploration, code review |
+| `edit` | Read + Write | Implementation, refactoring, fixes |
+
+Default is `plan` for safety. Pass `mode='edit'` when agents need to modify files.
+
+## Effort Levels
+
+| Level | Models Used |
+|-------|-------------|
+| `medium` | Balanced models (default) |
+| `high` | Max-capability models per agent |
+
+## Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `AGENT_SWARM_DEFAULT_MODE` | Set default mode (`plan` or `edit`) |
+
+## License
+
+MIT
