@@ -1,105 +1,64 @@
-# Agents
+# Swarmify
 
-VS Code extension for managing multiple AI agent terminal instances in the editor with support for custom agents.
+True multi-agent coding in your IDE. Run Claude, Codex, Gemini, and Cursor agents side-by-side with your code.
 
-## Features
+## Packages
 
-- Built-in support for Claude Code, Codex, Gemini, and OpenCode terminals
-- Add custom AI agents (e.g., Gemini CLI, GPT-4 CLI, etc.)
-- Configure starting instance counts per agent
-- Individual commands to open single agent instances
-- Opens terminals in the editor area with custom icons
-- Persistent across VS Code restarts
-- Pin terminals for easy access
+| Package | Description | Install |
+|---------|-------------|---------|
+| [@swarmify/agents-mcp](./agents-mcp) | MCP server for spawning agents | `npx @swarmify/agents-mcp` |
+| [Agents Extension](./agents-ext) | VS Code/Cursor extension | [Marketplace](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext) |
+| [Website](./agents-web) | swarmify.co | - |
 
-## Usage
+## Quick Start
 
-### Commands
+### MCP Server (for Claude Code, Gemini CLI, OpenCode)
 
-- **Run Agents** - Opens all configured agents with their specified counts
-- **Agents: New Claude Code** - Opens a single Claude Code terminal
-- **Agents: New Codex** - Opens a single Codex terminal
-- **Agents: New Gemini Agent** - Opens a single Gemini terminal
-- **Agents: New OpenCode** - Opens a single OpenCode terminal
-- **Agents: Close All Terminals** - Closes all managed terminals
-- **Agents: Configure Counts** - Interactive configuration dialog
+```bash
+# Claude Code
+claude mcp add swarmify-agents -- npx -y @swarmify/agents-mcp
 
-Custom agents automatically get commands registered as `Agents: New [Title]` when defined in settings.
+# Gemini CLI
+gemini mcp add swarmify-agents -- npx -y @swarmify/agents-mcp
 
-### Settings
-
-Configure in VS Code settings (JSON or UI):
-
-#### General Settings
-- `agentTabs.autoStart` - Automatically open configured agents on workspace startup (default: `false`)
-  - When `false`: Agents only start when you manually click "Run Agents" or use individual commands
-  - When `true`: Agents automatically open on startup based on configured counts
-
-#### Built-in Agents
-- `agentTabs.claudeCount` - Number of Claude Code terminals (0-10, default: 2)
-- `agentTabs.codexCount` - Number of Codex terminals (0-10, default: 2)
-- `agentTabs.geminiCount` - Number of Gemini terminals (0-10, default: 2)
-
-#### Custom Agents
-- `agentTabs.customAgents` - Array of custom agent configurations
-
-Example custom agent configuration in `settings.json`:
-```json
-{
-  "agentTabs.customAgents": [
-    {
-      "title": "GC",
-      "command": "gemini-cli",
-      "count": 2,
-      "iconPath": "assets/gemini-icon.png"
-    },
-    {
-      "title": "GPT",
-      "command": "gpt-cli",
-      "count": 1
-    }
-  ]
-}
+# OpenCode
+opencode mcp add
+# Name: swarmify-agents
+# Command: npx -y @swarmify/agents-mcp
 ```
 
-Custom agent properties:
-- `title` (required) - Display title for the agent (e.g., "GC" for Gemini CLI)
-- `command` (required) - Terminal command to run (e.g., "gemini-cli")
-- `count` (required) - Number of terminal instances to open on startup (0-10)
-- `iconPath` (optional) - Path to custom icon relative to extension root (defaults to `assets/agents.png`)
+### VS Code Extension
 
-## Requirements
+Install "Agents" from the VS Code Marketplace, or search for `swarmify.swarm-ext`.
 
-- Built-in agents: `claude`, `codex`, and `gemini` CLI tools installed and in PATH
-- Custom agents: respective CLI tools installed and accessible
+## How It Works
+
+**The Extension** turns your IDE into an agent control center. Each agent runs as an editor tab (not the bottom panel), so you can see your code and agents side-by-side.
+
+**The MCP Server** lets any MCP-compatible agent spawn other agents. Claude can spawn Codex for a quick task. Gemini can spawn Claude for deeper analysis. Agents coordinate without you copy-pasting between terminals.
+
+## Supported Agents
+
+| Agent | CLI | Best For |
+|-------|-----|----------|
+| Claude Code | `claude` | Maximum capability, research, exploration |
+| Codex | `codex` | Fast, cheap. Self-contained features |
+| Gemini | `gemini` | Complex multi-system features |
+| Cursor | `cursor-agent` | Debugging, bug fixes |
 
 ## Development
 
-Install dependencies:
 ```bash
-bun install
+# MCP Server
+cd agents-mcp && bun install && bun run build
+
+# Extension
+cd agents-ext && bun install && bun run compile
+
+# Website
+cd agents-web && bun install && bun run dev
 ```
 
-Compile:
-```bash
-bun run compile
-```
+## License
 
-Watch mode:
-```bash
-bun run watch
-```
-
-Test: Press F5 in VS Code to launch Extension Development Host
-
-## Build and Install
-
-Build a specific version:
-```bash
-scripts/build.sh 1.0.0
-```
-
-Build and install in one step:
-```bash
-scripts/install.sh 1.0.0
-```
+MIT
