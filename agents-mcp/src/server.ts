@@ -257,5 +257,3 @@ export async function runServer(): Promise<void> {
     console.error('Missing agents (install CLIs to use):', missing.join(', '));
   }
 }
-
-runServer();

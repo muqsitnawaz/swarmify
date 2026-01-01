@@ -76,6 +76,8 @@ export async function generateCommitMessage(sourceControl?: { rootUri?: vscode.U
   const model = 'gpt-4o-mini';
   const commitMessageExamples = config.get<string[]>('commitMessageExamples', []);
   const ignoreFilesRaw = config.get<string>('ignoreFiles', '');
+  const disableAutopush = config.get<boolean>('disableAutopush', false);
+  const disableAutocommit = config.get<boolean>('disableAutocommit', false);
 
   await vscode.window.withProgress({
     location: vscode.ProgressLocation.SourceControl,
@@ -223,8 +225,21 @@ export async function generateCommitMessage(sourceControl?: { rootUri?: vscode.U
         return;
       }
 
+      // If autocommit is disabled, just stage and set commit message
+      if (disableAutocommit) {
+        vscode.window.showInformationMessage(`Staged: ${commitMessage}`);
+        return;
+      }
+
       try {
         await repo.commit(commitMessage);
+
+        // If autopush is disabled, skip pushing
+        if (disableAutopush) {
+          vscode.window.showInformationMessage(`Committed: ${commitMessage}`);
+          return;
+        }
+
         try {
           await repo.push();
           vscode.window.showInformationMessage(`Pushed: ${commitMessage}`);
