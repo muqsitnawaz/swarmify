@@ -365,6 +365,45 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Markdown + Tasks Preview */}
+      <section className="px-6 py-24 border-t border-[#1a1a1a]">
+        <div className="max-w-5xl mx-auto">
+          <div className="grid md:grid-cols-[1.1fr_1.2fr] gap-12 items-center">
+            <div>
+              <h2 className="text-3xl font-bold mb-4">
+                Markdown that&apos;s readable and actionable
+              </h2>
+              <p className="text-[#888] text-lg mb-6">
+                Render agent-generated .md like Notion, check todos, and spin up tasks
+                without leaving your editor.
+              </p>
+              <div className="space-y-3 text-sm text-[#ccc]">
+                <div className="flex items-start gap-3">
+                  <span className="mt-1 h-2 w-2 rounded-full bg-[#22c55e]" />
+                  <span>Clean markdown view with tables, callouts, and inline code.</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="mt-1 h-2 w-2 rounded-full bg-[#22c55e]" />
+                  <span>Clickable todos that can launch a task immediately.</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="mt-1 h-2 w-2 rounded-full bg-[#22c55e]" />
+                  <span>Labels flow into tab titles so you always know what&apos;s running.</span>
+                </div>
+              </div>
+            </div>
+            <div className="grid gap-6">
+              <div className="rounded-2xl border border-[#1a1a1a] bg-[#0b141a] p-4 shadow-[0_0_40px_rgba(0,0,0,0.35)]">
+                <MarkdownPreviewMock />
+              </div>
+              <div className="rounded-2xl border border-[#1a1a1a] bg-[#0b141a] p-4 shadow-[0_0_40px_rgba(0,0,0,0.35)]">
+                <TaskableTodosMock />
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Features */}
       <section className="px-6 py-24 border-t border-[#1a1a1a]">
         <div className="max-w-5xl mx-auto">
@@ -506,6 +545,84 @@ function PromptLibraryMock() {
           <PlusIcon />
           Add new prompt
         </button>
+      </div>
+    </div>
+  );
+}
+
+function MarkdownPreviewMock() {
+  return (
+    <div className="rounded-xl border border-[#1b2a33] bg-[#0f1b22] p-4 font-sans text-[11px] text-[#b7c7d2]">
+      <div className="text-center text-[11px] tracking-wide text-[#8fb3c4] mb-4">
+        README.md
+      </div>
+      <div className="text-[#d8e6ef] text-base font-semibold mb-2">Landing Page Tasks</div>
+      <p className="text-[#9ab0bf] mb-3 leading-relaxed">
+        This doc tracks the next batch of updates. Review diffs as agents work and
+        ship changes in parallel.
+      </p>
+      <div className="rounded-lg border border-[#1b2a33] bg-[#0c171d] px-3 py-2 mb-3">
+        <div className="text-[#7aa2b6] uppercase text-[10px] tracking-wide mb-2">Highlights</div>
+        <ul className="space-y-1 text-[#b7c7d2]">
+          <li>• Hero copy aligned to orchestration</li>
+          <li>• Prompt library visible by default</li>
+          <li>• Task list hooks for instant delegation</li>
+        </ul>
+      </div>
+      <div className="rounded-lg border border-[#1b2a33] bg-[#0c171d] px-3 py-2">
+        <div className="text-[#7aa2b6] uppercase text-[10px] tracking-wide mb-2">Notes</div>
+        <div className="grid grid-cols-3 gap-2 text-[10px] text-[#8aa8ba]">
+          <div className="rounded border border-[#1b2a33] px-2 py-1">Owner</div>
+          <div className="rounded border border-[#1b2a33] px-2 py-1">Status</div>
+          <div className="rounded border border-[#1b2a33] px-2 py-1">ETA</div>
+          <div className="rounded border border-[#1b2a33] px-2 py-1 text-[#cfe6f1]">Swarmify</div>
+          <div className="rounded border border-[#1b2a33] px-2 py-1 text-[#cfe6f1]">In review</div>
+          <div className="rounded border border-[#1b2a33] px-2 py-1 text-[#cfe6f1]">Today</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TaskableTodosMock() {
+  const [todos, setTodos] = useState([false, false, false]);
+  const toggleTodo = (index: number) => {
+    setTodos((current) => current.map((item, i) => (i === index ? !item : item)));
+  };
+
+  return (
+    <div className="rounded-xl border border-[#1b2a33] bg-[#0f1b22] p-4 font-sans text-[11px] text-[#b7c7d2]">
+      <div className="flex items-center gap-2 mb-4 text-[10px] text-[#8fb3c4]">
+        <span className="rounded bg-[#13232c] px-2 py-1">Codex — Landing page updates</span>
+        <span className="rounded bg-[#13232c] px-2 py-1">Claude — Stripe integration</span>
+      </div>
+      <div className="space-y-3">
+        {[
+          "Polish hero copy for orchestration",
+          "Add prompt library preview section",
+          "Wire markdown todos to agent task",
+        ].map((text, index) => (
+          <div key={text} className="flex items-center gap-3 rounded-lg border border-[#162a34] bg-[#0c171d] px-3 py-2">
+            <button
+              type="button"
+              onClick={() => toggleTodo(index)}
+              className={`h-4 w-4 rounded border ${
+                todos[index]
+                  ? "bg-[#22c55e] border-[#22c55e]"
+                  : "border-[#335261] bg-transparent"
+              }`}
+              aria-label={`Toggle todo ${text}`}
+            />
+            <span className="flex-1 text-[#b7c7d2]">{text}</span>
+            <button
+              type="button"
+              className="relative overflow-hidden rounded-full border border-[#2c4756] bg-[#13232c] px-3 py-1 text-[10px] text-[#bfe3f4] shadow-[0_0_12px_rgba(59,130,246,0.25)] transition-all hover:border-[#3b82f6] hover:shadow-[0_0_16px_rgba(59,130,246,0.45)]"
+            >
+              <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-[#3b82f6]/30 to-transparent animate-pulse" />
+              <span className="relative">Start task</span>
+            </button>
+          </div>
+        ))}
       </div>
     </div>
   );

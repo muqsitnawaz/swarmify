@@ -1280,6 +1280,20 @@ export default function App() {
                 <div className="flex items-start gap-3">
                   <span className="text-sm font-semibold text-[var(--primary)]">3</span>
                   <div>
+                    <p className="text-sm font-medium">Try multiple agents</p>
+                    <p className="text-xs text-[var(--muted-foreground)] mt-1">
+                      Press Cmd+Shift+P and type "Agents: New Codex" to open another agent. If Codex isn't installed, run <span className="font-mono bg-[var(--background)] px-1 rounded">npm i -g @openai/codex</span> first.
+                    </p>
+                    <p className="text-xs text-[var(--muted-foreground)] mt-2">
+                      Navigate between agents with Cmd+R (next) and Cmd+E (previous). If these conflict with other shortcuts, customize them in VS Code's Keyboard Shortcuts for "Next Agent" and "Previous Agent".
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="px-4 py-3 rounded-xl bg-[var(--muted)]">
+                <div className="flex items-start gap-3">
+                  <span className="text-sm font-semibold text-[var(--primary)]">4</span>
+                  <div>
                     <p className="text-sm font-medium">Use Swarm for parallel work</p>
                     <p className="text-xs text-[var(--muted-foreground)] mt-1">
                       Type /swarm in Claude to spawn multiple agents working on subtasks simultaneously.
@@ -1289,7 +1303,7 @@ export default function App() {
               </div>
               <div className="px-4 py-3 rounded-xl bg-[var(--muted)]">
                 <div className="flex items-start gap-3">
-                  <span className="text-sm font-semibold text-[var(--primary)]">4</span>
+                  <span className="text-sm font-semibold text-[var(--primary)]">5</span>
                   <div>
                     <p className="text-sm font-medium">Save reusable prompts</p>
                     <p className="text-xs text-[var(--muted-foreground)] mt-1">
