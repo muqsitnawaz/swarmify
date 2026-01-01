@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { BUILT_IN_AGENTS, getBuiltInDefByTitle } from './agents';
+import { BUILT_IN_AGENTS, getBuiltInByKey, getBuiltInDefByTitle } from './agents';
 import {
   AgentConfig,
   buildIconPath,
@@ -9,9 +9,10 @@ import {
 import * as claudemd from './claudemd.vscode';
 import { AgentsMarkdownEditorProvider, swarmCurrentDocument } from './customEditor';
 import * as git from './git.vscode';
-import { AgentSettings, hasLoginEnabled } from './settings';
+import { AgentSettings, hasLoginEnabled, PromptEntry } from './settings';
 import * as settings from './settings.vscode';
 import * as swarm from './swarm.vscode';
+import * as notifications from './notifications.vscode';
 import * as terminals from './terminals.vscode';
 import * as workbench from './workbench.vscode';
 import {
@@ -22,6 +23,14 @@ import {
   parseTerminalName,
   sanitizeLabel
 } from './utils';
+import {
+  createTmuxTerminal,
+  getTmuxState,
+  isTmuxTerminal,
+  registerTmuxCleanup,
+  tmuxSplitH,
+  tmuxSplitV
+} from './tmux';
 
 // Settings types are now imported from ./settings
 // Settings functions are in ./settings.vscode
@@ -29,6 +38,160 @@ import {
 let agentStatusBarItem: vscode.StatusBarItem | undefined;
 
 // BUILT_IN_AGENTS is now imported from ./agents
+
+// Prompts helpers (file-based storage at ~/.swarmify/agents/prompts.yaml)
+function getPrompts(): PromptEntry[] {
+  return settings.readPrompts();
+}
+
+function savePrompts(prompts: PromptEntry[]): void {
+  settings.writePrompts(prompts);
+}
+
+function generateId(): string {
+  return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+}
+
+function truncateText(text: string, maxLen: number): string {
+  if (text.length <= maxLen) return text;
+  return text.substring(0, maxLen - 3) + '...';
+}
+
+interface PromptQuickPickItem extends vscode.QuickPickItem {
+  entry?: PromptEntry;
+  isAddNew?: boolean;
+}
+
+async function showPrompts(): Promise<void> {
+  const terminal = vscode.window.activeTerminal;
+  if (!terminal) {
+    vscode.window.showInformationMessage('No active terminal');
+    return;
+  }
+
+  const parsed = parseTerminalName(terminal.name);
+  if (!parsed.isAgent) {
+    vscode.window.showInformationMessage('Active terminal is not an agent terminal');
+    return;
+  }
+
+  const prompts = getPrompts();
+
+  // Sort: favorites first, then by accessedAt descending (most recently used first)
+  const sorted = [...prompts].sort((a, b) => {
+    if (a.isFavorite !== b.isFavorite) return a.isFavorite ? -1 : 1;
+    return b.accessedAt - a.accessedAt;
+  });
+
+  const quickPick = vscode.window.createQuickPick<PromptQuickPickItem>();
+  quickPick.placeholder = 'Search prompts...';
+  quickPick.matchOnDescription = true;
+
+  const buildItems = (): PromptQuickPickItem[] => {
+    const items: PromptQuickPickItem[] = sorted.map(entry => ({
+      label: `${entry.isFavorite ? '$(star-full) ' : ''}${entry.title}`,
+      description: truncateText(entry.content, 50),
+      detail: entry.content,
+      entry,
+      buttons: [
+        {
+          iconPath: new vscode.ThemeIcon(entry.isFavorite ? 'star-full' : 'star-empty'),
+          tooltip: entry.isFavorite ? 'Remove from favorites' : 'Add to favorites'
+        },
+        {
+          iconPath: new vscode.ThemeIcon('trash'),
+          tooltip: 'Delete prompt'
+        }
+      ]
+    }));
+
+    items.push({
+      label: '$(add) Add new prompt',
+      isAddNew: true
+    });
+
+    return items;
+  };
+
+  quickPick.items = buildItems();
+
+  quickPick.onDidTriggerItemButton(async (e) => {
+    const item = e.item;
+    if (!item.entry) return;
+
+    const buttonIndex = (quickPick.items.find(i => i.entry?.id === item.entry?.id) as PromptQuickPickItem)
+      ?.buttons?.indexOf(e.button);
+
+    if (buttonIndex === 0) {
+      // Toggle favorite
+      item.entry.isFavorite = !item.entry.isFavorite;
+      item.entry.updatedAt = Date.now();
+      savePrompts(prompts);
+      // Re-sort and rebuild items
+      sorted.sort((a, b) => {
+        if (a.isFavorite !== b.isFavorite) return a.isFavorite ? -1 : 1;
+        return b.accessedAt - a.accessedAt;
+      });
+      quickPick.items = buildItems();
+    } else if (buttonIndex === 1) {
+      // Delete
+      const idx = prompts.findIndex(p => p.id === item.entry?.id);
+      if (idx !== -1) {
+        prompts.splice(idx, 1);
+        const sortedIdx = sorted.findIndex(p => p.id === item.entry?.id);
+        if (sortedIdx !== -1) sorted.splice(sortedIdx, 1);
+        savePrompts(prompts);
+        quickPick.items = buildItems();
+      }
+    }
+  });
+
+  quickPick.onDidAccept(async () => {
+    const selected = quickPick.selectedItems[0];
+    if (!selected) return;
+
+    quickPick.hide();
+
+    if (selected.isAddNew) {
+      // Add new prompt flow
+      const title = await vscode.window.showInputBox({
+        prompt: 'Prompt title',
+        placeHolder: 'e.g., Debug Helper'
+      });
+      if (!title) return;
+
+      const content = await vscode.window.showInputBox({
+        prompt: 'Prompt content',
+        placeHolder: 'Enter the prompt text...'
+      });
+      if (!content) return;
+
+      const now = Date.now();
+      const newEntry: PromptEntry = {
+        id: generateId(),
+        title,
+        content,
+        isFavorite: false,
+        createdAt: now,
+        updatedAt: now,
+        accessedAt: now
+      };
+
+      prompts.push(newEntry);
+      savePrompts(prompts);
+      vscode.window.showInformationMessage(`Added "${title}" to Prompts`);
+    } else if (selected.entry) {
+      // Update accessedAt and paste to terminal (no auto-execute)
+      selected.entry.accessedAt = Date.now();
+      savePrompts(prompts);
+      terminal.sendText(selected.entry.content, false);
+      terminal.show();
+    }
+  });
+
+  quickPick.onDidHide(() => quickPick.dispose());
+  quickPick.show();
+}
 
 function getAgentsToOpen(context: vscode.ExtensionContext): AgentConfig[] {
   const agentSettings = settings.getSettings(context);
@@ -159,6 +322,8 @@ export function activate(context: vscode.ExtensionContext) {
     console.error('[EXTENSION] Error scanning existing terminals:', err);
   });
 
+  registerTmuxCleanup(context);
+
   // Ensure CLAUDE.md has Swarm instructions if Swarm is enabled
   claudemd.ensureSwarmInstructions();
 
@@ -188,13 +353,7 @@ export function activate(context: vscode.ExtensionContext) {
     AgentsMarkdownEditorProvider.register(context)
   );
 
-  // Swarm document command (Cmd+Shift+S in custom editor)
-  context.subscriptions.push(
-    vscode.commands.registerCommand('agents.swarmDocument', () =>
-      swarmCurrentDocument(context)
-    )
-  );
-
+  
   // Register commands
   context.subscriptions.push(
     vscode.commands.registerCommand('agents.open', () => openAgentTerminals(context))
@@ -216,6 +375,23 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('agents.newAgentHSplit', async () => {
+      const config = vscode.workspace.getConfiguration('agents');
+      const enableTmux = config.get<boolean>('enableTmux', false);
+      const terminal = vscode.window.activeTerminal;
+
+      if (enableTmux && terminal && isTmuxTerminal(terminal)) {
+        const state = getTmuxState(terminal);
+        if (state) {
+          const agentDef = getBuiltInByKey(state.agentType);
+          const customAgent = !agentDef
+            ? settings.getSettings(context).custom.find(agent => agent.name === state.agentType)
+            : undefined;
+          const command = agentDef?.command ?? customAgent?.command ?? '';
+          tmuxSplitH(terminal, command);
+        }
+        return;
+      }
+
       // Create horizontal split (new editor group below current)
       await vscode.commands.executeCommand('workbench.action.splitEditorDown');
 
@@ -229,6 +405,23 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('agents.newAgentVSplit', async () => {
+      const config = vscode.workspace.getConfiguration('agents');
+      const enableTmux = config.get<boolean>('enableTmux', false);
+      const terminal = vscode.window.activeTerminal;
+
+      if (enableTmux && terminal && isTmuxTerminal(terminal)) {
+        const state = getTmuxState(terminal);
+        if (state) {
+          const agentDef = getBuiltInByKey(state.agentType);
+          const customAgent = !agentDef
+            ? settings.getSettings(context).custom.find(agent => agent.name === state.agentType)
+            : undefined;
+          const command = agentDef?.command ?? customAgent?.command ?? '';
+          tmuxSplitV(terminal, command);
+        }
+        return;
+      }
+
       // Create vertical split (new editor group to the side)
       await vscode.commands.executeCommand('workbench.action.splitEditor');
 
@@ -249,7 +442,7 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('agents.generateCommit', git.generateCommitMessage)
+    vscode.commands.registerCommand('agents.autogit', git.generateCommitMessage)
   );
 
   context.subscriptions.push(
@@ -257,15 +450,33 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
+    vscode.commands.registerCommand('agents.enableNotifications', () => notifications.enableNotifications(context))
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('agents.enableTmux', async () => {
+      const config = vscode.workspace.getConfiguration('agents');
+      const current = config.get<boolean>('enableTmux', false);
+      await config.update('enableTmux', !current, vscode.ConfigurationTarget.Global);
+      const status = !current ? 'enabled' : 'disabled';
+      vscode.window.showInformationMessage(`Tmux mode ${status}. New agent terminals will ${!current ? 'use tmux for per-tab splits' : 'use VS Code editor splits'}.`);
+    })
+  );
+
+  context.subscriptions.push(
     vscode.commands.registerCommand('agents.newTask', () => newTaskWithContext(context))
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('agents.goToTerminal', () => goToTerminal(context))
+    vscode.commands.registerCommand('agents.openAgent', () => goToTerminal(context))
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('agents.streamline', async () => {
+    vscode.commands.registerCommand('agents.prompts', () => showPrompts())
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('agents.enableView', async () => {
       const enabled = await workbench.toggleStreamlineLayout();
       vscode.window.showInformationMessage(
         enabled ? 'Streamline layout enabled' : 'Streamline layout disabled'
@@ -396,6 +607,34 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 async function openSingleAgent(context: vscode.ExtensionContext, agentConfig: Omit<AgentConfig, 'count'>) {
+  const config = vscode.workspace.getConfiguration('agents');
+  const enableTmux = config.get<boolean>('enableTmux', false);
+
+  if (enableTmux) {
+    const terminalId = terminals.nextId(agentConfig.prefix);
+    const builtInDef = getBuiltInDefByTitle(agentConfig.title);
+    const agentType = builtInDef?.key ?? agentConfig.title;
+    const terminal = createTmuxTerminal(
+      agentConfig.title,
+      agentType,
+      agentConfig.command || '',
+      {
+        iconPath: agentConfig.iconPath as vscode.Uri,
+        env: {
+          AGENT_TERMINAL_ID: terminalId,
+          DISABLE_AUTO_TITLE: 'true',
+          PROMPT_COMMAND: ''
+        },
+        viewColumn: vscode.ViewColumn.Active
+      }
+    );
+
+    const pid = await terminal.processId;
+    terminals.register(terminal, terminalId, agentConfig, pid, context);
+    terminal.show();
+    return;
+  }
+
   const editorLocation: vscode.TerminalEditorLocationOptions = {
     viewColumn: vscode.ViewColumn.Active,
     preserveFocus: false

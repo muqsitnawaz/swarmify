@@ -179,3 +179,87 @@ export function createSwarmServerConfig(cliTsIndexPath: string): McpServerConfig
     env: {}
   };
 }
+
+// === TMUX UTILITIES ===
+
+/**
+ * Generate a unique tmux session name
+ */
+export function generateTmuxSessionName(prefix: string): string {
+  return `agents-${prefix}-${Date.now()}`;
+}
+
+/**
+ * Build tmux initialization command with mouse support and pane labels
+ */
+export function buildTmuxInitCommand(sessionName: string, paneLabel: string): string {
+  return [
+    `tmux new-session -s ${sessionName} -n main`,
+    'tmux set -g mouse on',
+    'tmux set -g pane-border-status top',
+    `tmux set -g pane-border-format " #{pane_index}: ${paneLabel} "`,
+  ].join(' \\; ');
+}
+
+/**
+ * Build tmux split command
+ * Note: tmux -v = horizontal split (new pane below), -h = vertical split (new pane to right)
+ */
+export function buildTmuxSplitCommand(direction: 'horizontal' | 'vertical'): string {
+  // tmux uses opposite terminology: -v splits horizontally, -h splits vertically
+  const flag = direction === 'horizontal' ? '-v' : '-h';
+  return `tmux split-window ${flag}`;
+}
+
+/**
+ * Build tmux kill session command
+ */
+export function buildTmuxKillCommand(sessionName: string): string {
+  return `tmux kill-session -t ${sessionName}`;
+}
+
+/**
+ * Check if a session name is a valid tmux session name (alphanumeric, dash, underscore)
+ */
+export function isValidTmuxSessionName(name: string): boolean {
+  return /^[a-zA-Z0-9_-]+$/.test(name);
+}
+
+// === PROMPT UTILITIES ===
+
+export interface PromptEntryLike {
+  id: string;
+  isFavorite: boolean;
+  accessedAt: number;
+}
+
+/**
+ * Sort prompt entries: favorites first, then by accessedAt (most recently used first).
+ */
+export function sortPrompts<T extends PromptEntryLike>(entries: T[]): T[] {
+  return [...entries].sort((a, b) => {
+    // Favorites first
+    if (a.isFavorite !== b.isFavorite) {
+      return a.isFavorite ? -1 : 1;
+    }
+    // Then by accessedAt (most recently used first)
+    return b.accessedAt - a.accessedAt;
+  });
+}
+
+/**
+ * Check if a prompt ID is a built-in prompt (not user-created).
+ */
+export function isBuiltInPromptId(id: string): boolean {
+  return id.startsWith('builtin-');
+}
+
+/**
+ * Truncate text with ellipsis for display.
+ */
+export function truncateText(text: string, maxLength: number): string {
+  if (text.length <= maxLength) {
+    return text;
+  }
+  return text.slice(0, maxLength - 3) + '...';
+}

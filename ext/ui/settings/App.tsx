@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Button } from './components/ui/button'
 import { Checkbox } from './components/ui/checkbox'
 import { Input } from './components/ui/input'
-import { Trash2, Plus, X } from 'lucide-react'
+import { Trash2, Plus, X, Star, ChevronDown, ChevronRight, FileEdit, FilePlus, Terminal, MessageSquare, Clock, RefreshCw } from 'lucide-react'
 
 interface BuiltInAgentSettings {
   login: boolean
@@ -19,6 +19,16 @@ interface CustomAgentSettings {
 type SwarmAgentType = 'cursor' | 'codex' | 'claude' | 'gemini' | 'opencode'
 const ALL_SWARM_AGENTS: SwarmAgentType[] = ['cursor', 'codex', 'claude', 'gemini', 'opencode']
 
+interface PromptEntry {
+  id: string
+  title: string
+  content: string
+  isFavorite: boolean
+  createdAt: number
+  updatedAt: number
+  accessedAt: number
+}
+
 interface AgentSettings {
   builtIn: {
     claude: BuiltInAgentSettings
@@ -30,6 +40,7 @@ interface AgentSettings {
   }
   custom: CustomAgentSettings[]
   swarmEnabledAgents: SwarmAgentType[]
+  prompts: PromptEntry[]
 }
 
 interface RunningCounts {
@@ -46,6 +57,32 @@ interface SwarmStatus {
   mcpEnabled: boolean
   commandInstalled: boolean
 }
+
+interface AgentDetail {
+  agent_id: string
+  agent_type: string
+  status: string
+  duration: string | null
+  started_at: string
+  completed_at: string | null
+  prompt: string
+  cwd: string | null
+  files_created: string[]
+  files_modified: string[]
+  files_deleted: string[]
+  bash_commands: string[]
+  last_messages: string[]
+}
+
+interface TaskSummary {
+  task_name: string
+  agent_count: number
+  status_counts: { running: number; completed: number; failed: number; stopped: number }
+  latest_activity: string
+  agents: AgentDetail[]
+}
+
+type TabId = 'agents' | 'tasks'
 
 declare function acquireVsCodeApi(): {
   postMessage(message: unknown): void
@@ -101,6 +138,21 @@ export default function App() {
   const [newCommand, setNewCommand] = useState('')
   const [nameError, setNameError] = useState('')
 
+  // Prompt Stash state
+  const [isAddingPrompt, setIsAddingPrompt] = useState(false)
+  const [newPromptTitle, setNewPromptTitle] = useState('')
+  const [newPromptContent, setNewPromptContent] = useState('')
+  const [editingPromptId, setEditingPromptId] = useState<string | null>(null)
+  const [editPromptTitle, setEditPromptTitle] = useState('')
+  const [editPromptContent, setEditPromptContent] = useState('')
+
+  // Tab and Tasks state
+  const [activeTab, setActiveTab] = useState<TabId>('agents')
+  const [tasks, setTasks] = useState<TaskSummary[]>([])
+  const [tasksLoading, setTasksLoading] = useState(false)
+  const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set())
+  const [expandedAgents, setExpandedAgents] = useState<Set<string>>(new Set())
+
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       const message = event.data
@@ -112,6 +164,9 @@ export default function App() {
         }
       } else if (message.type === 'updateRunningCounts') {
         setRunningCounts(message.counts)
+      } else if (message.type === 'tasksData') {
+        setTasks(message.tasks || [])
+        setTasksLoading(false)
       }
     }
 
@@ -120,6 +175,76 @@ export default function App() {
 
     return () => window.removeEventListener('message', handleMessage)
   }, [])
+
+  // Fetch tasks when switching to tasks tab
+  useEffect(() => {
+    if (activeTab === 'tasks') {
+      fetchTasks()
+    }
+  }, [activeTab])
+
+  const fetchTasks = () => {
+    setTasksLoading(true)
+    vscode.postMessage({ type: 'fetchTasks' })
+  }
+
+  const toggleTaskExpanded = (taskName: string) => {
+    setExpandedTasks(prev => {
+      const next = new Set(prev)
+      if (next.has(taskName)) {
+        next.delete(taskName)
+      } else {
+        next.add(taskName)
+      }
+      return next
+    })
+  }
+
+  const toggleAgentExpanded = (agentId: string) => {
+    setExpandedAgents(prev => {
+      const next = new Set(prev)
+      if (next.has(agentId)) {
+        next.delete(agentId)
+      } else {
+        next.add(agentId)
+      }
+      return next
+    })
+  }
+
+  const formatTimeAgo = (isoDate: string): string => {
+    const date = new Date(isoDate)
+    const now = new Date()
+    const diffMs = now.getTime() - date.getTime()
+    const diffMins = Math.floor(diffMs / 60000)
+    const diffHours = Math.floor(diffMs / 3600000)
+    const diffDays = Math.floor(diffMs / 86400000)
+
+    if (diffMins < 1) return 'just now'
+    if (diffMins < 60) return `${diffMins}m ago`
+    if (diffHours < 24) return `${diffHours}h ago`
+    return `${diffDays}d ago`
+  }
+
+  const getStatusColor = (status: string): string => {
+    switch (status) {
+      case 'running': return 'text-blue-400'
+      case 'completed': return 'text-green-400'
+      case 'failed': return 'text-red-400'
+      case 'stopped': return 'text-yellow-400'
+      default: return 'text-[var(--muted-foreground)]'
+    }
+  }
+
+  const getStatusBg = (status: string): string => {
+    switch (status) {
+      case 'running': return 'bg-blue-500/20'
+      case 'completed': return 'bg-green-500/20'
+      case 'failed': return 'bg-red-500/20'
+      case 'stopped': return 'bg-yellow-500/20'
+      default: return 'bg-[var(--muted)]'
+    }
+  }
 
   const handleEnableSwarm = () => {
     vscode.postMessage({ type: 'enableSwarm' })
@@ -225,15 +350,283 @@ export default function App() {
     saveSettings({ ...settings, custom: newCustom })
   }
 
+  // Prompts handlers
+  const getPrompts = (): PromptEntry[] => {
+    return settings?.prompts || []
+  }
+
+  const generateId = (): string => {
+    return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
+  }
+
+  const handleAddPrompt = () => {
+    if (!settings || !newPromptTitle.trim() || !newPromptContent.trim()) return
+
+    const now = Date.now()
+    const newEntry: PromptEntry = {
+      id: generateId(),
+      title: newPromptTitle.trim(),
+      content: newPromptContent.trim(),
+      isFavorite: false,
+      createdAt: now,
+      updatedAt: now,
+      accessedAt: now
+    }
+
+    const newPrompts = [...getPrompts(), newEntry]
+    saveSettings({ ...settings, prompts: newPrompts })
+    setIsAddingPrompt(false)
+    setNewPromptTitle('')
+    setNewPromptContent('')
+  }
+
+  const handleDeletePrompt = (id: string) => {
+    if (!settings) return
+    const newPrompts = getPrompts().filter(p => p.id !== id)
+    saveSettings({ ...settings, prompts: newPrompts })
+  }
+
+  const handleToggleFavorite = (id: string) => {
+    if (!settings) return
+    const newPrompts = getPrompts().map(p =>
+      p.id === id ? { ...p, isFavorite: !p.isFavorite, updatedAt: Date.now() } : p
+    )
+    saveSettings({ ...settings, prompts: newPrompts })
+  }
+
+  const handleStartEdit = (entry: PromptEntry) => {
+    setEditingPromptId(entry.id)
+    setEditPromptTitle(entry.title)
+    setEditPromptContent(entry.content)
+  }
+
+  const handleSaveEdit = () => {
+    if (!settings || !editingPromptId || !editPromptTitle.trim() || !editPromptContent.trim()) return
+
+    const newPrompts = getPrompts().map(p =>
+      p.id === editingPromptId
+        ? { ...p, title: editPromptTitle.trim(), content: editPromptContent.trim(), updatedAt: Date.now() }
+        : p
+    )
+    saveSettings({ ...settings, prompts: newPrompts })
+    setEditingPromptId(null)
+    setEditPromptTitle('')
+    setEditPromptContent('')
+  }
+
+  const handleCancelEdit = () => {
+    setEditingPromptId(null)
+    setEditPromptTitle('')
+    setEditPromptContent('')
+  }
+
+  // Sort prompts: favorites first, then by accessedAt (most recently used first)
+  const sortedPrompts = [...getPrompts()].sort((a, b) => {
+    if (a.isFavorite !== b.isFavorite) return a.isFavorite ? -1 : 1
+    return b.accessedAt - a.accessedAt
+  })
+
   if (!settings) {
     return <div className="text-[var(--muted-foreground)]">Loading...</div>
   }
 
+  // Render Tasks tab content
+  const renderTasksTab = () => (
+    <div className="space-y-4">
+      {/* Header with refresh button */}
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-[var(--muted-foreground)]">
+          {tasks.length} task{tasks.length !== 1 ? 's' : ''} found
+        </p>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={fetchTasks}
+          disabled={tasksLoading}
+        >
+          <RefreshCw className={`w-4 h-4 mr-1.5 ${tasksLoading ? 'animate-spin' : ''}`} />
+          Refresh
+        </Button>
+      </div>
+
+      {/* Tasks list */}
+      {tasksLoading && tasks.length === 0 ? (
+        <div className="text-center py-8 text-[var(--muted-foreground)]">Loading tasks...</div>
+      ) : tasks.length === 0 ? (
+        <div className="text-center py-8 text-[var(--muted-foreground)]">
+          No tasks found. Spawn agents via /swarm to see them here.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {tasks.map(task => {
+            const isTaskExpanded = expandedTasks.has(task.task_name)
+            return (
+              <div key={task.task_name} className="rounded-xl bg-[var(--muted)] overflow-hidden">
+                {/* Task header */}
+                <button
+                  onClick={() => toggleTaskExpanded(task.task_name)}
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[var(--muted-foreground)]/5 transition-colors"
+                >
+                  {isTaskExpanded ? (
+                    <ChevronDown className="w-4 h-4 text-[var(--muted-foreground)] flex-shrink-0" />
+                  ) : (
+                    <ChevronRight className="w-4 h-4 text-[var(--muted-foreground)] flex-shrink-0" />
+                  )}
+                  <span className="text-sm font-medium truncate flex-1 text-left">{task.task_name}</span>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {task.status_counts.running > 0 && (
+                      <span className="px-1.5 py-0.5 text-xs rounded bg-blue-500/20 text-blue-400">
+                        {task.status_counts.running} running
+                      </span>
+                    )}
+                    <span className="text-xs text-[var(--muted-foreground)]">
+                      {task.agent_count} agent{task.agent_count !== 1 ? 's' : ''}
+                    </span>
+                    <span className="text-xs text-[var(--muted-foreground)]">
+                      {formatTimeAgo(task.latest_activity)}
+                    </span>
+                  </div>
+                </button>
+
+                {/* Expanded task content */}
+                {isTaskExpanded && (
+                  <div className="border-t border-[var(--border)] px-4 py-3 space-y-3">
+                    {task.agents.map(agent => {
+                      const isAgentExpanded = expandedAgents.has(agent.agent_id)
+                      const hasDetails = agent.files_created.length > 0 ||
+                        agent.files_modified.length > 0 ||
+                        agent.bash_commands.length > 0 ||
+                        agent.last_messages.length > 0
+
+                      return (
+                        <div key={agent.agent_id} className="rounded-lg bg-[var(--background)] border border-[var(--border)]">
+                          {/* Agent header */}
+                          <button
+                            onClick={() => hasDetails && toggleAgentExpanded(agent.agent_id)}
+                            className={`w-full flex items-center gap-3 px-3 py-2.5 ${hasDetails ? 'cursor-pointer hover:bg-[var(--muted)]/50' : 'cursor-default'}`}
+                            disabled={!hasDetails}
+                          >
+                            {hasDetails ? (
+                              isAgentExpanded ? (
+                                <ChevronDown className="w-3.5 h-3.5 text-[var(--muted-foreground)]" />
+                              ) : (
+                                <ChevronRight className="w-3.5 h-3.5 text-[var(--muted-foreground)]" />
+                              )
+                            ) : (
+                              <div className="w-3.5 h-3.5" />
+                            )}
+                            <img
+                              src={icons[agent.agent_type as keyof typeof icons] || icons.agents}
+                              alt={agent.agent_type}
+                              className="w-4 h-4"
+                            />
+                            <span className="text-sm font-medium capitalize">{agent.agent_type}</span>
+                            <span className="text-xs text-[var(--muted-foreground)] font-mono">{agent.agent_id}</span>
+                            <span className={`px-1.5 py-0.5 text-xs rounded ${getStatusBg(agent.status)} ${getStatusColor(agent.status)}`}>
+                              {agent.status}
+                            </span>
+                            {agent.duration && (
+                              <span className="text-xs text-[var(--muted-foreground)] flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                {agent.duration}
+                              </span>
+                            )}
+                          </button>
+
+                          {/* Agent details */}
+                          {isAgentExpanded && hasDetails && (
+                            <div className="border-t border-[var(--border)] px-3 py-2.5 space-y-3 text-xs">
+                              {/* Prompt */}
+                              {agent.prompt && (
+                                <div>
+                                  <div className="text-[var(--muted-foreground)] mb-1">Prompt</div>
+                                  <div className="text-[var(--foreground)] bg-[var(--muted)] rounded px-2 py-1.5 whitespace-pre-wrap">
+                                    {agent.prompt}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Files created */}
+                              {agent.files_created.length > 0 && (
+                                <div>
+                                  <div className="flex items-center gap-1.5 text-[var(--muted-foreground)] mb-1">
+                                    <FilePlus className="w-3.5 h-3.5 text-green-400" />
+                                    Files Created ({agent.files_created.length})
+                                  </div>
+                                  <div className="space-y-0.5">
+                                    {agent.files_created.map((f, i) => (
+                                      <div key={i} className="font-mono text-green-400 truncate">{f}</div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Files modified */}
+                              {agent.files_modified.length > 0 && (
+                                <div>
+                                  <div className="flex items-center gap-1.5 text-[var(--muted-foreground)] mb-1">
+                                    <FileEdit className="w-3.5 h-3.5 text-yellow-400" />
+                                    Files Modified ({agent.files_modified.length})
+                                  </div>
+                                  <div className="space-y-0.5">
+                                    {agent.files_modified.map((f, i) => (
+                                      <div key={i} className="font-mono text-yellow-400 truncate">{f}</div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Bash commands */}
+                              {agent.bash_commands.length > 0 && (
+                                <div>
+                                  <div className="flex items-center gap-1.5 text-[var(--muted-foreground)] mb-1">
+                                    <Terminal className="w-3.5 h-3.5" />
+                                    Commands ({agent.bash_commands.length})
+                                  </div>
+                                  <div className="space-y-0.5 font-mono bg-[var(--muted)] rounded px-2 py-1.5">
+                                    {agent.bash_commands.map((cmd, i) => (
+                                      <div key={i} className="text-[var(--foreground)] truncate">$ {cmd}</div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Last messages */}
+                              {agent.last_messages.length > 0 && (
+                                <div>
+                                  <div className="flex items-center gap-1.5 text-[var(--muted-foreground)] mb-1">
+                                    <MessageSquare className="w-3.5 h-3.5" />
+                                    Last Messages
+                                  </div>
+                                  <div className="space-y-1.5">
+                                    {agent.last_messages.map((msg, i) => (
+                                      <div key={i} className="bg-[var(--muted)] rounded px-2 py-1.5 text-[var(--foreground)] whitespace-pre-wrap">
+                                        {msg}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <header className="flex items-center justify-between pb-6 border-b border-[var(--border)]">
-        <div className="flex items-center gap-3">
+    <div className="space-y-6">
+      {/* Header with tabs */}
+      <header className="pb-4 border-b border-[var(--border)]">
+        <div className="flex items-center gap-3 mb-4">
           <img src={icons.agents} alt="Agents" className="w-10 h-10" />
           <div>
             <h1 className="text-xl font-semibold tracking-tight">Agents</h1>
@@ -242,7 +635,35 @@ export default function App() {
             </p>
           </div>
         </div>
+
+        {/* Tab bar */}
+        <div className="flex gap-1">
+          <button
+            onClick={() => setActiveTab('agents')}
+            className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+              activeTab === 'agents'
+                ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
+                : 'text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:bg-[var(--muted)]'
+            }`}
+          >
+            Settings
+          </button>
+          <button
+            onClick={() => setActiveTab('tasks')}
+            className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+              activeTab === 'tasks'
+                ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
+                : 'text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:bg-[var(--muted)]'
+            }`}
+          >
+            Tasks
+          </button>
+        </div>
       </header>
+
+      {/* Tab content */}
+      {activeTab === 'tasks' ? renderTasksTab() : (
+        <div className="space-y-8">
 
       {/* Swarm Integration */}
       <section>
@@ -436,6 +857,116 @@ export default function App() {
         </div>
       </section>
 
+      {/* Prompt Stash */}
+      <section>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
+            Prompt Stash
+          </h2>
+          {!isAddingPrompt && (
+            <Button variant="secondary" size="sm" onClick={() => setIsAddingPrompt(true)}>
+              <Plus className="w-4 h-4 mr-1" />
+              Add
+            </Button>
+          )}
+        </div>
+
+        {/* Add new prompt form */}
+        {isAddingPrompt && (
+          <div className="px-4 py-3 rounded-xl bg-[var(--muted)] border border-[var(--primary)] mb-3 space-y-3">
+            <Input
+              placeholder="Title"
+              value={newPromptTitle}
+              onChange={(e) => setNewPromptTitle(e.target.value)}
+              autoFocus
+            />
+            <textarea
+              placeholder="Prompt content..."
+              value={newPromptContent}
+              onChange={(e) => setNewPromptContent(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg bg-[var(--background)] border border-[var(--border)] text-sm resize-none focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
+              rows={4}
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={() => {
+                setIsAddingPrompt(false)
+                setNewPromptTitle('')
+                setNewPromptContent('')
+              }}>
+                Cancel
+              </Button>
+              <Button size="sm" onClick={handleAddPrompt}>
+                Save
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Prompt list */}
+        <div className="space-y-2">
+          {sortedPrompts.length === 0 && !isAddingPrompt && (
+            <p className="text-sm text-[var(--muted-foreground)] px-4 py-3">
+              No prompts saved. Use Cmd+Shift+' to access prompts from any agent terminal.
+            </p>
+          )}
+          {sortedPrompts.map(entry => (
+            <div key={entry.id} className="px-4 py-3 rounded-xl bg-[var(--muted)]">
+              {editingPromptId === entry.id ? (
+                // Edit mode
+                <div className="space-y-3">
+                  <Input
+                    value={editPromptTitle}
+                    onChange={(e) => setEditPromptTitle(e.target.value)}
+                    autoFocus
+                  />
+                  <textarea
+                    value={editPromptContent}
+                    onChange={(e) => setEditPromptContent(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-[var(--background)] border border-[var(--border)] text-sm resize-none focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
+                    rows={4}
+                  />
+                  <div className="flex justify-end gap-2">
+                    <Button variant="ghost" size="sm" onClick={handleCancelEdit}>
+                      Cancel
+                    </Button>
+                    <Button size="sm" onClick={handleSaveEdit}>
+                      Save
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                // View mode
+                <div className="space-y-2">
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => handleToggleFavorite(entry.id)}
+                      className="text-[var(--muted-foreground)] hover:text-yellow-400 transition-colors"
+                    >
+                      <Star className={`w-4 h-4 ${entry.isFavorite ? 'fill-yellow-400 text-yellow-400' : ''}`} />
+                    </button>
+                    <span
+                      className="text-sm font-medium flex-1 cursor-pointer hover:text-[var(--primary)]"
+                      onClick={() => handleStartEdit(entry)}
+                    >
+                      {entry.title}
+                    </span>
+                    <Button variant="ghost" size="icon" onClick={() => handleDeletePrompt(entry.id)}>
+                      <Trash2 className="w-4 h-4 text-[var(--muted-foreground)]" />
+                    </Button>
+                  </div>
+                  <p
+                    className="text-xs text-[var(--muted-foreground)] line-clamp-2 cursor-pointer hover:text-[var(--foreground)]"
+                    onClick={() => handleStartEdit(entry)}
+                  >
+                    {entry.content}
+                  </p>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </section>
+
       {/* Shortcuts */}
       <section>
         <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
@@ -466,8 +997,14 @@ export default function App() {
             <kbd className="px-2 py-1 rounded bg-[var(--muted)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs min-w-[120px] text-center">Cmd+E</kbd>
             <span>Previous agent</span>
           </div>
+          <div className="flex items-center gap-4">
+            <kbd className="px-2 py-1 rounded bg-[var(--muted)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs min-w-[120px] text-center">Cmd+Shift+'</kbd>
+            <span>Prompts</span>
+          </div>
         </div>
       </section>
+        </div>
+      )}
     </div>
   )
 }

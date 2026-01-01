@@ -12,6 +12,8 @@ import {
 interface BubbleMenuProps {
   editor: Editor;
   onSendToAgent: (selection: string) => void;
+  onSendToActiveAgent: (selection: string) => void;
+  hasActiveAgent: boolean;
 }
 
 // Get agents icon URI from data attribute set by extension
@@ -20,7 +22,7 @@ const getAgentsIconUri = (): string | null => {
   return root?.dataset.agentsIcon || null;
 };
 
-function BubbleMenu({ editor, onSendToAgent }: BubbleMenuProps) {
+function BubbleMenu({ editor, onSendToAgent, onSendToActiveAgent, hasActiveAgent }: BubbleMenuProps) {
   const agentsIconUri = getAgentsIconUri();
 
   const setLink = () => {
@@ -44,6 +46,14 @@ function BubbleMenu({ editor, onSendToAgent }: BubbleMenuProps) {
     const selection = editor.state.doc.textBetween(from, to, ' ');
     if (selection) {
       onSendToAgent(selection);
+    }
+  };
+
+  const handleSendToActiveAgent = () => {
+    const { from, to } = editor.state.selection;
+    const selection = editor.state.doc.textBetween(from, to, ' ');
+    if (selection) {
+      onSendToActiveAgent(selection);
     }
   };
 
@@ -105,13 +115,33 @@ function BubbleMenu({ editor, onSendToAgent }: BubbleMenuProps) {
 
       <div className="separator" />
 
+      {hasActiveAgent && (
+        <button
+          onClick={handleSendToActiveAgent}
+          className="agents-button agents-button-active"
+          title="Send to active agent"
+        >
+          {agentsIconUri ? (
+            <img
+              src={agentsIconUri}
+              alt="Send to active agent"
+              width={16}
+              height={16}
+              style={{ filter: 'grayscale(100%)' }}
+            />
+          ) : (
+            <span>A</span>
+          )}
+        </button>
+      )}
+
       <button
         onClick={handleSendToAgent}
         className="agents-button"
         title="Open new agent with selection"
       >
         {agentsIconUri ? (
-          <img src={agentsIconUri} alt="Agents" width={16} height={16} />
+          <img src={agentsIconUri} alt="New agent" width={16} height={16} />
         ) : (
           <span>A</span>
         )}

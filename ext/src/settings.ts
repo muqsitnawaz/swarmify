@@ -14,6 +14,17 @@ export interface CustomAgentConfig {
   instances: number;
 }
 
+// Prompt entry for saving reusable prompts
+export interface PromptEntry {
+  id: string;
+  title: string;
+  content: string;
+  isFavorite: boolean;
+  createdAt: number;
+  updatedAt: number;
+  accessedAt: number;  // Last time prompt was used (for sorting by recency)
+}
+
 // Swarm agent types (subset of built-in agents that support swarm)
 export type SwarmAgentType = 'cursor' | 'codex' | 'claude' | 'gemini' | 'opencode';
 export const ALL_SWARM_AGENTS: SwarmAgentType[] = ['cursor', 'codex', 'claude', 'gemini', 'opencode'];
@@ -30,6 +41,7 @@ export interface AgentSettings {
   };
   custom: CustomAgentConfig[];
   swarmEnabledAgents: SwarmAgentType[];
+  prompts: PromptEntry[];
 }
 
 // Default settings (pure function)
@@ -44,7 +56,8 @@ export function getDefaultSettings(): AgentSettings {
       shell: { login: false, instances: 1 }
     },
     custom: [],
-    swarmEnabledAgents: [...ALL_SWARM_AGENTS]
+    swarmEnabledAgents: [...ALL_SWARM_AGENTS],
+    prompts: []
   };
 }
 

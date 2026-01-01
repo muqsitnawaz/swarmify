@@ -3,7 +3,7 @@
   "displayName": "Agents",
   "publisher": "muqsitnawaz",
   "description": "Manage multiple Claude Code, Codex, Gemini, and Cursor terminal agents in the editor",
-  "version": "0.9.64",
+  "version": "0.9.74",
   "license": "MIT",
   "author": "Muqsit Nawaz <dev@muqsitnawaz.com>",
   "icon": "assets/agents.png",
@@ -105,8 +105,8 @@
         "title": "Agents: Clear"
       },
       {
-        "command": "agents.generateCommit",
-        "title": "Agents: Git",
+        "command": "agents.autogit",
+        "title": "Agents: Autogit",
         "icon": {
           "light": "assets/agents.png",
           "dark": "assets/agents.png"
@@ -115,6 +115,14 @@
       {
         "command": "agents.enableSwarm",
         "title": "Agents: Enable Swarm"
+      },
+      {
+        "command": "agents.enableNotifications",
+        "title": "Agents: Enable Notifications"
+      },
+      {
+        "command": "agents.enableTmux",
+        "title": "Agents: Enable Tmux"
       },
       {
         "command": "agents.newTask",
@@ -129,16 +137,12 @@
         }
       },
       {
-        "command": "agents.swarmDocument",
-        "title": "Agents: Swarm Document"
+        "command": "agents.openAgent",
+        "title": "Agents: Open"
       },
       {
-        "command": "agents.goToTerminal",
-        "title": "Agents: Go to Terminal"
-      },
-      {
-        "command": "agents.streamline",
-        "title": "Agents: Streamline"
+        "command": "agents.enableView",
+        "title": "Agents: Enable View"
       },
       {
         "command": "agents.newAgentHSplit",
@@ -147,10 +151,14 @@
       {
         "command": "agents.newAgentVSplit",
         "title": "Agents: New Split (Side)"
+      },
+      {
+        "command": "agents.prompts",
+        "title": "Agents: Prompts"
       }
     ],
     "configuration": {
-      "title": "Agents: Git",
+      "title": "Agents: Autogit",
       "properties": {
         "agents.apiKey": {
           "type": "string",
@@ -185,6 +193,11 @@
           "type": "string",
           "default": ".assets",
           "description": "Folder for storing images and attachments from the markdown editor"
+        },
+        "agents.enableTmux": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable tmux for per-tab splits in agent terminals. When enabled, Cmd+Shift+H/V create tmux panes instead of VS Code editor splits."
         }
       }
     },
@@ -198,7 +211,7 @@
       ],
       "scm/title": [
         {
-          "command": "agents.generateCommit",
+          "command": "agents.autogit",
           "group": "navigation",
           "when": "scmProvider == git"
         }
@@ -213,7 +226,7 @@
     },
     "keybindings": [
       {
-        "command": "agents.generateCommit",
+        "command": "agents.autogit",
         "key": "ctrl+shift+g",
         "mac": "cmd+shift+g"
       },
@@ -235,14 +248,7 @@
       {
         "command": "agents.newTask",
         "key": "ctrl+shift+n",
-        "mac": "cmd+shift+n",
-        "when": "terminalEditorFocus"
-      },
-      {
-        "command": "agents.swarmDocument",
-        "key": "ctrl+shift+s",
-        "mac": "cmd+shift+s",
-        "when": "activeCustomEditorId == 'agents.markdownEditor'"
+        "mac": "cmd+shift+n"
       },
       {
         "command": "agents.newShell",
@@ -250,7 +256,7 @@
         "mac": "cmd+shift+s"
       },
       {
-        "command": "agents.goToTerminal",
+        "command": "agents.openAgent",
         "key": "ctrl+shift+i",
         "mac": "cmd+shift+i"
       },
@@ -263,6 +269,11 @@
         "command": "agents.newAgentVSplit",
         "key": "ctrl+shift+v",
         "mac": "cmd+shift+v"
+      },
+      {
+        "command": "agents.prompts",
+        "key": "ctrl+shift+'",
+        "mac": "cmd+shift+'"
       }
     ]
   },
@@ -279,6 +290,7 @@
     "typescript": "^5.3.3"
   },
   "dependencies": {
-    "@vscode/webview-ui-toolkit": "^1.4.0"
+    "@vscode/webview-ui-toolkit": "^1.4.0",
+    "yaml": "^2.7.0"
   }
 }

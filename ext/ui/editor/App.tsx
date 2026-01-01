@@ -10,6 +10,7 @@ function App() {
   const [content, setContent] = useState<string>('');
   const [isReady, setIsReady] = useState(false);
   const [editor, setEditor] = useState<TiptapEditor | null>(null);
+  const [hasActiveAgent, setHasActiveAgent] = useState(false);
 
   useEffect(() => {
     // Handle messages from extension
@@ -26,11 +27,16 @@ function App() {
         case 'agentResult':
           console.log('Agent Result:', message.result);
           break;
+        case 'activeAgentChanged':
+          setHasActiveAgent(message.hasActiveAgent);
+          break;
       }
     };
 
     window.addEventListener('message', handleMessage);
     vscode.postMessage({ type: 'ready' });
+    // Check if there's already an active agent for this document
+    vscode.postMessage({ type: 'checkActiveAgent' });
 
     return () => {
       window.removeEventListener('message', handleMessage);
@@ -60,6 +66,13 @@ function App() {
     });
   };
 
+  const handleSendToActiveAgent = (selection: string) => {
+    vscode.postMessage({
+      type: 'sendToActiveAgent',
+      selection,
+    });
+  };
+
   if (!isReady) {
     return (
       <div style={{
@@ -83,6 +96,8 @@ function App() {
         onChange={handleContentChange}
         onSaveAsset={handleSaveAsset}
         onSendToAgent={handleSendToAgent}
+        onSendToActiveAgent={handleSendToActiveAgent}
+        hasActiveAgent={hasActiveAgent}
         onEditorReady={setEditor}
       />
     </div>

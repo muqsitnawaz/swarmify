@@ -33,10 +33,12 @@ interface EditorProps {
   onChange: (content: string) => void;
   onSaveAsset: (data: string, fileName: string) => void;
   onSendToAgent: (selection: string) => void;
+  onSendToActiveAgent: (selection: string) => void;
+  hasActiveAgent: boolean;
   onEditorReady: (editor: TiptapEditor) => void;
 }
 
-function Editor({ initialContent, onChange, onSaveAsset, onSendToAgent, onEditorReady }: EditorProps) {
+function Editor({ initialContent, onChange, onSaveAsset, onSendToAgent, onSendToActiveAgent, hasActiveAgent, onEditorReady }: EditorProps) {
   const isUpdatingRef = useRef(false);
 
     const editor = useEditor({
@@ -244,7 +246,12 @@ function Editor({ initialContent, onChange, onSaveAsset, onSendToAgent, onEditor
 
   return (
     <div className="editor-container">
-      <BubbleMenu editor={editor} onSendToAgent={onSendToAgent} />
+      <BubbleMenu
+        editor={editor}
+        onSendToAgent={onSendToAgent}
+        onSendToActiveAgent={onSendToActiveAgent}
+        hasActiveAgent={hasActiveAgent}
+      />
       <EditorContent editor={editor} />
     </div>
   );
