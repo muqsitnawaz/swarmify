@@ -6,6 +6,7 @@ import {
   getIconFilename,
   getTerminalDisplayInfo,
   findTerminalNameByTabLabel,
+  formatTerminalTitle,
   mergeMcpConfig,
   createSwarmServerConfig,
   generateTmuxSessionName,
@@ -32,6 +33,27 @@ describe('parseTerminalName', () => {
     expect(parseTerminalName('OC')).toEqual({ isAgent: true, prefix: 'OC', label: null });
     expect(parseTerminalName('CR')).toEqual({ isAgent: true, prefix: 'CR', label: null });
     expect(parseTerminalName('SH')).toEqual({ isAgent: true, prefix: 'SH', label: null });
+  });
+
+  test('accepts full agent names', () => {
+    expect(parseTerminalName('Claude')).toEqual({ isAgent: true, prefix: 'CC', label: null });
+    expect(parseTerminalName('Codex')).toEqual({ isAgent: true, prefix: 'CX', label: null });
+    expect(parseTerminalName('Gemini')).toEqual({ isAgent: true, prefix: 'GX', label: null });
+    expect(parseTerminalName('OpenCode')).toEqual({ isAgent: true, prefix: 'OC', label: null });
+    expect(parseTerminalName('Cursor')).toEqual({ isAgent: true, prefix: 'CR', label: null });
+  });
+
+  test('accepts full agent names with labels', () => {
+    expect(parseTerminalName('Cursor - auth')).toEqual({
+      isAgent: true,
+      prefix: 'CR',
+      label: 'auth'
+    });
+    expect(parseTerminalName('Claude - feature work')).toEqual({
+      isAgent: true,
+      prefix: 'CC',
+      label: 'feature work'
+    });
   });
 
   test('identifies agent prefixes with labels', () => {
@@ -428,6 +450,26 @@ describe('findTerminalNameByTabLabel', () => {
     expect(findTerminalNameByTabLabel(terminalNames, 'CC')).toBeNull();
     expect(findTerminalNameByTabLabel(terminalNames, 'CC - auth')).toBeNull();
     expect(findTerminalNameByTabLabel(terminalNames, 'auth feature')).toBeNull();
+  });
+});
+
+describe('formatTerminalTitle', () => {
+  test('uses short code when showFullAgentNames is false', () => {
+    expect(formatTerminalTitle('CX', { display: { showFullAgentNames: false, showLabelsInTitles: true } })).toBe('CX');
+  });
+
+  test('uses full name when showFullAgentNames is true', () => {
+    expect(formatTerminalTitle('CX', { display: { showFullAgentNames: true, showLabelsInTitles: true } })).toBe('Codex');
+  });
+
+  test('includes label when allowed', () => {
+    expect(formatTerminalTitle('CR', { label: 'auth', display: { showFullAgentNames: true, showLabelsInTitles: true } }))
+      .toBe('Cursor - auth');
+  });
+
+  test('omits label when showLabelsInTitles is false', () => {
+    expect(formatTerminalTitle('CR', { label: 'auth', display: { showFullAgentNames: true, showLabelsInTitles: false } }))
+      .toBe('Cursor');
   });
 });
 

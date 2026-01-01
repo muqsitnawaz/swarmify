@@ -125,6 +125,10 @@
         "title": "Agents: Enable Tmux"
       },
       {
+        "command": "agents.disableTmux",
+        "title": "Agents: Disable Tmux"
+      },
+      {
         "command": "agents.newTask",
         "title": "Agents: New Task"
       },
@@ -143,6 +147,14 @@
       {
         "command": "agents.enableView",
         "title": "Agents: Enable View"
+      },
+      {
+        "command": "agents.disableView",
+        "title": "Agents: Disable View"
+      },
+      {
+        "command": "agents.runSetup",
+        "title": "Agents: Run Setup"
       },
       {
         "command": "agents.newAgentHSplit",
@@ -231,6 +243,26 @@
           "command": "agents.newGemini",
           "when": "true",
           "group": "navigation@2"
+        },
+        {
+          "command": "agents.enableTmux",
+          "when": "!agents.tmuxEnabled",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agents.disableTmux",
+          "when": "agents.tmuxEnabled",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agents.enableView",
+          "when": "!agents.viewEnabled",
+          "group": "navigation@4"
+        },
+        {
+          "command": "agents.disableView",
+          "when": "agents.viewEnabled",
+          "group": "navigation@4"
         }
       ]
     },
@@ -284,6 +316,26 @@
         "command": "agents.prompts",
         "key": "ctrl+shift+'",
         "mac": "cmd+shift+'"
+      },
+      {
+        "command": "agents.newCodex",
+        "key": "ctrl+shift+x",
+        "mac": "cmd+shift+x"
+      },
+      {
+        "command": "agents.newGemini",
+        "key": "ctrl+shift+m",
+        "mac": "cmd+shift+m"
+      },
+      {
+        "command": "agents.newCursor",
+        "key": "ctrl+shift+u",
+        "mac": "cmd+shift+u"
+      },
+      {
+        "command": "agents.newOpenCode",
+        "key": "ctrl+shift+d",
+        "mac": "cmd+shift+d"
       }
     ]
   },
