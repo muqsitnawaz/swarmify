@@ -731,7 +731,7 @@ export default function App() {
 
         {/* Tab bar */}
         <div className="flex gap-1">
-          {(['overview', 'settings', 'swarm', 'prompts', 'guide'] as TabId[]).map(tab => (
+          {(['overview', 'swarm', 'prompts', 'guide', 'settings'] as TabId[]).map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
