@@ -61,7 +61,7 @@ Generate commit messages from your staged changes. Learns from your commit style
 
 1. Install the extension
 2. Spawn your first agent via command palette or shortcut
-3. Open settings (`Agents: Settings`) to configure auto-start and add custom agents
+3. Open settings (`Agents: Dashboard`) to configure auto-start and add custom agents
 
 ## Keyboard Shortcuts
 
