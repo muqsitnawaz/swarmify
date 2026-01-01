@@ -32,7 +32,8 @@ class MCPTestClient {
   private startupPromise: Promise<void> | null = null;
 
   async start(): Promise<void> {
-    this.process = spawn('bun', ['run', SERVER_PATH], {
+    // Use node directly (not bun run) because bun handles stdin differently
+    this.process = spawn('node', [SERVER_PATH], {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
@@ -292,7 +293,8 @@ describe('MCP Server E2E Tests', () => {
 
 describe('MCP Server Startup Tests', () => {
   test('server process starts without crashing', async () => {
-    const serverProcess = spawn('bun', ['run', SERVER_PATH], {
+    // Use node directly (not bun run) because bun handles stdin differently
+    const serverProcess = spawn('node', [SERVER_PATH], {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
@@ -314,7 +316,8 @@ describe('MCP Server Startup Tests', () => {
   });
 
   test('server logs startup message', async () => {
-    const serverProcess = spawn('bun', ['run', SERVER_PATH], {
+    // Use node directly (not bun run) because bun handles stdin differently
+    const serverProcess = spawn('node', [SERVER_PATH], {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
