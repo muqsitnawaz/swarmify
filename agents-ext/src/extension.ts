@@ -34,7 +34,8 @@ import {
   isTmuxTerminal,
   registerTmuxCleanup,
   tmuxSplitH,
-  tmuxSplitV
+  tmuxSplitV,
+  isTmuxAvailable
 } from './tmux';
 import { DEFAULT_DISPLAY_PREFERENCES } from './settings';
 
@@ -428,6 +429,12 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
+    vscode.commands.registerCommand('agents.settings', () => {
+      vscode.commands.executeCommand('workbench.action.openSettings', '@ext:agents');
+    })
+  );
+
+  context.subscriptions.push(
     vscode.commands.registerCommand('agents.newAgent', () => {
       // Default is always Claude
       const agentConfig = getBuiltInByTitle(context.extensionPath, defaultAgentTitle);
@@ -708,8 +715,13 @@ export async function activate(context: vscode.ExtensionContext) {
 async function openSingleAgent(context: vscode.ExtensionContext, agentConfig: Omit<AgentConfig, 'count'>) {
   const config = vscode.workspace.getConfiguration('agents');
   const enableTmux = config.get<boolean>('enableTmux', false);
+  const tmuxOk = enableTmux ? await isTmuxAvailable() : false;
 
-  if (enableTmux) {
+  if (enableTmux && !tmuxOk) {
+    vscode.window.showWarningMessage('Tmux mode is enabled, but tmux is not available on PATH. Falling back to VS Code splits.');
+  }
+
+  if (tmuxOk) {
     const title = buildTerminalTitle(agentConfig.title, undefined, context);
     const terminalId = terminals.nextId(agentConfig.prefix);
     const builtInDef = getBuiltInDefByTitle(agentConfig.title);

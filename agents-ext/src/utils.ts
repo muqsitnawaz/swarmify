@@ -259,9 +259,9 @@ export function generateTmuxSessionName(prefix: string): string {
 export function buildTmuxInitCommand(sessionName: string, paneLabel: string): string {
   return [
     `tmux new-session -s ${sessionName} -n main`,
-    'tmux set -g mouse on',
-    'tmux set -g pane-border-status top',
-    `tmux set -g pane-border-format " #{pane_index}: ${paneLabel} "`,
+    `tmux set-option -t ${sessionName} mouse on`,
+    `tmux set-option -t ${sessionName} pane-border-status top`,
+    `tmux set-option -t ${sessionName} pane-border-format " #{pane_index}: ${paneLabel} "`,
   ].join(' \\; ');
 }
 

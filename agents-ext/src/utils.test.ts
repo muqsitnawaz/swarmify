@@ -301,8 +301,8 @@ describe('tmux utilities', () => {
       const cmd = buildTmuxInitCommand('agents-cc-123', 'Claude');
 
       expect(cmd).toContain('tmux new-session -s agents-cc-123');
-      expect(cmd).toContain('tmux set -g mouse on');
-      expect(cmd).toContain('pane-border-status top');
+      expect(cmd).toContain('set-option -t agents-cc-123 mouse on');
+      expect(cmd).toContain('set-option -t agents-cc-123 pane-border-status top');
       expect(cmd).toContain('Claude');
     });
   });

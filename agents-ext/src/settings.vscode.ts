@@ -247,6 +247,19 @@ export function openPanel(context: vscode.ExtensionContext): void {
         // Update via command which also updates the module-level variable
         await vscode.commands.executeCommand('agents.setDefaultAgentTitle', message.agentTitle);
         break;
+      case 'spawnAgent':
+        // Spawn a new agent of the given type
+        const agentKey = message.agentKey as string;
+        if (message.isCustom) {
+          // Custom agent - command ID is agents.new{Name} with non-alphanumeric chars removed
+          const commandId = `agents.new${agentKey.replace(/[^a-zA-Z0-9]/g, '')}`;
+          vscode.commands.executeCommand(commandId);
+        } else {
+          // Built-in agent - command ID is agents.new{Key} with first letter capitalized
+          const commandId = `agents.new${agentKey.charAt(0).toUpperCase() + agentKey.slice(1)}`;
+          vscode.commands.executeCommand(commandId);
+        }
+        break;
     }
   }, undefined, context.subscriptions);
 
