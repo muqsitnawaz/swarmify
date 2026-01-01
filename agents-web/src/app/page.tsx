@@ -3,16 +3,18 @@
 import { useState } from "react";
 
 type AgentType = "claude" | "codex" | "gemini" | "cursor";
+type FileTab = "auth.ts" | "README.md";
 
-const agents: { id: AgentType; name: string; logo: string }[] = [
-  { id: "claude", name: "Claude", logo: "/claude.png" },
-  { id: "codex", name: "Codex", logo: "/codex.png" },
-  { id: "gemini", name: "Gemini", logo: "/gemini.png" },
-  { id: "cursor", name: "Cursor", logo: "/cursor.png" },
+const agents: { id: AgentType; name: string; logo: string; label: string }[] = [
+  { id: "claude", name: "Claude", logo: "/claude.png", label: "Stripe integration" },
+  { id: "codex", name: "Codex", logo: "/codex.png", label: "Landing page updates" },
+  { id: "gemini", name: "Gemini", logo: "/gemini.png", label: "API middleware" },
+  { id: "cursor", name: "Cursor", logo: "/cursor.png", label: "Auth tests" },
 ];
 
 export default function Home() {
   const [activeAgent, setActiveAgent] = useState<AgentType>("claude");
+  const [activePanel, setActivePanel] = useState<"agent" | "file">("agent");
 
   return (
     <main className="min-h-screen">
@@ -48,7 +50,10 @@ export default function Home() {
             {agents.map((agent) => (
               <button
                 key={agent.id}
-                onClick={() => setActiveAgent(agent.id)}
+                onClick={() => {
+                  setActiveAgent(agent.id);
+                  setActivePanel("agent");
+                }}
                 className={`rounded transition-all ${
                   activeAgent === agent.id
                     ? "ring-2 ring-white ring-offset-2 ring-offset-black"
@@ -79,7 +84,12 @@ export default function Home() {
 
         {/* Editor mockup */}
         <div className="animate-fade-in-delay-2 glow editor-mockup rounded-xl overflow-hidden border border-[#222]">
-          <EditorMockup activeAgent={activeAgent} setActiveAgent={setActiveAgent} />
+          <EditorMockup
+            activeAgent={activeAgent}
+            setActiveAgent={setActiveAgent}
+            activePanel={activePanel}
+            setActivePanel={setActivePanel}
+          />
         </div>
       </section>
 
@@ -684,11 +694,31 @@ function Shortcut({ keys, action }: { keys: string; action: string }) {
 
 function EditorMockup({
   activeAgent,
-  setActiveAgent
+  setActiveAgent,
+  activePanel,
+  setActivePanel
 }: {
   activeAgent: AgentType;
   setActiveAgent: (agent: AgentType) => void;
+  activePanel: "agent" | "file";
+  setActivePanel: (panel: "agent" | "file") => void;
 }) {
+  const [activeFile, setActiveFile] = useState<FileTab>("auth.ts");
+  const [activeDiff, setActiveDiff] = useState<FileTab | "middleware.ts" | "types.ts">("auth.ts");
+  const files: FileTab[] = ["auth.ts", "README.md"];
+  const gitFiles: { name: FileTab | "middleware.ts" | "types.ts"; status: "M" | "A" | "D" }[] = [
+    { name: "auth.ts", status: "M" },
+    { name: "middleware.ts", status: "M" },
+    { name: "README.md", status: "A" },
+    { name: "types.ts", status: "A" },
+  ];
+
+  const setFileActive = (name: FileTab) => {
+    setActiveFile(name);
+    setActiveDiff(name);
+    setActivePanel("file");
+  };
+
   return (
     <div className="bg-[#0d0d0d]">
       {/* Title bar */}
@@ -708,47 +738,102 @@ function EditorMockup({
         {agents.map((agent) => (
           <button
             key={agent.id}
-            onClick={() => setActiveAgent(agent.id)}
+            onClick={() => {
+              setActiveAgent(agent.id);
+              setActivePanel("agent");
+            }}
             className={`flex items-center gap-2 px-3 py-2 rounded-t-lg text-xs transition-colors ${
-              activeAgent === agent.id
+              activePanel === "agent" && activeAgent === agent.id
                 ? "bg-[#0d0d0d] text-white"
                 : "bg-[#161616] text-[#888] hover:text-white"
             }`}
           >
             <img src={agent.logo} alt={agent.name} width={16} height={16} className="rounded-sm" />
             <span className="font-medium">{agent.name}</span>
+            <span className="text-[10px] text-[#666] truncate max-w-[140px]">— {agent.label}</span>
           </button>
         ))}
-        <div className="flex items-center gap-2 px-3 py-2 rounded-t-lg text-xs bg-[#161616] text-[#888]">
-          <FileIcon />
-          <span className="font-mono">auth.ts</span>
-        </div>
+        {files.map((file) => (
+          <button
+            key={file}
+            onClick={() => setFileActive(file)}
+            className={`flex items-center gap-2 px-3 py-2 rounded-t-lg text-xs transition-colors ${
+              activePanel === "file" && activeFile === file
+                ? "bg-[#0d0d0d] text-white"
+                : "bg-[#161616] text-[#888] hover:text-white"
+            }`}
+          >
+            <FileIcon />
+            <span className="font-mono">{file}</span>
+          </button>
+        ))}
       </div>
 
       {/* Split Content: Terminal + Git Panel */}
-      <div className="flex min-h-[340px]">
-        {/* Terminal */}
-        <div className="flex-1 p-5 font-mono text-xs leading-relaxed border-r border-[#1a1a1a] overflow-hidden">
-          <AgentContent agent={activeAgent} />
+      <div className="flex flex-col md:flex-row min-h-[340px]">
+        {/* Terminal / File Preview */}
+        <div className="flex-1 p-5 text-xs leading-relaxed border-b md:border-b-0 md:border-r border-[#1a1a1a] overflow-hidden">
+          {activePanel === "agent" ? (
+            <div className="font-mono">
+              <AgentContent agent={activeAgent} />
+            </div>
+          ) : (
+            <FilePreview file={activeFile} />
+          )}
         </div>
 
         {/* Git Changes Panel */}
-        <div className="w-56 bg-[#0a0a0a] p-3 text-xs shrink-0">
+        <div className="w-full md:w-56 bg-[#0a0a0a] p-3 text-xs shrink-0">
           <div className="flex items-center justify-between mb-3">
             <span className="text-[#888] uppercase tracking-wide text-[10px]">Changes</span>
-            <span className="bg-[#3b82f6] text-white px-1.5 py-0.5 rounded text-[10px]">3</span>
+            <span className="bg-[#3b82f6] text-white px-1.5 py-0.5 rounded text-[10px]">4</span>
           </div>
           <div className="space-y-1">
-            <GitFile name="auth.ts" status="M" />
-            <GitFile name="middleware.ts" status="M" />
-            <GitFile name="types.ts" status="A" />
+            {gitFiles.map((file) => (
+              <GitFile
+                key={file.name}
+                name={file.name}
+                status={file.status}
+                active={activeDiff === file.name}
+                onClick={() => {
+                  setActiveDiff(file.name);
+                  if (file.name === "README.md" || file.name === "auth.ts") {
+                    setFileActive(file.name);
+                  }
+                }}
+              />
+            ))}
           </div>
           <div className="mt-4 pt-3 border-t border-[#1a1a1a]">
             <div className="text-[#888] uppercase tracking-wide text-[10px] mb-2">Diff Preview</div>
             <div className="font-mono text-[10px] space-y-0.5">
-              <div className="text-[#f87171]">- if (token) {"{"}</div>
-              <div className="text-[#4ade80]">+ if (token && !isExpired(token)) {"{"}</div>
-              <div className="text-[#888]">    return decode(token);</div>
+              {activeDiff === "auth.ts" && (
+                <>
+                  <div className="text-[#f87171]">- if (token) {"{"}</div>
+                  <div className="text-[#4ade80]">+ if (token && !isExpired(token)) {"{"}</div>
+                  <div className="text-[#888]">    return decode(token);</div>
+                </>
+              )}
+              {activeDiff === "README.md" && (
+                <>
+                  <div className="text-[#4ade80]">+ ## Landing page updates</div>
+                  <div className="text-[#4ade80]">+ - [ ] Review diff section layout</div>
+                  <div className="text-[#4ade80]">+ - [ ] Add prompt library preview</div>
+                </>
+              )}
+              {activeDiff === "middleware.ts" && (
+                <>
+                  <div className="text-[#f87171]">- export const auth = () =&gt; token;</div>
+                  <div className="text-[#4ade80]">+ export const auth = () =&gt; verify(token);</div>
+                </>
+              )}
+              {activeDiff === "types.ts" && (
+                <>
+                  <div className="text-[#4ade80]">+ export interface AgentLabel {"{"}</div>
+                  <div className="text-[#4ade80]">+   label: string;</div>
+                  <div className="text-[#4ade80]">+ {"}"}</div>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -762,13 +847,12 @@ function AgentContent({ agent }: { agent: AgentType }) {
     return (
       <div className="space-y-1">
         <div className="text-[#f97316] font-bold mb-3">Claude Code</div>
-        <div className="text-[#3b82f6]">&gt; <span className="text-white">Fix the authentication bug in src/auth.ts</span></div>
-        <div className="text-[#ccc] mt-3">I&apos;ll analyze the authentication module and fix the issue.</div>
-        <div className="text-[#ccc] mt-2">Found the problem - the JWT token validation is missing</div>
-        <div className="text-[#ccc]">the expiry check. Let me fix that...</div>
-        <div className="text-[#666] mt-3">Reading: src/auth.ts</div>
-        <div className="text-[#666]">Editing: src/auth.ts</div>
-        <div className="text-[#4ade80] mt-3">Done. The token now properly validates expiry.</div>
+        <div className="text-[#3b82f6]">&gt; <span className="text-white">Integrate Stripe billing and webhooks</span></div>
+        <div className="text-[#ccc] mt-3">I&apos;ll add the Stripe client, webhook handler, and plans mapping.</div>
+        <div className="text-[#ccc] mt-2">Creating checkout session flow and subscription sync...</div>
+        <div className="text-[#666] mt-3">Reading: src/billing/stripe.ts</div>
+        <div className="text-[#666]">Editing: src/api/webhooks.ts</div>
+        <div className="text-[#4ade80] mt-3">Done. Billing flows are wired and tested.</div>
       </div>
     );
   }
@@ -784,9 +868,9 @@ function AgentContent({ agent }: { agent: AgentType }) {
   ╚██████╗╚██████╔╝██████╔╝███████╗██╔╝ ██╗
    ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝`}</pre>
         <div className="text-[#888]">OpenAI Codex CLI</div>
-        <div className="text-[#3b82f6] mt-2">&gt; <span className="text-white">Add input validation to the login form</span></div>
-        <div className="text-[#ccc] mt-2">Adding email format validation and password strength check...</div>
-        <div className="text-[#666]">Modified: src/components/LoginForm.tsx</div>
+        <div className="text-[#3b82f6] mt-2">&gt; <span className="text-white">Update landing page copy + sections</span></div>
+        <div className="text-[#ccc] mt-2">Reframing hero, updating comparison, adding previews...</div>
+        <div className="text-[#666]">Modified: agents-web/src/app/page.tsx</div>
       </div>
     );
   }
@@ -802,8 +886,8 @@ function AgentContent({ agent }: { agent: AgentType }) {
 `}<span className="text-[#60a5fa]">{`  ╲╱  `}</span><span className="text-[#60a5fa]">{`╚██████╔╝███████╗██║ ╚═╝ ██║██║██║ ╚████║██║`}</span>{`
 `}<span className="text-[#60a5fa]">{`      `}</span><span className="text-[#f472b6]">{` ╚═════╝ ╚══════╝╚═╝     ╚═╝╚═╝╚═╝  ╚═══╝╚═╝`}</span></pre>
         <div className="text-[#888] text-[10px]">Gemini CLI 0.22.5</div>
-        <div className="text-[#3b82f6] mt-2">&gt; <span className="text-white">Refactor the API routes to use middleware</span></div>
-        <div className="text-[#ccc] mt-2">I&apos;ll create a middleware pattern for authentication...</div>
+        <div className="text-[#3b82f6] mt-2">&gt; <span className="text-white">Introduce API middleware pattern</span></div>
+        <div className="text-[#ccc] mt-2">I&apos;ll move auth + logging into middleware layers...</div>
         <div className="text-[#666]">Created: src/middleware/auth.ts</div>
       </div>
     );
@@ -827,17 +911,78 @@ function AgentContent({ agent }: { agent: AgentType }) {
   );
 }
 
+function FilePreview({ file }: { file: FileTab }) {
+  if (file === "README.md") {
+    return (
+      <div className="font-sans text-[11px] text-[#b7c7d2] space-y-3">
+        <div className="text-[#d8e6ef] text-base font-semibold">Landing Page Updates</div>
+        <p className="text-[#9ab0bf] leading-relaxed">
+          Track the Swarmify rollout tasks and review progress in one place.
+        </p>
+        <div className="space-y-2">
+          {[
+            "Rewrite hero to focus on orchestration",
+            "Add prompt library + markdown previews",
+            "Align comparison table visuals",
+          ].map((item) => (
+            <div key={item} className="flex items-center gap-2">
+              <span className="h-3 w-3 rounded border border-[#335261] bg-transparent" />
+              <span>{item}</span>
+            </div>
+          ))}
+        </div>
+        <div className="rounded-lg border border-[#1b2a33] bg-[#0c171d] px-3 py-2">
+          <div className="text-[#7aa2b6] uppercase text-[10px] tracking-wide mb-2">Notes</div>
+          <ul className="space-y-1 text-[#b7c7d2]">
+            <li>• Keep labels visible in tab titles</li>
+            <li>• Start task from todos</li>
+            <li>• Ship 3x faster message near top</li>
+          </ul>
+        </div>
+      </div>
+    );
+  }
 
-function GitFile({ name, status }: { name: string; status: 'M' | 'A' | 'D' }) {
+  return (
+    <div className="font-mono text-[11px] text-[#cbd5e1] space-y-1">
+      <div className="text-[#7aa2b6]">export function verifyToken(token: string) {"{"}</div>
+      <div className="text-[#94a3b8] pl-4">if (!token) return false;</div>
+      <div className="text-[#94a3b8] pl-4">const payload = decode(token);</div>
+      <div className="text-[#94a3b8] pl-4">return !isExpired(payload);</div>
+      <div className="text-[#7aa2b6]">{"}"}</div>
+      <div className="text-[#4ade80] mt-3">+ Added expiry validation</div>
+      <div className="text-[#f87171]">- Removed legacy token check</div>
+    </div>
+  );
+}
+
+
+function GitFile({
+  name,
+  status,
+  active,
+  onClick
+}: {
+  name: string;
+  status: "M" | "A" | "D";
+  active?: boolean;
+  onClick?: () => void;
+}) {
   const statusColor = status === 'M' ? 'text-[#f59e0b]' : status === 'A' ? 'text-[#22c55e]' : 'text-[#ef4444]';
   return (
-    <div className="flex items-center justify-between py-1 px-2 rounded hover:bg-[#1a1a1a]">
+    <button
+      type="button"
+      onClick={onClick}
+      className={`w-full flex items-center justify-between py-1 px-2 rounded text-left hover:bg-[#1a1a1a] ${
+        active ? "bg-[#121a22]" : ""
+      }`}
+    >
       <div className="flex items-center gap-2">
         <FileIcon />
         <span className="text-[#ccc]">{name}</span>
       </div>
       <span className={`font-mono ${statusColor}`}>{status}</span>
-    </div>
+    </button>
   );
 }
 

@@ -489,9 +489,9 @@ export async function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('agents.enableTmux', async () => {
-      const config = vscode.workspace.getConfiguration('agents');
-      const current = config.get<boolean>('enableTmux', false);
-      await config.update('enableTmux', !current, vscode.ConfigurationTarget.Global);
+      const config = vscode.workspace.getConfiguration();
+      const current = config.get<boolean>('agents.enableTmux', false);
+      await config.update('agents.enableTmux', !current, vscode.ConfigurationTarget.Global);
       const status = !current ? 'enabled' : 'disabled';
       vscode.window.showInformationMessage(`Tmux mode ${status}. New agent terminals will ${!current ? 'use tmux for per-tab splits' : 'use VS Code editor splits'}.`);
       await updateContextKeys();
@@ -500,10 +500,10 @@ export async function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('agents.disableTmux', async () => {
-      const config = vscode.workspace.getConfiguration('agents');
-      const current = config.get<boolean>('enableTmux', false);
+      const config = vscode.workspace.getConfiguration();
+      const current = config.get<boolean>('agents.enableTmux', false);
       if (current) {
-        await config.update('enableTmux', false, vscode.ConfigurationTarget.Global);
+        await config.update('agents.enableTmux', false, vscode.ConfigurationTarget.Global);
         vscode.window.showInformationMessage('Tmux mode disabled. New agent terminals will use VS Code editor splits.');
         await updateContextKeys();
       }
