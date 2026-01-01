@@ -45,5 +45,8 @@
     "swarm"
   ],
   "author": "Swarmify <dev@swarmify.co>",
-  "license": "MIT"
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.17.0"
+  }
 }

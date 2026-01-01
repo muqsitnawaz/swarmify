@@ -244,10 +244,23 @@ function calcDuration(startedAt: Date, completedAt: Date | null, status: string)
 
   if (seconds < 60) {
     return `${Math.floor(seconds)}s`;
-  } else {
-    const minutes = seconds / 60;
-    return `${minutes.toFixed(1)}m`;
   }
+
+  const minutes = seconds / 60;
+  if (minutes < 60) {
+    const rounded = Math.max(1, Math.round(minutes));
+    return `${rounded}m`;
+  }
+
+  const hours = minutes / 60;
+  if (hours < 48) {
+    const rounded = hours >= 10 ? Math.round(hours) : Number(hours.toFixed(1));
+    return `${rounded}h`;
+  }
+
+  const days = hours / 24;
+  const roundedDays = days >= 10 ? Math.round(days) : Number(days.toFixed(1));
+  return `${roundedDays}d`;
 }
 
 // Parse stdout.log to extract file operations and commands

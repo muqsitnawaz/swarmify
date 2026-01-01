@@ -5,11 +5,41 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { homedir } from 'os';
+import { exec } from 'child_process';
 import { AgentSettings, getDefaultSettings, CustomAgentConfig, SwarmAgentType, ALL_SWARM_AGENTS, PromptEntry, DEFAULT_DISPLAY_PREFERENCES } from './settings';
 import { readPromptsFromPath, writePromptsToPath, DEFAULT_PROMPTS } from './prompts';
 import * as terminals from './terminals.vscode';
 import * as swarm from './swarm.vscode';
 import { formatTerminalTitle, parseTerminalName } from './utils';
+
+// Check if a CLI command exists on the system
+function commandExists(cmd: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const whichCmd = process.platform === 'win32' ? 'where' : 'which';
+    exec(`${whichCmd} ${cmd}`, (err) => {
+      resolve(!err);
+    });
+  });
+}
+
+// Check which agents are installed
+export async function checkInstalledAgents(): Promise<Record<string, boolean>> {
+  const agents = [
+    { key: 'claude', command: 'claude' },
+    { key: 'codex', command: 'codex' },
+    { key: 'gemini', command: 'gemini' },
+    { key: 'opencode', command: 'opencode' },
+    { key: 'cursor', command: 'cursor-agent' },
+  ];
+
+  const results: Record<string, boolean> = {};
+  for (const agent of agents) {
+    results[agent.key] = await commandExists(agent.command);
+  }
+  // Shell is always available
+  results['shell'] = true;
+  return results;
+}
 
 // Module state
 let settingsPanel: vscode.WebviewPanel | undefined;
@@ -198,6 +228,24 @@ export function openPanel(context: vscode.ExtensionContext): void {
         break;
       case 'openGuide':
         openGuide(context, message.guide);
+        break;
+      case 'checkInstalledAgents':
+        const installedAgents = await checkInstalledAgents();
+        settingsPanel?.webview.postMessage({
+          type: 'installedAgentsData',
+          installedAgents
+        });
+        break;
+      case 'getDefaultAgent':
+        const defaultAgent = context.globalState.get<string>('agents.defaultAgentTitle', 'CC');
+        settingsPanel?.webview.postMessage({
+          type: 'defaultAgentData',
+          defaultAgent
+        });
+        break;
+      case 'setDefaultAgent':
+        // Update via command which also updates the module-level variable
+        await vscode.commands.executeCommand('agents.setDefaultAgentTitle', message.agentTitle);
         break;
     }
   }, undefined, context.subscriptions);
