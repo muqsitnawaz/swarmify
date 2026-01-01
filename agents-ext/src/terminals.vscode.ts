@@ -240,42 +240,50 @@ export interface TerminalDetail {
   index: number; // 1-based index within agent type
 }
 
-// Map from lowercase key (used in UI) to title (used in AgentConfig)
-const AGENT_KEY_TO_TITLE: Record<string, string> = {
-  claude: 'Claude',
-  codex: 'Codex',
-  gemini: 'Gemini',
-  opencode: 'OpenCode',
-  cursor: 'Cursor',
-  shell: 'Shell'
+// Map from lowercase key (used in UI) to prefix (used in terminal names)
+const AGENT_KEY_TO_PREFIX: Record<string, string> = {
+  claude: 'CC',
+  codex: 'CX',
+  gemini: 'GX',
+  opencode: 'OC',
+  cursor: 'CR',
+  shell: 'SH'
 };
 
 // Get terminals filtered by agent type with display details
+// Scans VS Code terminals directly to handle restored/unregistered terminals
 export function getTerminalsByAgentType(agentType: string): TerminalDetail[] {
-  const terminals = getAllTerminals();
-  const expectedTitle = AGENT_KEY_TO_TITLE[agentType] || agentType;
+  const expectedPrefix = AGENT_KEY_TO_PREFIX[agentType];
+  const results: TerminalDetail[] = [];
+  let index = 0;
 
-  // Filter by matching title (built-in agents) or by custom agent name
-  const filtered = terminals.filter(t => {
-    if (!t.agentConfig) return false;
-    // For built-in agents, match by title
-    if (t.agentConfig.title === expectedTitle) return true;
-    // For custom agents, the title is the custom name (e.g., "AB")
-    if (t.agentConfig.title === agentType) return true;
-    return false;
-  });
+  for (const terminal of vscode.window.terminals) {
+    const info = getTerminalDisplayInfo(terminal.name);
+    if (!info.isAgent || !info.prefix) continue;
 
-  // Sort by createdAt ascending (oldest first for consistent numbering)
-  filtered.sort((a, b) => a.createdAt - b.createdAt);
+    // Match by prefix for built-in agents, or by exact name for custom agents
+    const isMatch = expectedPrefix
+      ? info.prefix === expectedPrefix
+      : info.prefix === agentType;
 
-  return filtered.map((t, i) => ({
-    id: t.id,
-    agentType: agentType,
-    label: t.label || null,
-    autoLabel: t.autoLabel || null,
-    createdAt: t.createdAt,
-    index: i + 1
-  }));
+    if (!isMatch) continue;
+
+    index++;
+
+    // Try to get additional info from our internal map
+    const entry = getByTerminal(terminal);
+
+    results.push({
+      id: entry?.id || `unregistered-${index}`,
+      agentType: agentType,
+      label: entry?.label || info.label || null,
+      autoLabel: entry?.autoLabel || null,
+      createdAt: entry?.createdAt || Date.now(),
+      index: index
+    });
+  }
+
+  return results;
 }
 
 // Clear state (for testing/deactivation)

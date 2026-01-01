@@ -83,6 +83,52 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Taskable Markdown (live in agents-ext) */}
+      <section className="px-6 py-20 border-t border-[#1a1a1a] bg-[#070707]">
+        <div className="max-w-5xl mx-auto space-y-6">
+          <div className="flex items-center gap-3">
+            <span className="px-3 py-1 text-xs font-semibold rounded-full bg-[#111] border border-[#222] text-[#67e8f9]">
+              New in agents-ext
+            </span>
+            <span className="text-sm text-[#888]">Rendered markdown, checkable todos, one-click tasks, tab labels.</span>
+          </div>
+          <div className="grid md:grid-cols-2 gap-6">
+            <div className="p-6 rounded-xl border border-[#1a1a1a] bg-[#0a0a0a] space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#67e8f9]/20 to-[#3b82f6]/20 flex items-center justify-center">
+                  <span className="text-[#67e8f9] font-semibold text-lg">MD</span>
+                </div>
+                <div>
+                  <h3 className="font-semibold text-white">Clean markdown view</h3>
+                  <p className="text-xs text-[#888]">Notion-like rendering for agent output.</p>
+                </div>
+              </div>
+              <ul className="text-sm text-[#ccc] space-y-2">
+                <li>• Bold, lists, tables render like a doc—not raw syntax.</li>
+                <li>• Todos render with native checkboxes; state reflects the file.</li>
+                <li>• If a box is empty in the file, it stays empty until you change it.</li>
+              </ul>
+            </div>
+            <div className="p-6 rounded-xl border border-[#1a1a1a] bg-[#0a0a0a] space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#22c55e]/20 to-[#0ea5e9]/20 flex items-center justify-center">
+                  <span className="text-[#22c55e] font-semibold text-lg">⚡</span>
+                </div>
+                <div>
+                  <h3 className="font-semibold text-white">Turn todos into tasks</h3>
+                  <p className="text-xs text-[#888]">Hover a checkbox → “Start task” launches an agent with the todo text.</p>
+                </div>
+              </div>
+              <ul className="text-sm text-[#ccc] space-y-2">
+                <li>• Pulls todo text + nearby context so agents know the job.</li>
+                <li>• Add a label once—tab titles update: <code>logo Codex — &lt;your label&gt;</code>.</li>
+                <li>• No hidden metadata; file stays plain markdown.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Comparison Table - Best of Both Worlds */}
       <section className="px-6 py-24 border-t border-[#1a1a1a]">
         <div className="max-w-5xl mx-auto">
