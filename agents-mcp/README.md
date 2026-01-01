@@ -29,7 +29,7 @@ The server auto-discovers which agent CLIs you have installed and makes them ava
 | `spawn` | Start an agent on a task. Returns immediately with agent ID. |
 | `status` | Get agent progress: files changed, commands run, last messages. |
 | `stop` | Stop one agent or all agents in a task. |
-| `list_tasks` | List all tasks with their agents and activity. |
+| `tasks` | List all tasks with their agents and activity. |
 
 ### spawn
 
@@ -67,10 +67,10 @@ stop(task_name, agent_id?)
 
 Stop all agents in a task, or a specific agent by ID.
 
-### list_tasks
+### tasks
 
 ```
-list_tasks(limit?)
+tasks(limit?)
 ```
 
 List all tasks sorted by most recent activity.

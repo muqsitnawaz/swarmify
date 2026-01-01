@@ -233,7 +233,7 @@ export async function handleListTasks(
   manager: AgentManager,
   limit?: number
 ): Promise<ListTasksResult> {
-  console.log(`[list_tasks] Listing all tasks (limit=${limit || 'none'})...`);
+  console.log(`[tasks] Listing all tasks (limit=${limit || 'none'})...`);
 
   const allAgents = await manager.listAll();
 
@@ -309,7 +309,7 @@ export async function handleListTasks(
   // Apply limit if specified
   const limitedTasks = limit ? tasks.slice(0, limit) : tasks;
 
-  console.log(`[list_tasks] Found ${tasks.length} tasks with ${allAgents.length} total agents`);
+  console.log(`[tasks] Found ${tasks.length} tasks with ${allAgents.length} total agents`);
 
   return {
     tasks: limitedTasks,
