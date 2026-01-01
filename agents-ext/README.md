@@ -72,6 +72,10 @@ Generate commit messages from your staged changes. Learns from your commit style
 | `Cmd+Shift+C` | Clear and restart agent |
 | `Cmd+Shift+L` | Label agent |
 | `Cmd+Shift+G` | Generate commit |
+| `Cmd+Shift+X` | Spawn Codex |
+| `Cmd+Shift+M` | Spawn Gemini |
+| `Cmd+Shift+U` | Spawn Cursor |
+| `Cmd+Shift+D` | Spawn OpenCode |
 
 ## Requirements
 

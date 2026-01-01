@@ -164,33 +164,47 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Benefits */}
+      {/* 3x Faster */}
       <section className="px-6 py-24 border-t border-[#1a1a1a]">
         <div className="max-w-5xl mx-auto">
-          <div className="grid md:grid-cols-2 gap-6">
-            <div className="p-6 rounded-xl border border-[#1a1a1a] bg-[#0a0a0a]">
-              <h3 className="text-lg font-semibold mb-2">Run multiple agents—not one at a time</h3>
-              <p className="text-[#888] text-sm leading-relaxed">
-                Your editor already handles 30 tabs. Now agents live there. Spawn agents for auth, tests, docs—all running, all visible.
-              </p>
+          <div className="rounded-2xl border border-[#1a1a1a] bg-gradient-to-br from-[#0b141a] via-[#0a0f13] to-[#0a0a0a] p-8 md:p-10">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-8">
+              <div>
+                <h2 className="text-3xl md:text-4xl font-bold mb-3">
+                  Ship 3x faster with Swarm
+                </h2>
+                <p className="text-[#888] text-lg max-w-2xl">
+                  Plan once, then run multiple agents in parallel. Nine hours of work,
+                  done in three.
+                </p>
+              </div>
+              <div className="flex items-center gap-4 text-sm text-[#ccc]">
+                <div className="rounded-full border border-[#1f2d36] bg-[#0f1a22] px-4 py-2">
+                  Plan
+                </div>
+                <span className="text-[#334155]">→</span>
+                <div className="rounded-full border border-[#1f2d36] bg-[#0f1a22] px-4 py-2">
+                  Spawn agents
+                </div>
+                <span className="text-[#334155]">→</span>
+                <div className="rounded-full border border-[#1f2d36] bg-[#0f1a22] px-4 py-2">
+                  Review diffs
+                </div>
+              </div>
             </div>
-            <div className="p-6 rounded-xl border border-[#1a1a1a] bg-[#0a0a0a]">
-              <h3 className="text-lg font-semibold mb-2">Review diffs as agents work</h3>
-              <p className="text-[#888] text-sm leading-relaxed">
-                Native syntax highlighting. Inline diff view. Catch mistakes before they land—no scrolling through terminal output.
-              </p>
-            </div>
-            <div className="p-6 rounded-xl border border-[#1a1a1a] bg-[#0a0a0a]">
-              <h3 className="text-lg font-semibold mb-2">Label each agent by task</h3>
-              <p className="text-[#888] text-sm leading-relaxed">
-                &apos;auth-refactor&apos;, &apos;payment-tests&apos;, &apos;docs-update&apos;—know what&apos;s running at a glance. tmux makes this painful. Tabs make it obvious.
-              </p>
-            </div>
-            <div className="p-6 rounded-xl border border-[#1a1a1a] bg-[#0a0a0a]">
-              <h3 className="text-lg font-semibold mb-2">Agent-generated docs, readable in your editor</h3>
-              <p className="text-[#888] text-sm leading-relaxed">
-                CLI agents output .md files with raw tags and broken tables. Swarmify renders them Notion-style—no squinting at ## or |---|---|.
-              </p>
+            <div className="mt-8 grid md:grid-cols-3 gap-4 text-sm text-[#cbd5e1]">
+              <div className="rounded-xl border border-[#1a1a1a] bg-[#0b1116] p-4">
+                <div className="text-[#7aa2b6] uppercase text-[10px] tracking-wide mb-2">Parallelism</div>
+                Delegate tests, docs, refactors in one prompt.
+              </div>
+              <div className="rounded-xl border border-[#1a1a1a] bg-[#0b1116] p-4">
+                <div className="text-[#7aa2b6] uppercase text-[10px] tracking-wide mb-2">Visibility</div>
+                Watch diffs and markdown updates as they land.
+              </div>
+              <div className="rounded-xl border border-[#1a1a1a] bg-[#0b1116] p-4">
+                <div className="text-[#7aa2b6] uppercase text-[10px] tracking-wide mb-2">Control</div>
+                Labels and shortcuts keep 5+ agents organized.
+              </div>
             </div>
           </div>
         </div>
@@ -293,12 +307,15 @@ export default function Home() {
           </p>
           <div className="grid md:grid-cols-2 gap-8">
             {/* Terminal Column */}
-            <div className="p-6 rounded-xl border border-[#1a1a1a] bg-[#0a0a0a]">
-              <div className="flex items-center gap-3 mb-6">
-                <TerminalIcon />
-                <h3 className="text-lg font-semibold">Terminal CLI</h3>
+            <div className="rounded-2xl border border-[#1a1a1a] bg-gradient-to-b from-[#0b0f13] to-[#0a0a0a] p-6">
+              <div className="flex items-center justify-between pb-4 border-b border-[#1a1a1a]">
+                <div className="flex items-center gap-3">
+                  <TerminalIcon />
+                  <h3 className="text-lg font-semibold">Terminal CLI</h3>
+                </div>
+                <span className="text-[10px] uppercase tracking-wider text-[#666]">Limits</span>
               </div>
-              <ul className="space-y-4 text-[#888] text-sm">
+              <ul className="space-y-4 text-[#9aa1a8] text-sm mt-6">
                 <CompareItem negative>Small panel at the bottom of your screen</CompareItem>
                 <CompareItem negative>Can&apos;t see git changes as agent edits files</CompareItem>
                 <CompareItem negative>One agent at a time, sequential work</CompareItem>
@@ -308,12 +325,15 @@ export default function Home() {
               </ul>
             </div>
             {/* IDE Column */}
-            <div className="p-6 rounded-xl border border-[#3b82f6]/50 bg-[#0a0a0a]">
-              <div className="flex items-center gap-3 mb-6">
-                <IDEIcon />
-                <h3 className="text-lg font-semibold">VS Code / Cursor</h3>
+            <div className="rounded-2xl border border-[#3b82f6]/50 bg-gradient-to-b from-[#0c1320] to-[#0a0a0a] p-6 shadow-[0_0_30px_rgba(59,130,246,0.12)]">
+              <div className="flex items-center justify-between pb-4 border-b border-[#1a1a1a]">
+                <div className="flex items-center gap-3">
+                  <IDEIcon />
+                  <h3 className="text-lg font-semibold">VS Code / Cursor</h3>
+                </div>
+                <span className="text-[10px] uppercase tracking-wider text-[#5ea1ff]">Swarmify</span>
               </div>
-              <ul className="space-y-4 text-[#ccc] text-sm">
+              <ul className="space-y-4 text-[#d4d7db] text-sm mt-6">
                 <CompareItem>Full-screen terminal tabs in the editor area</CompareItem>
                 <CompareItem>Git diff visible in real-time as changes happen</CompareItem>
                 <CompareItem>Split horizontal/vertical - agents + code side by side</CompareItem>
