@@ -338,6 +338,36 @@ export async function activate(context: vscode.ExtensionContext) {
     console.error('[EXTENSION] Error scanning existing terminals:', err);
   });
 
+  // Register terminals that appear after activation (e.g., restored sessions)
+  context.subscriptions.push(
+    vscode.window.onDidOpenTerminal(async (terminal) => {
+      // Already tracked?
+      if (terminals.getByTerminal(terminal)) {
+        return;
+      }
+
+      const info = getTerminalDisplayInfo(terminal.name);
+      if (!info.isAgent || !info.prefix) {
+        return;
+      }
+
+      const agentConfig = inferAgentConfigFromName(terminal.name, context.extensionPath);
+      if (!agentConfig) {
+        return;
+      }
+
+      const id = terminals.nextId(info.prefix);
+      let pid: number | undefined;
+      try {
+        pid = await terminal.processId;
+      } catch {
+        // ignore
+      }
+
+      terminals.register(terminal, id, agentConfig, pid, context, info.label || undefined);
+    })
+  );
+
   registerTmuxCleanup(context);
 
   // Ensure CLAUDE.md has Swarm instructions if Swarm is enabled
@@ -520,6 +550,13 @@ export async function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('agents.prompts', () => showPrompts())
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('agents.setDefaultAgentTitle', (title: string) => {
+      defaultAgentTitle = title;
+      context.globalState.update('agents.defaultAgentTitle', title);
+    })
   );
 
   context.subscriptions.push(

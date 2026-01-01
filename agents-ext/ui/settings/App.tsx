@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Button } from './components/ui/button'
 import { Checkbox } from './components/ui/checkbox'
 import { Input } from './components/ui/input'
-import { Trash2, Plus, X, Star, ChevronDown, ChevronRight, FileEdit, FilePlus, Terminal, MessageSquare, Clock, RefreshCw } from 'lucide-react'
+import { Trash2, Plus, X, Star, ChevronDown, ChevronRight, FileEdit, FilePlus, Terminal, MessageSquare, Clock, RefreshCw, Download, ExternalLink } from 'lucide-react'
 
 interface BuiltInAgentSettings {
   login: boolean
@@ -140,6 +140,40 @@ const SWARM_AGENT_LABELS: Record<SwarmAgentType, string> = {
   opencode: 'OpenCode'
 }
 
+// Install commands/links for each agent
+const AGENT_INSTALL_INFO: Record<string, { command?: string; url?: string }> = {
+  claude: { command: 'npm install -g @anthropic-ai/claude-code' },
+  codex: { command: 'npm install -g @openai/codex' },
+  gemini: { command: 'npm install -g @anthropic-ai/claude-code', url: 'https://github.com/google-gemini/gemini-cli' },
+  opencode: { url: 'https://github.com/opencode-ai/opencode' },
+  cursor: { url: 'https://cursor.com' },
+}
+
+// Map from agent title (CC, CX, etc.) to key (claude, codex, etc.)
+const AGENT_TITLE_TO_KEY: Record<string, string> = {
+  'CC': 'claude',
+  'CX': 'codex',
+  'GX': 'gemini',
+  'OC': 'opencode',
+  'CR': 'cursor',
+  'SH': 'shell',
+  'Claude': 'claude',
+  'Codex': 'codex',
+  'Gemini': 'gemini',
+  'OpenCode': 'opencode',
+  'Cursor': 'cursor',
+  'Shell': 'shell',
+}
+
+// Map from key to title (for dropdown)
+const AGENT_KEY_TO_TITLE: Record<string, string> = {
+  'claude': 'CC',
+  'codex': 'CX',
+  'gemini': 'GX',
+  'opencode': 'OC',
+  'cursor': 'CR',
+}
+
 export default function App() {
   const [settings, setSettings] = useState<AgentSettings | null>(null)
   const [runningCounts, setRunningCounts] = useState<RunningCounts>({
@@ -176,6 +210,12 @@ export default function App() {
   const [agentTerminals, setAgentTerminals] = useState<TerminalDetail[]>([])
   const [agentTerminalsLoading, setAgentTerminalsLoading] = useState(false)
 
+  // Default agent and installed agents state
+  const [defaultAgent, setDefaultAgent] = useState<string>('CC')
+  const [installedAgents, setInstalledAgents] = useState<Record<string, boolean>>({
+    claude: true, codex: true, gemini: true, opencode: true, cursor: true, shell: true
+  })
+
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       const message = event.data
@@ -194,11 +234,18 @@ export default function App() {
       } else if (message.type === 'agentTerminalsData') {
         setAgentTerminals(message.terminals || [])
         setAgentTerminalsLoading(false)
+      } else if (message.type === 'installedAgentsData') {
+        setInstalledAgents(message.installedAgents)
+      } else if (message.type === 'defaultAgentData') {
+        setDefaultAgent(message.defaultAgent)
       }
     }
 
     window.addEventListener('message', handleMessage)
     vscode.postMessage({ type: 'ready' })
+    // Request installed agents and default agent
+    vscode.postMessage({ type: 'checkInstalledAgents' })
+    vscode.postMessage({ type: 'getDefaultAgent' })
 
     return () => window.removeEventListener('message', handleMessage)
   }, [])
@@ -385,6 +432,19 @@ export default function App() {
     if (!settings) return true
     const enabled = settings.swarmEnabledAgents || ALL_SWARM_AGENTS
     return enabled.includes(agent)
+  }
+
+  const handleSetDefaultAgent = (agentTitle: string) => {
+    setDefaultAgent(agentTitle)
+    vscode.postMessage({ type: 'setDefaultAgent', agentTitle })
+  }
+
+  const isAgentInstalled = (agentKey: string): boolean => {
+    return installedAgents[agentKey] ?? true
+  }
+
+  const getInstallInfo = (agentKey: string) => {
+    return AGENT_INSTALL_INFO[agentKey]
   }
 
   const validateName = (name: string): string => {
@@ -985,134 +1045,6 @@ export default function App() {
             </div>
           </section>
 
-          {/* Swarm Agents */}
-          <section>
-            <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
-              Agents
-            </h2>
-            <div className="flex flex-wrap gap-3">
-              {(['cursor', 'codex', 'claude', 'gemini', 'opencode'] as SwarmAgentType[]).map(agent => (
-                <div key={agent} className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-[var(--muted)]">
-                  <Checkbox
-                    checked={isSwarmAgentEnabled(agent)}
-                    onCheckedChange={(checked) => toggleSwarmAgent(agent, !!checked)}
-                  />
-                  <span className="text-sm font-medium">{SWARM_AGENT_LABELS[agent]}</span>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {/* Open on Startup */}
-          <section>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
-                Open on Startup
-              </h2>
-              {!isAdding ? (
-                <Button variant="secondary" size="sm" onClick={handleAddClick}>
-                  <Plus className="w-4 h-4 mr-1" />
-                  Add
-                </Button>
-              ) : (
-                <Button size="sm" onClick={handleSave}>
-                  Save
-                </Button>
-              )}
-            </div>
-            <div className="space-y-2">
-              {BUILT_IN_AGENTS.map(agent => {
-                const config = settings.builtIn[agent.key as keyof AgentSettings['builtIn']]
-                return (
-                  <div key={agent.key} className="flex items-center gap-4 px-4 py-3 rounded-xl bg-[var(--muted)]">
-                    <img src={agent.icon} alt={agent.name} className="w-5 h-5" />
-                    <span className="text-sm font-medium w-20">{agent.name}</span>
-                    <div className="flex items-center gap-2">
-                      <Checkbox
-                        checked={config.login}
-                        onCheckedChange={(checked) => updateBuiltIn(agent.key as keyof AgentSettings['builtIn'], 'login', !!checked)}
-                      />
-                      <label className="text-sm text-[var(--muted-foreground)]">Open on Startup</label>
-                    </div>
-                    {config.login && (
-                      <div className="flex items-center gap-2 ml-4">
-                        <Input
-                          type="number"
-                          min={1}
-                          max={10}
-                          value={config.instances}
-                          onChange={(e) => updateBuiltIn(agent.key as keyof AgentSettings['builtIn'], 'instances', Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
-                          className="w-14 text-center"
-                        />
-                        <span className="text-xs text-[var(--muted-foreground)]">
-                          {config.instances === 1 ? 'instance' : 'instances'}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-              {settings.custom.map((agent, index) => (
-                <div key={index} className="flex items-center gap-4 px-4 py-3 rounded-xl bg-[var(--muted)]">
-                  <img src={icons.agents} alt={agent.name} className="w-5 h-5" />
-                  <span className="text-sm font-medium w-20">{agent.name}</span>
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      checked={agent.login}
-                      onCheckedChange={(checked) => updateCustom(index, 'login', !!checked)}
-                    />
-                    <label className="text-sm text-[var(--muted-foreground)]">Open on Startup</label>
-                  </div>
-                  {agent.login && (
-                    <div className="flex items-center gap-2 ml-4">
-                      <Input
-                        type="number"
-                        min={1}
-                        max={10}
-                        value={agent.instances}
-                        onChange={(e) => updateCustom(index, 'instances', Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
-                        className="w-14 text-center"
-                      />
-                      <span className="text-xs text-[var(--muted-foreground)]">
-                        {agent.instances === 1 ? 'instance' : 'instances'}
-                      </span>
-                    </div>
-                  )}
-                  <div className="flex-1" />
-                  <Button variant="ghost" size="icon" onClick={() => removeCustomAgent(index)}>
-                    <Trash2 className="w-4 h-4 text-[var(--muted-foreground)]" />
-                  </Button>
-                </div>
-              ))}
-              {isAdding && (
-                <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-[var(--muted)] border border-[var(--primary)]">
-                  <img src={icons.agents} alt="New agent" className="w-5 h-5 opacity-50" />
-                  <Input
-                    placeholder="XX"
-                    value={newName}
-                    onChange={(e) => handleNameChange(e.target.value)}
-                    className="w-16 uppercase text-center"
-                    maxLength={2}
-                    autoFocus
-                  />
-                  <Input
-                    placeholder="command (e.g. my-agent-cli)"
-                    value={newCommand}
-                    onChange={(e) => setNewCommand(e.target.value)}
-                    className="flex-1"
-                    onKeyDown={(e) => e.key === 'Enter' && handleSave()}
-                  />
-                  <Button variant="ghost" size="icon" onClick={handleCancelAdd}>
-                    <X className="w-4 h-4 text-[var(--muted-foreground)]" />
-                  </Button>
-                </div>
-              )}
-              {isAdding && nameError && (
-                <p className="text-xs text-red-400 ml-4">{nameError}</p>
-              )}
-            </div>
-          </section>
-
           {/* Tasks */}
           <section>
             <div className="flex items-center justify-between mb-4">
@@ -1267,6 +1199,133 @@ export default function App() {
 
       {activeTab === 'settings' && (
         <div className="space-y-8">
+          {/* Default Agent */}
+          <section>
+            <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
+              Default Agent
+            </h2>
+            <div className="px-4 py-3 rounded-xl bg-[var(--muted)]">
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-[var(--muted-foreground)]">Cmd+Shift+A opens:</span>
+                <div className="relative flex-1">
+                  <select
+                    value={AGENT_TITLE_TO_KEY[defaultAgent] || 'claude'}
+                    onChange={(e) => handleSetDefaultAgent(AGENT_KEY_TO_TITLE[e.target.value] || 'CC')}
+                    className="w-full appearance-none bg-[var(--background)] border border-[var(--border)] rounded-lg pl-10 pr-8 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
+                  >
+                    {BUILT_IN_AGENTS.filter(a => a.key !== 'shell').map(agent => {
+                      const installed = isAgentInstalled(agent.key)
+                      return (
+                        <option
+                          key={agent.key}
+                          value={agent.key}
+                          disabled={!installed}
+                        >
+                          {agent.name}{!installed ? ' (not installed)' : ''}
+                        </option>
+                      )
+                    })}
+                  </select>
+                  <img
+                    src={BUILT_IN_AGENTS.find(a => a.key === (AGENT_TITLE_TO_KEY[defaultAgent] || 'claude'))?.icon || icons.claude}
+                    alt=""
+                    className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none"
+                  />
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--muted-foreground)] pointer-events-none" />
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Built-in Agents */}
+          <section>
+            <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
+              Built-in Agents
+            </h2>
+            <div className="space-y-2">
+              {BUILT_IN_AGENTS.filter(a => a.key !== 'shell').map(agent => {
+                const config = settings.builtIn[agent.key as keyof AgentSettings['builtIn']]
+                const installed = isAgentInstalled(agent.key)
+                const installInfo = getInstallInfo(agent.key)
+                const isSwarmAgent = ALL_SWARM_AGENTS.includes(agent.key as SwarmAgentType)
+
+                return (
+                  <div
+                    key={agent.key}
+                    className={`flex items-center gap-4 px-4 py-3 rounded-xl bg-[var(--muted)] ${!installed ? 'opacity-60' : ''}`}
+                  >
+                    <img src={agent.icon} alt={agent.name} className="w-5 h-5" />
+                    <span className="text-sm font-medium w-20">{agent.name}</span>
+
+                    {installed ? (
+                      <>
+                        {/* Swarm checkbox */}
+                        {isSwarmAgent && (
+                          <div className="flex items-center gap-2">
+                            <Checkbox
+                              checked={isSwarmAgentEnabled(agent.key as SwarmAgentType)}
+                              onCheckedChange={(checked) => toggleSwarmAgent(agent.key as SwarmAgentType, !!checked)}
+                            />
+                            <label className="text-sm text-[var(--muted-foreground)]">Swarm</label>
+                          </div>
+                        )}
+
+                        {/* Startup checkbox */}
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            checked={config.login}
+                            onCheckedChange={(checked) => updateBuiltIn(agent.key as keyof AgentSettings['builtIn'], 'login', !!checked)}
+                          />
+                          <label className="text-sm text-[var(--muted-foreground)]">Startup</label>
+                        </div>
+
+                        {/* Instances */}
+                        {config.login && (
+                          <div className="flex items-center gap-2 ml-2">
+                            <Input
+                              type="number"
+                              min={1}
+                              max={10}
+                              value={config.instances}
+                              onChange={(e) => updateBuiltIn(agent.key as keyof AgentSettings['builtIn'], 'instances', Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
+                              className="w-14 text-center"
+                            />
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-xs text-[var(--muted-foreground)]">Not installed</span>
+                        <div className="flex-1" />
+                        {installInfo?.command && (
+                          <button
+                            onClick={() => navigator.clipboard.writeText(installInfo.command!)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-[var(--primary)] text-[var(--primary-foreground)] rounded-lg hover:opacity-90 transition-opacity"
+                            title={`Copy: ${installInfo.command}`}
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            Copy Install
+                          </button>
+                        )}
+                        {installInfo?.url && (
+                          <a
+                            href={installInfo.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-[var(--secondary)] text-[var(--foreground)] rounded-lg hover:opacity-90 transition-opacity"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            Install
+                          </a>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </section>
+
           {/* Display Preferences */}
           <section>
             <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
@@ -1281,7 +1340,7 @@ export default function App() {
                 <div>
                   <p className="text-sm font-medium">Show full agent names</p>
                   <p className="text-xs text-[var(--muted-foreground)]">
-                    Use names like “Cursor” and “Gemini” instead of “CR” or “GX” in terminal tab titles.
+                    Use names like "Cursor" and "Gemini" instead of "CR" or "GX" in terminal tab titles.
                   </p>
                 </div>
               </label>

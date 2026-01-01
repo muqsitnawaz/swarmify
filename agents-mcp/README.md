@@ -20,7 +20,7 @@ opencode mcp add
 # Command: npx -y @swarmify/agents-mcp
 ```
 
-The server auto-discovers which agent CLIs you have installed and makes them available.
+The server auto-discovers which agent CLIs you have installed and only exposes those in the `spawn` tool.
 
 ## Tools
 
@@ -108,6 +108,10 @@ Install the CLIs you want to use. The server reports available and missing agent
 | `edit` | Read + Write | Implementation, refactoring, fixes |
 
 Default is `plan` for safety. Pass `mode='edit'` when agents need to modify files.
+
+Data & config are stored under `~/.swarmify` (with a legacy fallback to `~/.agent-swarm`; if neither is writable, it falls back to your temp dir).
+
+Requires Node.js >= 18.17 (ESM, fs.rm, etc.).
 
 ## Effort Levels
 

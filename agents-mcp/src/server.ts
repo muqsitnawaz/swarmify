@@ -11,7 +11,7 @@ import { readConfig } from './persistence.js';
 
 const manager = new AgentManager(50, 10, null, null, null, 7);
 
-// Enabled agents (loaded from ~/.agent-swarm/config.json)
+// Enabled agents (loaded from ~/.swarmify/config.json with legacy fallback)
 const defaultAgents: AgentType[] = ['cursor', 'codex', 'claude', 'gemini'];
 let enabledAgents: AgentType[] = [...defaultAgents];
 
@@ -31,6 +31,8 @@ function buildSpawnDescription(): string {
   return `Spawn an AI coding agent to work on a task.
 
 IMPORTANT: Avoid spawning the same agent type as yourself. If you are Claude, prefer cursor/codex/gemini instead.
+
+Only installed agent CLIs are listed below.
 
 MODE PARAMETER (required for writes):
 - mode='edit' - Agent CAN modify files (use this for implementation tasks)
@@ -236,15 +238,26 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 export async function runServer(): Promise<void> {
   // Load enabled agents from config
   const config = await readConfig();
-  enabledAgents = config.enabledAgents.length > 0 ? config.enabledAgents : [...defaultAgents];
-  console.error('Enabled agents:', enabledAgents.join(', '));
+  const requestedAgents = config.enabledAgents.length > 0 ? config.enabledAgents : [...defaultAgents];
+
+  const cliHealth = checkAllClis();
+  const availableAgents = requestedAgents.filter(a => cliHealth[a]?.installed);
+  const fallbackAgents = Object.entries(cliHealth)
+    .filter(([, status]) => status.installed)
+    .map(([agent]) => agent as AgentType);
+
+  // Prefer the requested agents that are actually installed; otherwise fall back to any installed CLIs
+  enabledAgents = availableAgents.length > 0 ? availableAgents : fallbackAgents;
+
+  console.error('Requested agents:', requestedAgents.join(', '));
+  console.error('Enabled agents (installed):', enabledAgents.join(', ') || 'none');
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error('Starting agent-swarm MCP server v0.2.0');
 
   // Health check
-  const health = checkAllClis();
+  const health = cliHealth;
   const available = Object.entries(health)
     .filter(([_, status]) => status.installed)
     .map(([agent]) => agent);
@@ -255,5 +268,10 @@ export async function runServer(): Promise<void> {
   console.error('Available agents:', available.join(', '));
   if (missing.length > 0) {
     console.error('Missing agents (install CLIs to use):', missing.join(', '));
+  }
+
+  const requestedMissing = requestedAgents.filter(a => missing.includes(a));
+  if (requestedMissing.length > 0) {
+    console.error('Requested but missing agents (spawn tool hidden):', requestedMissing.join(', '));
   }
 }
