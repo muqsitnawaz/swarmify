@@ -17,6 +17,10 @@ import * as terminals from './terminals.vscode';
 import * as workbench from './workbench.vscode';
 import {
   CLAUDE_TITLE,
+  CODEX_TITLE,
+  GEMINI_TITLE,
+  CURSOR_TITLE,
+  OPENCODE_TITLE,
   findTerminalNameByTabLabel,
   getExpandedAgentName,
   getTerminalDisplayInfo,
@@ -38,6 +42,7 @@ import { DEFAULT_DISPLAY_PREFERENCES } from './settings';
 // Settings functions are in ./settings.vscode
 
 let agentStatusBarItem: vscode.StatusBarItem | undefined;
+let defaultAgentTitle: string = CLAUDE_TITLE;
 
 // BUILT_IN_AGENTS is now imported from ./agents
 
@@ -316,7 +321,7 @@ function inferAgentConfigFromName(name: string, extensionPath: string): Omit<Age
   return null;
 }
 
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
   console.log('Cursor Agents extension is now active');
 
   // Create status bar item for showing active terminal status bar label
@@ -364,7 +369,25 @@ export function activate(context: vscode.ExtensionContext) {
     AgentsMarkdownEditorProvider.register(context)
   );
 
-  
+  // Load cached default agent if set
+  const storedDefault = context.globalState.get<string>('agents.defaultAgentTitle');
+  if (storedDefault) {
+    defaultAgentTitle = storedDefault;
+  }
+
+  // Set initial context keys and subscribe to config changes
+  await updateContextKeys();
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration(async (e) => {
+      if (e.affectsConfiguration('agents')) {
+        await updateContextKeys();
+      }
+    })
+  );
+
+  // Run lightweight first-setup if needed
+  await maybeRunFirstSetup(context);
+
   // Register commands
   context.subscriptions.push(
     vscode.commands.registerCommand('agents.open', () => openAgentTerminals(context))
@@ -377,7 +400,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand('agents.newAgent', () => {
       // Default is always Claude
-      const agentConfig = getBuiltInByTitle(context.extensionPath, CLAUDE_TITLE);
+      const agentConfig = getBuiltInByTitle(context.extensionPath, defaultAgentTitle);
       if (agentConfig) {
         openSingleAgent(context, agentConfig);
       }
@@ -407,7 +430,7 @@ export function activate(context: vscode.ExtensionContext) {
       await vscode.commands.executeCommand('workbench.action.splitEditorDown');
 
       // Open default agent in the new (active) group
-      const agentConfig = getBuiltInByTitle(context.extensionPath, CLAUDE_TITLE);
+      const agentConfig = getBuiltInByTitle(context.extensionPath, defaultAgentTitle);
       if (agentConfig) {
         openSingleAgent(context, agentConfig);
       }
@@ -437,7 +460,7 @@ export function activate(context: vscode.ExtensionContext) {
       await vscode.commands.executeCommand('workbench.action.splitEditor');
 
       // Open default agent in the new (active) group
-      const agentConfig = getBuiltInByTitle(context.extensionPath, CLAUDE_TITLE);
+      const agentConfig = getBuiltInByTitle(context.extensionPath, defaultAgentTitle);
       if (agentConfig) {
         openSingleAgent(context, agentConfig);
       }
@@ -471,6 +494,19 @@ export function activate(context: vscode.ExtensionContext) {
       await config.update('enableTmux', !current, vscode.ConfigurationTarget.Global);
       const status = !current ? 'enabled' : 'disabled';
       vscode.window.showInformationMessage(`Tmux mode ${status}. New agent terminals will ${!current ? 'use tmux for per-tab splits' : 'use VS Code editor splits'}.`);
+      await updateContextKeys();
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('agents.disableTmux', async () => {
+      const config = vscode.workspace.getConfiguration('agents');
+      const current = config.get<boolean>('enableTmux', false);
+      if (current) {
+        await config.update('enableTmux', false, vscode.ConfigurationTarget.Global);
+        vscode.window.showInformationMessage('Tmux mode disabled. New agent terminals will use VS Code editor splits.');
+        await updateContextKeys();
+      }
     })
   );
 
@@ -492,6 +528,21 @@ export function activate(context: vscode.ExtensionContext) {
       vscode.window.showInformationMessage(
         enabled ? 'Streamline layout enabled' : 'Streamline layout disabled'
       );
+      await updateContextKeys();
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('agents.disableView', async () => {
+      await workbench.disableStreamlineLayout();
+      vscode.window.showInformationMessage('Streamline layout disabled');
+      await updateContextKeys();
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('agents.runSetup', async () => {
+      await maybeRunFirstSetup(context, true);
     })
   );
 
@@ -697,7 +748,7 @@ async function newTaskWithContext(context: vscode.ExtensionContext) {
   }
 
   // 5. Open new Claude agent with queued message
-  const agentConfig = getBuiltInByTitle(context.extensionPath, CLAUDE_TITLE);
+  const agentConfig = getBuiltInByTitle(context.extensionPath, defaultAgentTitle);
   if (agentConfig) {
     await openSingleAgentWithQueue(context, agentConfig, [message]);
   }
@@ -792,7 +843,7 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
   const agents = getAgentsToOpen(context);
 
   if (agents.length === 0) {
-    vscode.window.showInformationMessage('No agents configured to open on login. Use "Agents: Settings" to configure.');
+    vscode.window.showInformationMessage('No agents configured to open on login. Use "Agents: Dashboard" to configure.');
     return;
   }
 
@@ -964,6 +1015,72 @@ async function clearActiveTerminal(context: vscode.ExtensionContext) {
     console.error('Error clearing terminal:', error);
     vscode.window.showErrorMessage(`Failed to clear terminal: ${error}`);
   }
+}
+
+async function updateContextKeys(): Promise<void> {
+  const config = vscode.workspace.getConfiguration('agents');
+  const tmuxEnabled = config.get<boolean>('enableTmux', false);
+  await vscode.commands.executeCommand('setContext', 'agents.tmuxEnabled', tmuxEnabled);
+
+  const viewEnabled = workbench.isStreamlineLayout();
+  await vscode.commands.executeCommand('setContext', 'agents.viewEnabled', viewEnabled);
+}
+
+function commandExists(cmd: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const whichCmd = process.platform === 'win32' ? 'where' : 'which';
+    const child = require('child_process').exec(`${whichCmd} ${cmd}`, (err: Error | null) => {
+      resolve(!err);
+    });
+    if (!child) resolve(false);
+  });
+}
+
+async function detectDefaultAgentTitle(): Promise<string> {
+  const candidates = [
+    { title: CLAUDE_TITLE, command: 'claude' },
+    { title: CODEX_TITLE, command: 'codex' },
+    { title: GEMINI_TITLE, command: 'gemini' },
+    { title: CURSOR_TITLE, command: 'cursor-agent' },
+    { title: OPENCODE_TITLE, command: 'opencode' }
+  ];
+
+  for (const candidate of candidates) {
+    if (await commandExists(candidate.command)) {
+      return candidate.title;
+    }
+  }
+
+  return CLAUDE_TITLE;
+}
+
+async function maybeRunFirstSetup(context: vscode.ExtensionContext, force = false): Promise<void> {
+  const already = context.globalState.get<boolean>('agents.setupComplete', false);
+  if (already && !force) {
+    const stored = context.globalState.get<string>('agents.defaultAgentTitle');
+    if (stored) {
+      defaultAgentTitle = stored;
+    }
+    return;
+  }
+
+  // Detect default agent automatically
+  const detected = await detectDefaultAgentTitle();
+  defaultAgentTitle = detected;
+  await context.globalState.update('agents.defaultAgentTitle', detected);
+
+  // Ensure swarm MCP + command is enabled
+  try {
+    const status = await swarm.getSwarmStatus();
+    if (!status.mcpEnabled || !status.commandInstalled) {
+      await swarm.enableSwarm(context);
+    }
+  } catch {
+    // Non-fatal; user can rerun setup
+  }
+
+  await context.globalState.update('agents.setupComplete', true);
+  vscode.window.showInformationMessage(`Agents setup completed. Default agent: ${detected}.`);
 }
 
 // Git functions are now in ./git.vscode

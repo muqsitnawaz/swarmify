@@ -50,7 +50,7 @@
       },
       {
         "command": "agents.configure",
-        "title": "Agents: Settings"
+        "title": "Agents: Dashboard"
       },
       {
         "command": "agents.newAgent",
