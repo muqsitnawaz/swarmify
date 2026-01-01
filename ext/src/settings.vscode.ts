@@ -168,6 +168,9 @@ export function openPanel(context: vscode.ExtensionContext): void {
         const tasks = await swarm.fetchTasks(message.limit);
         settingsPanel?.webview.postMessage({ type: 'tasksData', tasks });
         break;
+      case 'openGuide':
+        openGuide(context, message.guide);
+        break;
     }
   }, undefined, context.subscriptions);
 
@@ -195,6 +198,41 @@ export function openPanel(context: vscode.ExtensionContext): void {
     terminalListener.dispose();
     terminalCloseListener.dispose();
   }, undefined, context.subscriptions);
+}
+
+// Open guide in markdown preview
+function openGuide(context: vscode.ExtensionContext, guide: string): void {
+  const guideFiles: Record<string, string> = {
+    'getting-started': 'getting-started.md',
+    'swarm': 'swarm-guide.md'
+  };
+
+  const filename = guideFiles[guide];
+  if (!filename) {
+    vscode.window.showErrorMessage(`Unknown guide: ${guide}`);
+    return;
+  }
+
+  const guidePath = vscode.Uri.joinPath(context.extensionUri, 'assets', 'guides', filename);
+
+  // Check if file exists, if not show info message
+  vscode.workspace.fs.stat(guidePath).then(
+    () => {
+      // Open with custom markdown editor
+      vscode.commands.executeCommand('vscode.openWith', guidePath, 'agents.markdownEditor');
+    },
+    () => {
+      // File doesn't exist yet - show info message
+      vscode.window.showInformationMessage(
+        `Guide "${guide}" is coming soon. Check our GitHub for documentation.`,
+        'Open GitHub'
+      ).then(selection => {
+        if (selection === 'Open GitHub') {
+          vscode.env.openExternal(vscode.Uri.parse('https://github.com/muqsitnawaz/swarmify'));
+        }
+      });
+    }
+  );
 }
 
 // Generate webview HTML content

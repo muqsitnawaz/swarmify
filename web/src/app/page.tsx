@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
 
 type AgentType = "claude" | "codex" | "gemini" | "cursor";
 
@@ -11,46 +10,141 @@ export default function Home() {
       {/* Hero */}
       <section className="relative px-6 pt-20 pb-32 max-w-5xl mx-auto">
         <div className="animate-fade-in">
-          <p className="text-[#888] text-sm tracking-wide uppercase mb-4">
-            VS Code / Cursor Extension
-          </p>
+          {/* Works in */}
+          <div className="flex items-center gap-4 mb-6">
+            <span className="text-[#666] text-sm">Works in</span>
+            <div className="flex items-center gap-3">
+              <img src="/cursor.png" alt="Cursor" width={24} height={24} className="rounded" title="Cursor" />
+              <img src="/vscode.png" alt="VS Code" width={24} height={24} className="rounded" title="VS Code" />
+              <img src="/antigravity.png" alt="Antigravity" width={24} height={24} className="rounded" title="Antigravity" />
+            </div>
+          </div>
           <h1 className="text-5xl md:text-7xl font-bold tracking-tight leading-[1.1] mb-6">
-            Multi-agent
+            Multi-agent coding
             <br />
-            <span className="text-[#888]">coding</span>
+            <span className="text-[#888]">inside your IDE</span>
           </h1>
           <p className="text-xl text-[#888] max-w-xl mb-10">
-            Run multiple AI agents in parallel. Let your main agent spawn
-            subagents to distribute tasks. Ship features 3x faster.
+            Run Claude, Codex, Gemini, and Cursor as editor tabs. See diffs,
+            previews, and files in the same window—no terminal juggling.
           </p>
+        </div>
+
+        {/* Agents supported */}
+        <div className="animate-fade-in-delay-1 flex items-center gap-4 mb-8">
+          <span className="text-[#666] text-sm">Agents</span>
+          <div className="flex items-center gap-2">
+            <img src="/claude.png" alt="Claude" width={28} height={28} className="rounded" title="Claude" />
+            <img src="/codex.png" alt="Codex" width={28} height={28} className="rounded" title="Codex" />
+            <img src="/gemini.png" alt="Gemini" width={28} height={28} className="rounded" title="Gemini" />
+            <img src="/cursor.png" alt="Cursor" width={28} height={28} className="rounded" title="Cursor" />
+          </div>
         </div>
 
         {/* Install command */}
         <div className="animate-fade-in-delay-1 flex flex-wrap gap-4 mb-16">
           <a
-            href="https://github.com/muqsitnawaz/swarmify/releases"
+            href="https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 px-5 py-3 bg-white text-black font-medium rounded-lg hover:bg-gray-200 transition-colors"
           >
-            Download Extension
+            Install Extension
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <path d="M6 12L10 8L6 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
-          </a>
-          <a
-            href="https://github.com/muqsitnawaz/swarmify"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 px-5 py-3 bg-[#111] border border-[#222] rounded-lg hover:border-[#444] transition-colors"
-          >
-            View on GitHub
           </a>
         </div>
 
         {/* Editor mockup */}
         <div className="animate-fade-in-delay-2 glow rounded-xl overflow-hidden border border-[#222]">
           <EditorMockup />
+        </div>
+      </section>
+
+      {/* How it works */}
+      <section className="px-6 py-24 border-t border-[#1a1a1a]">
+        <div className="max-w-5xl mx-auto">
+          <h2 className="text-3xl font-bold mb-4 text-center">
+            Two parts, one workflow
+          </h2>
+          <p className="text-[#888] text-center mb-12 max-w-2xl mx-auto">
+            The extension runs agents in tabs. The MCP server enables agent-to-agent spawning.
+          </p>
+          <div className="grid md:grid-cols-2 gap-6 mb-16">
+            {/* Extension Card */}
+            <div className="p-6 rounded-xl border border-[#1a1a1a] bg-[#0a0a0a]">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-lg bg-[#3b82f6]/10 flex items-center justify-center">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-[#3b82f6]">
+                    <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="1.5"/>
+                    <path d="M3 9H21" stroke="currentColor" strokeWidth="1.5"/>
+                    <path d="M9 9V21" stroke="currentColor" strokeWidth="1.5"/>
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="font-semibold">Extension</h3>
+                  <span className="text-xs text-[#888]">Required</span>
+                </div>
+              </div>
+              <p className="text-[#888] text-sm mb-4">
+                Runs CLI agents as editor tabs. Split views, keyboard shortcuts, markdown rendering, and git diff visibility.
+              </p>
+              <a
+                href="https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[#3b82f6] text-sm hover:underline"
+              >
+                Install from Marketplace
+              </a>
+            </div>
+            {/* Swarm MCP Card */}
+            <div className="p-6 rounded-xl border border-[#1a1a1a] bg-[#0a0a0a]">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-lg bg-[#22c55e]/10 flex items-center justify-center">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-[#22c55e]">
+                    <circle cx="12" cy="6" r="3" stroke="currentColor" strokeWidth="1.5"/>
+                    <circle cx="6" cy="18" r="3" stroke="currentColor" strokeWidth="1.5"/>
+                    <circle cx="18" cy="18" r="3" stroke="currentColor" strokeWidth="1.5"/>
+                    <path d="M12 9V12M12 12L6 15M12 12L18 15" stroke="currentColor" strokeWidth="1.5"/>
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="font-semibold">Swarm MCP Server</h3>
+                  <span className="text-xs text-[#888]">Optional</span>
+                </div>
+              </div>
+              <p className="text-[#888] text-sm mb-4">
+                Lets one agent spawn others for parallel tasks. Claude can orchestrate Codex, Gemini, and Cursor.
+              </p>
+              <a
+                href="https://www.npmjs.com/package/@swarmify/agents-mcp"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[#22c55e] text-sm hover:underline"
+              >
+                View on npm
+              </a>
+            </div>
+          </div>
+          {/* Steps */}
+          <div className="flex flex-col md:flex-row items-center justify-center gap-4 md:gap-8 text-sm">
+            <div className="flex items-center gap-3">
+              <span className="w-7 h-7 rounded-full bg-[#222] flex items-center justify-center text-xs">1</span>
+              <span className="text-[#ccc]">Install extension</span>
+            </div>
+            <div className="hidden md:block text-[#333]">→</div>
+            <div className="flex items-center gap-3">
+              <span className="w-7 h-7 rounded-full bg-[#222] flex items-center justify-center text-xs">2</span>
+              <span className="text-[#ccc]">Spawn agents in tabs</span>
+            </div>
+            <div className="hidden md:block text-[#333]">→</div>
+            <div className="flex items-center gap-3">
+              <span className="w-7 h-7 rounded-full bg-[#222] flex items-center justify-center text-xs">3</span>
+              <span className="text-[#888]">(Optional) Connect Swarm for sub-agents</span>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -98,24 +192,54 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Use Cases */}
+      <section className="px-6 py-24 border-t border-[#1a1a1a]">
+        <div className="max-w-5xl mx-auto">
+          <h2 className="text-3xl font-bold mb-4 text-center">
+            What you can do
+          </h2>
+          <p className="text-[#888] text-center mb-12 max-w-2xl mx-auto">
+            Agents work in parallel. You review the results.
+          </p>
+          <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto">
+            <UseCase
+              title="Parallel PR review"
+              description="One agent reviews logic, another checks tests, a third scans for security issues."
+            />
+            <UseCase
+              title="Write tests while you implement"
+              description="Code in one tab, spawn an agent to write tests in another. Both run simultaneously."
+            />
+            <UseCase
+              title="Refactor + docs in parallel"
+              description="One agent refactors the module, another updates the documentation to match."
+            />
+            <UseCase
+              title="Multi-file feature work"
+              description="Distribute frontend, backend, and tests across agents. Merge when ready."
+            />
+          </div>
+        </div>
+      </section>
+
       {/* Features */}
       <section className="px-6 py-24 border-t border-[#1a1a1a]">
         <div className="max-w-5xl mx-auto">
           <h2 className="text-3xl font-bold mb-16 text-center animate-fade-in">
-            Get more out of coding agents
+            Built for agent workflows
           </h2>
           <div className="grid md:grid-cols-3 gap-8">
             <Feature
               title="Split View"
-              description="Split horizontal or vertical. Watch agents work in one pane while you code, review diffs, or preview in another."
+              description="See agents + code side-by-side while they work. Horizontal or vertical splits."
             />
             <Feature
               title="Swarm Mode"
-              description="Your main agent spawns subagents to distribute tasks. Claude orchestrates Codex, Gemini, and Cursor."
+              description="Optional MCP server lets one agent spawn others for parallel tasks."
             />
             <Feature
               title="Rich Previews"
-              description="Images render inline. Markdown looks beautiful. Frontend changes preview without switching apps."
+              description="Images, diagrams, and markdown render inline. No more raw terminal output."
             />
           </div>
         </div>
@@ -150,24 +274,14 @@ export default function Home() {
           <p className="text-xl text-[#888] mb-10">
             Download the extension and start shipping features faster.
           </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <a
-              href="https://github.com/muqsitnawaz/swarmify/releases"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-6 py-3 bg-white text-black font-medium rounded-lg hover:bg-gray-200 transition-colors"
-            >
-              Download Extension
-            </a>
-            <a
-              href="https://github.com/muqsitnawaz/swarmify"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-6 py-3 border border-[#333] rounded-lg hover:border-[#555] transition-colors"
-            >
-              View on GitHub
-            </a>
-          </div>
+          <a
+            href="https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-6 py-3 bg-white text-black font-medium rounded-lg hover:bg-gray-200 transition-colors"
+          >
+            Install Extension
+          </a>
         </div>
       </section>
 
@@ -178,11 +292,8 @@ export default function Home() {
             Swarmify
           </div>
           <div className="flex gap-6">
-            <a href="https://github.com/muqsitnawaz/swarmify" className="hover:text-white transition-colors">
-              GitHub
-            </a>
-            <a href="https://github.com/muqsitnawaz/swarmify/releases" className="hover:text-white transition-colors">
-              Releases
+            <a href="https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext" className="hover:text-white transition-colors">
+              VS Code Marketplace
             </a>
             <a href="https://www.npmjs.com/package/@swarmify/agents-mcp" className="hover:text-white transition-colors">
               npm
@@ -199,6 +310,15 @@ function Feature({ title, description }: { title: string; description: string })
     <div className="p-6 rounded-xl border border-[#1a1a1a] hover:border-[#333] transition-colors">
       <h3 className="text-lg font-semibold mb-2">{title}</h3>
       <p className="text-[#888] text-sm leading-relaxed">{description}</p>
+    </div>
+  );
+}
+
+function UseCase({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="p-5 rounded-xl bg-[#0a0a0a] border border-[#1a1a1a]">
+      <h3 className="font-medium mb-1">{title}</h3>
+      <p className="text-[#888] text-sm">{description}</p>
     </div>
   );
 }
@@ -248,7 +368,7 @@ function EditorMockup() {
                 : "bg-[#161616] text-[#888] hover:text-white"
             }`}
           >
-            <Image src={agent.logo} alt={agent.name} width={16} height={16} className="rounded-sm" />
+            <img src={agent.logo} alt={agent.name} width={16} height={16} className="rounded-sm" />
             <span className="font-medium">{agent.name}</span>
           </button>
         ))}

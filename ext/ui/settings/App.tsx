@@ -82,7 +82,7 @@ interface TaskSummary {
   agents: AgentDetail[]
 }
 
-type TabId = 'agents' | 'tasks'
+type TabId = 'overview' | 'swarm' | 'prompts' | 'guide'
 
 declare function acquireVsCodeApi(): {
   postMessage(message: unknown): void
@@ -147,11 +147,14 @@ export default function App() {
   const [editPromptContent, setEditPromptContent] = useState('')
 
   // Tab and Tasks state
-  const [activeTab, setActiveTab] = useState<TabId>('agents')
+  const [activeTab, setActiveTab] = useState<TabId>('overview')
   const [tasks, setTasks] = useState<TaskSummary[]>([])
   const [tasksLoading, setTasksLoading] = useState(false)
+  const [tasksLoaded, setTasksLoaded] = useState(false)
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set())
   const [expandedAgents, setExpandedAgents] = useState<Set<string>>(new Set())
+  const [tasksPage, setTasksPage] = useState(1)
+  const TASKS_PER_PAGE = 10
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -167,6 +170,7 @@ export default function App() {
       } else if (message.type === 'tasksData') {
         setTasks(message.tasks || [])
         setTasksLoading(false)
+        setTasksLoaded(true)
       }
     }
 
@@ -176,12 +180,12 @@ export default function App() {
     return () => window.removeEventListener('message', handleMessage)
   }, [])
 
-  // Fetch tasks when switching to tasks tab
+  // Fetch tasks when switching to swarm tab (only if not already loaded)
   useEffect(() => {
-    if (activeTab === 'tasks') {
+    if ((activeTab === 'swarm' || activeTab === 'overview') && !tasksLoaded && !tasksLoading) {
       fetchTasks()
     }
-  }, [activeTab])
+  }, [activeTab, tasksLoaded, tasksLoading])
 
   const fetchTasks = () => {
     setTasksLoading(true)
@@ -430,25 +434,12 @@ export default function App() {
     return <div className="text-[var(--muted-foreground)]">Loading...</div>
   }
 
+  // Get paginated tasks
+  const paginatedTasks = tasks.slice((tasksPage - 1) * TASKS_PER_PAGE, tasksPage * TASKS_PER_PAGE)
+
   // Render Tasks tab content
   const renderTasksTab = () => (
     <div className="space-y-4">
-      {/* Header with refresh button */}
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-[var(--muted-foreground)]">
-          {tasks.length} task{tasks.length !== 1 ? 's' : ''} found
-        </p>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={fetchTasks}
-          disabled={tasksLoading}
-        >
-          <RefreshCw className={`w-4 h-4 mr-1.5 ${tasksLoading ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
-      </div>
-
       {/* Tasks list */}
       {tasksLoading && tasks.length === 0 ? (
         <div className="text-center py-8 text-[var(--muted-foreground)]">Loading tasks...</div>
@@ -458,7 +449,7 @@ export default function App() {
         </div>
       ) : (
         <div className="space-y-3">
-          {tasks.map(task => {
+          {paginatedTasks.map(task => {
             const isTaskExpanded = expandedTasks.has(task.task_name)
             return (
               <div key={task.task_name} className="rounded-xl bg-[var(--muted)] overflow-hidden">
@@ -631,380 +622,568 @@ export default function App() {
           <div>
             <h1 className="text-xl font-semibold tracking-tight">Agents</h1>
             <p className="text-sm text-[var(--muted-foreground)]">
-              Manage your AI coding agents
+              Multi-agent coding
             </p>
           </div>
         </div>
 
         {/* Tab bar */}
         <div className="flex gap-1">
-          <button
-            onClick={() => setActiveTab('agents')}
-            className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-              activeTab === 'agents'
-                ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
-                : 'text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:bg-[var(--muted)]'
-            }`}
-          >
-            Settings
-          </button>
-          <button
-            onClick={() => setActiveTab('tasks')}
-            className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-              activeTab === 'tasks'
-                ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
-                : 'text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:bg-[var(--muted)]'
-            }`}
-          >
-            Tasks
-          </button>
+          {(['overview', 'swarm', 'prompts', 'guide'] as TabId[]).map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors capitalize ${
+                activeTab === tab
+                  ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
+                  : 'text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:bg-[var(--muted)]'
+              }`}
+            >
+              {tab}
+            </button>
+          ))}
         </div>
       </header>
 
       {/* Tab content */}
-      {activeTab === 'tasks' ? renderTasksTab() : (
+      {activeTab === 'overview' && (
         <div className="space-y-8">
-
-      {/* Swarm Integration */}
-      <section>
-        <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
-          Swarm Integration
-        </h2>
-        <div className="px-4 py-3 rounded-xl bg-[var(--muted)] space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-sm">MCP Server</span>
-            <span className={`px-2 py-0.5 text-xs font-medium rounded ${
-              swarmStatus.mcpEnabled
-                ? 'bg-green-500/20 text-green-400'
-                : 'bg-[var(--secondary)] text-[var(--muted-foreground)]'
-            }`}>
-              {swarmStatus.mcpEnabled ? 'Installed' : 'Not installed'}
-            </span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-sm">/swarm Command</span>
-            <span className={`px-2 py-0.5 text-xs font-medium rounded ${
-              swarmStatus.commandInstalled
-                ? 'bg-green-500/20 text-green-400'
-                : 'bg-[var(--secondary)] text-[var(--muted-foreground)]'
-            }`}>
-              {swarmStatus.commandInstalled ? 'Installed' : 'Not installed'}
-            </span>
-          </div>
-          {(!swarmStatus.mcpEnabled || !swarmStatus.commandInstalled) && (
-            <Button onClick={handleEnableSwarm} className="w-full mt-2">
-              Enable Swarm
-            </Button>
-          )}
-        </div>
-      </section>
-
-      {/* Swarm Agents */}
-      <section>
-        <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
-          Swarm Agents
-        </h2>
-        <div className="flex flex-wrap gap-3">
-          {(['cursor', 'codex', 'claude', 'gemini', 'opencode'] as SwarmAgentType[]).map(agent => (
-            <div key={agent} className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-[var(--muted)]">
-              <Checkbox
-                checked={isSwarmAgentEnabled(agent)}
-                onCheckedChange={(checked) => toggleSwarmAgent(agent, !!checked)}
-              />
-              <span className="text-sm font-medium">{SWARM_AGENT_LABELS[agent]}</span>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Running Now */}
-      <section>
-        <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
-          Running Now
-        </h2>
-        <div className="flex flex-wrap gap-3">
-          {BUILT_IN_AGENTS.map(agent => (
-            <div key={agent.key} className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-[var(--muted)]">
-              <img src={agent.icon} alt={agent.name} className="w-5 h-5" />
-              <span className="text-sm font-medium">{agent.name}</span>
-              <span className="text-base font-semibold text-[var(--foreground)] tabular-nums">
-                {runningCounts[agent.key as keyof typeof runningCounts] as number}
-              </span>
-            </div>
-          ))}
-          {Object.entries(runningCounts.custom).map(([name, count]) => (
-            <div key={name} className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-[var(--muted)]">
-              <img src={icons.agents} alt={name} className="w-5 h-5" />
-              <span className="text-sm font-medium">{name}</span>
-              <span className="text-base font-semibold text-[var(--foreground)] tabular-nums">{count}</span>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Agents */}
-      <section>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
-            Open on Startup
-          </h2>
-          {!isAdding ? (
-            <Button variant="secondary" size="sm" onClick={handleAddClick}>
-              <Plus className="w-4 h-4 mr-1" />
-              Add
-            </Button>
-          ) : (
-            <Button size="sm" onClick={handleSave}>
-              Save
-            </Button>
-          )}
-        </div>
-        <div className="space-y-2">
-          {/* Built-in agents */}
-          {BUILT_IN_AGENTS.map(agent => {
-            const config = settings.builtIn[agent.key as keyof AgentSettings['builtIn']]
-            return (
-              <div key={agent.key} className="flex items-center gap-4 px-4 py-3 rounded-xl bg-[var(--muted)]">
-                <img src={agent.icon} alt={agent.name} className="w-5 h-5" />
-                <span className="text-sm font-medium w-20">{agent.name}</span>
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    checked={config.login}
-                    onCheckedChange={(checked) => updateBuiltIn(agent.key as keyof AgentSettings['builtIn'], 'login', !!checked)}
-                  />
-                  <label className="text-sm text-[var(--muted-foreground)]">Open on Startup</label>
+          {/* Running Now */}
+          <section>
+            <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
+              Running Now
+            </h2>
+            <div className="flex flex-wrap gap-3">
+              {BUILT_IN_AGENTS.map(agent => (
+                <div key={agent.key} className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-[var(--muted)]">
+                  <img src={agent.icon} alt={agent.name} className="w-5 h-5" />
+                  <span className="text-sm font-medium">{agent.name}</span>
+                  <span className="text-base font-semibold text-[var(--foreground)] tabular-nums">
+                    {runningCounts[agent.key as keyof typeof runningCounts] as number}
+                  </span>
                 </div>
-                {config.login && (
-                  <div className="flex items-center gap-2 ml-4">
-                    <Input
-                      type="number"
-                      min={1}
-                      max={10}
-                      value={config.instances}
-                      onChange={(e) => updateBuiltIn(agent.key as keyof AgentSettings['builtIn'], 'instances', Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
-                      className="w-14 text-center"
+              ))}
+              {Object.entries(runningCounts.custom).map(([name, count]) => (
+                <div key={name} className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-[var(--muted)]">
+                  <img src={icons.agents} alt={name} className="w-5 h-5" />
+                  <span className="text-sm font-medium">{name}</span>
+                  <span className="text-base font-semibold text-[var(--foreground)] tabular-nums">{count}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* Recent Tasks */}
+          <section>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
+                Recent Tasks
+              </h2>
+              {tasks.length > 0 && (
+                <button
+                  onClick={() => setActiveTab('swarm')}
+                  className="text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                >
+                  View all
+                </button>
+              )}
+            </div>
+            {tasksLoading && tasks.length === 0 ? (
+              <div className="text-sm text-[var(--muted-foreground)] py-4">Loading...</div>
+            ) : tasks.length === 0 ? (
+              <div className="text-sm text-[var(--muted-foreground)] py-4">
+                No recent tasks. Use /swarm to spawn agents.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {tasks.slice(0, 5).map(task => (
+                  <div key={task.task_name} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)]">
+                    <span className="text-sm font-medium truncate flex-1">{task.task_name}</span>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {task.status_counts.running > 0 && (
+                        <span className="px-1.5 py-0.5 text-xs rounded bg-blue-500/20 text-blue-400">
+                          {task.status_counts.running} running
+                        </span>
+                      )}
+                      {task.status_counts.completed > 0 && (
+                        <span className="px-1.5 py-0.5 text-xs rounded bg-green-500/20 text-green-400">
+                          {task.status_counts.completed} done
+                        </span>
+                      )}
+                      <span className="text-xs text-[var(--muted-foreground)]">
+                        {task.agent_count} agent{task.agent_count !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* Shortcuts */}
+          <section>
+            <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
+              Shortcuts
+            </h2>
+            <div className="space-y-2 text-sm">
+              <div className="flex items-center gap-4">
+                <kbd className="px-2 py-1 rounded bg-[var(--muted)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs min-w-[120px] text-center">Cmd+Shift+A</kbd>
+                <span>New agent</span>
+              </div>
+              <div className="flex items-center gap-4">
+                <kbd className="px-2 py-1 rounded bg-[var(--muted)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs min-w-[120px] text-center">Cmd+Shift+L</kbd>
+                <span>Label agent</span>
+              </div>
+              <div className="flex items-center gap-4">
+                <kbd className="px-2 py-1 rounded bg-[var(--muted)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs min-w-[120px] text-center">Cmd+Shift+G</kbd>
+                <span>Commit & push</span>
+              </div>
+              <div className="flex items-center gap-4">
+                <kbd className="px-2 py-1 rounded bg-[var(--muted)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs min-w-[120px] text-center">Cmd+Shift+C</kbd>
+                <span>Clear & restart</span>
+              </div>
+              <div className="flex items-center gap-4">
+                <kbd className="px-2 py-1 rounded bg-[var(--muted)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs min-w-[120px] text-center">Cmd+R</kbd>
+                <span>Next agent</span>
+              </div>
+              <div className="flex items-center gap-4">
+                <kbd className="px-2 py-1 rounded bg-[var(--muted)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs min-w-[120px] text-center">Cmd+E</kbd>
+                <span>Previous agent</span>
+              </div>
+              <div className="flex items-center gap-4">
+                <kbd className="px-2 py-1 rounded bg-[var(--muted)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs min-w-[120px] text-center">Cmd+Shift+'</kbd>
+                <span>Prompts</span>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {activeTab === 'swarm' && (
+        <div className="space-y-8">
+          {/* Swarm Integration */}
+          <section>
+            <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
+              Integration
+            </h2>
+            <div className="px-4 py-3 rounded-xl bg-[var(--muted)] space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm">MCP Server</span>
+                <span className={`px-2 py-0.5 text-xs font-medium rounded ${
+                  swarmStatus.mcpEnabled
+                    ? 'bg-green-500/20 text-green-400'
+                    : 'bg-[var(--secondary)] text-[var(--muted-foreground)]'
+                }`}>
+                  {swarmStatus.mcpEnabled ? 'Installed' : 'Not installed'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm">/swarm Command</span>
+                <span className={`px-2 py-0.5 text-xs font-medium rounded ${
+                  swarmStatus.commandInstalled
+                    ? 'bg-green-500/20 text-green-400'
+                    : 'bg-[var(--secondary)] text-[var(--muted-foreground)]'
+                }`}>
+                  {swarmStatus.commandInstalled ? 'Installed' : 'Not installed'}
+                </span>
+              </div>
+              {(!swarmStatus.mcpEnabled || !swarmStatus.commandInstalled) && (
+                <Button onClick={handleEnableSwarm} className="w-full mt-2">
+                  Enable Swarm
+                </Button>
+              )}
+            </div>
+          </section>
+
+          {/* Swarm Agents */}
+          <section>
+            <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
+              Agents
+            </h2>
+            <div className="flex flex-wrap gap-3">
+              {(['cursor', 'codex', 'claude', 'gemini', 'opencode'] as SwarmAgentType[]).map(agent => (
+                <div key={agent} className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-[var(--muted)]">
+                  <Checkbox
+                    checked={isSwarmAgentEnabled(agent)}
+                    onCheckedChange={(checked) => toggleSwarmAgent(agent, !!checked)}
+                  />
+                  <span className="text-sm font-medium">{SWARM_AGENT_LABELS[agent]}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* Open on Startup */}
+          <section>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
+                Open on Startup
+              </h2>
+              {!isAdding ? (
+                <Button variant="secondary" size="sm" onClick={handleAddClick}>
+                  <Plus className="w-4 h-4 mr-1" />
+                  Add
+                </Button>
+              ) : (
+                <Button size="sm" onClick={handleSave}>
+                  Save
+                </Button>
+              )}
+            </div>
+            <div className="space-y-2">
+              {BUILT_IN_AGENTS.map(agent => {
+                const config = settings.builtIn[agent.key as keyof AgentSettings['builtIn']]
+                return (
+                  <div key={agent.key} className="flex items-center gap-4 px-4 py-3 rounded-xl bg-[var(--muted)]">
+                    <img src={agent.icon} alt={agent.name} className="w-5 h-5" />
+                    <span className="text-sm font-medium w-20">{agent.name}</span>
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        checked={config.login}
+                        onCheckedChange={(checked) => updateBuiltIn(agent.key as keyof AgentSettings['builtIn'], 'login', !!checked)}
+                      />
+                      <label className="text-sm text-[var(--muted-foreground)]">Open on Startup</label>
+                    </div>
+                    {config.login && (
+                      <div className="flex items-center gap-2 ml-4">
+                        <Input
+                          type="number"
+                          min={1}
+                          max={10}
+                          value={config.instances}
+                          onChange={(e) => updateBuiltIn(agent.key as keyof AgentSettings['builtIn'], 'instances', Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
+                          className="w-14 text-center"
+                        />
+                        <span className="text-xs text-[var(--muted-foreground)]">
+                          {config.instances === 1 ? 'instance' : 'instances'}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+              {settings.custom.map((agent, index) => (
+                <div key={index} className="flex items-center gap-4 px-4 py-3 rounded-xl bg-[var(--muted)]">
+                  <img src={icons.agents} alt={agent.name} className="w-5 h-5" />
+                  <span className="text-sm font-medium w-20">{agent.name}</span>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      checked={agent.login}
+                      onCheckedChange={(checked) => updateCustom(index, 'login', !!checked)}
                     />
-                    <span className="text-xs text-[var(--muted-foreground)]">
-                      {config.instances === 1 ? 'instance' : 'instances'}
-                    </span>
+                    <label className="text-sm text-[var(--muted-foreground)]">Open on Startup</label>
+                  </div>
+                  {agent.login && (
+                    <div className="flex items-center gap-2 ml-4">
+                      <Input
+                        type="number"
+                        min={1}
+                        max={10}
+                        value={agent.instances}
+                        onChange={(e) => updateCustom(index, 'instances', Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
+                        className="w-14 text-center"
+                      />
+                      <span className="text-xs text-[var(--muted-foreground)]">
+                        {agent.instances === 1 ? 'instance' : 'instances'}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex-1" />
+                  <Button variant="ghost" size="icon" onClick={() => removeCustomAgent(index)}>
+                    <Trash2 className="w-4 h-4 text-[var(--muted-foreground)]" />
+                  </Button>
+                </div>
+              ))}
+              {isAdding && (
+                <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-[var(--muted)] border border-[var(--primary)]">
+                  <img src={icons.agents} alt="New agent" className="w-5 h-5 opacity-50" />
+                  <Input
+                    placeholder="XX"
+                    value={newName}
+                    onChange={(e) => handleNameChange(e.target.value)}
+                    className="w-16 uppercase text-center"
+                    maxLength={2}
+                    autoFocus
+                  />
+                  <Input
+                    placeholder="command (e.g. my-agent-cli)"
+                    value={newCommand}
+                    onChange={(e) => setNewCommand(e.target.value)}
+                    className="flex-1"
+                    onKeyDown={(e) => e.key === 'Enter' && handleSave()}
+                  />
+                  <Button variant="ghost" size="icon" onClick={handleCancelAdd}>
+                    <X className="w-4 h-4 text-[var(--muted-foreground)]" />
+                  </Button>
+                </div>
+              )}
+              {isAdding && nameError && (
+                <p className="text-xs text-red-400 ml-4">{nameError}</p>
+              )}
+            </div>
+          </section>
+
+          {/* Tasks */}
+          <section>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
+                Tasks
+              </h2>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={fetchTasks}
+                disabled={tasksLoading}
+              >
+                <RefreshCw className={`w-4 h-4 mr-1.5 ${tasksLoading ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
+            </div>
+            {renderTasksTab()}
+            {/* Pagination */}
+            {tasks.length > TASKS_PER_PAGE && (
+              <div className="flex items-center justify-center gap-2 mt-4">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setTasksPage(p => Math.max(1, p - 1))}
+                  disabled={tasksPage === 1}
+                >
+                  Previous
+                </Button>
+                <span className="text-sm text-[var(--muted-foreground)]">
+                  Page {tasksPage} of {Math.ceil(tasks.length / TASKS_PER_PAGE)}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setTasksPage(p => Math.min(Math.ceil(tasks.length / TASKS_PER_PAGE), p + 1))}
+                  disabled={tasksPage >= Math.ceil(tasks.length / TASKS_PER_PAGE)}
+                >
+                  Next
+                </Button>
+              </div>
+            )}
+          </section>
+        </div>
+      )}
+
+      {activeTab === 'prompts' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
+              Prompts
+            </h2>
+            {!isAddingPrompt && (
+              <Button variant="secondary" size="sm" onClick={() => setIsAddingPrompt(true)}>
+                <Plus className="w-4 h-4 mr-1" />
+                Add
+              </Button>
+            )}
+          </div>
+
+          {isAddingPrompt && (
+            <div className="px-4 py-3 rounded-xl bg-[var(--muted)] border border-[var(--primary)] space-y-3">
+              <Input
+                placeholder="Title"
+                value={newPromptTitle}
+                onChange={(e) => setNewPromptTitle(e.target.value)}
+                autoFocus
+              />
+              <textarea
+                placeholder="Prompt content..."
+                value={newPromptContent}
+                onChange={(e) => setNewPromptContent(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg bg-[var(--background)] border border-[var(--border)] text-sm resize-none focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
+                rows={4}
+              />
+              <div className="flex justify-end gap-2">
+                <Button variant="ghost" size="sm" onClick={() => {
+                  setIsAddingPrompt(false)
+                  setNewPromptTitle('')
+                  setNewPromptContent('')
+                }}>
+                  Cancel
+                </Button>
+                <Button size="sm" onClick={handleAddPrompt}>
+                  Save
+                </Button>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            {sortedPrompts.length === 0 && !isAddingPrompt && (
+              <p className="text-sm text-[var(--muted-foreground)] px-4 py-3">
+                No prompts saved. Use Cmd+Shift+' to access prompts from any agent terminal.
+              </p>
+            )}
+            {sortedPrompts.map(entry => (
+              <div key={entry.id} className="px-4 py-3 rounded-xl bg-[var(--muted)]">
+                {editingPromptId === entry.id ? (
+                  <div className="space-y-3">
+                    <Input
+                      value={editPromptTitle}
+                      onChange={(e) => setEditPromptTitle(e.target.value)}
+                      autoFocus
+                    />
+                    <textarea
+                      value={editPromptContent}
+                      onChange={(e) => setEditPromptContent(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg bg-[var(--background)] border border-[var(--border)] text-sm resize-none focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
+                      rows={4}
+                    />
+                    <div className="flex justify-end gap-2">
+                      <Button variant="ghost" size="sm" onClick={handleCancelEdit}>
+                        Cancel
+                      </Button>
+                      <Button size="sm" onClick={handleSaveEdit}>
+                        Save
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => handleToggleFavorite(entry.id)}
+                        className="text-[var(--muted-foreground)] hover:text-yellow-400 transition-colors"
+                      >
+                        <Star className={`w-4 h-4 ${entry.isFavorite ? 'fill-yellow-400 text-yellow-400' : ''}`} />
+                      </button>
+                      <span
+                        className="text-sm font-medium flex-1 cursor-pointer hover:text-[var(--primary)]"
+                        onClick={() => handleStartEdit(entry)}
+                      >
+                        {entry.title}
+                      </span>
+                      <Button variant="ghost" size="icon" onClick={() => handleDeletePrompt(entry.id)}>
+                        <Trash2 className="w-4 h-4 text-[var(--muted-foreground)]" />
+                      </Button>
+                    </div>
+                    <p
+                      className="text-xs text-[var(--muted-foreground)] line-clamp-2 cursor-pointer hover:text-[var(--foreground)]"
+                      onClick={() => handleStartEdit(entry)}
+                    >
+                      {entry.content}
+                    </p>
                   </div>
                 )}
               </div>
-            )
-          })}
-
-          {/* Custom agents */}
-          {settings.custom.map((agent, index) => (
-            <div key={index} className="flex items-center gap-4 px-4 py-3 rounded-xl bg-[var(--muted)]">
-              <img src={icons.agents} alt={agent.name} className="w-5 h-5" />
-              <span className="text-sm font-medium w-20">{agent.name}</span>
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  checked={agent.login}
-                  onCheckedChange={(checked) => updateCustom(index, 'login', !!checked)}
-                />
-                <label className="text-sm text-[var(--muted-foreground)]">Open on Startup</label>
-              </div>
-              {agent.login && (
-                <div className="flex items-center gap-2 ml-4">
-                  <Input
-                    type="number"
-                    min={1}
-                    max={10}
-                    value={agent.instances}
-                    onChange={(e) => updateCustom(index, 'instances', Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
-                    className="w-14 text-center"
-                  />
-                  <span className="text-xs text-[var(--muted-foreground)]">
-                    {agent.instances === 1 ? 'instance' : 'instances'}
-                  </span>
-                </div>
-              )}
-              <div className="flex-1" />
-              <Button variant="ghost" size="icon" onClick={() => removeCustomAgent(index)}>
-                <Trash2 className="w-4 h-4 text-[var(--muted-foreground)]" />
-              </Button>
-            </div>
-          ))}
-
-          {/* Inline add row */}
-          {isAdding && (
-            <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-[var(--muted)] border border-[var(--primary)]">
-              <img src={icons.agents} alt="New agent" className="w-5 h-5 opacity-50" />
-              <Input
-                placeholder="XX"
-                value={newName}
-                onChange={(e) => handleNameChange(e.target.value)}
-                className="w-16 uppercase text-center"
-                maxLength={2}
-                autoFocus
-              />
-              <Input
-                placeholder="command (e.g. my-agent-cli)"
-                value={newCommand}
-                onChange={(e) => setNewCommand(e.target.value)}
-                className="flex-1"
-                onKeyDown={(e) => e.key === 'Enter' && handleSave()}
-              />
-              <Button variant="ghost" size="icon" onClick={handleCancelAdd}>
-                <X className="w-4 h-4 text-[var(--muted-foreground)]" />
-              </Button>
-            </div>
-          )}
-          {isAdding && nameError && (
-            <p className="text-xs text-red-400 ml-4">{nameError}</p>
-          )}
-        </div>
-      </section>
-
-      {/* Prompt Stash */}
-      <section>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
-            Prompt Stash
-          </h2>
-          {!isAddingPrompt && (
-            <Button variant="secondary" size="sm" onClick={() => setIsAddingPrompt(true)}>
-              <Plus className="w-4 h-4 mr-1" />
-              Add
-            </Button>
-          )}
-        </div>
-
-        {/* Add new prompt form */}
-        {isAddingPrompt && (
-          <div className="px-4 py-3 rounded-xl bg-[var(--muted)] border border-[var(--primary)] mb-3 space-y-3">
-            <Input
-              placeholder="Title"
-              value={newPromptTitle}
-              onChange={(e) => setNewPromptTitle(e.target.value)}
-              autoFocus
-            />
-            <textarea
-              placeholder="Prompt content..."
-              value={newPromptContent}
-              onChange={(e) => setNewPromptContent(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg bg-[var(--background)] border border-[var(--border)] text-sm resize-none focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
-              rows={4}
-            />
-            <div className="flex justify-end gap-2">
-              <Button variant="ghost" size="sm" onClick={() => {
-                setIsAddingPrompt(false)
-                setNewPromptTitle('')
-                setNewPromptContent('')
-              }}>
-                Cancel
-              </Button>
-              <Button size="sm" onClick={handleAddPrompt}>
-                Save
-              </Button>
-            </div>
+            ))}
           </div>
-        )}
-
-        {/* Prompt list */}
-        <div className="space-y-2">
-          {sortedPrompts.length === 0 && !isAddingPrompt && (
-            <p className="text-sm text-[var(--muted-foreground)] px-4 py-3">
-              No prompts saved. Use Cmd+Shift+' to access prompts from any agent terminal.
-            </p>
-          )}
-          {sortedPrompts.map(entry => (
-            <div key={entry.id} className="px-4 py-3 rounded-xl bg-[var(--muted)]">
-              {editingPromptId === entry.id ? (
-                // Edit mode
-                <div className="space-y-3">
-                  <Input
-                    value={editPromptTitle}
-                    onChange={(e) => setEditPromptTitle(e.target.value)}
-                    autoFocus
-                  />
-                  <textarea
-                    value={editPromptContent}
-                    onChange={(e) => setEditPromptContent(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-[var(--background)] border border-[var(--border)] text-sm resize-none focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
-                    rows={4}
-                  />
-                  <div className="flex justify-end gap-2">
-                    <Button variant="ghost" size="sm" onClick={handleCancelEdit}>
-                      Cancel
-                    </Button>
-                    <Button size="sm" onClick={handleSaveEdit}>
-                      Save
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                // View mode
-                <div className="space-y-2">
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={() => handleToggleFavorite(entry.id)}
-                      className="text-[var(--muted-foreground)] hover:text-yellow-400 transition-colors"
-                    >
-                      <Star className={`w-4 h-4 ${entry.isFavorite ? 'fill-yellow-400 text-yellow-400' : ''}`} />
-                    </button>
-                    <span
-                      className="text-sm font-medium flex-1 cursor-pointer hover:text-[var(--primary)]"
-                      onClick={() => handleStartEdit(entry)}
-                    >
-                      {entry.title}
-                    </span>
-                    <Button variant="ghost" size="icon" onClick={() => handleDeletePrompt(entry.id)}>
-                      <Trash2 className="w-4 h-4 text-[var(--muted-foreground)]" />
-                    </Button>
-                  </div>
-                  <p
-                    className="text-xs text-[var(--muted-foreground)] line-clamp-2 cursor-pointer hover:text-[var(--foreground)]"
-                    onClick={() => handleStartEdit(entry)}
-                  >
-                    {entry.content}
-                  </p>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Shortcuts */}
-      <section>
-        <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
-          Shortcuts
-        </h2>
-        <div className="space-y-2 text-sm">
-          <div className="flex items-center gap-4">
-            <kbd className="px-2 py-1 rounded bg-[var(--muted)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs min-w-[120px] text-center">Cmd+Shift+A</kbd>
-            <span>New agent</span>
-          </div>
-          <div className="flex items-center gap-4">
-            <kbd className="px-2 py-1 rounded bg-[var(--muted)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs min-w-[120px] text-center">Cmd+Shift+L</kbd>
-            <span>Label agent</span>
-          </div>
-          <div className="flex items-center gap-4">
-            <kbd className="px-2 py-1 rounded bg-[var(--muted)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs min-w-[120px] text-center">Cmd+Shift+G</kbd>
-            <span>Commit & push</span>
-          </div>
-          <div className="flex items-center gap-4">
-            <kbd className="px-2 py-1 rounded bg-[var(--muted)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs min-w-[120px] text-center">Cmd+Shift+C</kbd>
-            <span>Clear & restart</span>
-          </div>
-          <div className="flex items-center gap-4">
-            <kbd className="px-2 py-1 rounded bg-[var(--muted)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs min-w-[120px] text-center">Cmd+R</kbd>
-            <span>Next agent</span>
-          </div>
-          <div className="flex items-center gap-4">
-            <kbd className="px-2 py-1 rounded bg-[var(--muted)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs min-w-[120px] text-center">Cmd+E</kbd>
-            <span>Previous agent</span>
-          </div>
-          <div className="flex items-center gap-4">
-            <kbd className="px-2 py-1 rounded bg-[var(--muted)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs min-w-[120px] text-center">Cmd+Shift+'</kbd>
-            <span>Prompts</span>
-          </div>
-        </div>
-      </section>
         </div>
       )}
+
+      {activeTab === 'guide' && (
+        <div className="space-y-6">
+          <section>
+            <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
+              Quick Start
+            </h2>
+            <div className="space-y-3">
+              <div className="px-4 py-3 rounded-xl bg-[var(--muted)]">
+                <div className="flex items-start gap-3">
+                  <span className="text-sm font-semibold text-[var(--primary)]">1</span>
+                  <div>
+                    <p className="text-sm font-medium">Open an agent terminal</p>
+                    <p className="text-xs text-[var(--muted-foreground)] mt-1">
+                      Press Cmd+Shift+A and select an agent (Claude, Codex, Gemini, etc.)
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="px-4 py-3 rounded-xl bg-[var(--muted)]">
+                <div className="flex items-start gap-3">
+                  <span className="text-sm font-semibold text-[var(--primary)]">2</span>
+                  <div>
+                    <p className="text-sm font-medium">Start coding with AI</p>
+                    <p className="text-xs text-[var(--muted-foreground)] mt-1">
+                      Type your request in the terminal. The agent will help you write, debug, and refactor code.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="px-4 py-3 rounded-xl bg-[var(--muted)]">
+                <div className="flex items-start gap-3">
+                  <span className="text-sm font-semibold text-[var(--primary)]">3</span>
+                  <div>
+                    <p className="text-sm font-medium">Use Swarm for parallel work</p>
+                    <p className="text-xs text-[var(--muted-foreground)] mt-1">
+                      Type /swarm in Claude to spawn multiple agents working on subtasks simultaneously.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="px-4 py-3 rounded-xl bg-[var(--muted)]">
+                <div className="flex items-start gap-3">
+                  <span className="text-sm font-semibold text-[var(--primary)]">4</span>
+                  <div>
+                    <p className="text-sm font-medium">Save reusable prompts</p>
+                    <p className="text-xs text-[var(--muted-foreground)] mt-1">
+                      Press Cmd+Shift+' to access your prompt library from any agent terminal.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section>
+            <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
+              Learn More
+            </h2>
+            <div className="space-y-2">
+              <button
+                onClick={() => vscode.postMessage({ type: 'openGuide', guide: 'getting-started' })}
+                className="w-full px-4 py-3 rounded-xl bg-[var(--muted)] text-left hover:bg-[var(--muted-foreground)]/10 transition-colors"
+              >
+                <p className="text-sm font-medium">Getting Started Guide</p>
+                <p className="text-xs text-[var(--muted-foreground)] mt-1">Complete walkthrough of all features</p>
+              </button>
+              <button
+                onClick={() => vscode.postMessage({ type: 'openGuide', guide: 'swarm' })}
+                className="w-full px-4 py-3 rounded-xl bg-[var(--muted)] text-left hover:bg-[var(--muted-foreground)]/10 transition-colors"
+              >
+                <p className="text-sm font-medium">Swarm Mode</p>
+                <p className="text-xs text-[var(--muted-foreground)] mt-1">How to use multi-agent orchestration</p>
+              </button>
+              <a
+                href="https://github.com/muqsitnawaz/swarmify"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block w-full px-4 py-3 rounded-xl bg-[var(--muted)] text-left hover:bg-[var(--muted-foreground)]/10 transition-colors"
+              >
+                <p className="text-sm font-medium">GitHub Repository</p>
+                <p className="text-xs text-[var(--muted-foreground)] mt-1">Source code, issues, and discussions</p>
+              </a>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {/* Footer */}
+      <footer className="pt-6 mt-8 border-t border-[var(--border)]">
+        <div className="flex items-center justify-between text-xs text-[var(--muted-foreground)]">
+          <span>From Swarmify</span>
+          <div className="flex items-center gap-4">
+            <a
+              href="https://github.com/muqsitnawaz/swarmify"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-[var(--foreground)] transition-colors"
+            >
+              GitHub
+            </a>
+            <button
+              onClick={() => setActiveTab('guide')}
+              className="hover:text-[var(--foreground)] transition-colors"
+            >
+              Docs
+            </button>
+          </div>
+        </div>
+      </footer>
     </div>
   )
 }
