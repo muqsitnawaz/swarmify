@@ -271,10 +271,14 @@ export default function App() {
     const diffHours = Math.floor(diffMs / 3600000)
     const diffDays = Math.floor(diffMs / 86400000)
 
-    if (diffMins < 1) return 'just now'
-    if (diffMins < 60) return `${diffMins}m ago`
-    if (diffHours < 24) return `${diffHours}h ago`
-    return `${diffDays}d ago`
+    if (diffMins < 1) return 'Just now'
+    if (diffMins === 1) return '1 min ago'
+    if (diffMins < 60) return `${diffMins} mins ago`
+    if (diffHours === 1) return '1 hour ago'
+    if (diffHours < 24) return `${diffHours} hours ago`
+    if (diffDays === 1) return 'Yesterday'
+    if (diffDays < 7) return `${diffDays} days ago`
+    return `${Math.floor(diffDays / 7)} weeks ago`
   }
 
   const getStatusColor = (status: string): string => {
@@ -532,14 +536,15 @@ export default function App() {
                   onClick={() => toggleTaskExpanded(task.task_name)}
                   className="w-full px-4 py-3 hover:bg-[var(--muted-foreground)]/5 transition-colors text-left"
                 >
+                  {/* Row 1: Chevron + Title ... icons */}
                   <div className="flex items-center gap-3">
                     {isTaskExpanded ? (
                       <ChevronDown className="w-4 h-4 text-[var(--muted-foreground)] flex-shrink-0" />
                     ) : (
                       <ChevronRight className="w-4 h-4 text-[var(--muted-foreground)] flex-shrink-0" />
                     )}
-                    <span className="text-sm font-medium truncate">{formatTaskName(task.task_name)}</span>
-                    <div className="flex items-center gap-1">
+                    <span className="text-sm font-medium truncate flex-1">{formatTaskName(task.task_name)}</span>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
                       {agentTypes.map(type => (
                         <img
                           key={type}
@@ -550,26 +555,12 @@ export default function App() {
                         />
                       ))}
                     </div>
-                    <div className="flex-1" />
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      {task.status_counts.running > 0 && (
-                        <span className="px-1.5 py-0.5 text-xs rounded bg-blue-500/20 text-blue-400">
-                          {task.status_counts.running} running
-                        </span>
-                      )}
-                      <span className="text-xs text-[var(--muted-foreground)]">
-                        {task.agent_count} agent{task.agent_count !== 1 ? 's' : ''}
-                      </span>
-                      <span className="text-xs text-[var(--muted-foreground)]">
-                        {formatTimeAgo(task.latest_activity)}
-                      </span>
-                    </div>
                   </div>
-                  {directory && (
-                    <div className="text-xs text-[var(--muted-foreground)] mt-1 ml-7 font-mono truncate">
-                      {directory}
-                    </div>
-                  )}
+                  {/* Row 2: path ... time (greyed) */}
+                  <div className="flex items-center justify-between mt-1.5 ml-7 text-xs text-[var(--muted-foreground)]">
+                    <span className="font-mono truncate">{directory || 'No directory'}</span>
+                    <span className="flex-shrink-0 ml-3">{formatTimeAgo(task.latest_activity)}</span>
+                  </div>
                 </button>
 
                 {/* Expanded task content */}
@@ -874,9 +865,10 @@ export default function App() {
                   const directory = getTaskDirectory(task.agents)
                   return (
                     <div key={task.task_name} className="px-4 py-3 rounded-xl bg-[var(--muted)]">
-                      <div className="flex items-center gap-3">
+                      {/* Row 1: Title ... icons */}
+                      <div className="flex items-center justify-between gap-3">
                         <span className="text-sm font-medium truncate">{formatTaskName(task.task_name)}</span>
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
                           {agentTypes.map(type => (
                             <img
                               key={type}
@@ -887,28 +879,12 @@ export default function App() {
                             />
                           ))}
                         </div>
-                        <div className="flex-1" />
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          {task.status_counts.running > 0 && (
-                            <span className="px-1.5 py-0.5 text-xs rounded bg-blue-500/20 text-blue-400">
-                              {task.status_counts.running} running
-                            </span>
-                          )}
-                          {task.status_counts.completed > 0 && (
-                            <span className="px-1.5 py-0.5 text-xs rounded bg-green-500/20 text-green-400">
-                              {task.status_counts.completed} done
-                            </span>
-                          )}
-                          <span className="text-xs text-[var(--muted-foreground)]">
-                            {task.agent_count} agent{task.agent_count !== 1 ? 's' : ''}
-                          </span>
-                        </div>
                       </div>
-                      {directory && (
-                        <div className="text-xs text-[var(--muted-foreground)] mt-1 font-mono truncate">
-                          {directory}
-                        </div>
-                      )}
+                      {/* Row 2: path ... time (greyed) */}
+                      <div className="flex items-center justify-between mt-1.5 text-xs text-[var(--muted-foreground)]">
+                        <span className="font-mono truncate">{directory || 'No directory'}</span>
+                        <span className="flex-shrink-0 ml-3">{formatTimeAgo(task.latest_activity)}</span>
+                      </div>
                     </div>
                   )
                 })}
