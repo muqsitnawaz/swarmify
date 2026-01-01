@@ -143,7 +143,7 @@ Use this for polling agent progress.`,
         },
       },
       {
-        name: 'list_tasks',
+        name: 'tasks',
         description: `List all tasks with their agents and activity details.
 
 Returns tasks sorted by most recent activity, with full agent details including:
@@ -203,7 +203,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         args.task_name as string,
         args.agent_id as string | undefined
       );
-    } else if (name === 'list_tasks') {
+    } else if (name === 'tasks') {
       result = await handleListTasks(
         manager,
         args?.limit as number | undefined
