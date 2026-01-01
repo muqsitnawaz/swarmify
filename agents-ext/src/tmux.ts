@@ -41,12 +41,18 @@ export function createTmuxTerminal(
     `tmux set -g pane-border-format " #{pane_index}: ${name} "`,
   ].join(' \\; ');
 
-  terminal.sendText(tmuxInit, true);
+  // Some shells (e.g., with heavy profile scripts) take a moment to populate PATH.
+  // Delay sending tmux init so `tmux` resolves consistently instead of failing
+  // with "unknown command: tmux".
+  setTimeout(() => {
+    terminal.sendText(tmuxInit, true);
+  }, 2000);
 
   if (agentCommand) {
+    // Queue the agent command after tmux session is reliably available
     setTimeout(() => {
       terminal.sendText(agentCommand, true);
-    }, 200);
+    }, 2200);
   }
 
   tmuxTerminals.set(terminal, {
