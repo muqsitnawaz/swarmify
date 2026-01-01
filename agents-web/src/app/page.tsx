@@ -31,10 +31,10 @@ export default function Home() {
               </div>
             </div>
           </div>
-          <h1 className="text-5xl md:text-7xl font-bold tracking-tight leading-[1.1] mb-6">
+          <h1 className="hero-heading text-5xl md:text-7xl font-bold tracking-tight leading-[1.1] mb-6">
             Run multiple agents.
             <br />
-            <span className="text-[#888]">Review their work in your IDE.</span>
+            <span className="hero-muted text-[#888]">Review their work in your IDE.</span>
           </h1>
           <p className="text-xl text-[#888] max-w-xl mb-10">
             CLI agents are powerful but chaotic at scale. Swarmify puts them in editor tabs—with labels, rendered markdown, and diff visibility.
@@ -78,7 +78,7 @@ export default function Home() {
         </div>
 
         {/* Editor mockup */}
-        <div className="animate-fade-in-delay-2 glow rounded-xl overflow-hidden border border-[#222]">
+        <div className="animate-fade-in-delay-2 glow editor-mockup rounded-xl overflow-hidden border border-[#222]">
           <EditorMockup activeAgent={activeAgent} setActiveAgent={setActiveAgent} />
         </div>
       </section>
@@ -285,12 +285,12 @@ export default function Home() {
             <div className="hidden md:block text-[#333]">→</div>
             <div className="flex items-center gap-3">
               <span className="w-7 h-7 rounded-full bg-[#222] flex items-center justify-center text-xs">2</span>
-              <span className="text-[#ccc]">Spawn agents in tabs</span>
+              <span className="text-[#ccc]">Spin up CLI agents</span>
             </div>
             <div className="hidden md:block text-[#333]">→</div>
             <div className="flex items-center gap-3">
               <span className="w-7 h-7 rounded-full bg-[#222] flex items-center justify-center text-xs">3</span>
-              <span className="text-[#888]">(Optional) Enable Swarm mode for agent-to-agent delegation</span>
+              <span className="text-[#ccc]">Let agents spawn a swarm</span>
             </div>
           </div>
         </div>
@@ -699,7 +699,7 @@ function EditorMockup({
           <div className="w-3 h-3 rounded-full bg-[#28c840]" />
         </div>
         <div className="flex-1 text-center text-xs text-[#666]">
-          my-project - Cursor
+          my-project - <span className="editor-title-highlight">Cursor</span>
         </div>
       </div>
 
