@@ -791,7 +791,7 @@ export default function App() {
 
         {/* Tab bar */}
         <div className="flex gap-1">
-          {(['overview', 'swarm', 'prompts', 'guide', 'settings'] as TabId[]).map(tab => (
+          {(['overview', 'swarm', 'prompts', 'settings', 'guide'] as TabId[]).map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -820,43 +820,55 @@ export default function App() {
                 const count = runningCounts[agent.key as keyof typeof runningCounts] as number
                 const isSelected = selectedAgentType === agent.key
                 return (
-                  <button
+                  <div
                     key={agent.key}
                     onClick={() => count > 0 && handleAgentClick(agent.key)}
-                    disabled={count === 0}
-                    className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl transition-colors ${
+                    className={`group flex items-center gap-2.5 px-4 py-2.5 rounded-xl transition-colors ${
                       isSelected
                         ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
                         : 'bg-[var(--muted)]'
-                    } ${count > 0 ? 'cursor-pointer hover:bg-[var(--muted-foreground)]/10' : 'opacity-50 cursor-default'}`}
+                    } ${count > 0 ? 'cursor-pointer hover:bg-[var(--muted-foreground)]/10' : ''}`}
                   >
                     <img src={agent.icon} alt={agent.name} className="w-5 h-5" />
                     <span className="text-sm font-medium">{agent.name}</span>
-                    <span className={`text-base font-semibold tabular-nums ${isSelected ? '' : 'text-[var(--foreground)]'}`}>
-                      {count}
-                    </span>
-                  </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        vscode.postMessage({ type: 'spawnAgent', agentKey: agent.key })
+                      }}
+                      className={`w-6 text-center text-base font-semibold tabular-nums transition-colors ${isSelected ? '' : 'text-[var(--foreground)]'} hover:text-[var(--primary)]`}
+                    >
+                      <span className="group-hover:hidden">{count}</span>
+                      <span className="hidden group-hover:inline">+</span>
+                    </button>
+                  </div>
                 )
               })}
               {Object.entries(runningCounts.custom).map(([name, count]) => {
                 const isSelected = selectedAgentType === name
                 return (
-                  <button
+                  <div
                     key={name}
                     onClick={() => count > 0 && handleAgentClick(name)}
-                    disabled={count === 0}
-                    className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl transition-colors ${
+                    className={`group flex items-center gap-2.5 px-4 py-2.5 rounded-xl transition-colors ${
                       isSelected
                         ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
                         : 'bg-[var(--muted)]'
-                    } ${count > 0 ? 'cursor-pointer hover:bg-[var(--muted-foreground)]/10' : 'opacity-50 cursor-default'}`}
+                    } ${count > 0 ? 'cursor-pointer hover:bg-[var(--muted-foreground)]/10' : ''}`}
                   >
                     <img src={icons.agents} alt={name} className="w-5 h-5" />
                     <span className="text-sm font-medium">{name}</span>
-                    <span className={`text-base font-semibold tabular-nums ${isSelected ? '' : 'text-[var(--foreground)]'}`}>
-                      {count}
-                    </span>
-                  </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        vscode.postMessage({ type: 'spawnAgent', agentKey: name, isCustom: true })
+                      }}
+                      className={`w-6 text-center text-base font-semibold tabular-nums transition-colors ${isSelected ? '' : 'text-[var(--foreground)]'} hover:text-[var(--primary)]`}
+                    >
+                      <span className="group-hover:hidden">{count}</span>
+                      <span className="hidden group-hover:inline">+</span>
+                    </button>
+                  </div>
                 )
               })}
             </div>
@@ -915,11 +927,11 @@ export default function App() {
             </section>
           )}
 
-          {/* Recent Tasks */}
+          {/* Recent Swarms */}
           <section>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
-                Recent Tasks
+                Recent Swarms
               </h2>
               {tasks.length > 0 && (
                 <button
@@ -934,7 +946,7 @@ export default function App() {
               <div className="text-sm text-[var(--muted-foreground)] py-4">Loading...</div>
             ) : tasks.length === 0 ? (
               <div className="text-sm text-[var(--muted-foreground)] py-4">
-                No recent tasks. Use /swarm to spawn agents.
+                No recent swarms. Use /swarm to spawn agents.
               </div>
             ) : (
               <div className="space-y-2">

@@ -235,6 +235,27 @@ export class AgentProcess {
     return this.eventsCache;
   }
 
+  /**
+   * Return the latest timestamp we have seen in the agent's events.
+   * Falls back to null when none are available.
+   */
+  private getLatestEventTime(): Date | null {
+    let latest: Date | null = null;
+
+    for (const event of this.eventsCache) {
+      const ts = event?.timestamp;
+      if (!ts) continue;
+      const parsed = new Date(ts);
+      if (!Number.isNaN(parsed.getTime())) {
+        if (!latest || parsed > latest) {
+          latest = parsed;
+        }
+      }
+    }
+
+    return latest;
+  }
+
   async readNewEvents(): Promise<void> {
     const stdoutPath = await this.getStdoutPath();
     try {
@@ -262,10 +283,10 @@ export class AgentProcess {
             if (event.type === 'result' || event.type === 'turn.completed' || event.type === 'thread.completed') {
               if (event.status === 'success' || event.type === 'turn.completed') {
                 this.status = AgentStatus.COMPLETED;
-                this.completedAt = new Date();
+                this.completedAt = event.timestamp ? new Date(event.timestamp) : new Date();
               } else if (event.status === 'error') {
                 this.status = AgentStatus.FAILED;
-                this.completedAt = new Date();
+                this.completedAt = event.timestamp ? new Date(event.timestamp) : new Date();
               }
             }
           }
@@ -353,6 +374,9 @@ export class AgentProcess {
       return;
     }
 
+    const fallbackCompletion =
+      this.getLatestEventTime() || this.startedAt || new Date();
+
     if (this.status === AgentStatus.RUNNING) {
       const exitCode = await this.reapProcess();
       await this.readNewEvents();
@@ -363,10 +387,10 @@ export class AgentProcess {
         } else {
           this.status = AgentStatus.COMPLETED;
         }
-        this.completedAt = new Date();
+        this.completedAt = fallbackCompletion;
       }
     } else if (!this.completedAt) {
-      this.completedAt = new Date();
+      this.completedAt = fallbackCompletion;
     }
 
     await this.saveMeta();
@@ -472,12 +496,12 @@ export class AgentManager {
     }
 
     if (cleanedOld > 0) {
-      console.log(`Cleaned up ${cleanedOld} old agents (older than ${this.cleanupAgeDays} days)`);
+      console.error(`Cleaned up ${cleanedOld} old agents (older than ${this.cleanupAgeDays} days)`);
     }
     if (skippedCwd > 0) {
-      console.log(`Skipped ${skippedCwd} agents (different CWD)`);
+      console.error(`Skipped ${skippedCwd} agents (different CWD)`);
     }
-    console.log(`Loaded ${loadedCount} agents from disk`);
+    console.error(`Loaded ${loadedCount} agents from disk`);
   }
 
   async spawn(

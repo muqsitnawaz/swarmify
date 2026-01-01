@@ -43,7 +43,9 @@ export function getSetting<T>(key: string): T | undefined {
 export async function enableStreamlineLayout(): Promise<void> {
   await updateSettings({
     'workbench.sideBar.location': 'right',
-    'workbench.activityBar.visible': false
+    // VS Code replaced the boolean `workbench.activityBar.visible` with a string `workbench.activityBar.location`.
+    // `hidden` removes the activity bar while keeping other layout settings intact.
+    'workbench.activityBar.location': 'hidden'
   });
 }
 
@@ -53,7 +55,8 @@ export async function enableStreamlineLayout(): Promise<void> {
 export async function disableStreamlineLayout(): Promise<void> {
   await updateSettings({
     'workbench.sideBar.location': 'left',
-    'workbench.activityBar.visible': true
+    // Restore the default placement of the activity bar.
+    'workbench.activityBar.location': 'side'
   });
 }
 
@@ -62,8 +65,8 @@ export async function disableStreamlineLayout(): Promise<void> {
  */
 export function isStreamlineLayout(): boolean {
   const sidebarLocation = getSetting<string>('workbench.sideBar.location');
-  const activityBarVisible = getSetting<boolean>('workbench.activityBar.visible');
-  return sidebarLocation === 'right' && activityBarVisible === false;
+  const activityBarLocation = getSetting<string>('workbench.activityBar.location');
+  return sidebarLocation === 'right' && activityBarLocation === 'hidden';
 }
 
 /**

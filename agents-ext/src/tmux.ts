@@ -1,6 +1,7 @@
 // Tmux integration - VS Code dependent functions
 
 import { exec } from 'child_process';
+import { promisify } from 'util';
 import * as vscode from 'vscode';
 
 interface TmuxTerminal {
@@ -11,6 +12,19 @@ interface TmuxTerminal {
 }
 
 const tmuxTerminals = new Map<vscode.Terminal, TmuxTerminal>();
+const execAsync = promisify(exec);
+
+let tmuxAvailable: Promise<boolean> | null = null;
+
+export function isTmuxAvailable(): Promise<boolean> {
+  if (!tmuxAvailable) {
+    tmuxAvailable = execAsync('command -v tmux')
+      .then(() => true)
+      .catch(() => false);
+  }
+
+  return tmuxAvailable;
+}
 
 export function createTmuxTerminal(
   name: string,
@@ -36,9 +50,9 @@ export function createTmuxTerminal(
 
   const tmuxInit = [
     `tmux new-session -s ${session} -n main`,
-    'tmux set -g mouse on',
-    'tmux set -g pane-border-status top',
-    `tmux set -g pane-border-format " #{pane_index}: ${name} "`,
+    `tmux set-option -t ${session} mouse on`,
+    `tmux set-option -t ${session} pane-border-status top`,
+    `tmux set-option -t ${session} pane-border-format " #{pane_index}: ${name} "`,
   ].join(' \\; ');
 
   // Some shells (e.g., with heavy profile scripts) take a moment to populate PATH.
