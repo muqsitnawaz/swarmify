@@ -468,24 +468,26 @@ function UseCase({ title, description }: { title: string; description: string })
 
 function PromptLibraryMock() {
   return (
-    <div className="rounded-xl border border-[#1b2a33] bg-[#0f1b22] p-4">
-      <div className="text-center text-xs text-[#7aa2b6] mb-3">CursorAgents</div>
-      <div className="rounded-lg bg-[#0c171d] border border-[#13232c] px-3 py-2 text-xs text-[#6f8a99] mb-4">
+    <div className="rounded-xl border border-[#1b2a33] bg-[#0f1b22] p-4 font-sans">
+      <div className="text-center text-[11px] tracking-wide text-[#8fb3c4] mb-3">
+        Swarmify - Agents
+      </div>
+      <div className="rounded-lg bg-[#0c171d] border border-[#13232c] px-3 py-2 text-[11px] text-[#6f8a99] mb-4">
         Search prompts...
       </div>
-      <div className="space-y-3 text-sm">
+      <div className="space-y-3 text-[11px]">
         <div className="rounded-lg border border-[#19323f] bg-[#15313d] p-3">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <StarIcon />
-              <span className="text-[#cfe6f1] font-medium">rethink</span>
+              <span className="text-[#cfe6f1] font-semibold">rethink</span>
             </div>
             <div className="flex items-center gap-2 text-[#7aa2b6]">
               <StarIcon filled />
               <TrashIcon />
             </div>
           </div>
-          <div className="text-[#b7c7d2] text-xs leading-relaxed">
+          <div className="text-[#b7c7d2] leading-relaxed">
             Before we make this change, what do you think? Is this the right
             tradeoff for the team and the codebase?
           </div>
@@ -493,14 +495,14 @@ function PromptLibraryMock() {
         <div className="rounded-lg border border-[#12252f] bg-[#0f2029] p-3">
           <div className="flex items-center gap-2 mb-2">
             <StarIcon />
-            <span className="text-[#cfe6f1] font-medium">debugit</span>
+            <span className="text-[#cfe6f1] font-semibold">debugit</span>
           </div>
-          <div className="text-[#94a8b6] text-xs leading-relaxed">
+          <div className="text-[#94a8b6] leading-relaxed">
             Confirm the root cause by spinning up multiple agents and comparing
             their findings.
           </div>
         </div>
-        <button className="w-full flex items-center gap-2 text-left text-[#8aa8ba] text-xs py-2 px-2 rounded-md hover:bg-[#0f2029] transition-colors">
+        <button className="w-full flex items-center gap-2 text-left text-[#8aa8ba] text-[11px] py-2 px-2 rounded-md hover:bg-[#0f2029] transition-colors">
           <PlusIcon />
           Add new prompt
         </button>

@@ -240,17 +240,37 @@ export interface TerminalDetail {
   index: number; // 1-based index within agent type
 }
 
+// Map from lowercase key (used in UI) to title (used in AgentConfig)
+const AGENT_KEY_TO_TITLE: Record<string, string> = {
+  claude: 'Claude',
+  codex: 'Codex',
+  gemini: 'Gemini',
+  opencode: 'OpenCode',
+  cursor: 'Cursor',
+  shell: 'Shell'
+};
+
 // Get terminals filtered by agent type with display details
 export function getTerminalsByAgentType(agentType: string): TerminalDetail[] {
   const terminals = getAllTerminals();
-  const filtered = terminals.filter(t => t.agentConfig?.key === agentType);
+  const expectedTitle = AGENT_KEY_TO_TITLE[agentType] || agentType;
+
+  // Filter by matching title (built-in agents) or by custom agent name
+  const filtered = terminals.filter(t => {
+    if (!t.agentConfig) return false;
+    // For built-in agents, match by title
+    if (t.agentConfig.title === expectedTitle) return true;
+    // For custom agents, the title is the custom name (e.g., "AB")
+    if (t.agentConfig.title === agentType) return true;
+    return false;
+  });
 
   // Sort by createdAt ascending (oldest first for consistent numbering)
   filtered.sort((a, b) => a.createdAt - b.createdAt);
 
   return filtered.map((t, i) => ({
     id: t.id,
-    agentType: t.agentConfig?.key || agentType,
+    agentType: agentType,
     label: t.label || null,
     autoLabel: t.autoLabel || null,
     createdAt: t.createdAt,

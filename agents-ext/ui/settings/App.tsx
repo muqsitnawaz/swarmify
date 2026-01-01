@@ -82,6 +82,15 @@ interface TaskSummary {
   agents: AgentDetail[]
 }
 
+interface TerminalDetail {
+  id: string
+  agentType: string
+  label: string | null
+  autoLabel: string | null
+  createdAt: number
+  index: number
+}
+
 type TabId = 'overview' | 'swarm' | 'prompts' | 'guide'
 
 declare function acquireVsCodeApi(): {
@@ -156,6 +165,11 @@ export default function App() {
   const [tasksPage, setTasksPage] = useState(1)
   const TASKS_PER_PAGE = 10
 
+  // Agent terminals drill-down state
+  const [selectedAgentType, setSelectedAgentType] = useState<string | null>(null)
+  const [agentTerminals, setAgentTerminals] = useState<TerminalDetail[]>([])
+  const [agentTerminalsLoading, setAgentTerminalsLoading] = useState(false)
+
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       const message = event.data
@@ -171,6 +185,9 @@ export default function App() {
         setTasks(message.tasks || [])
         setTasksLoading(false)
         setTasksLoaded(true)
+      } else if (message.type === 'agentTerminalsData') {
+        setAgentTerminals(message.terminals || [])
+        setAgentTerminalsLoading(false)
       }
     }
 
@@ -190,6 +207,36 @@ export default function App() {
   const fetchTasks = () => {
     setTasksLoading(true)
     vscode.postMessage({ type: 'fetchTasks' })
+  }
+
+  const handleAgentClick = (agentKey: string) => {
+    if (selectedAgentType === agentKey) {
+      // Toggle off if already selected
+      setSelectedAgentType(null)
+      setAgentTerminals([])
+    } else {
+      setSelectedAgentType(agentKey)
+      setAgentTerminalsLoading(true)
+      vscode.postMessage({ type: 'fetchAgentTerminals', agentType: agentKey })
+    }
+  }
+
+  const formatTimeSince = (timestamp: number): string => {
+    const now = Date.now()
+    const diffMs = now - timestamp
+    const diffMins = Math.floor(diffMs / 60000)
+    const diffHours = Math.floor(diffMs / 3600000)
+    const diffDays = Math.floor(diffMs / 86400000)
+
+    if (diffMins < 1) return 'just started'
+    if (diffMins < 60) return `${diffMins}m ago`
+    if (diffHours < 24) return `${diffHours}h ago`
+    return `${diffDays}d ago`
+  }
+
+  const getAgentDisplayName = (agentKey: string): string => {
+    const agent = BUILT_IN_AGENTS.find(a => a.key === agentKey)
+    return agent?.name || agentKey.charAt(0).toUpperCase() + agentKey.slice(1)
   }
 
   const toggleTaskExpanded = (taskName: string) => {
@@ -700,24 +747,104 @@ export default function App() {
               Running Now
             </h2>
             <div className="flex flex-wrap gap-3">
-              {BUILT_IN_AGENTS.map(agent => (
-                <div key={agent.key} className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-[var(--muted)]">
-                  <img src={agent.icon} alt={agent.name} className="w-5 h-5" />
-                  <span className="text-sm font-medium">{agent.name}</span>
-                  <span className="text-base font-semibold text-[var(--foreground)] tabular-nums">
-                    {runningCounts[agent.key as keyof typeof runningCounts] as number}
-                  </span>
-                </div>
-              ))}
-              {Object.entries(runningCounts.custom).map(([name, count]) => (
-                <div key={name} className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-[var(--muted)]">
-                  <img src={icons.agents} alt={name} className="w-5 h-5" />
-                  <span className="text-sm font-medium">{name}</span>
-                  <span className="text-base font-semibold text-[var(--foreground)] tabular-nums">{count}</span>
-                </div>
-              ))}
+              {BUILT_IN_AGENTS.map(agent => {
+                const count = runningCounts[agent.key as keyof typeof runningCounts] as number
+                const isSelected = selectedAgentType === agent.key
+                return (
+                  <button
+                    key={agent.key}
+                    onClick={() => count > 0 && handleAgentClick(agent.key)}
+                    disabled={count === 0}
+                    className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl transition-colors ${
+                      isSelected
+                        ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
+                        : 'bg-[var(--muted)]'
+                    } ${count > 0 ? 'cursor-pointer hover:bg-[var(--muted-foreground)]/10' : 'opacity-50 cursor-default'}`}
+                  >
+                    <img src={agent.icon} alt={agent.name} className="w-5 h-5" />
+                    <span className="text-sm font-medium">{agent.name}</span>
+                    <span className={`text-base font-semibold tabular-nums ${isSelected ? '' : 'text-[var(--foreground)]'}`}>
+                      {count}
+                    </span>
+                  </button>
+                )
+              })}
+              {Object.entries(runningCounts.custom).map(([name, count]) => {
+                const isSelected = selectedAgentType === name
+                return (
+                  <button
+                    key={name}
+                    onClick={() => count > 0 && handleAgentClick(name)}
+                    disabled={count === 0}
+                    className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl transition-colors ${
+                      isSelected
+                        ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
+                        : 'bg-[var(--muted)]'
+                    } ${count > 0 ? 'cursor-pointer hover:bg-[var(--muted-foreground)]/10' : 'opacity-50 cursor-default'}`}
+                  >
+                    <img src={icons.agents} alt={name} className="w-5 h-5" />
+                    <span className="text-sm font-medium">{name}</span>
+                    <span className={`text-base font-semibold tabular-nums ${isSelected ? '' : 'text-[var(--foreground)]'}`}>
+                      {count}
+                    </span>
+                  </button>
+                )
+              })}
             </div>
           </section>
+
+          {/* Agent Terminals (shown when an agent is clicked) */}
+          {selectedAgentType && (
+            <section>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
+                  {getAgentDisplayName(selectedAgentType)} Agents
+                </h2>
+                <button
+                  onClick={() => {
+                    setSelectedAgentType(null)
+                    setAgentTerminals([])
+                  }}
+                  className="text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                >
+                  Close
+                </button>
+              </div>
+              {agentTerminalsLoading ? (
+                <div className="text-sm text-[var(--muted-foreground)] py-4">Loading...</div>
+              ) : agentTerminals.length === 0 ? (
+                <div className="text-sm text-[var(--muted-foreground)] py-4">
+                  No terminals found for {getAgentDisplayName(selectedAgentType)}.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {agentTerminals.map(terminal => {
+                    const displayLabel = terminal.label || terminal.autoLabel
+                    const agentName = getAgentDisplayName(terminal.agentType)
+                    return (
+                      <div key={terminal.id} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)]">
+                        <img
+                          src={icons[terminal.agentType as keyof typeof icons] || icons.agents}
+                          alt={terminal.agentType}
+                          className="w-5 h-5"
+                        />
+                        <span className="text-sm font-medium">
+                          {agentName} #{terminal.index}
+                          {displayLabel && (
+                            <span className="text-[var(--muted-foreground)]"> - {displayLabel}</span>
+                          )}
+                        </span>
+                        <div className="flex-1" />
+                        <span className="text-xs text-[var(--muted-foreground)]">
+                          {formatTimeSince(terminal.createdAt)}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </section>
+          )}
 
           {/* Recent Tasks */}
           <section>

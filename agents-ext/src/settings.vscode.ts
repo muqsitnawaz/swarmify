@@ -169,6 +169,14 @@ export function openPanel(context: vscode.ExtensionContext): void {
         const tasks = await swarm.fetchTasks(message.limit);
         settingsPanel?.webview.postMessage({ type: 'tasksData', tasks });
         break;
+      case 'fetchAgentTerminals':
+        const terminalDetails = terminals.getTerminalsByAgentType(message.agentType);
+        settingsPanel?.webview.postMessage({
+          type: 'agentTerminalsData',
+          agentType: message.agentType,
+          terminals: terminalDetails
+        });
+        break;
       case 'openGuide':
         openGuide(context, message.guide);
         break;
