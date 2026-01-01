@@ -894,15 +894,17 @@ function CompareItem({ children, negative }: { children: React.ReactNode; negati
   return (
     <li className="flex items-start gap-3">
       {negative ? (
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="mt-0.5 shrink-0 text-[#666]">
-          <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5"/>
-          <path d="M6 6L10 10M10 6L6 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-        </svg>
+        <span className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#141a1f] text-[#7b8794]">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+            <path d="M5 5L11 11M11 5L5 11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+          </svg>
+        </span>
       ) : (
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="mt-0.5 shrink-0 text-[#3b82f6]">
-          <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5"/>
-          <path d="M5.5 8L7 9.5L10.5 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
+        <span className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#102235] text-[#6fb4ff]">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+            <path d="M4.5 8.5L7 11L11.5 5.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </span>
       )}
       <span>{children}</span>
     </li>

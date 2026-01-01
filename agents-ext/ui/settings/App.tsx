@@ -97,7 +97,7 @@ interface TerminalDetail {
   index: number
 }
 
-type TabId = 'overview' | 'swarm' | 'prompts' | 'guide'
+type TabId = 'overview' | 'settings' | 'swarm' | 'prompts' | 'guide'
 
 declare function acquireVsCodeApi(): {
   postMessage(message: unknown): void
@@ -731,7 +731,7 @@ export default function App() {
 
         {/* Tab bar */}
         <div className="flex gap-1">
-          {(['overview', 'swarm', 'prompts', 'guide'] as TabId[]).map(tab => (
+          {(['overview', 'settings', 'swarm', 'prompts', 'guide'] as TabId[]).map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -750,40 +750,6 @@ export default function App() {
       {/* Tab content */}
       {activeTab === 'overview' && (
         <div className="space-y-8">
-          {/* Display Preferences */}
-          <section>
-            <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
-              Display
-            </h2>
-            <div className="flex flex-col gap-3">
-              <label className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)] cursor-pointer">
-                <Checkbox
-                  checked={settings.display?.showFullAgentNames}
-                  onCheckedChange={(checked) => updateDisplay('showFullAgentNames', !!checked)}
-                />
-                <div>
-                  <p className="text-sm font-medium">Show full agent names</p>
-                  <p className="text-xs text-[var(--muted-foreground)]">
-                    Use names like “Cursor” and “Gemini” instead of “CR” or “GX” in terminal tab titles.
-                  </p>
-                </div>
-              </label>
-
-              <label className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)] cursor-pointer">
-                <Checkbox
-                  checked={!settings.display?.showLabelsInTitles}
-                  onCheckedChange={(checked) => updateDisplay('showLabelsInTitles', !checked)}
-                />
-                <div>
-                  <p className="text-sm font-medium">Disable labels in titles</p>
-                  <p className="text-xs text-[var(--muted-foreground)]">
-                    Keep labels in the status bar only. When unchecked, labels appear in the tab title (default).
-                  </p>
-                </div>
-              </label>
-            </div>
-          </section>
-
           {/* Running Now */}
           <section>
             <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
@@ -1296,6 +1262,44 @@ export default function App() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {activeTab === 'settings' && (
+        <div className="space-y-8">
+          {/* Display Preferences */}
+          <section>
+            <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
+              Display
+            </h2>
+            <div className="flex flex-col gap-3">
+              <label className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)] cursor-pointer">
+                <Checkbox
+                  checked={settings.display?.showFullAgentNames}
+                  onCheckedChange={(checked) => updateDisplay('showFullAgentNames', !!checked)}
+                />
+                <div>
+                  <p className="text-sm font-medium">Show full agent names</p>
+                  <p className="text-xs text-[var(--muted-foreground)]">
+                    Use names like “Cursor” and “Gemini” instead of “CR” or “GX” in terminal tab titles.
+                  </p>
+                </div>
+              </label>
+
+              <label className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)] cursor-pointer">
+                <Checkbox
+                  checked={!settings.display?.showLabelsInTitles}
+                  onCheckedChange={(checked) => updateDisplay('showLabelsInTitles', !checked)}
+                />
+                <div>
+                  <p className="text-sm font-medium">Disable labels in titles</p>
+                  <p className="text-xs text-[var(--muted-foreground)]">
+                    Keep labels in the status bar only. When unchecked, labels appear in the tab title (default).
+                  </p>
+                </div>
+              </label>
+            </div>
+          </section>
         </div>
       )}
 
