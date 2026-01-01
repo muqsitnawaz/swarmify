@@ -1,3 +1,5 @@
+![Swarmify](agents-ext/assets/agents.png)
+
 # Swarmify
 
 True multi-agent coding in your IDE. Run Claude, Codex, Gemini, and Cursor agents side-by-side with your code.
@@ -5,10 +7,10 @@ True multi-agent coding in your IDE. Run Claude, Codex, Gemini, and Cursor agent
 ## Packages
 
 | Package | Description | Install |
-|---------|-------------|---------|
+| --- | --- | --- |
 | [@swarmify/agents-mcp](./agents-mcp) | MCP server for spawning agents | `npx @swarmify/agents-mcp` |
 | [Agents Extension](./agents-ext) | VS Code/Cursor extension | [Marketplace](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext) |
-| [Website](./agents-web) | swarmify.co | - |
+| [Website](./agents-web) | swarmify.co | \- |
 
 ## Quick Start
 
@@ -40,7 +42,7 @@ Install "Agents" from the VS Code Marketplace, or search for `swarmify.swarm-ext
 ## Supported Agents
 
 | Agent | CLI | Best For |
-|-------|-----|----------|
+| --- | --- | --- |
 | Claude Code | `claude` | Maximum capability, research, exploration |
 | Codex | `codex` | Fast, cheap. Self-contained features |
 | Gemini | `gemini` | Complex multi-system features |
