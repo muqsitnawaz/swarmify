@@ -250,6 +250,31 @@ export default function App() {
     }
   }
 
+  // Format task name: convert kebab-case to Title Case
+  const formatTaskName = (name: string): string => {
+    return name
+      .split('-')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ')
+  }
+
+  // Get unique agent types from a task
+  const getUniqueAgentTypes = (agents: AgentDetail[]): string[] => {
+    return [...new Set(agents.map(a => a.agent_type))]
+  }
+
+  // Get common directory from agents (use first agent's cwd, shortened)
+  const getTaskDirectory = (agents: AgentDetail[]): string | null => {
+    const firstCwd = agents.find(a => a.cwd)?.cwd
+    if (!firstCwd) return null
+    // Shorten home directory
+    const home = firstCwd.match(/^\/Users\/[^/]+/)
+    if (home) {
+      return firstCwd.replace(home[0], '~')
+    }
+    return firstCwd
+  }
+
   const handleEnableSwarm = () => {
     vscode.postMessage({ type: 'enableSwarm' })
   }
