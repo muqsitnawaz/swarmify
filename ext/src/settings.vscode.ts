@@ -17,7 +17,7 @@ let settingsPanel: vscode.WebviewPanel | undefined;
 const SWARMIFY_DIR = path.join(homedir(), '.swarmify');
 const AGENTS_DATA_DIR = path.join(SWARMIFY_DIR, 'agents');
 const SWARM_CONFIG_PATH = path.join(AGENTS_DATA_DIR, 'config.json');
-const PROMPTS_PATH = path.join(AGENTS_DATA_DIR, 'prompts.yaml');
+const PROMPTS_PATH = path.join(AGENTS_DATA_DIR, 'prompts.json');
 
 // Write swarm config file with enabled agents
 export function writeSwarmConfig(enabledAgents: SwarmAgentType[]): void {

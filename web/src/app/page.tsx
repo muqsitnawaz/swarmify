@@ -1,5 +1,10 @@
 "use client";
 
+import { useState } from "react";
+import Image from "next/image";
+
+type AgentType = "claude" | "codex" | "gemini" | "cursor";
+
 export default function Home() {
   return (
     <main className="min-h-screen">
@@ -7,47 +12,40 @@ export default function Home() {
       <section className="relative px-6 pt-20 pb-32 max-w-5xl mx-auto">
         <div className="animate-fade-in">
           <p className="text-[#888] text-sm tracking-wide uppercase mb-4">
-            VS Code Extension
+            VS Code / Cursor Extension
           </p>
           <h1 className="text-5xl md:text-7xl font-bold tracking-tight leading-[1.1] mb-6">
-            AI Agents
+            Multi-agent
             <br />
-            <span className="text-[#888]">in your editor</span>
+            <span className="text-[#888]">coding</span>
           </h1>
           <p className="text-xl text-[#888] max-w-xl mb-10">
-            Run Claude, Codex, Gemini, and Cursor as editor tabs.
-            <br />
-            Stop context-switching. Ship faster.
+            Run multiple AI agents in parallel. Let your main agent spawn
+            subagents to distribute tasks. Ship features 3x faster.
           </p>
         </div>
 
         {/* Install command */}
         <div className="animate-fade-in-delay-1 flex flex-wrap gap-4 mb-16">
           <a
-            href="https://marketplace.visualstudio.com/items?itemName=muqsitnawaz.swarm-ext"
+            href="https://github.com/muqsitnawaz/swarmify/releases"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 px-5 py-3 bg-white text-black font-medium rounded-lg hover:bg-gray-200 transition-colors"
           >
-            Install Extension
+            Download Extension
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <path d="M6 12L10 8L6 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </a>
-          <div className="flex items-center gap-3 px-5 py-3 bg-[#111] border border-[#222] rounded-lg font-mono text-sm">
-            <span className="text-[#888]">$</span>
-            <code>bunx agent-swarm</code>
-            <button
-              onClick={() => navigator.clipboard.writeText("bunx agent-swarm")}
-              className="text-[#888] hover:text-white transition-colors"
-              title="Copy"
-            >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <rect x="5" y="5" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.5"/>
-                <path d="M3 11V3H11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-              </svg>
-            </button>
-          </div>
+          <a
+            href="https://github.com/muqsitnawaz/swarmify"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-5 py-3 bg-[#111] border border-[#222] rounded-lg hover:border-[#444] transition-colors"
+          >
+            View on GitHub
+          </a>
         </div>
 
         {/* Editor mockup */}
@@ -56,24 +54,68 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Comparison */}
+      <section className="px-6 py-24 border-t border-[#1a1a1a]">
+        <div className="max-w-5xl mx-auto">
+          <h2 className="text-3xl font-bold mb-4 text-center">
+            Why not just use the terminal?
+          </h2>
+          <p className="text-[#888] text-center mb-16 max-w-2xl mx-auto">
+            CLI agents are powerful, but terminals have limits. Your IDE removes those limits.
+          </p>
+          <div className="grid md:grid-cols-2 gap-8">
+            {/* Terminal Column */}
+            <div className="p-6 rounded-xl border border-[#1a1a1a] bg-[#0a0a0a]">
+              <div className="flex items-center gap-3 mb-6">
+                <TerminalIcon />
+                <h3 className="text-lg font-semibold">Terminal CLI</h3>
+              </div>
+              <ul className="space-y-4 text-[#888] text-sm">
+                <CompareItem negative>Small panel at the bottom of your screen</CompareItem>
+                <CompareItem negative>Can&apos;t see git changes as agent edits files</CompareItem>
+                <CompareItem negative>One agent at a time, sequential work</CompareItem>
+                <CompareItem negative>Tmux splits still can&apos;t show images or previews</CompareItem>
+                <CompareItem negative>Context switch to browser for frontend</CompareItem>
+                <CompareItem negative>Scroll through raw markdown output</CompareItem>
+              </ul>
+            </div>
+            {/* IDE Column */}
+            <div className="p-6 rounded-xl border border-[#3b82f6]/50 bg-[#0a0a0a]">
+              <div className="flex items-center gap-3 mb-6">
+                <IDEIcon />
+                <h3 className="text-lg font-semibold">VS Code / Cursor</h3>
+              </div>
+              <ul className="space-y-4 text-[#ccc] text-sm">
+                <CompareItem>Full-screen terminal tabs in the editor area</CompareItem>
+                <CompareItem>Git diff visible in real-time as changes happen</CompareItem>
+                <CompareItem>Split horizontal/vertical - agents + code side by side</CompareItem>
+                <CompareItem>Images, diagrams, previews render inline</CompareItem>
+                <CompareItem>Browser preview in the same window</CompareItem>
+                <CompareItem>Beautiful markdown rendering built-in</CompareItem>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Features */}
       <section className="px-6 py-24 border-t border-[#1a1a1a]">
         <div className="max-w-5xl mx-auto">
           <h2 className="text-3xl font-bold mb-16 text-center animate-fade-in">
-            How it works
+            Get more out of coding agents
           </h2>
           <div className="grid md:grid-cols-3 gap-8">
             <Feature
-              title="Agents as Tabs"
-              description="Each AI agent runs in its own editor tab. See your code and agents side by side."
+              title="Split View"
+              description="Split horizontal or vertical. Watch agents work in one pane while you code, review diffs, or preview in another."
             />
             <Feature
               title="Swarm Mode"
-              description="Let agents spawn sub-agents. Get second opinions or run parallel tasks from one session."
+              description="Your main agent spawns subagents to distribute tasks. Claude orchestrates Codex, Gemini, and Cursor."
             />
             <Feature
-              title="Any Agent"
-              description="Built-in support for Claude, Codex, Gemini, Cursor. Add custom agents with a 2-letter code."
+              title="Rich Previews"
+              description="Images render inline. Markdown looks beautiful. Frontend changes preview without switching apps."
             />
           </div>
         </div>
@@ -83,10 +125,10 @@ export default function Home() {
       <section className="px-6 py-24 border-t border-[#1a1a1a]">
         <div className="max-w-5xl mx-auto">
           <h2 className="text-3xl font-bold mb-4 text-center">
-            Keyboard-first
+            Save an hour every day
           </h2>
           <p className="text-[#888] text-center mb-12">
-            Everything is one shortcut away
+            Keyboard shortcuts for everything you do repeatedly
           </p>
           <div className="grid md:grid-cols-2 gap-4 max-w-2xl mx-auto">
             <Shortcut keys="Cmd+Shift+A" action="New agent" />
@@ -103,22 +145,22 @@ export default function Home() {
       <section className="px-6 py-24 border-t border-[#1a1a1a]">
         <div className="max-w-2xl mx-auto text-center">
           <h2 className="text-4xl font-bold mb-6">
-            Ready to ship faster?
+            Experience multi-agent coding
           </h2>
           <p className="text-xl text-[#888] mb-10">
-            Install from VS Code Marketplace or run the MCP server directly.
+            Download the extension and start shipping features faster.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <a
-              href="https://marketplace.visualstudio.com/items?itemName=muqsitnawaz.swarm-ext"
+              href="https://github.com/muqsitnawaz/swarmify/releases"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 px-6 py-3 bg-white text-black font-medium rounded-lg hover:bg-gray-200 transition-colors"
             >
-              Install Extension
+              Download Extension
             </a>
             <a
-              href="https://github.com/muqsitnawaz/swarm"
+              href="https://github.com/muqsitnawaz/swarmify"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 px-6 py-3 border border-[#333] rounded-lg hover:border-[#555] transition-colors"
@@ -136,13 +178,13 @@ export default function Home() {
             Swarmify
           </div>
           <div className="flex gap-6">
-            <a href="https://github.com/muqsitnawaz/swarm" className="hover:text-white transition-colors">
+            <a href="https://github.com/muqsitnawaz/swarmify" className="hover:text-white transition-colors">
               GitHub
             </a>
-            <a href="https://marketplace.visualstudio.com/items?itemName=muqsitnawaz.swarm-ext" className="hover:text-white transition-colors">
-              VS Code
+            <a href="https://github.com/muqsitnawaz/swarmify/releases" className="hover:text-white transition-colors">
+              Releases
             </a>
-            <a href="https://www.npmjs.com/package/agent-swarm" className="hover:text-white transition-colors">
+            <a href="https://www.npmjs.com/package/@swarmify/agents-mcp" className="hover:text-white transition-colors">
               npm
             </a>
           </div>
@@ -171,6 +213,15 @@ function Shortcut({ keys, action }: { keys: string; action: string }) {
 }
 
 function EditorMockup() {
+  const [activeAgent, setActiveAgent] = useState<AgentType>("claude");
+
+  const agents: { id: AgentType; name: string; logo: string }[] = [
+    { id: "claude", name: "Claude", logo: "/claude.png" },
+    { id: "codex", name: "Codex", logo: "/codex.png" },
+    { id: "gemini", name: "Gemini", logo: "/gemini.png" },
+    { id: "cursor", name: "Cursor", logo: "/cursor.png" },
+  ];
+
   return (
     <div className="bg-[#0d0d0d]">
       {/* Title bar */}
@@ -181,57 +232,157 @@ function EditorMockup() {
           <div className="w-3 h-3 rounded-full bg-[#28c840]" />
         </div>
         <div className="flex-1 text-center text-xs text-[#666]">
-          my-project
+          my-project - Cursor
         </div>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-0.5 px-2 pt-2 bg-[#111] overflow-x-auto">
-        <Tab name="CC" label="Claude" color="#f97316" active />
-        <Tab name="CX" label="Codex" color="#10b981" />
-        <Tab name="GX" label="Gemini" color="#3b82f6" />
-        <Tab name="CR" label="Cursor" color="#8b5cf6" />
-        <Tab name="index.ts" isFile />
+        {agents.map((agent) => (
+          <button
+            key={agent.id}
+            onClick={() => setActiveAgent(agent.id)}
+            className={`flex items-center gap-2 px-3 py-2 rounded-t-lg text-xs transition-colors ${
+              activeAgent === agent.id
+                ? "bg-[#0d0d0d] text-white"
+                : "bg-[#161616] text-[#888] hover:text-white"
+            }`}
+          >
+            <Image src={agent.logo} alt={agent.name} width={16} height={16} className="rounded-sm" />
+            <span className="font-medium">{agent.name}</span>
+          </button>
+        ))}
+        <div className="flex items-center gap-2 px-3 py-2 rounded-t-lg text-xs bg-[#161616] text-[#888]">
+          <FileIcon />
+          <span className="font-mono">auth.ts</span>
+        </div>
       </div>
 
-      {/* Content */}
-      <div className="p-6 font-mono text-sm leading-relaxed min-h-[300px]">
-        <div className="text-[#888] mb-4">Claude Code</div>
-        <div className="space-y-2">
-          <Line prompt=">" text="Fix the authentication bug in src/auth.ts" />
-          <Line text="" />
-          <Line text="I'll analyze the authentication module and fix the issue." />
-          <Line text="" />
-          <Line text="Found the problem - the JWT token validation is missing" />
-          <Line text="the expiry check. Let me fix that..." />
-          <Line text="" />
-          <Line text="Reading: src/auth.ts" muted />
-          <Line text="Editing: src/auth.ts" muted />
-          <Line text="" />
-          <Line text="Done. The token now properly validates expiry." highlight />
+      {/* Split Content: Terminal + Git Panel */}
+      <div className="flex min-h-[340px]">
+        {/* Terminal */}
+        <div className="flex-1 p-5 font-mono text-xs leading-relaxed border-r border-[#1a1a1a] overflow-hidden">
+          <AgentContent agent={activeAgent} />
+        </div>
+
+        {/* Git Changes Panel */}
+        <div className="w-56 bg-[#0a0a0a] p-3 text-xs shrink-0">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[#888] uppercase tracking-wide text-[10px]">Changes</span>
+            <span className="bg-[#3b82f6] text-white px-1.5 py-0.5 rounded text-[10px]">3</span>
+          </div>
+          <div className="space-y-1">
+            <GitFile name="auth.ts" status="M" />
+            <GitFile name="middleware.ts" status="M" />
+            <GitFile name="types.ts" status="A" />
+          </div>
+          <div className="mt-4 pt-3 border-t border-[#1a1a1a]">
+            <div className="text-[#888] uppercase tracking-wide text-[10px] mb-2">Diff Preview</div>
+            <div className="font-mono text-[10px] space-y-0.5">
+              <div className="text-[#f87171]">- if (token) {"{"}</div>
+              <div className="text-[#4ade80]">+ if (token && !isExpired(token)) {"{"}</div>
+              <div className="text-[#888]">    return decode(token);</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-function Tab({ name, label, color, active, isFile }: {
-  name: string;
-  label?: string;
-  color?: string;
-  active?: boolean;
-  isFile?: boolean;
-}) {
+function AgentContent({ agent }: { agent: AgentType }) {
+  if (agent === "claude") {
+    return (
+      <div className="space-y-1">
+        <div className="text-[#f97316] font-bold mb-3">Claude Code</div>
+        <div className="text-[#3b82f6]">&gt; <span className="text-white">Fix the authentication bug in src/auth.ts</span></div>
+        <div className="text-[#ccc] mt-3">I&apos;ll analyze the authentication module and fix the issue.</div>
+        <div className="text-[#ccc] mt-2">Found the problem - the JWT token validation is missing</div>
+        <div className="text-[#ccc]">the expiry check. Let me fix that...</div>
+        <div className="text-[#666] mt-3">Reading: src/auth.ts</div>
+        <div className="text-[#666]">Editing: src/auth.ts</div>
+        <div className="text-[#4ade80] mt-3">Done. The token now properly validates expiry.</div>
+      </div>
+    );
+  }
+
+  if (agent === "codex") {
+    return (
+      <div className="space-y-1">
+        <pre className="text-[#10b981] text-[10px] leading-tight mb-3">{`
+   ██████╗ ██████╗ ██████╗ ███████╗██╗  ██╗
+  ██╔════╝██╔═══██╗██╔══██╗██╔════╝╚██╗██╔╝
+  ██║     ██║   ██║██║  ██║█████╗   ╚███╔╝
+  ██║     ██║   ██║██║  ██║██╔══╝   ██╔██╗
+  ╚██████╗╚██████╔╝██████╔╝███████╗██╔╝ ██╗
+   ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝`}</pre>
+        <div className="text-[#888]">OpenAI Codex CLI</div>
+        <div className="text-[#3b82f6] mt-2">&gt; <span className="text-white">Add input validation to the login form</span></div>
+        <div className="text-[#ccc] mt-2">Adding email format validation and password strength check...</div>
+        <div className="text-[#666]">Modified: src/components/LoginForm.tsx</div>
+      </div>
+    );
+  }
+
+  if (agent === "gemini") {
+    return (
+      <div className="space-y-1">
+        <pre className="text-[8px] leading-[1.1] mb-2">{`
+`}<span className="text-[#60a5fa]">{`  ╲╱  `}</span><span className="text-[#f472b6]">{`██████╗ ███████╗███╗   ███╗██╗███╗   ██╗██╗`}</span>{`
+`}<span className="text-[#60a5fa]">{` ╲  ╱ `}</span><span className="text-[#a78bfa]">{`██╔════╝ ██╔════╝████╗ ████║██║████╗  ██║██║`}</span>{`
+`}<span className="text-[#fbbf24]">{`╲    ╱`}</span><span className="text-[#f472b6]">{`██║  ███╗█████╗  ██╔████╔██║██║██╔██╗ ██║██║`}</span>{`
+`}<span className="text-[#fbbf24]">{` ╲  ╱ `}</span><span className="text-[#a78bfa]">{`██║   ██║██╔══╝  ██║╚██╔╝██║██║██║╚██╗██║██║`}</span>{`
+`}<span className="text-[#60a5fa]">{`  ╲╱  `}</span><span className="text-[#60a5fa]">{`╚██████╔╝███████╗██║ ╚═╝ ██║██║██║ ╚████║██║`}</span>{`
+`}<span className="text-[#60a5fa]">{`      `}</span><span className="text-[#f472b6]">{` ╚═════╝ ╚══════╝╚═╝     ╚═╝╚═╝╚═╝  ╚═══╝╚═╝`}</span></pre>
+        <div className="text-[#888] text-[10px]">Gemini CLI 0.22.5</div>
+        <div className="text-[#3b82f6] mt-2">&gt; <span className="text-white">Refactor the API routes to use middleware</span></div>
+        <div className="text-[#ccc] mt-2">I&apos;ll create a middleware pattern for authentication...</div>
+        <div className="text-[#666]">Created: src/middleware/auth.ts</div>
+      </div>
+    );
+  }
+
+  // cursor
   return (
-    <div className={`flex items-center gap-2 px-3 py-2 rounded-t-lg text-xs ${
-      active ? 'bg-[#0d0d0d] text-white' : 'bg-[#161616] text-[#888] hover:text-white'
-    } transition-colors cursor-pointer`}>
-      {color && <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />}
-      <span className="font-mono">{name}</span>
-      {label && <span className="text-[#666]">{label}</span>}
+    <div className="space-y-1">
+      <pre className="text-[#8b5cf6] text-[10px] leading-tight mb-3">{`
+   ██████╗██╗   ██╗██████╗ ███████╗ ██████╗ ██████╗
+  ██╔════╝██║   ██║██╔══██╗██╔════╝██╔═══██╗██╔══██╗
+  ██║     ██║   ██║██████╔╝███████╗██║   ██║██████╔╝
+  ██║     ██║   ██║██╔══██╗╚════██║██║   ██║██╔══██╗
+  ╚██████╗╚██████╔╝██║  ██║███████║╚██████╔╝██║  ██║
+   ╚═════╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝ ╚═════╝ ╚═╝  ╚═╝`}</pre>
+      <div className="text-[#888]">Cursor Agent</div>
+      <div className="text-[#3b82f6] mt-2">&gt; <span className="text-white">Write tests for the auth module</span></div>
+      <div className="text-[#ccc] mt-2">Creating comprehensive test suite with edge cases...</div>
+      <div className="text-[#666]">Created: src/__tests__/auth.test.ts</div>
     </div>
   );
 }
+
+
+function GitFile({ name, status }: { name: string; status: 'M' | 'A' | 'D' }) {
+  const statusColor = status === 'M' ? 'text-[#f59e0b]' : status === 'A' ? 'text-[#22c55e]' : 'text-[#ef4444]';
+  return (
+    <div className="flex items-center justify-between py-1 px-2 rounded hover:bg-[#1a1a1a]">
+      <div className="flex items-center gap-2">
+        <FileIcon />
+        <span className="text-[#ccc]">{name}</span>
+      </div>
+      <span className={`font-mono ${statusColor}`}>{status}</span>
+    </div>
+  );
+}
+
+function FileIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="text-[#888]">
+      <path d="M3 2C3 1.44772 3.44772 1 4 1H9L13 5V14C13 14.5523 12.5523 15 12 15H4C3.44772 15 3 14.5523 3 14V2Z" stroke="currentColor" strokeWidth="1.2"/>
+      <path d="M9 1V5H13" stroke="currentColor" strokeWidth="1.2"/>
+    </svg>
+  );
+}
+
 
 function Line({ prompt, text, muted, highlight }: {
   prompt?: string;
@@ -244,5 +395,49 @@ function Line({ prompt, text, muted, highlight }: {
       {prompt && <span className="text-[#3b82f6] mr-2">{prompt}</span>}
       {text}
     </div>
+  );
+}
+
+function TerminalIcon() {
+  return (
+    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" className="text-[#888]">
+      <rect x="2" y="4" width="20" height="16" rx="2" stroke="currentColor" strokeWidth="1.5"/>
+      <path d="M6 9L10 12L6 15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M12 15H18" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
+function IDEIcon() {
+  return (
+    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" className="text-[#3b82f6]">
+      <rect x="2" y="3" width="20" height="18" rx="2" stroke="currentColor" strokeWidth="1.5"/>
+      <path d="M2 7H22" stroke="currentColor" strokeWidth="1.5"/>
+      <path d="M7 7V21" stroke="currentColor" strokeWidth="1.5"/>
+      <circle cx="4.5" cy="5" r="0.75" fill="currentColor"/>
+      <circle cx="6.5" cy="5" r="0.75" fill="currentColor"/>
+      <circle cx="8.5" cy="5" r="0.75" fill="currentColor"/>
+      <path d="M10 11L13 14L10 17" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M15 17H19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
+function CompareItem({ children, negative }: { children: React.ReactNode; negative?: boolean }) {
+  return (
+    <li className="flex items-start gap-3">
+      {negative ? (
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="mt-0.5 shrink-0 text-[#666]">
+          <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5"/>
+          <path d="M6 6L10 10M10 6L6 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+        </svg>
+      ) : (
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="mt-0.5 shrink-0 text-[#3b82f6]">
+          <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5"/>
+          <path d="M5.5 8L7 9.5L10.5 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      )}
+      <span>{children}</span>
+    </li>
   );
 }
