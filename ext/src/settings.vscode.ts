@@ -5,26 +5,44 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { homedir } from 'os';
-import { AgentSettings, getDefaultSettings, CustomAgentConfig, SwarmAgentType, ALL_SWARM_AGENTS } from './settings';
+import { AgentSettings, getDefaultSettings, CustomAgentConfig, SwarmAgentType, ALL_SWARM_AGENTS, PromptEntry } from './settings';
+import { readPromptsFromPath, writePromptsToPath, DEFAULT_PROMPTS } from './prompts';
 import * as terminals from './terminals.vscode';
 import * as swarm from './swarm.vscode';
 
 // Module state
 let settingsPanel: vscode.WebviewPanel | undefined;
 
-// Swarm config file path
-const SWARM_CONFIG_DIR = path.join(homedir(), '.agent-swarm');
-const SWARM_CONFIG_PATH = path.join(SWARM_CONFIG_DIR, 'config.json');
+// Data directory: ~/.swarmify/agents/
+const SWARMIFY_DIR = path.join(homedir(), '.swarmify');
+const AGENTS_DATA_DIR = path.join(SWARMIFY_DIR, 'agents');
+const SWARM_CONFIG_PATH = path.join(AGENTS_DATA_DIR, 'config.json');
+const PROMPTS_PATH = path.join(AGENTS_DATA_DIR, 'prompts.yaml');
 
 // Write swarm config file with enabled agents
 export function writeSwarmConfig(enabledAgents: SwarmAgentType[]): void {
   try {
-    fs.mkdirSync(SWARM_CONFIG_DIR, { recursive: true });
+    fs.mkdirSync(AGENTS_DATA_DIR, { recursive: true });
     const config = { enabledAgents };
     fs.writeFileSync(SWARM_CONFIG_PATH, JSON.stringify(config, null, 2));
   } catch (err) {
     console.error('Failed to write swarm config:', err);
   }
+}
+
+// Read prompts from YAML file (persists across extension uninstall)
+export function readPrompts(): PromptEntry[] {
+  const { prompts, usedDefaults } = readPromptsFromPath(PROMPTS_PATH);
+  if (usedDefaults) {
+    // Save defaults to file for next time
+    writePrompts(prompts);
+  }
+  return prompts;
+}
+
+// Write prompts to YAML file
+export function writePrompts(prompts: PromptEntry[]): void {
+  writePromptsToPath(PROMPTS_PATH, prompts);
 }
 
 // Load settings from global state, with migration from old format
@@ -41,6 +59,11 @@ export function getSettings(context: vscode.ExtensionContext): AgentSettings {
     }
     if (!stored.builtIn.opencode) {
       stored.builtIn.opencode = { login: false, instances: 2 };
+      context.globalState.update('agentSettings', stored);
+    }
+    // Migrate: load prompts from file (persists across uninstall)
+    if (!stored.prompts || stored.prompts.length === 0) {
+      stored.prompts = readPrompts();
       context.globalState.update('agentSettings', stored);
     }
     return stored;
@@ -68,7 +91,8 @@ export function getSettings(context: vscode.ExtensionContext): AgentSettings {
         login: false,
         instances: a.count
       })),
-      swarmEnabledAgents: [...ALL_SWARM_AGENTS]
+      swarmEnabledAgents: [...ALL_SWARM_AGENTS],
+      prompts: readPrompts()
     };
     context.globalState.update('agentSettings', migrated);
     return migrated;
@@ -77,10 +101,14 @@ export function getSettings(context: vscode.ExtensionContext): AgentSettings {
   return getDefaultSettings();
 }
 
-// Save settings to global state and write swarm config
+// Save settings to global state and write configs to files
 export async function saveSettings(context: vscode.ExtensionContext, settings: AgentSettings): Promise<void> {
   await context.globalState.update('agentSettings', settings);
   writeSwarmConfig(settings.swarmEnabledAgents);
+  // Sync prompts to file for persistence across uninstall
+  if (settings.prompts) {
+    writePrompts(settings.prompts);
+  }
 }
 
 // Open the settings webview panel
@@ -135,6 +163,10 @@ export function openPanel(context: vscode.ExtensionContext): void {
       case 'enableSwarm':
         await swarm.enableSwarm(context);
         updateWebview();
+        break;
+      case 'fetchTasks':
+        const tasks = await swarm.fetchTasks(message.limit);
+        settingsPanel?.webview.postMessage({ type: 'tasksData', tasks });
         break;
     }
   }, undefined, context.subscriptions);

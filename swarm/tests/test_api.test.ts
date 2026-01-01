@@ -101,7 +101,7 @@ describe('API Integration Tests', () => {
       manager['agents'].set('agent-1', agent1);
       manager['agents'].set('agent-2', agent2);
 
-      const result = await handleStatus(manager, 'my-task');
+      const result = await handleStatus(manager, 'my-task', 'all');
 
       console.log('Result:', JSON.stringify(result, null, 2));
 
@@ -203,7 +203,7 @@ describe('API Integration Tests', () => {
 
       // Step 2: Get task status
       console.log('\n[Step 2] Getting status for task "feature-x"...');
-      const taskStatus = await handleStatus(manager, 'feature-x');
+      const taskStatus = await handleStatus(manager, 'feature-x', 'all');
       console.log('Task status:', JSON.stringify(taskStatus, null, 2));
 
       expect('agents' in taskStatus).toBe(true);
@@ -215,7 +215,7 @@ describe('API Integration Tests', () => {
 
       // Step 3: Get individual agent status (by finding in task status)
       console.log('\n[Step 3] Getting detailed status for agent "flow-1"...');
-      const taskStatusForAgent = await handleStatus(manager, 'feature-x');
+      const taskStatusForAgent = await handleStatus(manager, 'feature-x', 'all');
       const agentStatus = taskStatusForAgent.agents.find(a => a.agent_id === 'flow-1');
       console.log('Agent status:', JSON.stringify(agentStatus, null, 2));
 

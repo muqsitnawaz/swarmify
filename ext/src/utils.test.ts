@@ -8,6 +8,14 @@ import {
   findTerminalNameByTabLabel,
   mergeMcpConfig,
   createSwarmServerConfig,
+  generateTmuxSessionName,
+  buildTmuxInitCommand,
+  buildTmuxSplitCommand,
+  buildTmuxKillCommand,
+  isValidTmuxSessionName,
+  sortPrompts,
+  isBuiltInPromptId,
+  truncateText,
   CLAUDE_TITLE,
   CODEX_TITLE,
   GEMINI_TITLE,
@@ -239,6 +247,79 @@ describe('createSwarmServerConfig', () => {
   });
 });
 
+describe('tmux utilities', () => {
+  describe('generateTmuxSessionName', () => {
+    test('generates unique session names with prefix', () => {
+      const originalNow = Date.now;
+      let callCount = 0;
+      Date.now = () => 1700000000000 + callCount++;
+      try {
+        const name1 = generateTmuxSessionName('cc');
+        const name2 = generateTmuxSessionName('cc');
+
+        expect(name1).toMatch(/^agents-cc-\d+$/);
+        expect(name2).toMatch(/^agents-cc-\d+$/);
+        expect(name1).not.toBe(name2);
+      } finally {
+        Date.now = originalNow;
+      }
+    });
+
+    test('handles different prefixes', () => {
+      const claude = generateTmuxSessionName('cc');
+      const codex = generateTmuxSessionName('cx');
+
+      expect(claude).toContain('-cc-');
+      expect(codex).toContain('-cx-');
+    });
+  });
+
+  describe('buildTmuxInitCommand', () => {
+    test('builds init command with session name and pane label', () => {
+      const cmd = buildTmuxInitCommand('agents-cc-123', 'Claude');
+
+      expect(cmd).toContain('tmux new-session -s agents-cc-123');
+      expect(cmd).toContain('tmux set -g mouse on');
+      expect(cmd).toContain('pane-border-status top');
+      expect(cmd).toContain('Claude');
+    });
+  });
+
+  describe('buildTmuxSplitCommand', () => {
+    test('horizontal split uses -v flag', () => {
+      const cmd = buildTmuxSplitCommand('horizontal');
+      expect(cmd).toBe('tmux split-window -v');
+    });
+
+    test('vertical split uses -h flag', () => {
+      const cmd = buildTmuxSplitCommand('vertical');
+      expect(cmd).toBe('tmux split-window -h');
+    });
+  });
+
+  describe('buildTmuxKillCommand', () => {
+    test('builds kill command with session name', () => {
+      const cmd = buildTmuxKillCommand('agents-cc-123');
+      expect(cmd).toBe('tmux kill-session -t agents-cc-123');
+    });
+  });
+
+  describe('isValidTmuxSessionName', () => {
+    test('accepts valid names', () => {
+      expect(isValidTmuxSessionName('agents-cc-123')).toBe(true);
+      expect(isValidTmuxSessionName('my_session')).toBe(true);
+      expect(isValidTmuxSessionName('ABC123')).toBe(true);
+    });
+
+    test('rejects invalid names', () => {
+      expect(isValidTmuxSessionName('has space')).toBe(false);
+      expect(isValidTmuxSessionName('has:colon')).toBe(false);
+      expect(isValidTmuxSessionName('has.dot')).toBe(false);
+      expect(isValidTmuxSessionName('')).toBe(false);
+    });
+  });
+});
+
 describe('mergeMcpConfig', () => {
   test('creates new config when existing is null', () => {
     const serverConfig = createSwarmServerConfig('/path/to/index.js');
@@ -347,5 +428,79 @@ describe('findTerminalNameByTabLabel', () => {
     expect(findTerminalNameByTabLabel(terminalNames, 'CC')).toBeNull();
     expect(findTerminalNameByTabLabel(terminalNames, 'CC - auth')).toBeNull();
     expect(findTerminalNameByTabLabel(terminalNames, 'auth feature')).toBeNull();
+  });
+});
+
+describe('prompt utilities', () => {
+  describe('sortPrompts', () => {
+    test('sorts favorites first', () => {
+      const prompts = [
+        { id: '1', isFavorite: false, accessedAt: 100 },
+        { id: '2', isFavorite: true, accessedAt: 50 },
+        { id: '3', isFavorite: false, accessedAt: 200 }
+      ];
+      const sorted = sortPrompts(prompts);
+      expect(sorted[0].id).toBe('2'); // favorite first
+      expect(sorted[1].id).toBe('3'); // then by accessedAt desc
+      expect(sorted[2].id).toBe('1');
+    });
+
+    test('sorts by accessedAt within same favorite status', () => {
+      const prompts = [
+        { id: '1', isFavorite: true, accessedAt: 100 },
+        { id: '2', isFavorite: true, accessedAt: 300 },
+        { id: '3', isFavorite: true, accessedAt: 200 }
+      ];
+      const sorted = sortPrompts(prompts);
+      expect(sorted[0].id).toBe('2'); // most recent first
+      expect(sorted[1].id).toBe('3');
+      expect(sorted[2].id).toBe('1');
+    });
+
+    test('does not mutate original array', () => {
+      const prompts = [
+        { id: '1', isFavorite: false, accessedAt: 100 },
+        { id: '2', isFavorite: true, accessedAt: 50 }
+      ];
+      const sorted = sortPrompts(prompts);
+      expect(prompts[0].id).toBe('1'); // original unchanged
+      expect(sorted[0].id).toBe('2');
+    });
+
+    test('handles empty array', () => {
+      expect(sortPrompts([])).toEqual([]);
+    });
+  });
+
+  describe('isBuiltInPromptId', () => {
+    test('identifies built-in prompts', () => {
+      expect(isBuiltInPromptId('builtin-rethink')).toBe(true);
+      expect(isBuiltInPromptId('builtin-debugit')).toBe(true);
+      expect(isBuiltInPromptId('builtin-anything')).toBe(true);
+    });
+
+    test('identifies user prompts', () => {
+      expect(isBuiltInPromptId('1234567890-abc123')).toBe(false);
+      expect(isBuiltInPromptId('user-prompt')).toBe(false);
+      expect(isBuiltInPromptId('my-builtin')).toBe(false); // must start with builtin-
+    });
+  });
+
+  describe('truncateText', () => {
+    test('returns text unchanged if within limit', () => {
+      expect(truncateText('hello', 10)).toBe('hello');
+      expect(truncateText('hello', 5)).toBe('hello');
+    });
+
+    test('truncates text with ellipsis', () => {
+      expect(truncateText('hello world', 8)).toBe('hello...');
+      expect(truncateText('abcdefghij', 7)).toBe('abcd...');
+    });
+
+    test('handles edge cases', () => {
+      expect(truncateText('', 10)).toBe('');
+      expect(truncateText('abc', 3)).toBe('abc');
+      expect(truncateText('abcd', 3)).toBe('...');
+    });
   });
 });

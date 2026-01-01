@@ -2,6 +2,9 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 
+// Track spawned agent terminals per document URI
+const documentAgents = new Map<string, vscode.Terminal>();
+
 export class AgentsMarkdownEditorProvider implements vscode.CustomTextEditorProvider {
   public static register(context: vscode.ExtensionContext): vscode.Disposable {
     const provider = new AgentsMarkdownEditorProvider(context);
@@ -76,6 +79,12 @@ export class AgentsMarkdownEditorProvider implements vscode.CustomTextEditorProv
 
       case 'sendToAgent':
         return this.handleSendToAgent(message, document, webview);
+
+      case 'sendToActiveAgent':
+        return this.handleSendToActiveAgent(message, document, webview);
+
+      case 'checkActiveAgent':
+        return this.handleCheckActiveAgent(document, webview);
 
       case 'triggerAgent':
         return this.handleAgentTrigger(message, webview);
@@ -152,9 +161,69 @@ The user selected the above text from a markdown file. Help them with whatever t
         }
       }, 5000);
 
+      // Store terminal reference for this document
+      const docUri = document.uri.toString();
+      documentAgents.set(docUri, terminal);
+
+      // Clean up when terminal is disposed
+      const disposeListener = vscode.window.onDidCloseTerminal((closedTerminal) => {
+        if (closedTerminal === terminal) {
+          documentAgents.delete(docUri);
+          webview.postMessage({ type: 'activeAgentChanged', hasActiveAgent: false });
+          disposeListener.dispose();
+        }
+      });
+
       webview.postMessage({
         type: 'agentResult',
         result: 'Opening new agent terminal with your selection...',
+      });
+
+      // Notify webview that we now have an active agent
+      webview.postMessage({ type: 'activeAgentChanged', hasActiveAgent: true });
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to send to agent: ${error}`);
+      webview.postMessage({
+        type: 'agentResult',
+        result: 'Failed to send to agent. Please try again.',
+      });
+    }
+  }
+
+  private async handleSendToActiveAgent(
+    message: any,
+    document: vscode.TextDocument,
+    webview: vscode.Webview
+  ): Promise<void> {
+    const { selection } = message;
+    const docUri = document.uri.toString();
+    const terminal = documentAgents.get(docUri);
+
+    if (!terminal) {
+      webview.postMessage({
+        type: 'agentResult',
+        result: 'No active agent for this document. Use the colored icon to create one.',
+      });
+      webview.postMessage({ type: 'activeAgentChanged', hasActiveAgent: false });
+      return;
+    }
+
+    try {
+      // Format message with file context
+      const filePath = document.uri.fsPath;
+      const contextMessage = `<additional-context>
+Source file: ${filePath}
+
+Selected text:
+${selection}
+</additional-context>`;
+
+      terminal.sendText(contextMessage);
+      terminal.show();
+
+      webview.postMessage({
+        type: 'agentResult',
+        result: 'Sent selection to active agent.',
       });
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to send to agent: ${error}`);
@@ -163,6 +232,12 @@ The user selected the above text from a markdown file. Help them with whatever t
         result: 'Failed to send to agent. Please try again.',
       });
     }
+  }
+
+  private handleCheckActiveAgent(document: vscode.TextDocument, webview: vscode.Webview): void {
+    const docUri = document.uri.toString();
+    const hasActiveAgent = documentAgents.has(docUri);
+    webview.postMessage({ type: 'activeAgentChanged', hasActiveAgent });
   }
 
   private async handleAgentTrigger(message: any, webview: vscode.Webview): Promise<void> {

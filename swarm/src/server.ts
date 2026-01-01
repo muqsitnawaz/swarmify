@@ -6,7 +6,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { AgentManager, checkAllClis } from './agents.js';
 import { AgentType } from './parsers.js';
-import { handleSpawn, handleStatus, handleStop } from './api.js';
+import { handleSpawn, handleStatus, handleStop, handleListTasks } from './api.js';
 import { readConfig } from './persistence.js';
 
 const manager = new AgentManager(50, 10, null, null, null, 7);
@@ -142,6 +142,26 @@ Use this for polling agent progress.`,
           required: ['task_name'],
         },
       },
+      {
+        name: 'list_tasks',
+        description: `List all tasks with their agents and activity details.
+
+Returns tasks sorted by most recent activity, with full agent details including:
+- Files created/modified/read/deleted
+- Bash commands executed
+- Last messages from each agent
+- Status and duration`,
+        inputSchema: {
+          type: 'object',
+          properties: {
+            limit: {
+              type: 'number',
+              description: 'Maximum number of tasks to return (optional, defaults to all)',
+            },
+          },
+          required: [],
+        },
+      },
     ],
   };
 });
@@ -182,6 +202,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         manager,
         args.task_name as string,
         args.agent_id as string | undefined
+      );
+    } else if (name === 'list_tasks') {
+      result = await handleListTasks(
+        manager,
+        args?.limit as number | undefined
       );
     } else {
       result = { error: `Unknown tool: ${name}` };
