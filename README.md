@@ -1,4 +1,6 @@
-![Swarmify](agents-ext/assets/agents.png)
+<p align="center">
+  <img src="https://swarmify.co/logo.png" width="128" height="128" alt="Swarmify">
+</p>
 
 # Swarmify
 
