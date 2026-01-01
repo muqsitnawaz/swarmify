@@ -120,10 +120,11 @@ export function openPanel(context: vscode.ExtensionContext): void {
 
   settingsPanel = vscode.window.createWebviewPanel(
     'agentsSettings',
-    'Agents',
+    'Agents: Dashboard',
     vscode.ViewColumn.One,
     {
       enableScripts: true,
+      retainContextWhenHidden: true, // Prevent full reload when panel loses focus
       localResourceRoots: [
         vscode.Uri.joinPath(context.extensionUri, 'out', 'ui'),
         vscode.Uri.joinPath(context.extensionUri, 'assets')

@@ -331,6 +331,40 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Prompt Library */}
+      <section className="px-6 py-24 border-t border-[#1a1a1a]">
+        <div className="max-w-5xl mx-auto">
+          <div className="grid md:grid-cols-[1.1fr_1.2fr] gap-12 items-center">
+            <div>
+              <h2 className="text-3xl font-bold mb-4">
+                Reuse prompts, move faster
+              </h2>
+              <p className="text-[#888] text-lg mb-6">
+                Save your most-used agent prompts and launch them in seconds.
+                No more rewriting the same instructions for every task.
+              </p>
+              <div className="space-y-3 text-sm text-[#ccc]">
+                <div className="flex items-start gap-3">
+                  <span className="mt-1 h-2 w-2 rounded-full bg-[#3b82f6]" />
+                  <span>Search and pin the prompts you use every day.</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="mt-1 h-2 w-2 rounded-full bg-[#3b82f6]" />
+                  <span>Kick off complex tasks with one shortcut.</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="mt-1 h-2 w-2 rounded-full bg-[#3b82f6]" />
+                  <span>Keep workflows consistent across multiple agents.</span>
+                </div>
+              </div>
+            </div>
+            <div className="rounded-2xl border border-[#1a1a1a] bg-[#0b141a] p-4 shadow-[0_0_40px_rgba(0,0,0,0.35)]">
+              <PromptLibraryMock />
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Features */}
       <section className="px-6 py-24 border-t border-[#1a1a1a]">
         <div className="max-w-5xl mx-auto">
@@ -428,6 +462,49 @@ function UseCase({ title, description }: { title: string; description: string })
     <div className="p-5 rounded-xl bg-[#0a0a0a] border border-[#1a1a1a]">
       <h3 className="font-medium mb-1">{title}</h3>
       <p className="text-[#888] text-sm">{description}</p>
+    </div>
+  );
+}
+
+function PromptLibraryMock() {
+  return (
+    <div className="rounded-xl border border-[#1b2a33] bg-[#0f1b22] p-4">
+      <div className="text-center text-xs text-[#7aa2b6] mb-3">CursorAgents</div>
+      <div className="rounded-lg bg-[#0c171d] border border-[#13232c] px-3 py-2 text-xs text-[#6f8a99] mb-4">
+        Search prompts...
+      </div>
+      <div className="space-y-3 text-sm">
+        <div className="rounded-lg border border-[#19323f] bg-[#15313d] p-3">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <StarIcon />
+              <span className="text-[#cfe6f1] font-medium">rethink</span>
+            </div>
+            <div className="flex items-center gap-2 text-[#7aa2b6]">
+              <StarIcon filled />
+              <TrashIcon />
+            </div>
+          </div>
+          <div className="text-[#b7c7d2] text-xs leading-relaxed">
+            Before we make this change, what do you think? Is this the right
+            tradeoff for the team and the codebase?
+          </div>
+        </div>
+        <div className="rounded-lg border border-[#12252f] bg-[#0f2029] p-3">
+          <div className="flex items-center gap-2 mb-2">
+            <StarIcon />
+            <span className="text-[#cfe6f1] font-medium">debugit</span>
+          </div>
+          <div className="text-[#94a8b6] text-xs leading-relaxed">
+            Confirm the root cause by spinning up multiple agents and comparing
+            their findings.
+          </div>
+        </div>
+        <button className="w-full flex items-center gap-2 text-left text-[#8aa8ba] text-xs py-2 px-2 rounded-md hover:bg-[#0f2029] transition-colors">
+          <PlusIcon />
+          Add new prompt
+        </button>
+      </div>
     </div>
   );
 }
@@ -665,5 +742,38 @@ function CompareItem({ children, negative }: { children: React.ReactNode; negati
       )}
       <span>{children}</span>
     </li>
+  );
+}
+
+function StarIcon({ filled }: { filled?: boolean }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className={filled ? "text-[#fbbf24]" : "text-[#7aa2b6]"}>
+      <path
+        d="M12 3.5L14.7 9L20.8 9.8L16.4 14.1L17.6 20.2L12 17.2L6.4 20.2L7.6 14.1L3.2 9.8L9.3 9L12 3.5Z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        fill={filled ? "currentColor" : "none"}
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-[#7aa2b6]">
+      <path d="M4 7H20" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+      <path d="M9 7V5H15V7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+      <path d="M7 7L8 19H16L17 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-[#7aa2b6]">
+      <path d="M12 5V19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+      <path d="M5 12H19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+    </svg>
   );
 }
