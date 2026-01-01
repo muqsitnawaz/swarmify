@@ -476,32 +476,53 @@ export default function App() {
         <div className="space-y-3">
           {paginatedTasks.map(task => {
             const isTaskExpanded = expandedTasks.has(task.task_name)
+            const agentTypes = getUniqueAgentTypes(task.agents)
+            const directory = getTaskDirectory(task.agents)
             return (
               <div key={task.task_name} className="rounded-xl bg-[var(--muted)] overflow-hidden">
                 {/* Task header */}
                 <button
                   onClick={() => toggleTaskExpanded(task.task_name)}
-                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[var(--muted-foreground)]/5 transition-colors"
+                  className="w-full px-4 py-3 hover:bg-[var(--muted-foreground)]/5 transition-colors text-left"
                 >
-                  {isTaskExpanded ? (
-                    <ChevronDown className="w-4 h-4 text-[var(--muted-foreground)] flex-shrink-0" />
-                  ) : (
-                    <ChevronRight className="w-4 h-4 text-[var(--muted-foreground)] flex-shrink-0" />
-                  )}
-                  <span className="text-sm font-medium truncate flex-1 text-left">{task.task_name}</span>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    {task.status_counts.running > 0 && (
-                      <span className="px-1.5 py-0.5 text-xs rounded bg-blue-500/20 text-blue-400">
-                        {task.status_counts.running} running
-                      </span>
+                  <div className="flex items-center gap-3">
+                    {isTaskExpanded ? (
+                      <ChevronDown className="w-4 h-4 text-[var(--muted-foreground)] flex-shrink-0" />
+                    ) : (
+                      <ChevronRight className="w-4 h-4 text-[var(--muted-foreground)] flex-shrink-0" />
                     )}
-                    <span className="text-xs text-[var(--muted-foreground)]">
-                      {task.agent_count} agent{task.agent_count !== 1 ? 's' : ''}
-                    </span>
-                    <span className="text-xs text-[var(--muted-foreground)]">
-                      {formatTimeAgo(task.latest_activity)}
-                    </span>
+                    <span className="text-sm font-medium truncate">{formatTaskName(task.task_name)}</span>
+                    <div className="flex items-center gap-1">
+                      {agentTypes.map(type => (
+                        <img
+                          key={type}
+                          src={icons[type as keyof typeof icons] || icons.agents}
+                          alt={type}
+                          className="w-4 h-4"
+                          title={type}
+                        />
+                      ))}
+                    </div>
+                    <div className="flex-1" />
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {task.status_counts.running > 0 && (
+                        <span className="px-1.5 py-0.5 text-xs rounded bg-blue-500/20 text-blue-400">
+                          {task.status_counts.running} running
+                        </span>
+                      )}
+                      <span className="text-xs text-[var(--muted-foreground)]">
+                        {task.agent_count} agent{task.agent_count !== 1 ? 's' : ''}
+                      </span>
+                      <span className="text-xs text-[var(--muted-foreground)]">
+                        {formatTimeAgo(task.latest_activity)}
+                      </span>
+                    </div>
                   </div>
+                  {directory && (
+                    <div className="text-xs text-[var(--muted-foreground)] mt-1 ml-7 font-mono truncate">
+                      {directory}
+                    </div>
+                  )}
                 </button>
 
                 {/* Expanded task content */}
@@ -721,26 +742,49 @@ export default function App() {
               </div>
             ) : (
               <div className="space-y-2">
-                {tasks.slice(0, 5).map(task => (
-                  <div key={task.task_name} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)]">
-                    <span className="text-sm font-medium truncate flex-1">{task.task_name}</span>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      {task.status_counts.running > 0 && (
-                        <span className="px-1.5 py-0.5 text-xs rounded bg-blue-500/20 text-blue-400">
-                          {task.status_counts.running} running
-                        </span>
+                {tasks.slice(0, 5).map(task => {
+                  const agentTypes = getUniqueAgentTypes(task.agents)
+                  const directory = getTaskDirectory(task.agents)
+                  return (
+                    <div key={task.task_name} className="px-4 py-3 rounded-xl bg-[var(--muted)]">
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm font-medium truncate">{formatTaskName(task.task_name)}</span>
+                        <div className="flex items-center gap-1">
+                          {agentTypes.map(type => (
+                            <img
+                              key={type}
+                              src={icons[type as keyof typeof icons] || icons.agents}
+                              alt={type}
+                              className="w-4 h-4"
+                              title={type}
+                            />
+                          ))}
+                        </div>
+                        <div className="flex-1" />
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {task.status_counts.running > 0 && (
+                            <span className="px-1.5 py-0.5 text-xs rounded bg-blue-500/20 text-blue-400">
+                              {task.status_counts.running} running
+                            </span>
+                          )}
+                          {task.status_counts.completed > 0 && (
+                            <span className="px-1.5 py-0.5 text-xs rounded bg-green-500/20 text-green-400">
+                              {task.status_counts.completed} done
+                            </span>
+                          )}
+                          <span className="text-xs text-[var(--muted-foreground)]">
+                            {task.agent_count} agent{task.agent_count !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+                      </div>
+                      {directory && (
+                        <div className="text-xs text-[var(--muted-foreground)] mt-1 font-mono truncate">
+                          {directory}
+                        </div>
                       )}
-                      {task.status_counts.completed > 0 && (
-                        <span className="px-1.5 py-0.5 text-xs rounded bg-green-500/20 text-green-400">
-                          {task.status_counts.completed} done
-                        </span>
-                      )}
-                      <span className="text-xs text-[var(--muted-foreground)]">
-                        {task.agent_count} agent{task.agent_count !== 1 ? 's' : ''}
-                      </span>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </section>

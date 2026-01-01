@@ -230,6 +230,34 @@ export function countRunning(): RunningCounts {
   return countRunningFromNames(names);
 }
 
+// Terminal detail for UI display
+export interface TerminalDetail {
+  id: string;
+  agentType: string;
+  label: string | null;
+  autoLabel: string | null;
+  createdAt: number;
+  index: number; // 1-based index within agent type
+}
+
+// Get terminals filtered by agent type with display details
+export function getTerminalsByAgentType(agentType: string): TerminalDetail[] {
+  const terminals = getAllTerminals();
+  const filtered = terminals.filter(t => t.agentConfig?.key === agentType);
+
+  // Sort by createdAt ascending (oldest first for consistent numbering)
+  filtered.sort((a, b) => a.createdAt - b.createdAt);
+
+  return filtered.map((t, i) => ({
+    id: t.id,
+    agentType: t.agentConfig?.key || agentType,
+    label: t.label || null,
+    autoLabel: t.autoLabel || null,
+    createdAt: t.createdAt,
+    index: i + 1
+  }));
+}
+
 // Clear state (for testing/deactivation)
 export function clear(): void {
   editorTerminals.clear();
