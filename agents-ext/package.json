@@ -3,7 +3,7 @@
   "displayName": "Agents",
   "publisher": "swarmify",
   "description": "Manage multiple Claude Code, Codex, Gemini, and Cursor terminal agents in the editor",
-  "version": "0.9.79",
+  "version": "0.9.80",
   "license": "MIT",
   "author": "Muqsit Nawaz <dev@muqsitnawaz.com>",
   "icon": "assets/agents.png",
@@ -198,6 +198,16 @@
           "type": "boolean",
           "default": false,
           "description": "Enable tmux for per-tab splits in agent terminals. When enabled, Cmd+Shift+H/V create tmux panes instead of VS Code editor splits."
+        },
+        "agents.disableAutopush": {
+          "type": "boolean",
+          "default": false,
+          "description": "Disable auto-push after commit. When enabled, Autogit will stage changes, generate commit message, and commit, but skip pushing to remote."
+        },
+        "agents.disableAutocommit": {
+          "type": "boolean",
+          "default": false,
+          "description": "Disable auto-commit. When enabled, Autogit will only stage changes and generate a commit message, but not commit or push."
         }
       }
     },

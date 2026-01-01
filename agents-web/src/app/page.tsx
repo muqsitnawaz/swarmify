@@ -25,17 +25,19 @@ export default function Home() {
             <div className="flex items-center gap-3">
               <img src="/cursor.png" alt="Cursor" width={24} height={24} className="rounded" title="Cursor" />
               <img src="/vscode.png" alt="VS Code" width={24} height={24} className="rounded" title="VS Code" />
-              <img src="/antigravity.png" alt="Antigravity" width={24} height={24} className="rounded" title="Antigravity" />
+              <div className="flex items-center gap-1.5">
+                <img src="/antigravity.png" alt="Antigravity" width={24} height={24} className="rounded" title="Antigravity (Beta)" />
+                <span className="text-[10px] text-[#666]">(Beta)</span>
+              </div>
             </div>
           </div>
           <h1 className="text-5xl md:text-7xl font-bold tracking-tight leading-[1.1] mb-6">
-            Multi-agent coding
+            Run multiple agents.
             <br />
-            <span className="text-[#888]">inside your IDE</span>
+            <span className="text-[#888]">Review their work in your IDE.</span>
           </h1>
           <p className="text-xl text-[#888] max-w-xl mb-10">
-            Watch agents work while you code, review diffs, or preview changes.
-            Cycle through multiple agents and quickly review their work.
+            CLI agents are powerful but chaotic at scale. Swarmify puts them in editor tabs—with labels, rendered markdown, and diff visibility.
           </p>
         </div>
 
@@ -68,7 +70,7 @@ export default function Home() {
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 px-5 py-3 bg-white text-black font-medium rounded-lg hover:bg-gray-200 transition-colors"
           >
-            Install Extension
+            Get Swarmify
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <path d="M6 12L10 8L6 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
@@ -81,14 +83,102 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Comparison Table - Best of Both Worlds */}
+      <section className="px-6 py-24 border-t border-[#1a1a1a]">
+        <div className="max-w-5xl mx-auto">
+          <h2 className="text-3xl font-bold mb-4 text-center">
+            CLI agents meet IDE visibility
+          </h2>
+          <p className="text-[#888] text-center mb-12 max-w-2xl mx-auto">
+            The flexibility of CLI agents. The visibility of your editor. No tradeoffs.
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[#1a1a1a]">
+                  <th className="text-left py-4 px-4 text-[#888] font-medium"></th>
+                  <th className="text-left py-4 px-4 text-[#888] font-medium">CLI Agents</th>
+                  <th className="text-left py-4 px-4 text-[#888] font-medium">IDE-native Agents</th>
+                  <th className="text-left py-4 px-4 font-medium text-white">Swarmify</th>
+                </tr>
+              </thead>
+              <tbody className="text-[#ccc]">
+                <tr className="border-b border-[#1a1a1a]">
+                  <td className="py-4 px-4 text-[#888]">Strength</td>
+                  <td className="py-4 px-4">Powerful, flexible, scriptable</td>
+                  <td className="py-4 px-4">Visual, integrated</td>
+                  <td className="py-4 px-4 text-white">Both</td>
+                </tr>
+                <tr className="border-b border-[#1a1a1a]">
+                  <td className="py-4 px-4 text-[#888]">At scale</td>
+                  <td className="py-4 px-4">tmux panes, mental overhead</td>
+                  <td className="py-4 px-4">Often single-agent per window</td>
+                  <td className="py-4 px-4 text-white">Multiple agents as editor tabs</td>
+                </tr>
+                <tr className="border-b border-[#1a1a1a]">
+                  <td className="py-4 px-4 text-[#888]">Labeling</td>
+                  <td className="py-4 px-4">Escape sequences, fragile</td>
+                  <td className="py-4 px-4">Varies by tool</td>
+                  <td className="py-4 px-4 text-white">Name agents by task</td>
+                </tr>
+                <tr className="border-b border-[#1a1a1a]">
+                  <td className="py-4 px-4 text-[#888]">Markdown output</td>
+                  <td className="py-4 px-4">Raw tags in terminal</td>
+                  <td className="py-4 px-4">Varies by tool</td>
+                  <td className="py-4 px-4 text-white">Rendered like Notion</td>
+                </tr>
+                <tr>
+                  <td className="py-4 px-4 text-[#888]">Diff review</td>
+                  <td className="py-4 px-4">Scrolling stdout</td>
+                  <td className="py-4 px-4">Native diff panels</td>
+                  <td className="py-4 px-4 text-white">Native diffs as agents work</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      {/* Benefits */}
+      <section className="px-6 py-24 border-t border-[#1a1a1a]">
+        <div className="max-w-5xl mx-auto">
+          <div className="grid md:grid-cols-2 gap-6">
+            <div className="p-6 rounded-xl border border-[#1a1a1a] bg-[#0a0a0a]">
+              <h3 className="text-lg font-semibold mb-2">Run multiple agents—not one at a time</h3>
+              <p className="text-[#888] text-sm leading-relaxed">
+                Your editor already handles 30 tabs. Now agents live there. Spawn agents for auth, tests, docs—all running, all visible.
+              </p>
+            </div>
+            <div className="p-6 rounded-xl border border-[#1a1a1a] bg-[#0a0a0a]">
+              <h3 className="text-lg font-semibold mb-2">Review diffs as agents work</h3>
+              <p className="text-[#888] text-sm leading-relaxed">
+                Native syntax highlighting. Inline diff view. Catch mistakes before they land—no scrolling through terminal output.
+              </p>
+            </div>
+            <div className="p-6 rounded-xl border border-[#1a1a1a] bg-[#0a0a0a]">
+              <h3 className="text-lg font-semibold mb-2">Label each agent by task</h3>
+              <p className="text-[#888] text-sm leading-relaxed">
+                &apos;auth-refactor&apos;, &apos;payment-tests&apos;, &apos;docs-update&apos;—know what&apos;s running at a glance. tmux makes this painful. Tabs make it obvious.
+              </p>
+            </div>
+            <div className="p-6 rounded-xl border border-[#1a1a1a] bg-[#0a0a0a]">
+              <h3 className="text-lg font-semibold mb-2">Agent-generated docs, readable in your editor</h3>
+              <p className="text-[#888] text-sm leading-relaxed">
+                CLI agents output .md files with raw tags and broken tables. Swarmify renders them Notion-style—no squinting at ## or |---|---|.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* How it works */}
       <section className="px-6 py-24 border-t border-[#1a1a1a]">
         <div className="max-w-5xl mx-auto">
           <h2 className="text-3xl font-bold mb-4 text-center">
-            Two parts, one workflow
+            How it works
           </h2>
           <p className="text-[#888] text-center mb-12 max-w-2xl mx-auto">
-            The extension runs agents in tabs. The MCP server enables agent-to-agent spawning.
+            Install the extension. Run agents in tabs. Optionally, let agents spawn sub-agents.
           </p>
           <div className="grid md:grid-cols-2 gap-6 mb-16">
             {/* Extension Card */}
@@ -102,12 +192,12 @@ export default function Home() {
                   </svg>
                 </div>
                 <div>
-                  <h3 className="font-semibold">Extension</h3>
+                  <h3 className="font-semibold">Swarmify Extension</h3>
                   <span className="text-xs text-[#888]">Required</span>
                 </div>
               </div>
               <p className="text-[#888] text-sm mb-4">
-                Runs CLI agents as editor tabs. Split views, keyboard shortcuts, markdown rendering, and git diff visibility.
+                Your editor handles 30 tabs. Now agents live there too. Split-view agents side by side, same shortcuts you use for files.
               </p>
               <a
                 href="https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext"
@@ -118,7 +208,7 @@ export default function Home() {
                 Install from Marketplace
               </a>
             </div>
-            {/* Swarm MCP Card */}
+            {/* Swarm Mode Card */}
             <div className="p-6 rounded-xl border border-[#1a1a1a] bg-[#0a0a0a]">
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-10 h-10 rounded-lg bg-[#22c55e]/10 flex items-center justify-center">
@@ -130,12 +220,12 @@ export default function Home() {
                   </svg>
                 </div>
                 <div>
-                  <h3 className="font-semibold">Swarm MCP Server</h3>
+                  <h3 className="font-semibold">Swarm Mode</h3>
                   <span className="text-xs text-[#888]">Optional</span>
                 </div>
               </div>
               <p className="text-[#888] text-sm mb-4">
-                Lets one agent spawn others for parallel tasks. Claude can orchestrate Codex, Gemini, and Cursor.
+                Let one agent spawn others for parallel sub-tasks. Delegate tests, docs, refactors—all from one prompt.
               </p>
               <a
                 href="https://www.npmjs.com/package/@swarmify/agents-mcp"
@@ -143,7 +233,7 @@ export default function Home() {
                 rel="noopener noreferrer"
                 className="text-[#22c55e] text-sm hover:underline"
               >
-                View on npm
+                Powered by Swarmify MCP
               </a>
             </div>
           </div>
@@ -161,7 +251,7 @@ export default function Home() {
             <div className="hidden md:block text-[#333]">→</div>
             <div className="flex items-center gap-3">
               <span className="w-7 h-7 rounded-full bg-[#222] flex items-center justify-center text-xs">3</span>
-              <span className="text-[#888]">(Optional) Connect Swarm for sub-agents</span>
+              <span className="text-[#888]">(Optional) Enable Swarm mode for agent-to-agent delegation</span>
             </div>
           </div>
         </div>
@@ -171,10 +261,10 @@ export default function Home() {
       <section className="px-6 py-24 border-t border-[#1a1a1a]">
         <div className="max-w-5xl mx-auto">
           <h2 className="text-3xl font-bold mb-4 text-center">
-            Why not just use the terminal?
+            Terminal tabs don&apos;t scale. Editor tabs do.
           </h2>
           <p className="text-[#888] text-center mb-16 max-w-2xl mx-auto">
-            CLI agents are powerful, but terminals have limits. Your IDE removes those limits.
+            No more tmux panes. No more iTerm tab chaos. Just editor tabs.
           </p>
           <div className="grid md:grid-cols-2 gap-8">
             {/* Terminal Column */}
@@ -250,15 +340,15 @@ export default function Home() {
           <div className="grid md:grid-cols-3 gap-8">
             <Feature
               title="Split View"
-              description="See agents + code side-by-side while they work. Horizontal or vertical splits."
+              description="Split-view agents side by side. Same shortcuts you use for files work for agents."
             />
             <Feature
               title="Swarm Mode"
-              description="Optional MCP server lets one agent spawn others for parallel tasks."
+              description="One prompt, multiple agents. Delegate tests, docs, refactors automatically."
             />
             <Feature
               title="Rich Previews"
-              description="Images, diagrams, and markdown render inline. No more raw terminal output."
+              description="Rendered markdown, native diffs. No more scrolling through raw terminal output."
             />
           </div>
         </div>
@@ -288,10 +378,10 @@ export default function Home() {
       <section className="px-6 py-24 border-t border-[#1a1a1a]">
         <div className="max-w-2xl mx-auto text-center">
           <h2 className="text-4xl font-bold mb-6">
-            Experience multi-agent coding
+            Try Swarmify
           </h2>
           <p className="text-xl text-[#888] mb-10">
-            Download the extension and start shipping features faster.
+            Run multiple agents. Review their work. Ship faster.
           </p>
           <a
             href="https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext"
@@ -299,7 +389,7 @@ export default function Home() {
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 px-6 py-3 bg-white text-black font-medium rounded-lg hover:bg-gray-200 transition-colors"
           >
-            Install Extension
+            Get Swarmify for VS Code
           </a>
         </div>
       </section>

@@ -301,8 +301,13 @@ body {
 }
 
 .notion-table th {
-  background-color: var(--vscode-editor-inactiveSelectionBackground);
+  background-color: rgba(255, 255, 255, 0.05);
   font-weight: 600;
+  color: var(--vscode-foreground);
+  text-transform: uppercase;
+  font-size: 0.85em;
+  letter-spacing: 0.5px;
+  border-bottom: 2px solid var(--vscode-panel-border);
 }
 
 /* Callout */
