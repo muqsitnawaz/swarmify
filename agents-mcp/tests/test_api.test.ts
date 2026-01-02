@@ -134,6 +134,65 @@ describe('API Integration Tests', () => {
       expect(agentStatus.bash_commands).toBeDefined();
       expect(agentStatus.last_messages).toBeDefined();
     });
+
+    test('should support cursor-based delta updates', async () => {
+      console.log('\n--- TEST: cursor-based delta updates ---');
+
+      // Create an agent with some initial events
+      const agent = new AgentProcess('cursor-test', 'cursor-task', 'codex', 'Test work', null, 'plan', null, AgentStatus.RUNNING);
+      manager['agents'].set('cursor-test', agent);
+
+      // Simulate some events by adding them to the agent's events cache
+      const timestamp1 = new Date('2025-01-01T10:00:00Z').toISOString();
+      const timestamp2 = new Date('2025-01-01T10:01:00Z').toISOString();
+      const timestamp3 = new Date('2025-01-01T10:02:00Z').toISOString();
+
+      agent['eventsCache'] = [
+        { type: 'file_write', path: '/tmp/file1.txt', timestamp: timestamp1 },
+        { type: 'bash', command: 'echo hello', timestamp: timestamp1 },
+        { type: 'message', content: 'Working on it', timestamp: timestamp1 },
+      ];
+
+      // First call - no cursor, should return all data
+      console.log('\n[Step 1] First call (no cursor) - should return all data');
+      const result1 = await handleStatus(manager, 'cursor-task');
+      console.log('Result1:', JSON.stringify(result1, null, 2));
+
+      expect(result1.agents.length).toBe(1);
+      expect(result1.cursor).toBeDefined();
+      expect(result1.agents[0].cursor).toBeDefined();
+      expect(result1.agents[0].files_modified.length).toBeGreaterThanOrEqual(0);
+      expect(result1.agents[0].bash_commands.length).toBeGreaterThanOrEqual(0);
+
+      // Add more events
+      agent['eventsCache'].push(
+        { type: 'file_write', path: '/tmp/file2.txt', timestamp: timestamp2 },
+        { type: 'bash', command: 'ls -la', timestamp: timestamp2 }
+      );
+
+      // Second call - with cursor from first call, should return only new data
+      console.log('\n[Step 2] Second call (with cursor) - should return only new data');
+      const result2 = await handleStatus(manager, 'cursor-task', undefined, result1.cursor);
+      console.log('Result2:', JSON.stringify(result2, null, 2));
+
+      expect(result2.agents.length).toBe(1);
+      expect(result2.cursor).toBeDefined();
+      // Cursor should have advanced
+      expect(result2.cursor).not.toBe(result1.cursor);
+
+      // Third call - with updated cursor, no new events, should return empty arrays
+      console.log('\n[Step 3] Third call (no new events) - should return empty arrays');
+      const result3 = await handleStatus(manager, 'cursor-task', undefined, result2.cursor);
+      console.log('Result3:', JSON.stringify(result3, null, 2));
+
+      expect(result3.agents.length).toBe(1);
+      expect(result3.agents[0].files_created.length).toBe(0);
+      expect(result3.agents[0].files_modified.length).toBe(0);
+      expect(result3.agents[0].bash_commands.length).toBe(0);
+      expect(result3.cursor).toBe(result2.cursor); // Cursor unchanged
+
+      console.log('Cursor test completed successfully!');
+    });
   });
 
   describe('handleStop', () => {

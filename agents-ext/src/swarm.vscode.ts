@@ -31,16 +31,64 @@ export function isSwarmCommandInstalled(): boolean {
   return fs.existsSync(commandPath);
 }
 
+export interface AgentInstallStatus {
+  installed: boolean;
+  cliAvailable: boolean;
+}
+
 export interface SwarmStatus {
   mcpEnabled: boolean;
   commandInstalled: boolean;
+  agents: {
+    claude: AgentInstallStatus;
+    codex: AgentInstallStatus;
+    gemini: AgentInstallStatus;
+  };
+}
+
+// Check if agent CLI is available
+async function isAgentCliAvailable(agentType: 'claude' | 'codex' | 'gemini'): Promise<boolean> {
+  const commands: Record<string, string> = {
+    claude: 'claude --version',
+    codex: 'codex --version',
+    gemini: 'gemini --version',
+  };
+
+  try {
+    await execAsync(commands[agentType]);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // Get full swarm integration status
 export async function getSwarmStatus(): Promise<SwarmStatus> {
+  const mcpEnabled = await isSwarmEnabled();
+  const commandInstalled = isSwarmCommandInstalled();
+  const swarmFullyInstalled = mcpEnabled && commandInstalled;
+
+  const claudeCliAvailable = await isAgentCliAvailable('claude');
+  const codexCliAvailable = await isAgentCliAvailable('codex');
+  const geminiCliAvailable = await isAgentCliAvailable('gemini');
+
   return {
-    mcpEnabled: await isSwarmEnabled(),
-    commandInstalled: isSwarmCommandInstalled(),
+    mcpEnabled,
+    commandInstalled,
+    agents: {
+      claude: {
+        installed: swarmFullyInstalled && claudeCliAvailable,
+        cliAvailable: claudeCliAvailable,
+      },
+      codex: {
+        installed: swarmFullyInstalled && codexCliAvailable,
+        cliAvailable: codexCliAvailable,
+      },
+      gemini: {
+        installed: swarmFullyInstalled && geminiCliAvailable,
+        cliAvailable: geminiCliAvailable,
+      },
+    },
   };
 }
 
@@ -88,6 +136,22 @@ async function hasBun(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+// Write swarm config to ~/.swarmify/config.json
+async function writeSwarmConfig(enabledAgents: ('claude' | 'codex' | 'gemini')[]): Promise<void> {
+  const configDir = path.join(os.homedir(), '.swarmify');
+  const configPath = path.join(configDir, 'config.json');
+
+  if (!fs.existsSync(configDir)) {
+    fs.mkdirSync(configDir, { recursive: true });
+  }
+
+  const config = {
+    enabledAgents,
+  };
+
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
 }
 
 // Install /swarm slash command from bundled asset

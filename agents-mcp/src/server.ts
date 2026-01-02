@@ -107,7 +107,9 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 - All bash commands executed
 - Last 3 assistant messages
 
-Use this for polling agent progress.`,
+Use this for polling agent progress.
+
+CURSOR SUPPORT: Send 'since' parameter (ISO timestamp from previous response's 'cursor' field) to get only NEW data since that time. This avoids duplicate data on repeated polls.`,
         inputSchema: {
           type: 'object',
           properties: {
@@ -118,7 +120,11 @@ Use this for polling agent progress.`,
             filter: {
               type: 'string',
               enum: ['running', 'completed', 'failed', 'stopped', 'all'],
-              description: "Filter agents by status. Defaults to 'running' to reduce context. Use 'all' to see everything.",
+              description: "Filter agents by status. Defaults to 'all'.",
+            },
+            since: {
+              type: 'string',
+              description: 'Optional ISO timestamp - return only events after this time. Use cursor from previous response to get delta updates.',
             },
           },
           required: ['task_name'],
@@ -194,7 +200,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       result = await handleStatus(
         manager,
         args.task_name as string,
-        args.filter as string | undefined
+        args.filter as string | undefined,
+        args.since as string | undefined
       );
     } else if (name === 'stop') {
       if (!args) {
