@@ -26,8 +26,8 @@ export interface PromptEntry {
 }
 
 // Swarm agent types (subset of built-in agents that support swarm)
-export type SwarmAgentType = 'cursor' | 'codex' | 'claude' | 'gemini' | 'opencode';
-export const ALL_SWARM_AGENTS: SwarmAgentType[] = ['cursor', 'codex', 'claude', 'gemini', 'opencode'];
+export type SwarmAgentType = 'claude' | 'codex' | 'gemini';
+export const ALL_SWARM_AGENTS: SwarmAgentType[] = ['claude', 'codex', 'gemini'];
 
 // Full agent settings structure
 export interface AgentSettings {

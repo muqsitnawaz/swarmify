@@ -138,43 +138,43 @@ async function hasBun(): Promise<boolean> {
   }
 }
 
-// Write swarm config to ~/.swarmify/config.json
-async function writeSwarmConfig(enabledAgents: ('claude' | 'codex' | 'gemini')[]): Promise<void> {
-  const configDir = path.join(os.homedir(), '.swarmify');
-  const configPath = path.join(configDir, 'config.json');
-
-  if (!fs.existsSync(configDir)) {
-    fs.mkdirSync(configDir, { recursive: true });
-  }
-
-  const config = {
-    enabledAgents,
-  };
-
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-}
-
-// Install /swarm slash command from bundled asset
-function installSwarmCommand(context: vscode.ExtensionContext): boolean {
-  const commandsDir = path.join(os.homedir(), '.claude', 'commands');
-  const targetPath = path.join(commandsDir, 'swarm.md');
-
-  // Create commands dir if needed
-  if (!fs.existsSync(commandsDir)) {
-    fs.mkdirSync(commandsDir, { recursive: true });
-  }
-
-  // Read from bundled asset
+// Install /swarm slash command from bundled asset for all agents
+function installSwarmCommands(context: vscode.ExtensionContext): { claude: boolean; codex: boolean } {
   const sourcePath = path.join(context.extensionPath, 'assets', 'swarm.md');
   if (!fs.existsSync(sourcePath)) {
-    return false;
+    return { claude: false, codex: false };
   }
 
   const content = fs.readFileSync(sourcePath, 'utf-8');
+  const results = { claude: false, codex: false };
 
-  // Always overwrite to ensure latest version
-  fs.writeFileSync(targetPath, content);
-  return true;
+  // Install for Claude (~/.claude/commands/swarm.md)
+  try {
+    const claudeCommandsDir = path.join(os.homedir(), '.claude', 'commands');
+    const claudeTargetPath = path.join(claudeCommandsDir, 'swarm.md');
+    if (!fs.existsSync(claudeCommandsDir)) {
+      fs.mkdirSync(claudeCommandsDir, { recursive: true });
+    }
+    fs.writeFileSync(claudeTargetPath, content);
+    results.claude = true;
+  } catch {
+    // Ignore if Claude not available
+  }
+
+  // Install for Codex (~/.codex/prompts/swarm.md)
+  try {
+    const codexPromptsDir = path.join(os.homedir(), '.codex', 'prompts');
+    const codexTargetPath = path.join(codexPromptsDir, 'swarm.md');
+    if (!fs.existsSync(codexPromptsDir)) {
+      fs.mkdirSync(codexPromptsDir, { recursive: true });
+    }
+    fs.writeFileSync(codexTargetPath, content);
+    results.codex = true;
+  } catch {
+    // Ignore if Codex not available
+  }
+
+  return results;
 }
 
 // Install swarm-mcp globally
@@ -206,13 +206,17 @@ async function installSwarm(): Promise<boolean> {
 }
 
 export async function enableSwarm(context: vscode.ExtensionContext): Promise<void> {
-  // Install /swarm slash command
-  const commandInstalled = installSwarmCommand(context);
+  // Install slash commands for all agents
+  const commandResults = installSwarmCommands(context);
 
   // Check if MCP already enabled
   if (await isSwarmEnabled()) {
-    if (commandInstalled) {
-      vscode.window.showInformationMessage('Swarm /swarm command updated.');
+    const installedCommands = [];
+    if (commandResults.claude) installedCommands.push('Claude');
+    if (commandResults.codex) installedCommands.push('Codex');
+
+    if (installedCommands.length > 0) {
+      vscode.window.showInformationMessage(`Swarm commands updated for ${installedCommands.join(', ')}.`);
     } else {
       vscode.window.showInformationMessage('Swarm is already enabled.');
     }
