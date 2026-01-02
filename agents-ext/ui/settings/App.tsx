@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Button } from './components/ui/button'
 import { Checkbox } from './components/ui/checkbox'
 import { Input } from './components/ui/input'
-import { Trash2, Plus, X, Star, ChevronDown, ChevronRight, FileEdit, FilePlus, Terminal, MessageSquare, Clock, RefreshCw, Download, ExternalLink } from 'lucide-react'
+import { Trash2, Plus, X, Star, ChevronDown, ChevronRight, FileEdit, FilePlus, Terminal, MessageSquare, Clock, RefreshCw, Download, ExternalLink, Check } from 'lucide-react'
 
 interface BuiltInAgentSettings {
   login: boolean
@@ -1259,35 +1259,50 @@ export default function App() {
               Default Agent
             </h2>
             <div className="px-4 py-3 rounded-xl bg-[var(--muted)]">
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-[var(--muted-foreground)]">Cmd+Shift+A opens:</span>
-                <div className="relative flex-1">
-                  <select
-                    value={AGENT_TITLE_TO_KEY[defaultAgent] || 'claude'}
-                    onChange={(e) => handleSetDefaultAgent(AGENT_KEY_TO_TITLE[e.target.value] || 'CC')}
-                    className="w-full appearance-none bg-[var(--background)] border border-[var(--border)] rounded-lg pl-10 pr-8 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
-                  >
-                    {BUILT_IN_AGENTS.filter(a => a.key !== 'shell').map(agent => {
-                      const installed = isAgentInstalled(agent.key)
+              <p className="text-xs text-[var(--muted-foreground)] mb-3">
+                Pick the agent that should open when you press Cmd+Shift+A.
+              </p>
+              {BUILT_IN_AGENTS.filter(a => a.key !== 'shell' && isAgentInstalled(a.key)).length === 0 ? (
+                <div className="text-sm text-[var(--muted-foreground)]">
+                  Install an agent to set a default.
+                </div>
+              ) : (
+                <div className="flex gap-3">
+                  {BUILT_IN_AGENTS
+                    .filter(a => a.key !== 'shell' && isAgentInstalled(a.key))
+                    .map(agent => {
+                      const isSelected = (AGENT_TITLE_TO_KEY[defaultAgent] || 'claude') === agent.key
                       return (
-                        <option
+                        <button
                           key={agent.key}
-                          value={agent.key}
-                          disabled={!installed}
+                          onClick={() => handleSetDefaultAgent(AGENT_KEY_TO_TITLE[agent.key] || 'CC')}
+                          className={`flex flex-1 min-w-0 items-center gap-3 rounded-xl border px-3 py-3 text-left transition-colors ${
+                            isSelected
+                              ? 'border-[var(--primary)] bg-[var(--background)] ring-1 ring-[var(--primary)]'
+                              : 'border-[var(--border)] bg-[var(--background)] hover:border-[var(--primary)]/60 hover:bg-[var(--muted)]'
+                          }`}
                         >
-                          {agent.name}{!installed ? ' (not installed)' : ''}
-                        </option>
+                          <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--muted)]">
+                            <img src={agent.icon} alt={agent.name} className="w-5 h-5" />
+                          </span>
+                          <div className="flex-1">
+                            <p className="text-sm font-medium">{agent.name}</p>
+                            <p className="text-xs text-[var(--muted-foreground)]">Opens with Cmd+Shift+A</p>
+                          </div>
+                          <span
+                            className={`flex h-5 w-5 items-center justify-center rounded-full border ${
+                              isSelected
+                                ? 'border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]'
+                                : 'border-[var(--border)] text-transparent'
+                            }`}
+                          >
+                            <Check className="w-3 h-3" />
+                          </span>
+                        </button>
                       )
                     })}
-                  </select>
-                  <img
-                    src={BUILT_IN_AGENTS.find(a => a.key === (AGENT_TITLE_TO_KEY[defaultAgent] || 'claude'))?.icon || icons.claude}
-                    alt=""
-                    className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none"
-                  />
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--muted-foreground)] pointer-events-none" />
                 </div>
-              </div>
+              )}
             </div>
           </section>
 
