@@ -293,6 +293,10 @@ export async function handleListTasks(
       );
       const lastMessages = getLastMessages(events, 5);
 
+      // Get latest event timestamp for cursor
+      const latestEvent = events[events.length - 1];
+      const agentTimestamp = latestEvent?.timestamp || new Date().toISOString();
+
       agentDetails.push({
         agent_id: agent.agentId,
         agent_type: agent.agentType,
@@ -306,6 +310,7 @@ export async function handleListTasks(
         last_messages: lastMessages,
         tool_count: summary.toolCallCount,
         has_errors: summary.errors.length > 0,
+        cursor: agentTimestamp,
       });
     }
 

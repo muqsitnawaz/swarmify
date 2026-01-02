@@ -12,7 +12,7 @@ import { readConfig } from './persistence.js';
 const manager = new AgentManager(50, 10, null, null, null, 7);
 
 // Enabled agents (loaded from ~/.swarmify/config.json with legacy fallback)
-const defaultAgents: AgentType[] = ['cursor', 'codex', 'claude', 'gemini'];
+const defaultAgents: AgentType[] = ['claude', 'codex', 'gemini'];
 let enabledAgents: AgentType[] = [...defaultAgents];
 
 // Agent descriptions for dynamic tool description

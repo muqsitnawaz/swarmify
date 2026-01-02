@@ -5,7 +5,7 @@ import { constants as fsConstants } from 'fs';
 import { AgentType } from './parsers.js';
 
 // All supported swarm agent types
-const ALL_AGENTS: AgentType[] = ['cursor', 'codex', 'claude', 'gemini'];
+const ALL_AGENTS: AgentType[] = ['claude', 'codex', 'gemini'];
 
 // Preferred and legacy data roots
 const PRIMARY_BASE_DIR = path.join(homedir(), '.swarmify');

@@ -16,8 +16,8 @@ interface CustomAgentSettings {
   instances: number
 }
 
-type SwarmAgentType = 'cursor' | 'codex' | 'claude' | 'gemini' | 'opencode'
-const ALL_SWARM_AGENTS: SwarmAgentType[] = ['cursor', 'codex', 'claude', 'gemini', 'opencode']
+type SwarmAgentType = 'claude' | 'codex' | 'gemini'
+const ALL_SWARM_AGENTS: SwarmAgentType[] = ['claude', 'codex', 'gemini']
 
 interface PromptEntry {
   id: string
@@ -59,9 +59,19 @@ interface RunningCounts {
   custom: Record<string, number>
 }
 
+interface AgentInstallStatus {
+  installed: boolean
+  cliAvailable: boolean
+}
+
 interface SwarmStatus {
   mcpEnabled: boolean
   commandInstalled: boolean
+  agents: {
+    claude: AgentInstallStatus
+    codex: AgentInstallStatus
+    gemini: AgentInstallStatus
+  }
 }
 
 interface AgentDetail {
@@ -180,7 +190,13 @@ export default function App() {
     claude: 0, codex: 0, gemini: 0, opencode: 0, cursor: 0, shell: 0, custom: {}
   })
   const [swarmStatus, setSwarmStatus] = useState<SwarmStatus>({
-    mcpEnabled: false, commandInstalled: false
+    mcpEnabled: false,
+    commandInstalled: false,
+    agents: {
+      claude: { installed: false, cliAvailable: false },
+      codex: { installed: false, cliAvailable: false },
+      gemini: { installed: false, cliAvailable: false },
+    }
   })
   const [isAdding, setIsAdding] = useState(false)
   const [newName, setNewName] = useState('')
@@ -1028,28 +1044,54 @@ export default function App() {
             <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
               Integration
             </h2>
-            <div className="px-4 py-3 rounded-xl bg-[var(--muted)] space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm">MCP Server</span>
+            <div className="space-y-2">
+              {/* Claude */}
+              <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-[var(--muted)]">
+                <div className="flex items-center gap-3">
+                  <img src={icons.claude} alt="Claude" className="w-5 h-5" />
+                  <span className="text-sm font-medium">Claude</span>
+                </div>
                 <span className={`px-2 py-0.5 text-xs font-medium rounded ${
-                  swarmStatus.mcpEnabled
+                  swarmStatus.agents.claude.installed
                     ? 'bg-green-500/20 text-green-400'
                     : 'bg-[var(--secondary)] text-[var(--muted-foreground)]'
                 }`}>
-                  {swarmStatus.mcpEnabled ? 'Installed' : 'Not installed'}
+                  {swarmStatus.agents.claude.installed ? 'Installed' : 'Not installed'}
                 </span>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm">/swarm Command</span>
+
+              {/* Codex */}
+              <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-[var(--muted)]">
+                <div className="flex items-center gap-3">
+                  <img src={icons.codex} alt="Codex" className="w-5 h-5" />
+                  <span className="text-sm font-medium">Codex</span>
+                </div>
                 <span className={`px-2 py-0.5 text-xs font-medium rounded ${
-                  swarmStatus.commandInstalled
+                  swarmStatus.agents.codex.installed
                     ? 'bg-green-500/20 text-green-400'
                     : 'bg-[var(--secondary)] text-[var(--muted-foreground)]'
                 }`}>
-                  {swarmStatus.commandInstalled ? 'Installed' : 'Not installed'}
+                  {swarmStatus.agents.codex.installed ? 'Installed' : 'Not installed'}
                 </span>
               </div>
-              {(!swarmStatus.mcpEnabled || !swarmStatus.commandInstalled) && (
+
+              {/* Gemini */}
+              <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-[var(--muted)]">
+                <div className="flex items-center gap-3">
+                  <img src={icons.gemini} alt="Gemini" className="w-5 h-5" />
+                  <span className="text-sm font-medium">Gemini</span>
+                </div>
+                <span className={`px-2 py-0.5 text-xs font-medium rounded ${
+                  swarmStatus.agents.gemini.installed
+                    ? 'bg-green-500/20 text-green-400'
+                    : 'bg-[var(--secondary)] text-[var(--muted-foreground)]'
+                }`}>
+                  {swarmStatus.agents.gemini.installed ? 'Installed' : 'Not installed'}
+                </span>
+              </div>
+
+              {/* Enable button if any agent not installed */}
+              {(!swarmStatus.agents.claude.installed || !swarmStatus.agents.codex.installed || !swarmStatus.agents.gemini.installed) && (
                 <Button onClick={handleEnableSwarm} className="w-full mt-2">
                   Enable Swarm
                 </Button>

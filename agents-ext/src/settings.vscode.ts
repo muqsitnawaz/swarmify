@@ -80,13 +80,17 @@ export function writePrompts(prompts: PromptEntry[]): void {
 export function getSettings(context: vscode.ExtensionContext): AgentSettings {
   const stored = context.globalState.get<AgentSettings>('agentSettings');
   if (stored) {
-    // Migrate: add swarmEnabledAgents if missing
+    // Migrate: add swarmEnabledAgents if missing or filter out old agents
     if (!stored.swarmEnabledAgents) {
       stored.swarmEnabledAgents = [...ALL_SWARM_AGENTS];
       context.globalState.update('agentSettings', stored);
-    } else if (!stored.swarmEnabledAgents.includes('opencode')) {
-      stored.swarmEnabledAgents = [...stored.swarmEnabledAgents, 'opencode'];
-      context.globalState.update('agentSettings', stored);
+    } else {
+      // Filter to only include supported agents (claude, codex, gemini)
+      const filtered = stored.swarmEnabledAgents.filter(a => ALL_SWARM_AGENTS.includes(a));
+      if (filtered.length !== stored.swarmEnabledAgents.length) {
+        stored.swarmEnabledAgents = filtered.length > 0 ? filtered : [...ALL_SWARM_AGENTS];
+        context.globalState.update('agentSettings', stored);
+      }
     }
     if (!stored.builtIn.opencode) {
       stored.builtIn.opencode = { login: false, instances: 2 };
