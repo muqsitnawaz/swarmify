@@ -514,16 +514,36 @@ export function getDelta(
   agentType: string,
   status: string,
   events: any[],
-  sinceEvent: number = 0
+  sinceTimestamp?: string  // Optional ISO timestamp - filter events after this time
 ): any {
-  const newEvents = events.slice(sinceEvent);
+  // Filter events by timestamp if provided
+  let newEvents: any[];
+  if (sinceTimestamp) {
+    const sinceDate = new Date(sinceTimestamp);
+    newEvents = events.filter((e: any) => {
+      if (!e.timestamp) return false;
+      const eventDate = new Date(e.timestamp);
+      return eventDate > sinceDate;
+    });
+  } else {
+    // No timestamp - return all events
+    newEvents = events;
+  }
+
   if (newEvents.length === 0) {
     return {
       agent_id: agentId,
       status: status,
-      since_event: sinceEvent,
       new_events_count: 0,
       has_changes: false,
+      new_files_created: [],
+      new_files_modified: [],
+      new_files_read: [],
+      new_files_deleted: [],
+      new_bash_commands: [],
+      new_messages: [],
+      new_tool_count: 0,
+      new_errors: [],
     };
   }
 
@@ -533,17 +553,15 @@ export function getDelta(
     agent_id: agentId,
     agent_type: agentType,
     status: status,
-    since_event: sinceEvent,
     new_events_count: newEvents.length,
-    current_event_count: sinceEvent + newEvents.length,
     has_changes: true,
-    new_files_modified: Array.from(summary.filesModified),
     new_files_created: Array.from(summary.filesCreated),
-    new_tool_calls: newEvents
-      .filter((e: any) => ['tool_use', 'bash', 'file_write'].includes(e.type))
-      .slice(-5)
-      .map((e: any) => `${e.tool || 'unknown'}: ${e.command || e.path || ''}`),
-    latest_message: summary.finalMessage,
+    new_files_modified: Array.from(summary.filesModified),
+    new_files_read: Array.from(summary.filesRead),
+    new_files_deleted: Array.from(summary.filesDeleted),
+    new_bash_commands: summary.bashCommands.slice(-15),
+    new_messages: getLastMessages(newEvents, 5),
+    new_tool_count: summary.toolCallCount,
     new_errors: summary.errors,
   };
 }

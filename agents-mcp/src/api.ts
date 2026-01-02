@@ -5,7 +5,7 @@
 
 import { AgentManager, AgentStatus, resolveMode } from './agents.js';
 import { AgentType } from './parsers.js';
-import { summarizeEvents, getLastMessages } from './summarizer.js';
+import { summarizeEvents, getLastMessages, getDelta } from './summarizer.js';
 
 /**
  * Truncate a bash command for status output.
@@ -44,12 +44,14 @@ export interface AgentStatusDetail {
   last_messages: string[];
   tool_count: number;
   has_errors: boolean;
+  cursor: string;  // ISO timestamp - send back in next request for delta
 }
 
 export interface TaskStatusResult {
   task_name: string;
   agents: AgentStatusDetail[];
   summary: { running: number; completed: number; failed: number; stopped: number };
+  cursor: string;  // ISO timestamp - max across all agents
 }
 
 export interface StopResult {
@@ -110,10 +112,11 @@ export async function handleSpawn(
 export async function handleStatus(
   manager: AgentManager,
   taskName: string,
-  filter?: string
+  filter?: string,
+  since?: string  // Optional ISO timestamp - return only events after this time
 ): Promise<TaskStatusResult> {
-  // Default to 'running' to reduce context bloat
-  const effectiveFilter = filter || 'running';
+  // Default to 'all' so callers see completed/failed agents unless they opt to filter
+  const effectiveFilter = filter || 'all';
   console.log(`[status] Getting status for agents in task "${taskName}" (filter=${effectiveFilter})...`);
 
   const allAgents = await manager.listByTask(taskName);
@@ -135,31 +138,42 @@ export async function handleStatus(
   }
 
   // Build details only for filtered agents
+  let maxTimestamp = since || new Date(0).toISOString();  // Track max timestamp for cursor
+
   for (const agent of agents) {
     await agent.readNewEvents();
     const events = agent.events;
-    const summary = summarizeEvents(
+
+    // Use getDelta to filter events by timestamp (or get all if no since)
+    const delta = getDelta(
       agent.agentId,
       agent.agentType,
       agent.status,
       events,
-      agent.duration()
+      since
     );
-    const lastMessages = getLastMessages(events, 5);
+
+    // Find latest timestamp from this agent's events
+    const latestEvent = events[events.length - 1];
+    const agentTimestamp = latestEvent?.timestamp || new Date().toISOString();
+    if (agentTimestamp > maxTimestamp) {
+      maxTimestamp = agentTimestamp;
+    }
 
     agentStatuses.push({
       agent_id: agent.agentId,
       agent_type: agent.agentType,
       status: agent.status,
       duration: agent.duration(),
-      files_created: Array.from(summary.filesCreated),
-      files_modified: Array.from(summary.filesModified),
-      files_read: Array.from(summary.filesRead),
-      files_deleted: Array.from(summary.filesDeleted),
-      bash_commands: summary.bashCommands.slice(-15).map(truncateBashCommand),
-      last_messages: lastMessages,
-      tool_count: summary.toolCallCount,
-      has_errors: summary.errors.length > 0,
+      files_created: delta.new_files_created,
+      files_modified: delta.new_files_modified,
+      files_read: delta.new_files_read,
+      files_deleted: delta.new_files_deleted,
+      bash_commands: delta.new_bash_commands.map(truncateBashCommand),
+      last_messages: delta.new_messages,
+      tool_count: delta.new_tool_count,
+      has_errors: delta.new_errors.length > 0,
+      cursor: agentTimestamp,  // Return latest timestamp for this agent
     });
   }
 
@@ -169,6 +183,7 @@ export async function handleStatus(
     task_name: taskName,
     agents: agentStatuses,
     summary: counts,
+    cursor: maxTimestamp,  // Max timestamp across all agents
   };
 }
 
@@ -316,4 +331,3 @@ export async function handleListTasks(
     total_agents: allAgents.length,
   };
 }
-

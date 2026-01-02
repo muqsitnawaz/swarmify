@@ -4,6 +4,11 @@ src/**
 .gitignore
 tsconfig.json
 node_modules/**
+**/node_modules/**
+ui/**
 scripts/**
 *.vsix
 bun.lockb
+.DS_Store
+out/ui/**/*.map
+out/ui/**/assets/*.js.map
