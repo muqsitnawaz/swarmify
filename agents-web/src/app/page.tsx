@@ -407,7 +407,7 @@ export default function Home() {
       </section>
 
       {/* Prompt Library + Markdown */}
-      <section className="px-6 py-24">
+      <section className="px-6 py-24 border-t border-[#1a1a1a]">
         <div className="max-w-5xl mx-auto space-y-16">
           {/* Prompt Library */}
           <div className="grid md:grid-cols-[1fr_1.3fr] gap-8 items-start">
