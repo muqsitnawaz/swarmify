@@ -288,40 +288,12 @@ async function enableSwarmForAgents(
     return;
   }
 
-  // Find or install agent-swarm
-  let binaryPath = await findSwarmBinary();
-
-  if (!binaryPath) {
-    const choice = await vscode.window.showInformationMessage(
-      `${SWARM_PACKAGE} is not installed. Install it now?`,
-      'Install',
-      'Cancel'
-    );
-
-    if (choice !== 'Install') {
-      return;
-    }
-
-    const installed = await installSwarm();
-    await sendStatus();
-    if (!installed) {
-      return;
-    }
-
-    binaryPath = await findSwarmBinary();
-    if (!binaryPath) {
-      vscode.window.showErrorMessage(
-        `Installed ${SWARM_PACKAGE} but could not find binary. Try: claude mcp add Swarm npx -y ${SWARM_PACKAGE}`
-      );
-      return;
-    }
-  }
-
+  // Register MCP using npx (no local install needed - npx fetches on demand)
   try {
     const registrations: string[] = [];
 
     for (const agent of agents) {
-      const ok = await registerMcpForAgent(agent, binaryPath);
+      const ok = await registerMcpForAgent(agent);
       if (ok) {
         registrations.push(agent.charAt(0).toUpperCase() + agent.slice(1));
       }
@@ -329,9 +301,9 @@ async function enableSwarmForAgents(
     }
 
     if (registrations.length === 0) {
-      vscode.window.showWarningMessage('Installed Swarm MCP binary, but could not register with selected CLIs. Make sure Claude/Codex/Gemini CLIs are installed.');
+      vscode.window.showWarningMessage('Could not register Swarm MCP with selected CLIs. Make sure Claude/Codex/Gemini CLIs are installed.');
     } else {
-      vscode.window.showInformationMessage(`Swarm MCP installed and registered for: ${registrations.join(', ')}. Reload your IDE agents.`);
+      vscode.window.showInformationMessage(`Swarm MCP registered for: ${registrations.join(', ')}. Reload your IDE agents.`);
     }
     await sendStatus();
   } catch (err) {
