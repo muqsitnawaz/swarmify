@@ -407,7 +407,7 @@ export default function Home() {
       </section>
 
       {/* Prompt Library + Markdown */}
-      <section className="px-6 py-24 border-t border-[#1a1a1a]">
+      <section className="px-6 py-24">
         <div className="max-w-5xl mx-auto space-y-16">
           {/* Prompt Library */}
           <div className="grid md:grid-cols-[1.1fr_1.2fr] gap-12 items-center">
@@ -434,7 +434,7 @@ export default function Home() {
                 </div>
               </div>
             </div>
-            <div className="rounded-2xl border border-[#1a1a1a] bg-[#0b141a] p-4 shadow-[0_0_40px_rgba(0,0,0,0.35)]">
+            <div className="rounded-2xl border border-[#1a1a1a] bg-[#0d0d0d] p-4">
               <PromptLibraryMock />
             </div>
           </div>
@@ -464,7 +464,7 @@ export default function Home() {
                 </div>
               </div>
             </div>
-            <div className="rounded-2xl border border-[#1a1a1a] bg-[#0b141a] p-4 shadow-[0_0_40px_rgba(0,0,0,0.35)]">
+            <div className="rounded-2xl border border-[#1a1a1a] bg-[#0d0d0d] p-4">
               <CombinedMarkdownMock />
             </div>
           </div>
