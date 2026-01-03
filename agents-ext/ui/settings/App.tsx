@@ -934,7 +934,7 @@ export default function App() {
                           className="w-5 h-5"
                         />
                         <span className="text-sm font-medium">
-                          {agentName} #{terminal.index}
+                          {agentName} # {terminal.index}
                           {displayLabel && (
                             <span className="text-[var(--muted-foreground)]"> - {displayLabel}</span>
                           )}

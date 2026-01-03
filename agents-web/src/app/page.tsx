@@ -406,9 +406,10 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Prompt Library */}
+      {/* Prompt Library + Markdown */}
       <section className="px-6 py-24 border-t border-[#1a1a1a]">
-        <div className="max-w-5xl mx-auto">
+        <div className="max-w-5xl mx-auto space-y-24">
+          {/* Prompt Library */}
           <div className="grid md:grid-cols-[1.1fr_1.2fr] gap-12 items-center">
             <div>
               <h2 className="text-3xl font-bold mb-4">
@@ -437,12 +438,8 @@ export default function Home() {
               <PromptLibraryMock />
             </div>
           </div>
-        </div>
-      </section>
 
-      {/* Markdown + Tasks Preview */}
-      <section className="px-6 py-24 border-t border-[#1a1a1a]">
-        <div className="max-w-5xl mx-auto">
+          {/* Markdown + Tasks */}
           <div className="grid md:grid-cols-[1.1fr_1.2fr] gap-12 items-center">
             <div>
               <h2 className="text-3xl font-bold mb-4">
@@ -639,41 +636,41 @@ function UseCaseVisual({ scenario }: { scenario: string }) {
 
 function PromptLibraryMock() {
   return (
-    <div className="rounded-xl border border-[#1b2a33] bg-[#0f1b22] p-4 font-sans">
-      <div className="text-center text-[11px] tracking-wide text-[#8fb3c4] mb-3">
+    <div className="rounded-xl border border-[#1a1a1a] bg-[#0d0d0d] p-4 font-sans">
+      <div className="text-center text-[11px] tracking-wide text-[#888] mb-3">
         Swarmify - Agents
       </div>
-      <div className="rounded-lg bg-[#0c171d] border border-[#13232c] px-3 py-2 text-[11px] text-[#6f8a99] mb-4">
+      <div className="rounded-lg bg-[#0a0a0a] border border-[#1a1a1a] px-3 py-2 text-[11px] text-[#666] mb-4">
         Search prompts...
       </div>
       <div className="space-y-3 text-[11px]">
-        <div className="rounded-lg border border-[#19323f] bg-[#15313d] p-3">
+        <div className="rounded-lg border border-[#1a1a1a] bg-[#111] p-3">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <StarIcon />
-              <span className="text-[#cfe6f1] font-semibold">rethink</span>
+              <span className="text-white font-semibold">rethink</span>
             </div>
-            <div className="flex items-center gap-2 text-[#7aa2b6]">
+            <div className="flex items-center gap-2 text-[#888]">
               <StarIcon filled />
               <TrashIcon />
             </div>
           </div>
-          <div className="text-[#b7c7d2] leading-relaxed">
+          <div className="text-[#ccc] leading-relaxed">
             Before we make this change, what do you think? Is this the right
             tradeoff for the team and the codebase?
           </div>
         </div>
-        <div className="rounded-lg border border-[#12252f] bg-[#0f2029] p-3">
+        <div className="rounded-lg border border-[#1a1a1a] bg-[#0f0f0f] p-3">
           <div className="flex items-center gap-2 mb-2">
             <StarIcon />
-            <span className="text-[#cfe6f1] font-semibold">debugit</span>
+            <span className="text-white font-semibold">debugit</span>
           </div>
-          <div className="text-[#94a8b6] leading-relaxed">
+          <div className="text-[#aaa] leading-relaxed">
             Confirm the root cause by spinning up multiple agents and comparing
             their findings.
           </div>
         </div>
-        <button className="w-full flex items-center gap-2 text-left text-[#8aa8ba] text-[11px] py-2 px-2 rounded-md hover:bg-[#0f2029] transition-colors">
+        <button className="w-full flex items-center gap-2 text-left text-[#888] text-[11px] py-2 px-2 rounded-md hover:bg-[#111] transition-colors">
           <PlusIcon />
           Add new prompt
         </button>
@@ -684,32 +681,32 @@ function PromptLibraryMock() {
 
 function MarkdownPreviewMock() {
   return (
-    <div className="rounded-xl border border-[#1b2a33] bg-[#0f1b22] p-4 font-sans text-[11px] text-[#b7c7d2]">
-      <div className="text-center text-[11px] tracking-wide text-[#8fb3c4] mb-4">
+    <div className="rounded-xl border border-[#1a1a1a] bg-[#0d0d0d] p-4 font-sans text-[11px] text-[#ccc]">
+      <div className="text-center text-[11px] tracking-wide text-[#888] mb-4">
         README.md
       </div>
-      <div className="text-[#d8e6ef] text-base font-semibold mb-2">Landing Page Tasks</div>
-      <p className="text-[#9ab0bf] mb-3 leading-relaxed">
+      <div className="text-white text-base font-semibold mb-2">Landing Page Tasks</div>
+      <p className="text-[#aaa] mb-3 leading-relaxed">
         This doc tracks the next batch of updates. Review diffs as agents work and
         ship changes in parallel.
       </p>
-      <div className="rounded-lg border border-[#1b2a33] bg-[#0c171d] px-3 py-2 mb-3">
-        <div className="text-[#7aa2b6] uppercase text-[10px] tracking-wide mb-2">Highlights</div>
-        <ul className="space-y-1 text-[#b7c7d2]">
+      <div className="rounded-lg border border-[#1a1a1a] bg-[#0a0a0a] px-3 py-2 mb-3">
+        <div className="text-[#888] uppercase text-[10px] tracking-wide mb-2">Highlights</div>
+        <ul className="space-y-1 text-[#ccc]">
           <li>• Hero copy aligned to orchestration</li>
           <li>• Prompt library visible by default</li>
           <li>• Task list hooks for instant delegation</li>
         </ul>
       </div>
-      <div className="rounded-lg border border-[#1b2a33] bg-[#0c171d] px-3 py-2">
-        <div className="text-[#7aa2b6] uppercase text-[10px] tracking-wide mb-2">Notes</div>
-        <div className="grid grid-cols-3 gap-2 text-[10px] text-[#8aa8ba]">
-          <div className="rounded border border-[#1b2a33] px-2 py-1">Owner</div>
-          <div className="rounded border border-[#1b2a33] px-2 py-1">Status</div>
-          <div className="rounded border border-[#1b2a33] px-2 py-1">ETA</div>
-          <div className="rounded border border-[#1b2a33] px-2 py-1 text-[#cfe6f1]">Swarmify</div>
-          <div className="rounded border border-[#1b2a33] px-2 py-1 text-[#cfe6f1]">In review</div>
-          <div className="rounded border border-[#1b2a33] px-2 py-1 text-[#cfe6f1]">Today</div>
+      <div className="rounded-lg border border-[#1a1a1a] bg-[#0a0a0a] px-3 py-2">
+        <div className="text-[#888] uppercase text-[10px] tracking-wide mb-2">Notes</div>
+        <div className="grid grid-cols-3 gap-2 text-[10px] text-[#888]">
+          <div className="rounded border border-[#1a1a1a] px-2 py-1">Owner</div>
+          <div className="rounded border border-[#1a1a1a] px-2 py-1">Status</div>
+          <div className="rounded border border-[#1a1a1a] px-2 py-1">ETA</div>
+          <div className="rounded border border-[#1a1a1a] px-2 py-1 text-white">Swarmify</div>
+          <div className="rounded border border-[#1a1a1a] px-2 py-1 text-white">In review</div>
+          <div className="rounded border border-[#1a1a1a] px-2 py-1 text-white">Today</div>
         </div>
       </div>
     </div>
@@ -723,10 +720,10 @@ function TaskableTodosMock() {
   };
 
   return (
-    <div className="rounded-xl border border-[#1b2a33] bg-[#0f1b22] p-4 font-sans text-[11px] text-[#b7c7d2]">
-      <div className="flex items-center gap-2 mb-4 text-[10px] text-[#8fb3c4]">
-        <span className="rounded bg-[#13232c] px-2 py-1">Codex — Landing page updates</span>
-        <span className="rounded bg-[#13232c] px-2 py-1">Claude — Stripe integration</span>
+    <div className="rounded-xl border border-[#1a1a1a] bg-[#0d0d0d] p-4 font-sans text-[11px] text-[#ccc]">
+      <div className="flex items-center gap-2 mb-4 text-[10px] text-[#888]">
+        <span className="rounded bg-[#111] px-2 py-1">Codex — Landing page updates</span>
+        <span className="rounded bg-[#111] px-2 py-1">Claude — Stripe integration</span>
       </div>
       <div className="space-y-3">
         {[
@@ -734,23 +731,23 @@ function TaskableTodosMock() {
           "Add prompt library preview section",
           "Wire markdown todos to agent task",
         ].map((text, index) => (
-          <div key={text} className="flex items-center gap-3 rounded-lg border border-[#162a34] bg-[#0c171d] px-3 py-2">
+          <div key={text} className="flex items-center gap-3 rounded-lg border border-[#1a1a1a] bg-[#0a0a0a] px-3 py-2">
             <button
               type="button"
               onClick={() => toggleTodo(index)}
               className={`h-4 w-4 rounded border ${
                 todos[index]
                   ? "bg-[#22c55e] border-[#22c55e]"
-                  : "border-[#335261] bg-transparent"
+                  : "border-[#555] bg-transparent"
               }`}
               aria-label={`Toggle todo ${text}`}
             />
-            <span className="flex-1 text-[#b7c7d2]">{text}</span>
+            <span className="flex-1 text-[#ccc]">{text}</span>
             <button
               type="button"
-              className="relative overflow-hidden rounded-full border border-[#2c4756] bg-[#13232c] px-3 py-1 text-[10px] text-[#bfe3f4] shadow-[0_0_12px_rgba(59,130,246,0.25)] transition-all hover:border-[#3b82f6] hover:shadow-[0_0_16px_rgba(59,130,246,0.45)]"
+              className="relative overflow-hidden rounded-full border border-[#333] bg-[#111] px-3 py-1 text-[10px] text-[#ddd] shadow-[0_0_12px_rgba(59,130,246,0.15)] transition-all hover:border-[#3b82f6] hover:shadow-[0_0_16px_rgba(59,130,246,0.35)]"
             >
-              <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-[#3b82f6]/30 to-transparent animate-pulse" />
+              <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-[#3b82f6]/20 to-transparent animate-pulse" />
               <span className="relative">Start task</span>
             </button>
           </div>
@@ -1135,7 +1132,7 @@ function CompareItem({ children, negative }: { children: React.ReactNode; negati
 
 function StarIcon({ filled }: { filled?: boolean }) {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className={filled ? "text-[#fbbf24]" : "text-[#7aa2b6]"}>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className={filled ? "text-[#fbbf24]" : "text-[#888]"}>
       <path
         d="M12 3.5L14.7 9L20.8 9.8L16.4 14.1L17.6 20.2L12 17.2L6.4 20.2L7.6 14.1L3.2 9.8L9.3 9L12 3.5Z"
         stroke="currentColor"
@@ -1149,7 +1146,7 @@ function StarIcon({ filled }: { filled?: boolean }) {
 
 function TrashIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-[#7aa2b6]">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-[#888]">
       <path d="M4 7H20" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
       <path d="M9 7V5H15V7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
       <path d="M7 7L8 19H16L17 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -1159,7 +1156,7 @@ function TrashIcon() {
 
 function PlusIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-[#7aa2b6]">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-[#888]">
       <path d="M12 5V19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
       <path d="M5 12H19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
     </svg>

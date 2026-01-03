@@ -34,13 +34,13 @@ export const EFFORT_MODEL_MAP: Record<EffortLevel, Record<AgentType, string>> = 
   medium: {
     codex: 'gpt-5.2-codex',
     gemini: 'gemini-3-flash-preview',
-    claude: 'opus-4.5',
+    claude: 'claude-sonnet-4-5',
     cursor: 'composer-1',
   },
   high: {
     codex: 'gpt-5.1-codex-max',
     gemini: 'gemini-3-pro-preview',
-    claude: 'opus-4.5',
+    claude: 'claude-opus-4-5',
     cursor: 'composer-1',
   },
 };
