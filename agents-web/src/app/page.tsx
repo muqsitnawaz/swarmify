@@ -410,7 +410,7 @@ export default function Home() {
       <section className="px-6 py-24">
         <div className="max-w-5xl mx-auto space-y-16">
           {/* Prompt Library */}
-          <div className="grid md:grid-cols-[1.1fr_1.2fr] gap-12 items-center">
+          <div className="grid md:grid-cols-[1fr_1.3fr] gap-8 items-start">
             <div>
               <h2 className="text-3xl font-bold mb-4">
                 Reuse prompts, move faster
@@ -421,15 +421,15 @@ export default function Home() {
               </p>
               <div className="space-y-3 text-sm text-[#ccc]">
                 <div className="flex items-start gap-3">
-                  <span className="mt-1 h-2 w-2 rounded-full bg-[#3b82f6]" />
+                  <span className="mt-1 h-2 w-2 rounded-full bg-[#888]" />
                   <span>Search and pin the prompts you use every day.</span>
                 </div>
                 <div className="flex items-start gap-3">
-                  <span className="mt-1 h-2 w-2 rounded-full bg-[#3b82f6]" />
+                  <span className="mt-1 h-2 w-2 rounded-full bg-[#888]" />
                   <span>Kick off complex tasks with one shortcut.</span>
                 </div>
                 <div className="flex items-start gap-3">
-                  <span className="mt-1 h-2 w-2 rounded-full bg-[#3b82f6]" />
+                  <span className="mt-1 h-2 w-2 rounded-full bg-[#888]" />
                   <span>Keep workflows consistent across multiple agents.</span>
                 </div>
               </div>
@@ -440,7 +440,7 @@ export default function Home() {
           </div>
 
           {/* Markdown + Tasks */}
-          <div className="grid md:grid-cols-[1.1fr_1.2fr] gap-12 items-center">
+          <div className="grid md:grid-cols-[1fr_1.3fr] gap-8 items-start">
             <div>
               <h2 className="text-3xl font-bold mb-4">
                 Markdown that&apos;s readable and actionable
@@ -451,15 +451,15 @@ export default function Home() {
               </p>
               <div className="space-y-3 text-sm text-[#ccc]">
                 <div className="flex items-start gap-3">
-                  <span className="mt-1 h-2 w-2 rounded-full bg-[#22c55e]" />
+                  <span className="mt-1 h-2 w-2 rounded-full bg-[#888]" />
                   <span>Clean markdown view with tables, callouts, and inline code.</span>
                 </div>
                 <div className="flex items-start gap-3">
-                  <span className="mt-1 h-2 w-2 rounded-full bg-[#22c55e]" />
+                  <span className="mt-1 h-2 w-2 rounded-full bg-[#888]" />
                   <span>Clickable todos that can launch a task immediately.</span>
                 </div>
                 <div className="flex items-start gap-3">
-                  <span className="mt-1 h-2 w-2 rounded-full bg-[#22c55e]" />
+                  <span className="mt-1 h-2 w-2 rounded-full bg-[#888]" />
                   <span>Labels flow into tab titles so you always know what&apos;s running.</span>
                 </div>
               </div>
@@ -572,7 +572,7 @@ function UseCaseSection({ item }: { item: typeof useCaseItems[number] }) {
         <ul className="space-y-2 text-[#cbd5e1] text-sm">
           {item.bullets.map((bullet) => (
             <li key={bullet} className="flex gap-2">
-              <span className="mt-[6px] inline-block h-1 w-1 rounded-full bg-[#3b82f6]" />
+              <span className="mt-[6px] inline-block h-1 w-1 rounded-full bg-[#888]" />
               <span>{bullet}</span>
             </li>
           ))}
