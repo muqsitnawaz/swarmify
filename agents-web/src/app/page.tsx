@@ -15,58 +15,53 @@ const agents: { id: AgentType; name: string; logo: string; label: string }[] = [
 const useCaseItems: {
   id: string;
   title: string;
-  subtitle: string;
+  description: string;
   bullets: string[];
-  artifacts: string[];
-  posterClass: string;
+  scenario: string;
 }[] = [
   {
     id: "tests",
-    title: "Ship code + tests in parallel",
-    subtitle: "One agent codes while another writes tests and a third renders the UI preview.",
+    title: "Code + tests in parallel",
+    description: "One agent implements the feature while another writes comprehensive tests.",
     bullets: [
-      "Spawn dev + test agents from one prompt.",
-      "Watch diffs and browser preview side by side.",
-      "Merge when tests and visuals both pass."
+      "Spawn both from a single prompt",
+      "Watch diffs side-by-side in editor tabs",
+      "Merge when both pass"
     ],
-    artifacts: ["Diff", "Tests", "Preview"],
-    posterClass: "from-[#0f1b2d] via-[#0b1220] to-[#091017]"
-  },
-  {
-    id: "review",
-    title: "Review diffs without leaving your IDE",
-    subtitle: "Label agents by ticket, open full-screen diffs, and accept changes inline.",
-    bullets: [
-      "Parallel review: logic, security, and tests.",
-      "Native diff panel updates as agents work.",
-      "Approve or request fixes from the same tab."
-    ],
-    artifacts: ["Diff", "Notes", "Checks"],
-    posterClass: "from-[#0b1725] via-[#0a1c2f] to-[#08121d]"
+    scenario: "Implementing Stripe checkout with comprehensive tests"
   },
   {
     id: "refactor",
-    title: "Refactor + docs stay in sync",
-    subtitle: "One agent rewrites the module while another updates docs and examples.",
+    title: "Refactor + docs stay synced",
+    description: "One agent rewrites the module, another updates documentation and examples automatically.",
     bullets: [
-      "Refactor agent keeps tests green.",
-      "Docs agent updates README and examples automatically.",
-      "You review both outputs together."
+      "Tests stay green during refactor",
+      "README and examples update in real-time",
+      "Review both outputs together"
     ],
-    artifacts: ["Docs", "Tests", "Diff"],
-    posterClass: "from-[#0e1c1f] via-[#0a1619] to-[#071012]"
+    scenario: "Migrating auth flow to middleware pattern"
+  },
+  {
+    id: "review",
+    title: "Multi-perspective code review",
+    description: "Spawn multiple agents to review logic, security, and tests from different angles.",
+    bullets: [
+      "Each agent focuses on one concern",
+      "See all feedback in one place",
+      "Fix and re-review inline"
+    ],
+    scenario: "Pre-launch security audit across the API layer"
   },
   {
     id: "multi",
-    title: "Multi-file feature work",
-    subtitle: "Split frontend, backend, and types across agents and land in one branch.",
+    title: "Full-stack feature work",
+    description: "Split frontend, backend, and types across agents. Land everything in one branch.",
     bullets: [
-      "Assign labels per slice: UI, API, Schema.",
-      "See all git changes in one consolidated view.",
-      "Keep context continuous—no tmux juggling."
+      "Label by slice: UI, API, Schema",
+      "Unified git view of all changes",
+      "No context switching"
     ],
-    artifacts: ["Frontend", "Backend", "Types"],
-    posterClass: "from-[#0f1a1f] via-[#0c1418] to-[#090f13]"
+    scenario: "Building user profile editor with type-safe API"
   }
 ];
 
@@ -418,12 +413,12 @@ export default function Home() {
       <section className="px-6 py-24 border-t border-[#1a1a1a]">
         <div className="max-w-5xl mx-auto">
           <h2 className="text-3xl font-bold mb-4 text-center">
-            See agents run these workflows
+            Common workflows
           </h2>
-          <p className="text-[#888] text-center mb-12 max-w-2xl mx-auto">
-            Agents work in parallel. Tap a workflow to watch how it plays out inside your IDE.
+          <p className="text-[#888] text-center mb-16 max-w-2xl mx-auto">
+            Multiple agents, one window. Here's how teams use Swarmify.
           </p>
-          <div className="space-y-12">
+          <div className="space-y-16">
             {useCaseItems.map((item) => (
               <UseCaseSection key={item.id} item={item} />
             ))}
@@ -598,74 +593,59 @@ function Feature({ title, description }: { title: string; description: string })
 
 function UseCaseSection({ item }: { item: typeof useCaseItems[number] }) {
   return (
-    <div className="rounded-3xl border border-[#0f1b2d] bg-gradient-to-br from-[#0c121b] via-[#0b1119] to-[#090e14] p-6 md:p-8 shadow-[0_25px_60px_rgba(0,0,0,0.45)]">
-      <div className="grid md:grid-cols-[1.05fr_1fr] gap-8 items-center">
-        <div className="space-y-4">
-          <div className="text-xs uppercase tracking-[0.18em] text-[#7aa2b6]">
-            Parallel workflow
-          </div>
-          <h3 className="text-2xl font-semibold text-white leading-snug">{item.title}</h3>
-          <p className="text-[#9ab0bf] text-sm">{item.subtitle}</p>
-          <ul className="space-y-2 text-[#cbd5e1] text-sm">
-            {item.bullets.map((bullet) => (
-              <li key={bullet} className="flex gap-2">
-                <span className="mt-[6px] inline-block h-1.5 w-1.5 rounded-full bg-[#3b82f6]" />
-                <span>{bullet}</span>
-              </li>
-            ))}
-          </ul>
-          <div className="flex items-center gap-2 text-[12px] text-[#8fb3c4] pt-1">
-            <span className="uppercase tracking-[0.16em] text-[#6b8298]">Artifacts</span>
-            {item.artifacts.map((artifact) => (
-              <span
-                key={artifact}
-                className="px-2 py-1 rounded-full bg-[#111821] border border-[#1f2a36] text-[#dbeafe]"
-              >
-                {artifact}
-              </span>
-            ))}
-          </div>
+    <div className="grid md:grid-cols-[1fr_1.3fr] gap-8 items-start py-6">
+      <div className="space-y-4">
+        <h3 className="text-xl font-semibold text-white">{item.title}</h3>
+        <p className="text-[#9ab0bf] text-sm leading-relaxed">{item.description}</p>
+        <ul className="space-y-2 text-[#cbd5e1] text-sm">
+          {item.bullets.map((bullet) => (
+            <li key={bullet} className="flex gap-2">
+              <span className="mt-[6px] inline-block h-1 w-1 rounded-full bg-[#3b82f6]" />
+              <span>{bullet}</span>
+            </li>
+          ))}
+        </ul>
+        <div className="pt-2">
+          <div className="text-[10px] uppercase tracking-wide text-[#666] mb-1">Example</div>
+          <div className="text-[#888] text-xs">{item.scenario}</div>
         </div>
-
-        <UseCaseMedia posterClass={item.posterClass} title={item.title} />
       </div>
+
+      <UseCaseVisual scenario={item.scenario} />
     </div>
   );
 }
 
-function UseCaseMedia({ posterClass, title }: { posterClass: string; title: string }) {
+function UseCaseVisual({ scenario }: { scenario: string }) {
   return (
-    <div className="relative w-full overflow-hidden rounded-xl border border-[#1a1a1a] bg-black shadow-[0_25px_60px_rgba(0,0,0,0.35)] min-h-[220px] md:min-h-[260px]">
-      <div className={`absolute inset-0 bg-gradient-to-br ${posterClass}`} />
-      <div className="absolute inset-0 opacity-60 mix-blend-screen bg-[radial-gradient(circle_at_30%_30%,rgba(59,130,246,0.35),transparent_55%)]" />
-      <div className="relative h-full flex flex-col justify-between p-4 md:p-6">
-        <div className="flex items-center justify-between text-[11px] text-[#8fb3c4] uppercase tracking-[0.18em]">
-          <span>Swarmify — Agents</span>
-          <span className="inline-flex items-center gap-1 text-[#3b82f6]">
-            <span className="h-2 w-2 rounded-full bg-[#22c55e] animate-pulse" />
-            Live
-          </span>
+    <div className="rounded-lg border border-[#1a1a1a] bg-[#0d0d0d] overflow-hidden">
+      {/* Simplified tab bar showing multiple agents */}
+      <div className="flex gap-0.5 px-2 pt-2 bg-[#111] overflow-x-auto">
+        <div className="flex items-center gap-2 px-3 py-2 rounded-t-lg text-xs bg-[#0d0d0d] text-white">
+          <img src="/claude.png" alt="Claude" width={14} height={14} className="rounded-sm" />
+          <span className="font-medium">Claude</span>
+          <span className="text-[10px] text-[#666]">— Feature impl</span>
         </div>
-        <div className="rounded-lg bg-[#0d1520]/70 border border-[#1f2d3a] p-4 backdrop-blur-sm shadow-[0_0_30px_rgba(0,0,0,0.4)]">
-          <div className="flex items-center gap-2 text-[#8fb3c4] text-xs mb-3">
-            <span className="h-2 w-2 rounded-full bg-[#3b82f6]" />
-            <span>Agents running in parallel</span>
-          </div>
-          <div className="grid grid-cols-2 gap-3 text-[11px] text-[#dbeafe] font-mono">
-            <div className="rounded-md border border-[#1f2d3a] bg-[#0b1118] p-3">
-              <div className="text-[#9ab0bf] mb-1">agent-test</div>
-              <div className="text-[#22c55e]">✓ tests passed</div>
-              <div className="text-[#7aa2b6] mt-1">coverage: 94%</div>
-            </div>
-            <div className="rounded-md border border-[#1f2d3a] bg-[#0b1118] p-3">
-              <div className="text-[#9ab0bf] mb-1">agent-ui</div>
-              <div className="text-[#60a5fa]">▶ preview running</div>
-              <div className="text-[#7aa2b6] mt-1">diff: 4 files</div>
-            </div>
-          </div>
+        <div className="flex items-center gap-2 px-3 py-2 rounded-t-lg text-xs bg-[#161616] text-[#888]">
+          <img src="/codex.png" alt="Codex" width={14} height={14} className="rounded-sm" />
+          <span className="font-medium">Codex</span>
+          <span className="text-[10px] text-[#666]">— Tests</span>
         </div>
-        <div className="text-[#cbd5e1] text-sm font-semibold mt-4">
-          {title}
+        <div className="flex items-center gap-2 px-3 py-2 rounded-t-lg text-xs bg-[#161616] text-[#888]">
+          <FileIcon />
+          <span className="font-mono text-[11px]">checkout.ts</span>
+        </div>
+      </div>
+
+      {/* Terminal output */}
+      <div className="p-5 text-xs leading-relaxed font-mono min-h-[180px]">
+        <div className="space-y-1">
+          <div className="text-[#f97316] font-bold mb-2">Claude Code</div>
+          <div className="text-[#3b82f6]">&gt; <span className="text-white">{scenario}</span></div>
+          <div className="text-[#ccc] mt-2">Implementing payment flow with Stripe SDK...</div>
+          <div className="text-[#666] mt-2">Reading: src/billing/stripe.ts</div>
+          <div className="text-[#666]">Editing: src/api/checkout.ts</div>
+          <div className="text-[#4ade80] mt-2">Creating checkout session endpoint...</div>
         </div>
       </div>
     </div>

@@ -568,7 +568,7 @@ export class AgentManager {
       throw new Error(`Failed to create agent directory: ${err.message}`);
     }
 
-    console.log(`Spawning ${agentType} agent ${agentId} [${resolvedMode}]: ${cmd.slice(0, 3).join(' ')}...`);
+    console.error(`Spawning ${agentType} agent ${agentId} [${resolvedMode}]: ${cmd.slice(0, 3).join(' ')}...`);
 
     try {
       const stdoutPath = await agent.getStdoutPath();
@@ -596,7 +596,7 @@ export class AgentManager {
     this.agents.set(agentId, agent);
     await this.cleanupOldAgents();
 
-    console.log(`Spawned agent ${agentId} with PID ${agent.pid}`);
+    console.error(`Spawned agent ${agentId} with PID ${agent.pid}`);
     return agent;
   }
 
@@ -755,12 +755,12 @@ export class AgentManager {
     if (agent.pid && agent.status === AgentStatus.RUNNING) {
       try {
         process.kill(-agent.pid, 'SIGTERM');
-        console.log(`Sent SIGTERM to agent ${agentId} (PID ${agent.pid})`);
+        console.error(`Sent SIGTERM to agent ${agentId} (PID ${agent.pid})`);
 
         await new Promise(resolve => setTimeout(resolve, 2000));
         if (agent.isProcessAlive()) {
           process.kill(-agent.pid, 'SIGKILL');
-          console.log(`Sent SIGKILL to agent ${agentId}`);
+          console.error(`Sent SIGKILL to agent ${agentId}`);
         }
       } catch {
       }
@@ -768,7 +768,7 @@ export class AgentManager {
       agent.status = AgentStatus.STOPPED;
       agent.completedAt = new Date();
       await agent.saveMeta();
-      console.log(`Stopped agent ${agentId}`);
+      console.error(`Stopped agent ${agentId}`);
       return true;
     }
 
