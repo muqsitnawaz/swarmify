@@ -660,23 +660,23 @@ function PromptLibraryMock() {
 
 function CombinedMarkdownMock() {
   return (
-    <div className="font-sans text-[11px] text-[#ccc]">
+    <div className="font-sans text-[11px] text-[#b7c7d2]">
       {/* Header */}
       <div className="text-center text-[11px] tracking-wide text-[#94a3b8] mb-4">
         README.md
       </div>
 
       {/* Title and description */}
-      <div className="text-white text-base font-semibold mb-2">Landing Page Tasks</div>
-      <p className="text-[#aaa] mb-4 leading-relaxed">
+      <div className="text-[#d8e6ef] text-base font-semibold mb-2">Landing Page Tasks</div>
+      <p className="text-[#9ab0bf] mb-4 leading-relaxed">
         This doc tracks the next batch of updates. Review diffs as agents work and
         ship changes in parallel.
       </p>
 
       {/* Highlights */}
-      <div className="rounded-lg border border-[#1a1a1a] bg-[#0a0a0a] px-3 py-2">
-        <div className="text-[#94a3b8] uppercase text-[10px] tracking-wide mb-2">Highlights</div>
-        <ul className="space-y-1 text-[#ccc]">
+      <div className="rounded-lg border border-[#1b2a33] bg-[#0c171d] px-3 py-2">
+        <div className="text-[#7aa2b6] uppercase text-[10px] tracking-wide mb-2">Highlights</div>
+        <ul className="space-y-1 text-[#b7c7d2]">
           <li>• Hero copy aligned to orchestration</li>
           <li>• Prompt library visible by default</li>
           <li>• Task list hooks for instant delegation</li>
