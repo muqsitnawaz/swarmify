@@ -18,50 +18,30 @@ const useCaseItems: {
   description: string;
   bullets: string[];
   scenario: string;
+  footnote?: string;
 }[] = [
   {
-    id: "tests",
-    title: "Code + tests in parallel",
-    description: "One agent implements the feature while another writes comprehensive tests.",
+    id: "parallel",
+    title: "Build faster with parallel agents",
+    description: "Many CLIs like Codex and Gemini don't have subagent support. Swarmify lets any agent spawn subagents for parallel work.",
     bullets: [
-      "Spawn both from a single prompt",
-      "Watch diffs side-by-side in editor tabs",
-      "Merge when both pass"
+      "One orchestrator delegates to multiple workers",
+      "Feature + tests + docs happen simultaneously",
+      "Watch all diffs side-by-side in editor tabs"
     ],
-    scenario: "Implementing Stripe checkout with comprehensive tests"
+    scenario: "Implementing Stripe checkout with tests",
+    footnote: "We recommend using Claude as the orchestrator"
   },
   {
-    id: "refactor",
-    title: "Refactor + docs stay synced",
-    description: "One agent rewrites the module, another updates documentation and examples automatically.",
+    id: "debug",
+    title: "Debug with confidence, move faster",
+    description: "Spin up multiple coding agents to verify the root cause of bugs. Different models catch different issues - save hours every day.",
     bullets: [
-      "Tests stay green during refactor",
-      "README and examples update in real-time",
-      "Review both outputs together"
+      "Each agent investigates from a different angle",
+      "Compare findings to confirm root cause",
+      "Fix once you have consensus"
     ],
-    scenario: "Migrating auth flow to middleware pattern"
-  },
-  {
-    id: "review",
-    title: "Multi-perspective code review",
-    description: "Spawn multiple agents to review logic, security, and tests from different angles.",
-    bullets: [
-      "Each agent focuses on one concern",
-      "See all feedback in one place",
-      "Fix and re-review inline"
-    ],
-    scenario: "Pre-launch security audit across the API layer"
-  },
-  {
-    id: "multi",
-    title: "Full-stack feature work",
-    description: "Split frontend, backend, and types across agents. Land everything in one branch.",
-    bullets: [
-      "Label by slice: UI, API, Schema",
-      "Unified git view of all changes",
-      "No context switching"
-    ],
-    scenario: "Building user profile editor with type-safe API"
+    scenario: "Finding why checkout fails for guest users"
   }
 ];
 
@@ -605,6 +585,11 @@ function UseCaseSection({ item }: { item: typeof useCaseItems[number] }) {
             </li>
           ))}
         </ul>
+        {item.footnote && (
+          <div className="pt-2 text-xs text-[#888] italic">
+            {item.footnote}
+          </div>
+        )}
         <div className="pt-2">
           <div className="text-[10px] uppercase tracking-wide text-[#666] mb-1">Example</div>
           <div className="text-[#888] text-xs">{item.scenario}</div>
