@@ -216,18 +216,20 @@ async function installSwarm(): Promise<boolean> {
   }
 }
 
-async function registerMcpForAgent(agent: AgentCli, binaryPath: string): Promise<boolean> {
+const NPX_SWARM_CMD = `npx -y ${SWARM_PACKAGE}@latest`;
+
+async function registerMcpForAgent(agent: AgentCli): Promise<boolean> {
   try {
     if (agent === 'claude') {
-      await execAsync(`claude mcp add --scope user Swarm "${binaryPath}"`);
+      await execAsync(`claude mcp add --scope user Swarm ${NPX_SWARM_CMD}`);
       return true;
     }
     if (agent === 'codex') {
-      await execAsync(`codex mcp add Swarm "${binaryPath}"`);
+      await execAsync(`codex mcp add Swarm ${NPX_SWARM_CMD}`);
       return true;
     }
     if (agent === 'gemini') {
-      await execAsync(`gemini mcp add Swarm "${binaryPath}"`);
+      await execAsync(`gemini mcp add Swarm ${NPX_SWARM_CMD}`);
       return true;
     }
   } catch {
