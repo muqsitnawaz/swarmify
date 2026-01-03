@@ -43,4 +43,4 @@ Overview | Swarm | Prompts | Guide
 
 ## Swarm Integration
 
-MCP server for multi-agent orchestration. Enable via Dashboard > Swarm > Enable Swarm. Tasks fetched from `swarm.vscode.ts`.
+MCP server for multi-agent orchestration. Configure per agent (Claude, Codex, Gemini) in Dashboard > Swarm. Tasks fetched from `swarm.vscode.ts`.

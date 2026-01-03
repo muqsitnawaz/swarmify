@@ -62,6 +62,8 @@ interface RunningCounts {
 interface AgentInstallStatus {
   installed: boolean
   cliAvailable: boolean
+  mcpEnabled: boolean
+  commandInstalled: boolean
 }
 
 interface SwarmStatus {
@@ -143,11 +145,9 @@ const BUILT_IN_AGENTS = [
 
 const RESERVED_NAMES = ['CC', 'CX', 'GX', 'OC', 'CR', 'SH']
 const SWARM_AGENT_LABELS: Record<SwarmAgentType, string> = {
-  cursor: 'Cursor',
   codex: 'Codex',
   claude: 'Claude',
-  gemini: 'Gemini',
-  opencode: 'OpenCode'
+  gemini: 'Gemini'
 }
 
 // Install commands/links for each agent
@@ -193,9 +193,9 @@ export default function App() {
     mcpEnabled: false,
     commandInstalled: false,
     agents: {
-      claude: { installed: false, cliAvailable: false },
-      codex: { installed: false, cliAvailable: false },
-      gemini: { installed: false, cliAvailable: false },
+      claude: { installed: false, cliAvailable: false, mcpEnabled: false, commandInstalled: false },
+      codex: { installed: false, cliAvailable: false, mcpEnabled: false, commandInstalled: false },
+      gemini: { installed: false, cliAvailable: false, mcpEnabled: false, commandInstalled: false },
     }
   })
   const [isAdding, setIsAdding] = useState(false)
@@ -220,6 +220,7 @@ export default function App() {
   const [expandedAgents, setExpandedAgents] = useState<Set<string>>(new Set())
   const [tasksPage, setTasksPage] = useState(1)
   const TASKS_PER_PAGE = 10
+  const [swarmInstalling, setSwarmInstalling] = useState(false)
 
   // Agent terminals drill-down state
   const [selectedAgentType, setSelectedAgentType] = useState<string | null>(null)
@@ -254,6 +255,12 @@ export default function App() {
         setInstalledAgents(message.installedAgents)
       } else if (message.type === 'defaultAgentData') {
         setDefaultAgent(message.defaultAgent)
+      } else if (message.type === 'swarmStatus') {
+        if (message.swarmStatus) setSwarmStatus(message.swarmStatus)
+      } else if (message.type === 'swarmInstallStart') {
+        setSwarmInstalling(true)
+      } else if (message.type === 'swarmInstallDone') {
+        setSwarmInstalling(false)
       }
     }
 
@@ -395,8 +402,9 @@ export default function App() {
     return firstCwd
   }
 
-  const handleEnableSwarm = () => {
-    vscode.postMessage({ type: 'enableSwarm' })
+  const handleInstallSwarmAgent = (agent: SwarmAgentType) => {
+    setSwarmInstalling(true)
+    vscode.postMessage({ type: 'installSwarmAgent', agent })
   }
 
   const saveSettings = (newSettings: AgentSettings) => {
@@ -1042,60 +1050,57 @@ export default function App() {
           {/* Swarm Integration */}
           <section>
             <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
-              Integration
+              Swarm MCP Configuration
             </h2>
             <div className="space-y-2">
-              {/* Claude */}
-              <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-[var(--muted)]">
-                <div className="flex items-center gap-3">
-                  <img src={icons.claude} alt="Claude" className="w-5 h-5" />
-                  <span className="text-sm font-medium">Claude</span>
-                </div>
-                <span className={`px-2 py-0.5 text-xs font-medium rounded ${
-                  swarmStatus.agents.claude.installed
-                    ? 'bg-green-500/20 text-green-400'
-                    : 'bg-[var(--secondary)] text-[var(--muted-foreground)]'
-                }`}>
-                  {swarmStatus.agents.claude.installed ? 'Installed' : 'Not installed'}
-                </span>
-              </div>
+              {(['claude', 'codex', 'gemini'] as SwarmAgentType[]).map((agent) => {
+                const status = swarmStatus.agents[agent];
+                const icon = icons[agent];
+                const label = SWARM_AGENT_LABELS[agent];
+                const showInstall = status.cliAvailable && !(status.mcpEnabled && status.commandInstalled);
+                const statusBadge = status.cliAvailable
+                  ? status.installed
+                    ? { text: 'Installed', tone: 'bg-green-500/20 text-green-400' }
+                    : { text: 'Not installed', tone: 'bg-[var(--secondary)] text-[var(--muted-foreground)]' }
+                  : { text: 'CLI not found', tone: 'bg-[var(--secondary)] text-[var(--muted-foreground)]' };
 
-              {/* Codex */}
-              <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-[var(--muted)]">
-                <div className="flex items-center gap-3">
-                  <img src={icons.codex} alt="Codex" className="w-5 h-5" />
-                  <span className="text-sm font-medium">Codex</span>
-                </div>
-                <span className={`px-2 py-0.5 text-xs font-medium rounded ${
-                  swarmStatus.agents.codex.installed
-                    ? 'bg-green-500/20 text-green-400'
-                    : 'bg-[var(--secondary)] text-[var(--muted-foreground)]'
-                }`}>
-                  {swarmStatus.agents.codex.installed ? 'Installed' : 'Not installed'}
-                </span>
-              </div>
-
-              {/* Gemini */}
-              <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-[var(--muted)]">
-                <div className="flex items-center gap-3">
-                  <img src={icons.gemini} alt="Gemini" className="w-5 h-5" />
-                  <span className="text-sm font-medium">Gemini</span>
-                </div>
-                <span className={`px-2 py-0.5 text-xs font-medium rounded ${
-                  swarmStatus.agents.gemini.installed
-                    ? 'bg-green-500/20 text-green-400'
-                    : 'bg-[var(--secondary)] text-[var(--muted-foreground)]'
-                }`}>
-                  {swarmStatus.agents.gemini.installed ? 'Installed' : 'Not installed'}
-                </span>
-              </div>
-
-              {/* Enable button if any agent not installed */}
-              {(!swarmStatus.agents.claude.installed || !swarmStatus.agents.codex.installed || !swarmStatus.agents.gemini.installed) && (
-                <Button onClick={handleEnableSwarm} className="w-full mt-2">
-                  Enable Swarm
-                </Button>
-              )}
+                return (
+                  <div key={agent} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)]">
+                    <img src={icon} alt={label} className="w-5 h-5" />
+                    <span className="text-sm font-medium w-20">{label}</span>
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className={`px-2 py-0.5 rounded ${statusBadge.tone}`}>{statusBadge.text}</span>
+                      {status.cliAvailable && (
+                        <>
+                          <span className={`px-2 py-0.5 rounded ${status.mcpEnabled ? 'bg-green-500/15 text-green-300' : 'bg-[var(--secondary)] text-[var(--muted-foreground)]'}`}>
+                            MCP {status.mcpEnabled ? 'Enabled' : 'Missing'}
+                          </span>
+                          <span className={`px-2 py-0.5 rounded ${status.commandInstalled ? 'bg-green-500/15 text-green-300' : 'bg-[var(--secondary)] text-[var(--muted-foreground)]'}`}>
+                            Command {status.commandInstalled ? 'Installed' : 'Missing'}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                    <div className="flex-1" />
+                    {showInstall && (
+                      <Button
+                        size="sm"
+                        onClick={() => handleInstallSwarmAgent(agent)}
+                        disabled={swarmInstalling}
+                      >
+                        {swarmInstalling ? (
+                          <span className="flex items-center gap-1.5">
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                            Installing...
+                          </span>
+                        ) : (
+                          'Install'
+                        )}
+                      </Button>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           </section>
 

@@ -514,19 +514,28 @@ export function getDelta(
   agentType: string,
   status: string,
   events: any[],
-  sinceTimestamp?: string  // Optional ISO timestamp - filter events after this time
+  since?: string | number  // Optional: ISO timestamp (string) or event index (number)
 ): any {
-  // Filter events by timestamp if provided
+  // Filter events by timestamp (string) or index (number)
   let newEvents: any[];
-  if (sinceTimestamp) {
-    const sinceDate = new Date(sinceTimestamp);
+  let sinceEvent = 0;
+
+  if (since === undefined || since === null) {
+    // No filter - return all events
+    newEvents = events;
+  } else if (typeof since === 'number') {
+    // Backward compatibility: event index
+    sinceEvent = since;
+    newEvents = events.slice(sinceEvent);
+  } else if (typeof since === 'string') {
+    // New behavior: timestamp filtering
+    const sinceDate = new Date(since);
     newEvents = events.filter((e: any) => {
       if (!e.timestamp) return false;
       const eventDate = new Date(e.timestamp);
       return eventDate > sinceDate;
     });
   } else {
-    // No timestamp - return all events
     newEvents = events;
   }
 
@@ -534,6 +543,7 @@ export function getDelta(
     return {
       agent_id: agentId,
       status: status,
+      since_event: sinceEvent,  // For backward compatibility
       new_events_count: 0,
       has_changes: false,
       new_files_created: [],
@@ -553,7 +563,9 @@ export function getDelta(
     agent_id: agentId,
     agent_type: agentType,
     status: status,
+    since_event: sinceEvent,  // For backward compatibility
     new_events_count: newEvents.length,
+    current_event_count: sinceEvent + newEvents.length,  // For backward compatibility
     has_changes: true,
     new_files_created: Array.from(summary.filesCreated),
     new_files_modified: Array.from(summary.filesModified),
@@ -562,6 +574,11 @@ export function getDelta(
     new_bash_commands: summary.bashCommands.slice(-15),
     new_messages: getLastMessages(newEvents, 5),
     new_tool_count: summary.toolCallCount,
+    new_tool_calls: newEvents  // For backward compatibility
+      .filter((e: any) => ['tool_use', 'bash', 'file_write'].includes(e.type))
+      .slice(-5)
+      .map((e: any) => `${e.tool || 'unknown'}: ${e.command || e.path || ''}`),
+    latest_message: summary.finalMessage,  // For backward compatibility
     new_errors: summary.errors,
   };
 }

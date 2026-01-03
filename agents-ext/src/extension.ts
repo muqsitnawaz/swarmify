@@ -26,8 +26,10 @@ import {
   getTerminalDisplayInfo,
   parseTerminalName,
   sanitizeLabel,
-  formatTerminalTitle
+  formatTerminalTitle,
+  TerminalIdentificationOptions
 } from './utils';
+import * as path from 'path';
 import {
   createTmuxTerminal,
   getTmuxState,
@@ -245,6 +247,36 @@ interface AgentTerminalInfo {
   iconPath: vscode.IconPath | null;
 }
 
+/**
+ * Extract identification options from a VS Code terminal.
+ */
+function extractTerminalIdentificationOptions(terminal: vscode.Terminal): TerminalIdentificationOptions {
+  const opts = terminal.creationOptions as vscode.TerminalOptions;
+  const env = opts?.env;
+  const terminalId = env ? env['AGENT_TERMINAL_ID'] : undefined;
+
+  // Extract icon filename from iconPath
+  let iconFilename: string | null = null;
+  if (opts?.iconPath) {
+    const icon: any = opts.iconPath;
+    if (icon instanceof vscode.Uri) {
+      iconFilename = path.basename(icon.fsPath);
+    } else if (icon && typeof icon === 'object') {
+      // Handle { light: Uri; dark: Uri } shape
+      const candidate = icon.light ?? icon.dark ?? icon;
+      if (candidate instanceof vscode.Uri || (candidate && typeof candidate.fsPath === 'string')) {
+        iconFilename = path.basename(candidate.fsPath);
+      }
+    }
+  }
+
+  return {
+    name: terminal.name,
+    terminalId: terminalId as string | undefined,
+    iconFilename
+  };
+}
+
 function identifyAgentTerminal(terminal: vscode.Terminal, extensionPath: string): AgentTerminalInfo {
   // First check terminals module state
   const entry = terminals.getByTerminal(terminal);
@@ -257,14 +289,15 @@ function identifyAgentTerminal(terminal: vscode.Terminal, extensionPath: string)
     };
   }
 
-  // Fall back to strict name parsing using shared util
-  const parsed = parseTerminalName(terminal.name);
-  if (parsed.isAgent && parsed.prefix) {
+  // Fall back to central identification function with all available inputs
+  const identOpts = extractTerminalIdentificationOptions(terminal);
+  const info = getTerminalDisplayInfo(identOpts);
+  if (info.isAgent && info.prefix) {
     return {
       isAgent: true,
-      prefix: parsed.prefix,
-      label: parsed.label,
-      iconPath: buildIconPath(parsed.prefix, extensionPath)
+      prefix: info.prefix,
+      label: info.label,
+      iconPath: buildIconPath(info.prefix, extensionPath)
     };
   }
 
@@ -311,8 +344,16 @@ function getAgentConfigFromTerminal(
 // scanExistingEditorTerminals is now terminals.scanExisting()
 
 // Infer agent config from terminal name for scan
-function inferAgentConfigFromName(name: string, extensionPath: string): Omit<AgentConfig, 'count'> | null {
-  const info = getTerminalDisplayInfo(name);
+function inferAgentConfigFromName(name: string, extensionPath: string, knownPrefix?: string | null): Omit<AgentConfig, 'count'> | null {
+  // Build identification options - when called from scanExisting, we may have a knownPrefix
+  const identOpts: TerminalIdentificationOptions = { name };
+  // If we have a knownPrefix from the env var extraction, we can reconstruct a terminalId pattern
+  // to trigger the terminalId fallback strategy
+  if (knownPrefix) {
+    identOpts.terminalId = `${knownPrefix}-0`; // Fake ID just to trigger the strategy
+  }
+
+  const info = getTerminalDisplayInfo(identOpts);
   if (!info.isAgent || !info.prefix) return null;
 
   const def = getBuiltInDefByTitle(info.prefix);
@@ -335,7 +376,7 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(agentStatusBarItem);
 
   // Scan existing terminals in the editor area to register any agent terminals
-  terminals.scanExisting((name) => inferAgentConfigFromName(name, context.extensionPath), context).catch(err => {
+  terminals.scanExisting((name, knownPrefix) => inferAgentConfigFromName(name, context.extensionPath, knownPrefix), context).catch(err => {
     console.error('[EXTENSION] Error scanning existing terminals:', err);
   });
 
@@ -347,17 +388,19 @@ export async function activate(context: vscode.ExtensionContext) {
         return;
       }
 
-      const info = getTerminalDisplayInfo(terminal.name);
+      // Use central identification with all available inputs
+      const identOpts = extractTerminalIdentificationOptions(terminal);
+      const info = getTerminalDisplayInfo(identOpts);
       if (!info.isAgent || !info.prefix) {
         return;
       }
 
-      const agentConfig = inferAgentConfigFromName(terminal.name, context.extensionPath);
+      const agentConfig = inferAgentConfigFromName(terminal.name, context.extensionPath, info.prefix);
       if (!agentConfig) {
         return;
       }
 
-      const id = terminals.nextId(info.prefix);
+      const id = identOpts.terminalId || terminals.nextId(info.prefix);
       let pid: number | undefined;
       try {
         pid = await terminal.processId;
@@ -892,7 +935,7 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
   const agents = getAgentsToOpen(context);
 
   if (agents.length === 0) {
-    vscode.window.showInformationMessage('No agents configured to open on login. Use "Agents: Dashboard" to configure.');
+    vscode.window.showInformationMessage('No agents configured to open on login. Use "Agents" to configure.');
     return;
   }
 

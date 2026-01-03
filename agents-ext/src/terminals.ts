@@ -35,7 +35,7 @@ export function countRunningFromNames(terminalNames: string[]): RunningCounts {
   };
 
   for (const name of terminalNames) {
-    const info = getTerminalDisplayInfo(name);
+    const info = getTerminalDisplayInfo({ name });
     if (!info.isAgent || !info.prefix) continue;
 
     switch (info.prefix) {

@@ -11,6 +11,7 @@ import { readPromptsFromPath, writePromptsToPath, DEFAULT_PROMPTS } from './prom
 import * as terminals from './terminals.vscode';
 import * as swarm from './swarm.vscode';
 import { formatTerminalTitle, parseTerminalName } from './utils';
+import { getBuiltInByKey } from './agents';
 
 // Check if a CLI command exists on the system
 function commandExists(cmd: string): Promise<boolean> {
@@ -170,7 +171,7 @@ export function openPanel(context: vscode.ExtensionContext): void {
 
   settingsPanel = vscode.window.createWebviewPanel(
     'agentsSettings',
-    'Agents: Dashboard',
+    'Agents',
     vscode.ViewColumn.One,
     {
       enableScripts: true,
@@ -215,8 +216,21 @@ export function openPanel(context: vscode.ExtensionContext): void {
         maybeUpdateTerminalTitles(previous, message.settings);
         break;
       case 'enableSwarm':
-        await swarm.enableSwarm(context);
+        settingsPanel?.webview.postMessage({ type: 'swarmInstallStart' });
+        await swarm.enableSwarm(context, (swarmStatus) => {
+          settingsPanel?.webview.postMessage({ type: 'swarmStatus', swarmStatus });
+        });
+        settingsPanel?.webview.postMessage({ type: 'swarmInstallDone' });
         updateWebview();
+        break;
+      case 'installSwarmAgent':
+        settingsPanel?.webview.postMessage({ type: 'swarmInstallStart' });
+        await swarm.enableSwarmForAgent(message.agent, context, (swarmStatus) => {
+          settingsPanel?.webview.postMessage({ type: 'swarmStatus', swarmStatus });
+        });
+        const refreshedStatus = await swarm.getSwarmStatus();
+        settingsPanel?.webview.postMessage({ type: 'swarmStatus', swarmStatus: refreshedStatus });
+        settingsPanel?.webview.postMessage({ type: 'swarmInstallDone' });
         break;
       case 'fetchTasks':
         const tasks = await swarm.fetchTasks(message.limit);
@@ -259,8 +273,9 @@ export function openPanel(context: vscode.ExtensionContext): void {
           const commandId = `agents.new${agentKey.replace(/[^a-zA-Z0-9]/g, '')}`;
           vscode.commands.executeCommand(commandId);
         } else {
-          // Built-in agent - command ID is agents.new{Key} with first letter capitalized
-          const commandId = `agents.new${agentKey.charAt(0).toUpperCase() + agentKey.slice(1)}`;
+          // Built-in agent - prefer explicit commandId from registry (handles casing like OpenCode)
+          const builtIn = getBuiltInByKey(agentKey);
+          const commandId = builtIn?.commandId || `agents.new${agentKey.charAt(0).toUpperCase() + agentKey.slice(1)}`;
           vscode.commands.executeCommand(commandId);
         }
         break;

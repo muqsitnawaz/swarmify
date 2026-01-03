@@ -117,19 +117,38 @@ export function getExpandedAgentName(prefix: string): string {
   return expandedNames[prefix] || prefix;
 }
 
+// Bidirectional icon <-> prefix mapping
+const ICON_TO_PREFIX: Record<string, string> = {
+  'claude.png': CLAUDE_TITLE,
+  'chatgpt.png': CODEX_TITLE,
+  'gemini.png': GEMINI_TITLE,
+  'opencode.png': OPENCODE_TITLE,
+  'cursor.png': CURSOR_TITLE,
+  'agents.png': SHELL_TITLE
+};
+
+const PREFIX_TO_ICON: Record<string, string> = {
+  [CLAUDE_TITLE]: 'claude.png',
+  [CODEX_TITLE]: 'chatgpt.png',
+  [GEMINI_TITLE]: 'gemini.png',
+  [OPENCODE_TITLE]: 'opencode.png',
+  [CURSOR_TITLE]: 'cursor.png',
+  [SHELL_TITLE]: 'agents.png'
+};
+
 /**
  * Get the icon filename for an agent prefix.
  */
 export function getIconFilename(prefix: string): string | null {
-  const iconMap: Record<string, string> = {
-    [CLAUDE_TITLE]: 'claude.png',
-    [CODEX_TITLE]: 'chatgpt.png',
-    [GEMINI_TITLE]: 'gemini.png',
-    [OPENCODE_TITLE]: 'opencode.png',
-    [CURSOR_TITLE]: 'cursor.png',
-    [SHELL_TITLE]: 'agents.png'
-  };
-  return iconMap[prefix] || null;
+  return PREFIX_TO_ICON[prefix] || null;
+}
+
+/**
+ * Get the agent prefix from an icon filename.
+ * Reverse lookup for icon-based identification.
+ */
+export function getPrefixFromIconFilename(iconFilename: string): string | null {
+  return ICON_TO_PREFIX[iconFilename] || null;
 }
 
 export interface TerminalTitleOptions {
@@ -150,7 +169,9 @@ export function formatTerminalTitle(prefix: string, options?: TerminalTitleOptio
     return base;
   }
 
-  return `${base} - ${label}`;
+  // If label is set and we show labels in titles, display ONLY the label
+  // to avoid redundancy with the terminal icon.
+  return label;
 }
 
 export interface TerminalDisplayInfo {
@@ -163,36 +184,91 @@ export interface TerminalDisplayInfo {
 }
 
 /**
- * Get complete display info for a terminal by name.
- * Single source of truth for identifying agent terminals.
+ * Options for terminal identification.
+ * Multiple inputs allow fallback strategies when name parsing fails.
  */
-export function getTerminalDisplayInfo(terminalName: string): TerminalDisplayInfo {
-  const parsed = parseTerminalName(terminalName);
+export interface TerminalIdentificationOptions {
+  /** Terminal name (required) */
+  name: string;
+  /** Icon filename (e.g., "claude.png") - extracted from terminal.creationOptions.iconPath */
+  iconFilename?: string | null;
+  /** Terminal ID from AGENT_TERMINAL_ID env var (e.g., "CC-1735824000000-1") */
+  terminalId?: string | null;
+}
 
-  if (!parsed.isAgent || !parsed.prefix) {
-    return {
-      isAgent: false,
-      prefix: null,
-      label: null,
-      expandedName: null,
-      statusBarText: null,
-      iconFilename: null
-    };
+/**
+ * Get complete display info for a terminal.
+ *
+ * SINGLE SOURCE OF TRUTH for identifying agent terminals.
+ * Uses multiple fallback strategies in priority order:
+ *
+ * 1. Parse name - handles "CC", "Claude", "CC - label", "Claude - label"
+ * 2. Extract prefix from AGENT_TERMINAL_ID env var
+ * 3. Reverse-lookup prefix from icon filename
+ *
+ * When name parsing fails but we identify via env/icon, the terminal name
+ * is treated as the label (e.g., name="auth feature" becomes the label).
+ */
+export function getTerminalDisplayInfo(options: TerminalIdentificationOptions): TerminalDisplayInfo {
+  const { name, iconFilename, terminalId } = options;
+
+  // Strategy 1: Parse name (handles "CC", "Claude", "CC - label", etc.)
+  const parsed = parseTerminalName(name);
+  if (parsed.isAgent && parsed.prefix) {
+    return buildDisplayInfo(parsed.prefix, parsed.label);
   }
 
-  const expandedName = getExpandedAgentName(parsed.prefix);
-  const statusBarText = parsed.label
-    ? `${expandedName} - ${parsed.label}`
+  // Strategy 2: Extract prefix from AGENT_TERMINAL_ID env var
+  if (terminalId) {
+    const prefix = getPrefixFromTerminalId(terminalId);
+    if (prefix && KNOWN_PREFIXES.includes(prefix)) {
+      return buildDisplayInfo(prefix, name.trim() || null);
+    }
+  }
+
+  // Strategy 3: Reverse-lookup from icon filename
+  if (iconFilename) {
+    const prefix = getPrefixFromIconFilename(iconFilename);
+    if (prefix) {
+      return buildDisplayInfo(prefix, name.trim() || null);
+    }
+  }
+
+  // Not an agent terminal
+  return {
+    isAgent: false,
+    prefix: null,
+    label: null,
+    expandedName: null,
+    statusBarText: null,
+    iconFilename: null
+  };
+}
+
+function buildDisplayInfo(prefix: string, label: string | null): TerminalDisplayInfo {
+  const expandedName = getExpandedAgentName(prefix);
+  const statusBarText = label
+    ? `${expandedName} - ${label}`
     : expandedName;
 
   return {
     isAgent: true,
-    prefix: parsed.prefix,
-    label: parsed.label,
+    prefix,
+    label,
     expandedName,
     statusBarText,
-    iconFilename: getIconFilename(parsed.prefix)
+    iconFilename: getIconFilename(prefix)
   };
+}
+
+/**
+ * Extract agent prefix from a terminal ID (e.g., "CC-1735824000000-1" -> "CC")
+ */
+export function getPrefixFromTerminalId(terminalId: string): string | null {
+  const prefix = terminalId.split('-')[0];
+  // We don't strictly check KNOWN_PREFIXES here to allow custom agents 
+  // which might use their name as prefix.
+  return prefix || null;
 }
 
 /**
