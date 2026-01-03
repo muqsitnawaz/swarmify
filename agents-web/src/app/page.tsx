@@ -4,7 +4,6 @@ import { useState } from "react";
 
 type AgentType = "claude" | "codex" | "gemini" | "cursor";
 type FileTab = "auth.ts" | "README.md";
-type UseCaseId = "review" | "tests" | "refactor" | "multi";
 
 const agents: { id: AgentType; name: string; logo: string; label: string }[] = [
   { id: "claude", name: "Claude", logo: "/claude.png", label: "Stripe integration" },
@@ -14,7 +13,7 @@ const agents: { id: AgentType; name: string; logo: string; label: string }[] = [
 ];
 
 const useCaseItems: {
-  id: UseCaseId;
+  id: string;
   title: string;
   subtitle: string;
   bullets: string[];
@@ -74,7 +73,6 @@ const useCaseItems: {
 export default function Home() {
   const [activeAgent, setActiveAgent] = useState<AgentType>("claude");
   const [activePanel, setActivePanel] = useState<"agent" | "file">("agent");
-  const [activeUseCase, setActiveUseCase] = useState<UseCaseId>("tests");
 
   return (
     <main className="min-h-screen">
@@ -425,10 +423,11 @@ export default function Home() {
           <p className="text-[#888] text-center mb-12 max-w-2xl mx-auto">
             Agents work in parallel. Tap a workflow to watch how it plays out inside your IDE.
           </p>
-          <UseCaseCarousel
-            activeUseCase={activeUseCase}
-            onSelect={setActiveUseCase}
-          />
+          <div className="space-y-12">
+            {useCaseItems.map((item) => (
+              <UseCaseSection key={item.id} item={item} />
+            ))}
+          </div>
         </div>
       </section>
 
@@ -597,55 +596,27 @@ function Feature({ title, description }: { title: string; description: string })
   );
 }
 
-function UseCaseCarousel({
-  activeUseCase,
-  onSelect
-}: {
-  activeUseCase: UseCaseId;
-  onSelect: (id: UseCaseId) => void;
-}) {
-  const current = useCaseItems.find((item) => item.id === activeUseCase) ?? useCaseItems[0];
-
+function UseCaseSection({ item }: { item: typeof useCaseItems[number] }) {
   return (
     <div className="rounded-3xl border border-[#0f1b2d] bg-gradient-to-br from-[#0c121b] via-[#0b1119] to-[#090e14] p-6 md:p-8 shadow-[0_25px_60px_rgba(0,0,0,0.45)]">
       <div className="grid md:grid-cols-[1.05fr_1fr] gap-8 items-center">
         <div className="space-y-4">
-          <div className="flex flex-wrap gap-2">
-            {useCaseItems.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => onSelect(item.id)}
-                className={`text-sm px-3 py-2 rounded-full border transition-colors ${
-                  item.id === activeUseCase
-                    ? "border-[#3b82f6] bg-[#0f1724] text-white shadow-[0_0_20px_rgba(59,130,246,0.25)]"
-                    : "border-[#1f2a36] bg-[#0c0f14] text-[#9baec4] hover:border-[#2b3a4b]"
-                }`}
-              >
-                {item.title}
-              </button>
-            ))}
+          <div className="text-xs uppercase tracking-[0.18em] text-[#7aa2b6]">
+            Parallel workflow
           </div>
-
-          <div>
-            <div className="text-xs uppercase tracking-[0.18em] text-[#7aa2b6] mb-2">
-              Parallel workflow
-            </div>
-            <h3 className="text-2xl font-semibold text-white leading-snug">{current.title}</h3>
-            <p className="text-[#9ab0bf] text-sm mt-2">{current.subtitle}</p>
-          </div>
-
+          <h3 className="text-2xl font-semibold text-white leading-snug">{item.title}</h3>
+          <p className="text-[#9ab0bf] text-sm">{item.subtitle}</p>
           <ul className="space-y-2 text-[#cbd5e1] text-sm">
-            {current.bullets.map((item) => (
-              <li key={item} className="flex gap-2">
+            {item.bullets.map((bullet) => (
+              <li key={bullet} className="flex gap-2">
                 <span className="mt-[6px] inline-block h-1.5 w-1.5 rounded-full bg-[#3b82f6]" />
-                <span>{item}</span>
+                <span>{bullet}</span>
               </li>
             ))}
           </ul>
-
           <div className="flex items-center gap-2 text-[12px] text-[#8fb3c4] pt-1">
             <span className="uppercase tracking-[0.16em] text-[#6b8298]">Artifacts</span>
-            {current.artifacts.map((artifact) => (
+            {item.artifacts.map((artifact) => (
               <span
                 key={artifact}
                 className="px-2 py-1 rounded-full bg-[#111821] border border-[#1f2a36] text-[#dbeafe]"
@@ -656,7 +627,7 @@ function UseCaseCarousel({
           </div>
         </div>
 
-        <UseCaseMedia posterClass={current.posterClass} title={current.title} />
+        <UseCaseMedia posterClass={item.posterClass} title={item.title} />
       </div>
     </div>
   );
