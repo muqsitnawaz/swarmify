@@ -75,6 +75,34 @@ describe('API Integration Tests', () => {
       expect(typeof geminiAvailable).toBe('boolean');
       expect(typeof claudeAvailable).toBe('boolean');
     });
+
+    test('should reject duplicate task names and suggest alternative', async () => {
+      console.log('\n--- TEST: duplicate task name rejection ---');
+
+      // Seed an existing agent with the task name
+      const existing = new AgentProcess('agent-existing', 'dup-task', 'codex', 'noop', null, 'plan', null, AgentStatus.RUNNING);
+      manager['agents'].set(existing.agentId, existing);
+
+      let error: any = null;
+      try {
+        await handleSpawn(
+          manager,
+          'dup-task',
+          'codex',
+          'Write hello world',
+          null,
+          null,
+          null
+        );
+      } catch (err: any) {
+        error = err;
+      }
+
+      expect(error).toBeTruthy();
+      expect(error.code).toBe('TASK_NAME_IN_USE');
+      expect(error.payload?.suggested_task_name).toBe('dup-task-1');
+      expect(error.payload?.cwd_conflicts).toContain('(none)');
+    });
   });
 
   describe('handleStatus', () => {

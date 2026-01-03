@@ -1046,6 +1046,12 @@ function setStatusBarLabelForActiveTerminal(context: vscode.ExtensionContext) {
       const newTitle = buildTerminalTitle(info.prefix, cleaned || undefined, context);
       await terminals.renameTerminal(terminal, newTitle);
     }
+
+    // Mirror the label into Claude via /rename when applicable.
+    // Only fire when we have a non-empty label and the agent is Claude.
+    if (cleaned && info.prefix === CLAUDE_TITLE) {
+      terminal.sendText(`/rename ${cleaned}`, true);
+    }
   });
 }
 

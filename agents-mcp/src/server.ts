@@ -34,6 +34,8 @@ IMPORTANT: Avoid spawning the same agent type as yourself. If you are Claude, pr
 
 Only installed agent CLIs are listed below.
 
+Task names must be unique. If a name is already in use, the server will reject the request and suggest a free variant (e.g., "task-1"). Set force=true to override, but prefer picking the suggested name. 
+
 MODE PARAMETER (required for writes):
 - mode='edit' - Agent CAN modify files (use this for implementation tasks)
 - mode='plan' - Agent is READ-ONLY (default, use for research/exploration)
@@ -95,6 +97,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: 'string',
               enum: ['medium', 'high'],
               description: "Effort level: 'medium' (default) uses balanced models, 'high' uses max-capability models.",
+            },
+            force: {
+              type: 'boolean',
+              description: 'Override unique task_name check (allows reusing a task name).',
             },
           },
           required: ['task_name', 'agent_type', 'prompt'],
@@ -191,7 +197,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         args.prompt as string,
         (args.cwd as string) || null,
         (args.mode as string) || null,
-        (args.effort as 'medium' | 'high') || 'medium'
+        (args.effort as 'medium' | 'high') || 'medium',
+        Boolean(args.force)
       );
     } else if (name === 'status') {
       if (!args) {
@@ -231,6 +238,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     };
   } catch (err: any) {
     console.error(`Error in tool ${name}:`, err);
+    const payload = err?.payload;
+    if (payload) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(payload, null, 2),
+          },
+        ],
+      };
+    }
     return {
       content: [
         {

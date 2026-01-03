@@ -69,9 +69,9 @@ export default function Home() {
           <h1 className="hero-heading text-5xl md:text-7xl font-bold tracking-tight leading-[1.1] mb-6">
             Run multiple agents.
             <br />
-            <span className="hero-muted text-[#888]">Review their work in your IDE.</span>
+            <span className="hero-muted text-[#94a3b8]">Review their work in your IDE.</span>
           </h1>
-          <p className="text-xl text-[#888] max-w-xl mb-10">
+          <p className="text-xl text-[#94a3b8] max-w-xl mb-10">
             CLI agents are powerful but chaotic at scale. Swarmify puts them in editor tabs—with labels, rendered markdown, and diff visibility.
           </p>
         </div>
@@ -132,7 +132,7 @@ export default function Home() {
           <h2 className="text-3xl font-bold mb-4 text-center">
             CLI agents meet IDE visibility
           </h2>
-          <p className="text-[#888] text-center mb-12 max-w-2xl mx-auto">
+          <p className="text-[#94a3b8] text-center mb-12 max-w-2xl mx-auto">
             The flexibility of CLI agents. The visibility of your editor. No tradeoffs.
           </p>
           <div className="rounded-2xl border border-[#1a1a1a] bg-gradient-to-br from-[#0b1116] via-[#0b0f14] to-[#0a0a0a] p-1 overflow-x-auto">
@@ -216,7 +216,7 @@ export default function Home() {
                 <h2 className="text-3xl md:text-4xl font-bold mb-3">
                   Ship 3x faster with Swarm
                 </h2>
-                <p className="text-[#888] text-lg max-w-2xl">
+                <p className="text-[#94a3b8] text-lg max-w-2xl">
                   Plan once, then run multiple agents in parallel. Nine hours of work,
                   done in three.
                 </p>
@@ -259,7 +259,7 @@ export default function Home() {
           <h2 className="text-3xl font-bold mb-4 text-center">
             How it works
           </h2>
-          <p className="text-[#888] text-center mb-12 max-w-2xl mx-auto">
+          <p className="text-[#94a3b8] text-center mb-12 max-w-2xl mx-auto">
             Install the extension. Run agents in tabs. Optionally, let agents spawn sub-agents.
           </p>
           <div className="grid md:grid-cols-2 gap-6 mb-16">
@@ -275,10 +275,10 @@ export default function Home() {
                 </div>
                 <div>
                   <h3 className="font-semibold">Swarmify Extension</h3>
-                  <span className="text-xs text-[#888]">Required</span>
+                  <span className="text-xs text-[#94a3b8]">Required</span>
                 </div>
               </div>
-              <p className="text-[#888] text-sm mb-4">
+              <p className="text-[#94a3b8] text-sm mb-4">
                 Your editor handles 30 tabs. Now agents live there too. Split-view agents side by side, same shortcuts you use for files.
               </p>
               <a
@@ -303,10 +303,10 @@ export default function Home() {
                 </div>
                 <div>
                   <h3 className="font-semibold">Swarm Mode</h3>
-                  <span className="text-xs text-[#888]">Optional</span>
+                  <span className="text-xs text-[#94a3b8]">Optional</span>
                 </div>
               </div>
-              <p className="text-[#888] text-sm mb-4">
+              <p className="text-[#94a3b8] text-sm mb-4">
                 Let one agent spawn others for parallel sub-tasks. Delegate tests, docs, refactors—all from one prompt.
               </p>
               <a
@@ -345,7 +345,7 @@ export default function Home() {
           <h2 className="text-3xl font-bold mb-4 text-center">
             Terminal tabs don&apos;t scale. Editor tabs do.
           </h2>
-          <p className="text-[#888] text-center mb-16 max-w-2xl mx-auto">
+          <p className="text-[#94a3b8] text-center mb-16 max-w-2xl mx-auto">
             No more tmux panes. No more iTerm tab chaos. Just editor tabs.
           </p>
           <div className="grid md:grid-cols-2 gap-8">
@@ -395,7 +395,7 @@ export default function Home() {
           <h2 className="text-3xl font-bold mb-4 text-center">
             Common workflows
           </h2>
-          <p className="text-[#888] text-center mb-16 max-w-2xl mx-auto">
+          <p className="text-[#94a3b8] text-center mb-16 max-w-2xl mx-auto">
             Multiple agents, one window. Here's how teams use Swarmify.
           </p>
           <div className="space-y-16">
@@ -415,21 +415,21 @@ export default function Home() {
               <h2 className="text-3xl font-bold mb-4">
                 Reuse prompts, move faster
               </h2>
-              <p className="text-[#888] text-lg mb-6">
+              <p className="text-[#94a3b8] text-lg mb-6">
                 Save your most-used agent prompts and launch them in seconds.
                 No more rewriting the same instructions for every task.
               </p>
               <div className="space-y-3 text-sm text-[#ccc]">
-                <div className="flex items-start gap-3">
-                  <span className="mt-1 h-2 w-2 rounded-full bg-[#888]" />
+                <div className="grid grid-cols-[auto_1fr] gap-x-3">
+                  <span aria-hidden="true" className="mt-[0.45em] h-2 w-2 rounded-full bg-[#3b82f6] shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
                   <span>Search and pin the prompts you use every day.</span>
                 </div>
-                <div className="flex items-start gap-3">
-                  <span className="mt-1 h-2 w-2 rounded-full bg-[#888]" />
+                <div className="grid grid-cols-[auto_1fr] gap-x-3">
+                  <span aria-hidden="true" className="mt-[0.45em] h-2 w-2 rounded-full bg-[#3b82f6] shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
                   <span>Kick off complex tasks with one shortcut.</span>
                 </div>
-                <div className="flex items-start gap-3">
-                  <span className="mt-1 h-2 w-2 rounded-full bg-[#888]" />
+                <div className="grid grid-cols-[auto_1fr] gap-x-3">
+                  <span aria-hidden="true" className="mt-[0.45em] h-2 w-2 rounded-full bg-[#3b82f6] shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
                   <span>Keep workflows consistent across multiple agents.</span>
                 </div>
               </div>
@@ -445,21 +445,21 @@ export default function Home() {
               <h2 className="text-3xl font-bold mb-4">
                 Markdown that&apos;s readable and actionable
               </h2>
-              <p className="text-[#888] text-lg mb-6">
+              <p className="text-[#94a3b8] text-lg mb-6">
                 Render agent-generated .md like Notion, check todos, and spin up tasks
                 without leaving your editor.
               </p>
               <div className="space-y-3 text-sm text-[#ccc]">
-                <div className="flex items-start gap-3">
-                  <span className="mt-1 h-2 w-2 rounded-full bg-[#888]" />
+                <div className="grid grid-cols-[auto_1fr] gap-x-3">
+                  <span aria-hidden="true" className="mt-[0.45em] h-2 w-2 rounded-full bg-[#3b82f6] shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
                   <span>Clean markdown view with tables, callouts, and inline code.</span>
                 </div>
-                <div className="flex items-start gap-3">
-                  <span className="mt-1 h-2 w-2 rounded-full bg-[#888]" />
+                <div className="grid grid-cols-[auto_1fr] gap-x-3">
+                  <span aria-hidden="true" className="mt-[0.45em] h-2 w-2 rounded-full bg-[#3b82f6] shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
                   <span>Clickable todos that can launch a task immediately.</span>
                 </div>
-                <div className="flex items-start gap-3">
-                  <span className="mt-1 h-2 w-2 rounded-full bg-[#888]" />
+                <div className="grid grid-cols-[auto_1fr] gap-x-3">
+                  <span aria-hidden="true" className="mt-[0.45em] h-2 w-2 rounded-full bg-[#3b82f6] shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
                   <span>Labels flow into tab titles so you always know what&apos;s running.</span>
                 </div>
               </div>
@@ -500,7 +500,7 @@ export default function Home() {
           <h2 className="text-3xl font-bold mb-4 text-center">
             Save an hour every day
           </h2>
-          <p className="text-[#888] text-center mb-12">
+          <p className="text-[#94a3b8] text-center mb-12">
             Keyboard shortcuts for everything you do repeatedly
           </p>
           <div className="grid md:grid-cols-2 gap-4 max-w-2xl mx-auto">
@@ -520,7 +520,7 @@ export default function Home() {
           <h2 className="text-4xl font-bold mb-6">
             Try Swarmify
           </h2>
-          <p className="text-xl text-[#888] mb-10">
+          <p className="text-xl text-[#94a3b8] mb-10">
             Run multiple agents. Review their work. Ship faster.
           </p>
           <a
@@ -536,7 +536,7 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="px-6 py-12 border-t border-[#1a1a1a]">
-        <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-[#888]">
+        <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-[#94a3b8]">
           <div>
             Swarmify
           </div>
@@ -556,9 +556,9 @@ export default function Home() {
 
 function Feature({ title, description }: { title: string; description: string }) {
   return (
-    <div className="p-6 rounded-xl border border-[#1a1a1a] hover:border-[#333] transition-colors">
+    <div className="p-6 rounded-xl border border-[#1a1a1a] hover:border-[#3b82f6]/50 transition-colors">
       <h3 className="text-lg font-semibold mb-2">{title}</h3>
-      <p className="text-[#888] text-sm leading-relaxed">{description}</p>
+      <p className="text-[#94a3b8] text-sm leading-relaxed">{description}</p>
     </div>
   );
 }
@@ -569,22 +569,22 @@ function UseCaseSection({ item }: { item: typeof useCaseItems[number] }) {
       <div className="space-y-4">
         <h3 className="text-xl font-semibold text-white">{item.title}</h3>
         <p className="text-[#9ab0bf] text-sm leading-relaxed">{item.description}</p>
-        <ul className="space-y-2 text-[#cbd5e1] text-sm">
+        <ul className="space-y-3 text-[#ccc] text-sm">
           {item.bullets.map((bullet) => (
-            <li key={bullet} className="flex gap-2">
-              <span className="mt-[6px] inline-block h-1 w-1 rounded-full bg-[#888]" />
+            <li key={bullet} className="grid grid-cols-[auto_1fr] gap-x-3">
+              <span aria-hidden="true" className="mt-[0.45em] h-2 w-2 rounded-full bg-[#3b82f6] shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
               <span>{bullet}</span>
             </li>
           ))}
         </ul>
         {item.footnote && (
-          <div className="pt-2 text-xs text-[#888] italic">
+          <div className="pt-2 text-xs text-[#94a3b8] italic">
             {item.footnote}
           </div>
         )}
         <div className="pt-2">
           <div className="text-[10px] uppercase tracking-wide text-[#666] mb-1">Example</div>
-          <div className="text-[#888] text-xs">{item.scenario}</div>
+          <div className="text-[#94a3b8] text-xs">{item.scenario}</div>
         </div>
       </div>
 
@@ -603,12 +603,12 @@ function UseCaseVisual({ scenario }: { scenario: string }) {
           <span className="font-medium">Claude</span>
           <span className="text-[10px] text-[#666]">— Feature impl</span>
         </div>
-        <div className="flex items-center gap-2 px-3 py-2 rounded-t-lg text-xs bg-[#161616] text-[#888]">
+        <div className="flex items-center gap-2 px-3 py-2 rounded-t-lg text-xs bg-[#161616] text-[#94a3b8]">
           <img src="/codex.png" alt="Codex" width={14} height={14} className="rounded-sm" />
           <span className="font-medium">Codex</span>
           <span className="text-[10px] text-[#666]">— Tests</span>
         </div>
-        <div className="flex items-center gap-2 px-3 py-2 rounded-t-lg text-xs bg-[#161616] text-[#888]">
+        <div className="flex items-center gap-2 px-3 py-2 rounded-t-lg text-xs bg-[#161616] text-[#94a3b8]">
           <FileIcon />
           <span className="font-mono text-[11px]">checkout.ts</span>
         </div>
@@ -632,7 +632,7 @@ function UseCaseVisual({ scenario }: { scenario: string }) {
 function PromptLibraryMock() {
   return (
     <div className="rounded-xl border border-[#1a1a1a] bg-[#0d0d0d] p-4 font-sans">
-      <div className="text-center text-[11px] tracking-wide text-[#888] mb-3">
+      <div className="text-center text-[11px] tracking-wide text-[#94a3b8] mb-3">
         Swarmify - Agents
       </div>
       <div className="rounded-lg bg-[#0a0a0a] border border-[#1a1a1a] px-3 py-2 text-[11px] text-[#666] mb-4">
@@ -645,7 +645,7 @@ function PromptLibraryMock() {
               <StarIcon />
               <span className="text-white font-semibold">rethink</span>
             </div>
-            <div className="flex items-center gap-2 text-[#888]">
+            <div className="flex items-center gap-2 text-[#94a3b8]">
               <StarIcon filled />
               <TrashIcon />
             </div>
@@ -665,7 +665,7 @@ function PromptLibraryMock() {
             their findings.
           </div>
         </div>
-        <button className="w-full flex items-center gap-2 text-left text-[#888] text-[11px] py-2 px-2 rounded-md hover:bg-[#111] transition-colors">
+        <button className="w-full flex items-center gap-2 text-left text-[#94a3b8] text-[11px] py-2 px-2 rounded-md hover:bg-[#111] transition-colors">
           <PlusIcon />
           Add new prompt
         </button>
@@ -683,7 +683,7 @@ function CombinedMarkdownMock() {
   return (
     <div className="rounded-xl border border-[#1a1a1a] bg-[#0d0d0d] p-4 font-sans text-[11px] text-[#ccc]">
       {/* Header */}
-      <div className="text-center text-[11px] tracking-wide text-[#888] mb-4">
+      <div className="text-center text-[11px] tracking-wide text-[#94a3b8] mb-4">
         README.md
       </div>
 
@@ -696,7 +696,7 @@ function CombinedMarkdownMock() {
 
       {/* Highlights */}
       <div className="rounded-lg border border-[#1a1a1a] bg-[#0a0a0a] px-3 py-2 mb-3">
-        <div className="text-[#888] uppercase text-[10px] tracking-wide mb-2">Highlights</div>
+        <div className="text-[#94a3b8] uppercase text-[10px] tracking-wide mb-2">Highlights</div>
         <ul className="space-y-1 text-[#ccc]">
           <li>• Hero copy aligned to orchestration</li>
           <li>• Prompt library visible by default</li>
@@ -706,8 +706,8 @@ function CombinedMarkdownMock() {
 
       {/* Notes table */}
       <div className="rounded-lg border border-[#1a1a1a] bg-[#0a0a0a] px-3 py-2 mb-4">
-        <div className="text-[#888] uppercase text-[10px] tracking-wide mb-2">Notes</div>
-        <div className="grid grid-cols-3 gap-2 text-[10px] text-[#888]">
+        <div className="text-[#94a3b8] uppercase text-[10px] tracking-wide mb-2">Notes</div>
+        <div className="grid grid-cols-3 gap-2 text-[10px] text-[#94a3b8]">
           <div className="rounded border border-[#1a1a1a] px-2 py-1">Owner</div>
           <div className="rounded border border-[#1a1a1a] px-2 py-1">Status</div>
           <div className="rounded border border-[#1a1a1a] px-2 py-1">ETA</div>
@@ -718,7 +718,7 @@ function CombinedMarkdownMock() {
       </div>
 
       {/* Agent labels */}
-      <div className="flex items-center gap-2 mb-3 text-[10px] text-[#888]">
+      <div className="flex items-center gap-2 mb-3 text-[10px] text-[#94a3b8]">
         <span className="rounded bg-[#111] px-2 py-1">Codex — Landing page updates</span>
         <span className="rounded bg-[#111] px-2 py-1">Claude — Stripe integration</span>
       </div>
@@ -759,7 +759,7 @@ function CombinedMarkdownMock() {
 function Shortcut({ keys, action }: { keys: string; action: string }) {
   return (
     <div className="flex items-center justify-between p-4 rounded-lg bg-[#111] border border-[#1a1a1a]">
-      <span className="text-[#888]">{action}</span>
+      <span className="text-[#94a3b8]">{action}</span>
       <kbd className="px-2 py-1 bg-[#1a1a1a] rounded text-xs font-mono">{keys}</kbd>
     </div>
   );
@@ -818,7 +818,7 @@ function EditorMockup({
             className={`flex items-center gap-2 px-3 py-2 rounded-t-lg text-xs transition-colors ${
               activePanel === "agent" && activeAgent === agent.id
                 ? "bg-[#0d0d0d] text-white"
-                : "bg-[#161616] text-[#888] hover:text-white"
+                : "bg-[#161616] text-[#94a3b8] hover:text-white"
             }`}
           >
             <img src={agent.logo} alt={agent.name} width={16} height={16} className="rounded-sm" />
@@ -833,7 +833,7 @@ function EditorMockup({
             className={`flex items-center gap-2 px-3 py-2 rounded-t-lg text-xs transition-colors ${
               activePanel === "file" && activeFile === file
                 ? "bg-[#0d0d0d] text-white"
-                : "bg-[#161616] text-[#888] hover:text-white"
+                : "bg-[#161616] text-[#94a3b8] hover:text-white"
             }`}
           >
             <FileIcon />
@@ -858,7 +858,7 @@ function EditorMockup({
         {/* Git Changes Panel */}
         <div className="w-full md:w-56 bg-[#0a0a0a] p-3 text-xs shrink-0">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-[#888] uppercase tracking-wide text-[10px]">Changes</span>
+            <span className="text-[#94a3b8] uppercase tracking-wide text-[10px]">Changes</span>
             <span className="bg-[#3b82f6] text-white px-1.5 py-0.5 rounded text-[10px]">4</span>
           </div>
           <div className="space-y-1">
@@ -878,13 +878,13 @@ function EditorMockup({
             ))}
           </div>
           <div className="mt-4 pt-3 border-t border-[#1a1a1a]">
-            <div className="text-[#888] uppercase tracking-wide text-[10px] mb-2">Diff Preview</div>
+            <div className="text-[#94a3b8] uppercase tracking-wide text-[10px] mb-2">Diff Preview</div>
             <div className="font-mono text-[10px] space-y-0.5">
               {activeDiff === "auth.ts" && (
                 <>
                   <div className="text-[#f87171]">- if (token) {"{"}</div>
                   <div className="text-[#4ade80]">+ if (token && !isExpired(token)) {"{"}</div>
-                  <div className="text-[#888]">    return decode(token);</div>
+                  <div className="text-[#94a3b8]">    return decode(token);</div>
                 </>
               )}
               {activeDiff === "README.md" && (
@@ -940,7 +940,7 @@ function AgentContent({ agent }: { agent: AgentType }) {
   ██║     ██║   ██║██║  ██║██╔══╝   ██╔██╗
   ╚██████╗╚██████╔╝██████╔╝███████╗██╔╝ ██╗
    ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝`}</pre>
-        <div className="text-[#888]">OpenAI Codex CLI</div>
+        <div className="text-[#94a3b8]">OpenAI Codex CLI</div>
         <div className="text-[#3b82f6] mt-2">&gt; <span className="text-white">Update landing page copy + sections</span></div>
         <div className="text-[#ccc] mt-2">Reframing hero, updating comparison, adding previews...</div>
         <div className="text-[#666]">Modified: agents-web/src/app/page.tsx</div>
@@ -958,7 +958,7 @@ function AgentContent({ agent }: { agent: AgentType }) {
 `}<span className="text-[#fbbf24]">{` ╲  ╱ `}</span><span className="text-[#a78bfa]">{`██║   ██║██╔══╝  ██║╚██╔╝██║██║██║╚██╗██║██║`}</span>{`
 `}<span className="text-[#60a5fa]">{`  ╲╱  `}</span><span className="text-[#60a5fa]">{`╚██████╔╝███████╗██║ ╚═╝ ██║██║██║ ╚████║██║`}</span>{`
 `}<span className="text-[#60a5fa]">{`      `}</span><span className="text-[#f472b6]">{` ╚═════╝ ╚══════╝╚═╝     ╚═╝╚═╝╚═╝  ╚═══╝╚═╝`}</span></pre>
-        <div className="text-[#888] text-[10px]">Gemini CLI 0.22.5</div>
+        <div className="text-[#94a3b8] text-[10px]">Gemini CLI 0.22.5</div>
         <div className="text-[#3b82f6] mt-2">&gt; <span className="text-white">Introduce API middleware pattern</span></div>
         <div className="text-[#ccc] mt-2">I&apos;ll move auth + logging into middleware layers...</div>
         <div className="text-[#666]">Created: src/middleware/auth.ts</div>
@@ -976,7 +976,7 @@ function AgentContent({ agent }: { agent: AgentType }) {
   ██║     ██║   ██║██╔══██╗╚════██║██║   ██║██╔══██╗
   ╚██████╗╚██████╔╝██║  ██║███████║╚██████╔╝██║  ██║
    ╚═════╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝ ╚═════╝ ╚═╝  ╚═╝`}</pre>
-      <div className="text-[#888]">Cursor Agent</div>
+      <div className="text-[#94a3b8]">Cursor Agent</div>
       <div className="text-[#3b82f6] mt-2">&gt; <span className="text-white">Write tests for the auth module</span></div>
       <div className="text-[#ccc] mt-2">Creating comprehensive test suite with edge cases...</div>
       <div className="text-[#666]">Created: src/__tests__/auth.test.ts</div>
@@ -1061,7 +1061,7 @@ function GitFile({
 
 function FileIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="text-[#888]">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="text-[#94a3b8]">
       <path d="M3 2C3 1.44772 3.44772 1 4 1H9L13 5V14C13 14.5523 12.5523 15 12 15H4C3.44772 15 3 14.5523 3 14V2Z" stroke="currentColor" strokeWidth="1.2"/>
       <path d="M9 1V5H13" stroke="currentColor" strokeWidth="1.2"/>
     </svg>
@@ -1085,7 +1085,7 @@ function Line({ prompt, text, muted, highlight }: {
 
 function TerminalIcon() {
   return (
-    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" className="text-[#888]">
+    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" className="text-[#94a3b8]">
       <rect x="2" y="4" width="20" height="16" rx="2" stroke="currentColor" strokeWidth="1.5"/>
       <path d="M6 9L10 12L6 15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
       <path d="M12 15H18" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -1131,7 +1131,7 @@ function CompareItem({ children, negative }: { children: React.ReactNode; negati
 
 function StarIcon({ filled }: { filled?: boolean }) {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className={filled ? "text-[#fbbf24]" : "text-[#888]"}>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className={filled ? "text-[#fbbf24]" : "text-[#94a3b8]"}>
       <path
         d="M12 3.5L14.7 9L20.8 9.8L16.4 14.1L17.6 20.2L12 17.2L6.4 20.2L7.6 14.1L3.2 9.8L9.3 9L12 3.5Z"
         stroke="currentColor"
@@ -1145,7 +1145,7 @@ function StarIcon({ filled }: { filled?: boolean }) {
 
 function TrashIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-[#888]">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-[#94a3b8]">
       <path d="M4 7H20" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
       <path d="M9 7V5H15V7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
       <path d="M7 7L8 19H16L17 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -1155,7 +1155,7 @@ function TrashIcon() {
 
 function PlusIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-[#888]">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-[#94a3b8]">
       <path d="M12 5V19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
       <path d="M5 12H19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
     </svg>
