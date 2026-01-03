@@ -98,7 +98,7 @@ export async function handleSpawn(
     resolvedEffort
   );
 
-  console.log(`[spawn] Spawned ${agentType} agent ${agent.agentId} for task "${taskName}"`);
+  console.error(`[spawn] Spawned ${agentType} agent ${agent.agentId} for task "${taskName}"`);
 
   return {
     task_name: taskName,
@@ -117,7 +117,7 @@ export async function handleStatus(
 ): Promise<TaskStatusResult> {
   // Default to 'all' so callers see completed/failed agents unless they opt to filter
   const effectiveFilter = filter || 'all';
-  console.log(`[status] Getting status for agents in task "${taskName}" (filter=${effectiveFilter})...`);
+  console.error(`[status] Getting status for agents in task "${taskName}" (filter=${effectiveFilter})...`);
 
   const allAgents = await manager.listByTask(taskName);
 
@@ -177,7 +177,7 @@ export async function handleStatus(
     });
   }
 
-  console.log(`[status] Task "${taskName}": returning ${agents.length}/${allAgents.length} agents (running=${counts.running}, completed=${counts.completed}, failed=${counts.failed}, stopped=${counts.stopped})`);
+  console.error(`[status] Task "${taskName}": returning ${agents.length}/${allAgents.length} agents (running=${counts.running}, completed=${counts.completed}, failed=${counts.failed}, stopped=${counts.stopped})`);
 
   return {
     task_name: taskName,
@@ -193,11 +193,11 @@ export async function handleStop(
   agentId?: string
 ): Promise<StopResult | { error: string }> {
   if (agentId) {
-    console.log(`[stop] Stopping agent ${agentId} in task "${taskName}"...`);
+    console.error(`[stop] Stopping agent ${agentId} in task "${taskName}"...`);
 
     const agent = await manager.get(agentId);
     if (!agent) {
-      console.log(`[stop] Agent ${agentId} not found`);
+      console.error(`[stop] Agent ${agentId} not found`);
       return {
         task_name: taskName,
         stopped: [],
@@ -206,13 +206,13 @@ export async function handleStop(
       };
     }
     if (agent.taskName !== taskName) {
-      console.log(`[stop] Agent ${agentId} not in task ${taskName}`);
+      console.error(`[stop] Agent ${agentId} not in task ${taskName}`);
       return { error: `Agent ${agentId} not in task ${taskName}` };
     }
 
     if (agent.status === AgentStatus.RUNNING) {
       const success = await manager.stop(agentId);
-      console.log(`[stop] Agent ${agentId}: ${success ? 'stopped' : 'failed to stop'}`);
+      console.error(`[stop] Agent ${agentId}: ${success ? 'stopped' : 'failed to stop'}`);
       return {
         task_name: taskName,
         stopped: success ? [agentId] : [],
@@ -220,7 +220,7 @@ export async function handleStop(
         not_found: [],
       };
     } else {
-      console.log(`[stop] Agent ${agentId} already stopped (status=${agent.status})`);
+      console.error(`[stop] Agent ${agentId} already stopped (status=${agent.status})`);
       return {
         task_name: taskName,
         stopped: [],
@@ -229,11 +229,11 @@ export async function handleStop(
       };
     }
   } else {
-    console.log(`[stop] Stopping all agents in task "${taskName}"...`);
+    console.error(`[stop] Stopping all agents in task "${taskName}"...`);
 
     const result = await manager.stopByTask(taskName);
 
-    console.log(`[stop] Task "${taskName}": stopped ${result.stopped.length}, already_stopped ${result.alreadyStopped.length}`);
+    console.error(`[stop] Task "${taskName}": stopped ${result.stopped.length}, already_stopped ${result.alreadyStopped.length}`);
 
     return {
       task_name: taskName,
@@ -248,7 +248,7 @@ export async function handleListTasks(
   manager: AgentManager,
   limit?: number
 ): Promise<ListTasksResult> {
-  console.log(`[tasks] Listing all tasks (limit=${limit || 'none'})...`);
+  console.error(`[tasks] Listing all tasks (limit=${limit || 'none'})...`);
 
   const allAgents = await manager.listAll();
 
@@ -329,7 +329,7 @@ export async function handleListTasks(
   // Apply limit if specified
   const limitedTasks = limit ? tasks.slice(0, limit) : tasks;
 
-  console.log(`[tasks] Found ${tasks.length} tasks with ${allAgents.length} total agents`);
+  console.error(`[tasks] Found ${tasks.length} tasks with ${allAgents.length} total agents`);
 
   return {
     tasks: limitedTasks,
