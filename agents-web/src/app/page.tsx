@@ -408,7 +408,7 @@ export default function Home() {
 
       {/* Prompt Library + Markdown */}
       <section className="px-6 py-24 border-t border-[#1a1a1a]">
-        <div className="max-w-5xl mx-auto space-y-24">
+        <div className="max-w-5xl mx-auto space-y-16">
           {/* Prompt Library */}
           <div className="grid md:grid-cols-[1.1fr_1.2fr] gap-12 items-center">
             <div>
@@ -464,13 +464,8 @@ export default function Home() {
                 </div>
               </div>
             </div>
-            <div className="grid gap-6">
-              <div className="rounded-2xl border border-[#1a1a1a] bg-[#0b141a] p-4 shadow-[0_0_40px_rgba(0,0,0,0.35)]">
-                <MarkdownPreviewMock />
-              </div>
-              <div className="rounded-2xl border border-[#1a1a1a] bg-[#0b141a] p-4 shadow-[0_0_40px_rgba(0,0,0,0.35)]">
-                <TaskableTodosMock />
-              </div>
+            <div className="rounded-2xl border border-[#1a1a1a] bg-[#0b141a] p-4 shadow-[0_0_40px_rgba(0,0,0,0.35)]">
+              <CombinedMarkdownMock />
             </div>
           </div>
         </div>
@@ -679,17 +674,27 @@ function PromptLibraryMock() {
   );
 }
 
-function MarkdownPreviewMock() {
+function CombinedMarkdownMock() {
+  const [todos, setTodos] = useState([false, false, false]);
+  const toggleTodo = (index: number) => {
+    setTodos((current) => current.map((item, i) => (i === index ? !item : item)));
+  };
+
   return (
     <div className="rounded-xl border border-[#1a1a1a] bg-[#0d0d0d] p-4 font-sans text-[11px] text-[#ccc]">
+      {/* Header */}
       <div className="text-center text-[11px] tracking-wide text-[#888] mb-4">
         README.md
       </div>
+
+      {/* Title and description */}
       <div className="text-white text-base font-semibold mb-2">Landing Page Tasks</div>
       <p className="text-[#aaa] mb-3 leading-relaxed">
         This doc tracks the next batch of updates. Review diffs as agents work and
         ship changes in parallel.
       </p>
+
+      {/* Highlights */}
       <div className="rounded-lg border border-[#1a1a1a] bg-[#0a0a0a] px-3 py-2 mb-3">
         <div className="text-[#888] uppercase text-[10px] tracking-wide mb-2">Highlights</div>
         <ul className="space-y-1 text-[#ccc]">
@@ -698,7 +703,9 @@ function MarkdownPreviewMock() {
           <li>• Task list hooks for instant delegation</li>
         </ul>
       </div>
-      <div className="rounded-lg border border-[#1a1a1a] bg-[#0a0a0a] px-3 py-2">
+
+      {/* Notes table */}
+      <div className="rounded-lg border border-[#1a1a1a] bg-[#0a0a0a] px-3 py-2 mb-4">
         <div className="text-[#888] uppercase text-[10px] tracking-wide mb-2">Notes</div>
         <div className="grid grid-cols-3 gap-2 text-[10px] text-[#888]">
           <div className="rounded border border-[#1a1a1a] px-2 py-1">Owner</div>
@@ -709,22 +716,14 @@ function MarkdownPreviewMock() {
           <div className="rounded border border-[#1a1a1a] px-2 py-1 text-white">Today</div>
         </div>
       </div>
-    </div>
-  );
-}
 
-function TaskableTodosMock() {
-  const [todos, setTodos] = useState([false, false, false]);
-  const toggleTodo = (index: number) => {
-    setTodos((current) => current.map((item, i) => (i === index ? !item : item)));
-  };
-
-  return (
-    <div className="rounded-xl border border-[#1a1a1a] bg-[#0d0d0d] p-4 font-sans text-[11px] text-[#ccc]">
-      <div className="flex items-center gap-2 mb-4 text-[10px] text-[#888]">
+      {/* Agent labels */}
+      <div className="flex items-center gap-2 mb-3 text-[10px] text-[#888]">
         <span className="rounded bg-[#111] px-2 py-1">Codex — Landing page updates</span>
         <span className="rounded bg-[#111] px-2 py-1">Claude — Stripe integration</span>
       </div>
+
+      {/* Todo items */}
       <div className="space-y-3">
         {[
           "Polish hero copy for orchestration",
