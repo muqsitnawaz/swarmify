@@ -2,6 +2,7 @@
  * Testable API handlers for the agent-swarm MCP server.
  * These functions can be called directly in tests with a custom AgentManager.
  */
+import * as path from 'path';
 
 import { AgentManager, AgentStatus, resolveMode } from './agents.js';
 import { AgentType } from './parsers.js';
@@ -81,13 +82,38 @@ export async function handleSpawn(
   prompt: string,
   cwd: string | null,
   mode: string | null,
-  effort: 'medium' | 'high' | null = 'medium'
+  effort: 'medium' | 'high' | null = 'medium',
+  force: boolean = false
 ): Promise<SpawnResult> {
   const defaultMode = manager.getDefaultMode();
   const resolvedMode = resolveMode(mode, defaultMode);
   const resolvedEffort = effort ?? 'medium';
 
-  console.error(`[spawn] Spawning ${agentType} agent for task "${taskName}" [${resolvedMode}] effort=${resolvedEffort}...`);
+  console.error(
+    `[spawn] Spawning ${agentType} agent for task "${taskName}" [${resolvedMode}] effort=${resolvedEffort} force=${force}...`
+  );
+
+  // Enforce unique task names unless explicitly forced
+  const existing = await manager.listByTask(taskName);
+  const requestedCwd = cwd ? path.resolve(cwd) : null;
+  const sameCwdConflicts = existing.filter(a => (a.cwd || null) === requestedCwd);
+  if (sameCwdConflicts.length > 0 && !force) {
+    const cwds = Array.from(new Set(sameCwdConflicts.map(a => a.cwd || null))).map(c => c || '(none)');
+
+    const suggestedTaskName = await suggestTaskName(manager, taskName, requestedCwd);
+
+    const payload = {
+      error: 'task_name_in_use',
+      message: `Task name "${taskName}" is already in use for cwd "${cwds[0]}".`,
+      cwd_conflicts: cwds,
+      suggested_task_name: suggestedTaskName,
+    };
+
+    const err = new Error(payload.message);
+    (err as any).code = 'TASK_NAME_IN_USE';
+    (err as any).payload = payload;
+    throw err;
+  }
 
   const agent = await manager.spawn(
     taskName,
@@ -107,6 +133,19 @@ export async function handleSpawn(
     status: agent.status,
     started_at: agent.startedAt.toISOString(),
   };
+}
+
+async function suggestTaskName(manager: AgentManager, base: string, cwd: string | null): Promise<string> {
+  let suffix = 1;
+  while (true) {
+    const candidate = `${base}-${suffix}`;
+    const conflicts = await manager.listByTask(candidate);
+    const sameCwdConflicts = conflicts.filter(a => (a.cwd || null) === cwd);
+    if (sameCwdConflicts.length === 0) {
+      return candidate;
+    }
+    suffix += 1;
+  }
 }
 
 export async function handleStatus(
