@@ -429,21 +429,6 @@ export default function Home() {
             activeUseCase={activeUseCase}
             onSelect={setActiveUseCase}
           />
-          <div className="mt-6 flex flex-wrap justify-center gap-3 text-sm text-[#7aa2b6]">
-            {useCaseItems.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => setActiveUseCase(item.id)}
-                className={`rounded-full px-3 py-1 border transition-colors ${
-                  activeUseCase === item.id
-                    ? "border-[#3b82f6] bg-[#0e1621] text-[#dbeafe]"
-                    : "border-[#1f2a36] bg-[#0b0f14] hover:border-[#2a3a4b]"
-                }`}
-              >
-                {item.title}
-              </button>
-            ))}
-          </div>
         </div>
       </section>
 
@@ -622,27 +607,25 @@ function UseCaseCarousel({
   const current = useCaseItems.find((item) => item.id === activeUseCase) ?? useCaseItems[0];
 
   return (
-    <div className="rounded-2xl border border-[#1a1a1a] bg-gradient-to-br from-[#0a0f15] via-[#0b1118] to-[#0b0e12] p-6 md:p-8 shadow-[0_0_40px_rgba(0,0,0,0.35)]">
-      <div className="flex flex-wrap gap-2 mb-6">
-        {useCaseItems.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => onSelect(item.id)}
-            className={`text-sm px-3 py-2 rounded-full border transition-colors ${
-              item.id === activeUseCase
-                ? "border-[#3b82f6] bg-[#0e1621] text-white shadow-[0_0_20px_rgba(59,130,246,0.25)]"
-                : "border-[#1f2a36] bg-[#0c0f14] text-[#9baec4] hover:border-[#2b3a4b]"
-            }`}
-          >
-            {item.title}
-          </button>
-        ))}
-      </div>
+    <div className="rounded-3xl border border-[#0f1b2d] bg-gradient-to-br from-[#0c121b] via-[#0b1119] to-[#090e14] p-6 md:p-8 shadow-[0_25px_60px_rgba(0,0,0,0.45)]">
+      <div className="grid md:grid-cols-[1.05fr_1fr] gap-8 items-center">
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            {useCaseItems.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => onSelect(item.id)}
+                className={`text-sm px-3 py-2 rounded-full border transition-colors ${
+                  item.id === activeUseCase
+                    ? "border-[#3b82f6] bg-[#0f1724] text-white shadow-[0_0_20px_rgba(59,130,246,0.25)]"
+                    : "border-[#1f2a36] bg-[#0c0f14] text-[#9baec4] hover:border-[#2b3a4b]"
+                }`}
+              >
+                {item.title}
+              </button>
+            ))}
+          </div>
 
-      <div className="grid md:grid-cols-[1.2fr_0.9fr] gap-6 items-center">
-        <UseCaseMedia posterClass={current.posterClass} title={current.title} />
-
-        <div className="space-y-3">
           <div>
             <div className="text-xs uppercase tracking-[0.18em] text-[#7aa2b6] mb-2">
               Parallel workflow
@@ -650,6 +633,7 @@ function UseCaseCarousel({
             <h3 className="text-2xl font-semibold text-white leading-snug">{current.title}</h3>
             <p className="text-[#9ab0bf] text-sm mt-2">{current.subtitle}</p>
           </div>
+
           <ul className="space-y-2 text-[#cbd5e1] text-sm">
             {current.bullets.map((item) => (
               <li key={item} className="flex gap-2">
@@ -658,6 +642,7 @@ function UseCaseCarousel({
               </li>
             ))}
           </ul>
+
           <div className="flex items-center gap-2 text-[12px] text-[#8fb3c4] pt-1">
             <span className="uppercase tracking-[0.16em] text-[#6b8298]">Artifacts</span>
             {current.artifacts.map((artifact) => (
@@ -670,6 +655,8 @@ function UseCaseCarousel({
             ))}
           </div>
         </div>
+
+        <UseCaseMedia posterClass={current.posterClass} title={current.title} />
       </div>
     </div>
   );
