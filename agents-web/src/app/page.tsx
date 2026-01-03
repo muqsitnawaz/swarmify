@@ -4,6 +4,7 @@ import { useState } from "react";
 
 type AgentType = "claude" | "codex" | "gemini" | "cursor";
 type FileTab = "auth.ts" | "README.md";
+type UseCaseId = "review" | "tests" | "refactor" | "multi";
 
 const agents: { id: AgentType; name: string; logo: string; label: string }[] = [
   { id: "claude", name: "Claude", logo: "/claude.png", label: "Stripe integration" },
@@ -12,9 +13,68 @@ const agents: { id: AgentType; name: string; logo: string; label: string }[] = [
   { id: "cursor", name: "Cursor", logo: "/cursor.png", label: "Auth tests" },
 ];
 
+const useCaseItems: {
+  id: UseCaseId;
+  title: string;
+  subtitle: string;
+  bullets: string[];
+  artifacts: string[];
+  posterClass: string;
+}[] = [
+  {
+    id: "tests",
+    title: "Ship code + tests in parallel",
+    subtitle: "One agent codes while another writes tests and a third renders the UI preview.",
+    bullets: [
+      "Spawn dev + test agents from one prompt.",
+      "Watch diffs and browser preview side by side.",
+      "Merge when tests and visuals both pass."
+    ],
+    artifacts: ["Diff", "Tests", "Preview"],
+    posterClass: "from-[#0f1b2d] via-[#0b1220] to-[#091017]"
+  },
+  {
+    id: "review",
+    title: "Review diffs without leaving your IDE",
+    subtitle: "Label agents by ticket, open full-screen diffs, and accept changes inline.",
+    bullets: [
+      "Parallel review: logic, security, and tests.",
+      "Native diff panel updates as agents work.",
+      "Approve or request fixes from the same tab."
+    ],
+    artifacts: ["Diff", "Notes", "Checks"],
+    posterClass: "from-[#0b1725] via-[#0a1c2f] to-[#08121d]"
+  },
+  {
+    id: "refactor",
+    title: "Refactor + docs stay in sync",
+    subtitle: "One agent rewrites the module while another updates docs and examples.",
+    bullets: [
+      "Refactor agent keeps tests green.",
+      "Docs agent updates README and examples automatically.",
+      "You review both outputs together."
+    ],
+    artifacts: ["Docs", "Tests", "Diff"],
+    posterClass: "from-[#0e1c1f] via-[#0a1619] to-[#071012]"
+  },
+  {
+    id: "multi",
+    title: "Multi-file feature work",
+    subtitle: "Split frontend, backend, and types across agents and land in one branch.",
+    bullets: [
+      "Assign labels per slice: UI, API, Schema.",
+      "See all git changes in one consolidated view.",
+      "Keep context continuous—no tmux juggling."
+    ],
+    artifacts: ["Frontend", "Backend", "Types"],
+    posterClass: "from-[#0f1a1f] via-[#0c1418] to-[#090f13]"
+  }
+];
+
 export default function Home() {
   const [activeAgent, setActiveAgent] = useState<AgentType>("claude");
   const [activePanel, setActivePanel] = useState<"agent" | "file">("agent");
+  const [activeUseCase, setActiveUseCase] = useState<UseCaseId>("tests");
 
   return (
     <main className="min-h-screen">
@@ -360,28 +420,29 @@ export default function Home() {
       <section className="px-6 py-24 border-t border-[#1a1a1a]">
         <div className="max-w-5xl mx-auto">
           <h2 className="text-3xl font-bold mb-4 text-center">
-            What you can do
+            See agents run these workflows
           </h2>
           <p className="text-[#888] text-center mb-12 max-w-2xl mx-auto">
-            Agents work in parallel. You review the results.
+            Agents work in parallel. Tap a workflow to watch how it plays out inside your IDE.
           </p>
-          <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto">
-            <UseCase
-              title="Parallel PR review"
-              description="One agent reviews logic, another checks tests, a third scans for security issues."
-            />
-            <UseCase
-              title="Write tests while you implement"
-              description="Code in one tab, spawn an agent to write tests in another. Both run simultaneously."
-            />
-            <UseCase
-              title="Refactor + docs in parallel"
-              description="One agent refactors the module, another updates the documentation to match."
-            />
-            <UseCase
-              title="Multi-file feature work"
-              description="Distribute frontend, backend, and tests across agents. Merge when ready."
-            />
+          <UseCaseCarousel
+            activeUseCase={activeUseCase}
+            onSelect={setActiveUseCase}
+          />
+          <div className="mt-6 flex flex-wrap justify-center gap-3 text-sm text-[#7aa2b6]">
+            {useCaseItems.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => setActiveUseCase(item.id)}
+                className={`rounded-full px-3 py-1 border transition-colors ${
+                  activeUseCase === item.id
+                    ? "border-[#3b82f6] bg-[#0e1621] text-[#dbeafe]"
+                    : "border-[#1f2a36] bg-[#0b0f14] hover:border-[#2a3a4b]"
+                }`}
+              >
+                {item.title}
+              </button>
+            ))}
           </div>
         </div>
       </section>
@@ -551,11 +612,104 @@ function Feature({ title, description }: { title: string; description: string })
   );
 }
 
-function UseCase({ title, description }: { title: string; description: string }) {
+function UseCaseCarousel({
+  activeUseCase,
+  onSelect
+}: {
+  activeUseCase: UseCaseId;
+  onSelect: (id: UseCaseId) => void;
+}) {
+  const current = useCaseItems.find((item) => item.id === activeUseCase) ?? useCaseItems[0];
+
   return (
-    <div className="p-5 rounded-xl bg-[#0a0a0a] border border-[#1a1a1a]">
-      <h3 className="font-medium mb-1">{title}</h3>
-      <p className="text-[#888] text-sm">{description}</p>
+    <div className="rounded-2xl border border-[#1a1a1a] bg-gradient-to-br from-[#0a0f15] via-[#0b1118] to-[#0b0e12] p-6 md:p-8 shadow-[0_0_40px_rgba(0,0,0,0.35)]">
+      <div className="flex flex-wrap gap-2 mb-6">
+        {useCaseItems.map((item) => (
+          <button
+            key={item.id}
+            onClick={() => onSelect(item.id)}
+            className={`text-sm px-3 py-2 rounded-full border transition-colors ${
+              item.id === activeUseCase
+                ? "border-[#3b82f6] bg-[#0e1621] text-white shadow-[0_0_20px_rgba(59,130,246,0.25)]"
+                : "border-[#1f2a36] bg-[#0c0f14] text-[#9baec4] hover:border-[#2b3a4b]"
+            }`}
+          >
+            {item.title}
+          </button>
+        ))}
+      </div>
+
+      <div className="grid md:grid-cols-[1.2fr_0.9fr] gap-6 items-center">
+        <UseCaseMedia posterClass={current.posterClass} title={current.title} />
+
+        <div className="space-y-3">
+          <div>
+            <div className="text-xs uppercase tracking-[0.18em] text-[#7aa2b6] mb-2">
+              Parallel workflow
+            </div>
+            <h3 className="text-2xl font-semibold text-white leading-snug">{current.title}</h3>
+            <p className="text-[#9ab0bf] text-sm mt-2">{current.subtitle}</p>
+          </div>
+          <ul className="space-y-2 text-[#cbd5e1] text-sm">
+            {current.bullets.map((item) => (
+              <li key={item} className="flex gap-2">
+                <span className="mt-[6px] inline-block h-1.5 w-1.5 rounded-full bg-[#3b82f6]" />
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+          <div className="flex items-center gap-2 text-[12px] text-[#8fb3c4] pt-1">
+            <span className="uppercase tracking-[0.16em] text-[#6b8298]">Artifacts</span>
+            {current.artifacts.map((artifact) => (
+              <span
+                key={artifact}
+                className="px-2 py-1 rounded-full bg-[#111821] border border-[#1f2a36] text-[#dbeafe]"
+              >
+                {artifact}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function UseCaseMedia({ posterClass, title }: { posterClass: string; title: string }) {
+  return (
+    <div className="relative w-full overflow-hidden rounded-xl border border-[#1a1a1a] bg-black shadow-[0_25px_60px_rgba(0,0,0,0.35)] min-h-[220px] md:min-h-[260px]">
+      <div className={`absolute inset-0 bg-gradient-to-br ${posterClass}`} />
+      <div className="absolute inset-0 opacity-60 mix-blend-screen bg-[radial-gradient(circle_at_30%_30%,rgba(59,130,246,0.35),transparent_55%)]" />
+      <div className="relative h-full flex flex-col justify-between p-4 md:p-6">
+        <div className="flex items-center justify-between text-[11px] text-[#8fb3c4] uppercase tracking-[0.18em]">
+          <span>Swarmify — Agents</span>
+          <span className="inline-flex items-center gap-1 text-[#3b82f6]">
+            <span className="h-2 w-2 rounded-full bg-[#22c55e] animate-pulse" />
+            Live
+          </span>
+        </div>
+        <div className="rounded-lg bg-[#0d1520]/70 border border-[#1f2d3a] p-4 backdrop-blur-sm shadow-[0_0_30px_rgba(0,0,0,0.4)]">
+          <div className="flex items-center gap-2 text-[#8fb3c4] text-xs mb-3">
+            <span className="h-2 w-2 rounded-full bg-[#3b82f6]" />
+            <span>Agents running in parallel</span>
+          </div>
+          <div className="grid grid-cols-2 gap-3 text-[11px] text-[#dbeafe] font-mono">
+            <div className="rounded-md border border-[#1f2d3a] bg-[#0b1118] p-3">
+              <div className="text-[#9ab0bf] mb-1">agent-test</div>
+              <div className="text-[#22c55e]">✓ tests passed</div>
+              <div className="text-[#7aa2b6] mt-1">coverage: 94%</div>
+            </div>
+            <div className="rounded-md border border-[#1f2d3a] bg-[#0b1118] p-3">
+              <div className="text-[#9ab0bf] mb-1">agent-ui</div>
+              <div className="text-[#60a5fa]">▶ preview running</div>
+              <div className="text-[#7aa2b6] mt-1">diff: 4 files</div>
+            </div>
+          </div>
+        </div>
+        <div className="text-[#cbd5e1] text-sm font-semibold mt-4">
+          {title}
+        </div>
+      </div>
     </div>
   );
 }

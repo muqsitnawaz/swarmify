@@ -19,7 +19,6 @@ const execAsync = promisify(exec);
 const AGENT_SWARM_DIR = path.join(os.homedir(), '.swarmify', 'agents');
 
 const SWARM_PACKAGE = '@swarmify/agents-mcp';
-const SWARM_BINARY = 'agents-mcp';
 
 
 export interface AgentInstallStatus {
@@ -93,52 +92,6 @@ export async function isSwarmEnabled(): Promise<boolean> {
   return status.mcpEnabled && status.commandInstalled;
 }
 
-// Find agent-swarm binary in common locations
-async function findSwarmBinary(): Promise<string | null> {
-  const home = os.homedir();
-
-  // Check common global install locations
-  const candidates = [
-    // Bun global
-    path.join(home, '.bun', 'bin', SWARM_BINARY),
-    // npm/yarn global (macOS/Linux)
-    path.join(home, '.npm-global', 'bin', SWARM_BINARY),
-    `/usr/local/bin/${SWARM_BINARY}`,
-    // npm global (Windows)
-    path.join(process.env.APPDATA || '', 'npm', `${SWARM_BINARY}.cmd`),
-  ];
-
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) {
-      return candidate;
-    }
-  }
-
-  // Try which/where command
-  try {
-    const cmd = process.platform === 'win32' ? 'where' : 'which';
-    const { stdout } = await execAsync(`${cmd} ${SWARM_BINARY}`);
-    const found = stdout.trim().split('\n')[0];
-    if (found && fs.existsSync(found)) {
-      return found;
-    }
-  } catch {
-    // Not found via which/where
-  }
-
-  return null;
-}
-
-// Check if bun is available
-async function hasBun(): Promise<boolean> {
-  try {
-    await execAsync('bun --version');
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 // Build Gemini TOML command content from markdown source
 function buildGeminiToml(markdown: string): string {
   return [
@@ -186,34 +139,6 @@ function installSwarmCommandForAgent(agent: AgentCli, context: vscode.ExtensionC
   }
 
   return false;
-}
-
-// Install swarm-mcp globally
-async function installSwarm(): Promise<boolean> {
-  const useBun = await hasBun();
-  const installCmd = useBun
-    ? `bun add -g ${SWARM_PACKAGE}`
-    : `npm install -g ${SWARM_PACKAGE}`;
-
-  try {
-    await vscode.window.withProgress(
-      {
-        location: vscode.ProgressLocation.Notification,
-        title: `Installing ${SWARM_PACKAGE}...`,
-        cancellable: false,
-      },
-      async () => {
-        await execAsync(installCmd);
-      }
-    );
-    return true;
-  } catch (err) {
-    const error = err as Error & { stderr?: string };
-    vscode.window.showErrorMessage(
-      `Failed to install ${SWARM_PACKAGE}: ${error.stderr || error.message}`
-    );
-    return false;
-  }
 }
 
 const NPX_SWARM_CMD = `npx -y ${SWARM_PACKAGE}@latest`;
