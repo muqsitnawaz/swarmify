@@ -5,7 +5,16 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { AgentConfig } from './agents.vscode';
 import { generateTerminalId, RunningCounts } from './terminals';
-import { getTerminalDisplayInfo, TerminalIdentificationOptions } from './utils';
+import {
+  CLAUDE_TITLE,
+  CODEX_TITLE,
+  GEMINI_TITLE,
+  OPENCODE_TITLE,
+  CURSOR_TITLE,
+  SHELL_TITLE,
+  getTerminalDisplayInfo,
+  TerminalIdentificationOptions
+} from './utils';
 
 /**
  * Extract identification options from a VS Code terminal.

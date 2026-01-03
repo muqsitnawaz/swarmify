@@ -631,7 +631,7 @@ function UseCaseVisual({ scenario }: { scenario: string }) {
 
 function PromptLibraryMock() {
   return (
-    <div className="rounded-xl border border-[#1a1a1a] bg-[#0d0d0d] p-4 font-sans">
+    <div className="font-sans">
       <div className="text-center text-[11px] tracking-wide text-[#94a3b8] mb-3">
         Swarmify - Agents
       </div>
@@ -660,7 +660,7 @@ function PromptLibraryMock() {
 
 function CombinedMarkdownMock() {
   return (
-    <div className="rounded-xl border border-[#1a1a1a] bg-[#0d0d0d] p-4 font-sans text-[11px] text-[#ccc]">
+    <div className="font-sans text-[11px] text-[#ccc]">
       {/* Header */}
       <div className="text-center text-[11px] tracking-wide text-[#94a3b8] mb-4">
         README.md
