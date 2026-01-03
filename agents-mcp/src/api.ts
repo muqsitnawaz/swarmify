@@ -87,7 +87,7 @@ export async function handleSpawn(
   const resolvedMode = resolveMode(mode, defaultMode);
   const resolvedEffort = effort ?? 'medium';
 
-  console.log(`[spawn] Spawning ${agentType} agent for task "${taskName}" [${resolvedMode}] effort=${resolvedEffort}...`);
+  console.error(`[spawn] Spawning ${agentType} agent for task "${taskName}" [${resolvedMode}] effort=${resolvedEffort}...`);
 
   const agent = await manager.spawn(
     taskName,
