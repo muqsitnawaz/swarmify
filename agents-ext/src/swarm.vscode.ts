@@ -13,6 +13,9 @@ import {
   isAgentCommandInstalled,
 } from './swarm.detect';
 
+// Re-export for consumers that need the union type
+export type { AgentCli } from './swarm.detect';
+
 const execAsync = promisify(exec);
 
 // Agent swarm data directory

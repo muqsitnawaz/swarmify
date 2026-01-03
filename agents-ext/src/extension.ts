@@ -1138,9 +1138,7 @@ async function detectDefaultAgentTitle(): Promise<string> {
   const candidates = [
     { title: CLAUDE_TITLE, command: 'claude' },
     { title: CODEX_TITLE, command: 'codex' },
-    { title: GEMINI_TITLE, command: 'gemini' },
-    { title: CURSOR_TITLE, command: 'cursor-agent' },
-    { title: OPENCODE_TITLE, command: 'opencode' }
+    { title: GEMINI_TITLE, command: 'gemini' }
   ];
 
   for (const candidate of candidates) {
@@ -1167,11 +1165,16 @@ async function maybeRunFirstSetup(context: vscode.ExtensionContext, force = fals
   defaultAgentTitle = detected;
   await context.globalState.update('agents.defaultAgentTitle', detected);
 
-  // Ensure swarm MCP + command is enabled
+  // Ensure swarm MCP + command is enabled for the detected default agent only
   try {
-    const status = await swarm.getSwarmStatus();
-    if (!status.mcpEnabled || !status.commandInstalled) {
-      await swarm.enableSwarm(context);
+    const def = getBuiltInDefByTitle(detected);
+    const cliAgent = def && ['claude', 'codex', 'gemini'].includes(def.key) ? def.key as swarm.AgentCli : undefined;
+    if (cliAgent) {
+      const status = await swarm.getSwarmStatus();
+      const agentStatus = status.agents[cliAgent];
+      if (agentStatus.cliAvailable && (!agentStatus.mcpEnabled || !agentStatus.commandInstalled)) {
+        await swarm.enableSwarmForAgent(cliAgent, context);
+      }
     }
   } catch {
     // Non-fatal; user can rerun setup
