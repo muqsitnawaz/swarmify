@@ -4,7 +4,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { AgentConfig } from './agents.vscode';
-import { countRunningFromNames, generateTerminalId, RunningCounts } from './terminals';
+import { generateTerminalId, RunningCounts } from './terminals';
 import { getTerminalDisplayInfo, TerminalIdentificationOptions } from './utils';
 
 /**
@@ -270,8 +270,49 @@ export async function scanExisting(
 
 // Count running agents
 export function countRunning(): RunningCounts {
-  const names = vscode.window.terminals.map(t => t.name);
-  return countRunningFromNames(names);
+  const counts: RunningCounts = {
+    claude: 0,
+    codex: 0,
+    gemini: 0,
+    opencode: 0,
+    cursor: 0,
+    shell: 0,
+    custom: {}
+  };
+
+  for (const terminal of vscode.window.terminals) {
+    // Use full identification (name + env + icon) so we keep prefix even when the
+    // tab title is just a label (showLabelsInTitles=true) or has been manually renamed.
+    const identOpts = extractTerminalIdentificationOptions(terminal);
+    const info = getTerminalDisplayInfo(identOpts);
+    if (!info.isAgent || !info.prefix) continue;
+
+    switch (info.prefix) {
+      case CLAUDE_TITLE:
+        counts.claude++;
+        break;
+      case CODEX_TITLE:
+        counts.codex++;
+        break;
+      case GEMINI_TITLE:
+        counts.gemini++;
+        break;
+      case OPENCODE_TITLE:
+        counts.opencode++;
+        break;
+      case CURSOR_TITLE:
+        counts.cursor++;
+        break;
+      case SHELL_TITLE:
+        counts.shell++;
+        break;
+      default:
+        counts.custom[info.prefix] = (counts.custom[info.prefix] || 0) + 1;
+        break;
+    }
+  }
+
+  return counts;
 }
 
 // Terminal detail for UI display
