@@ -2,9 +2,41 @@
 // Implements API.md 2-map architecture
 
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { AgentConfig } from './agents.vscode';
 import { countRunningFromNames, generateTerminalId, RunningCounts } from './terminals';
-import { getTerminalDisplayInfo } from './utils';
+import { getTerminalDisplayInfo, TerminalIdentificationOptions } from './utils';
+
+/**
+ * Extract identification options from a VS Code terminal.
+ * Used to gather all inputs for getTerminalDisplayInfo.
+ */
+function extractTerminalIdentificationOptions(terminal: vscode.Terminal): TerminalIdentificationOptions {
+  const opts = terminal.creationOptions as vscode.TerminalOptions;
+  const env = opts?.env;
+  const terminalId = env ? env['AGENT_TERMINAL_ID'] : undefined;
+
+  // Extract icon filename from iconPath
+  let iconFilename: string | null = null;
+  if (opts?.iconPath) {
+    const icon: any = opts.iconPath;
+    if (icon instanceof vscode.Uri) {
+      iconFilename = path.basename(icon.fsPath);
+    } else if (icon && typeof icon === 'object') {
+      // Support { light: Uri; dark: Uri } or direct object with fsPath
+      const candidate = icon.light ?? icon.dark ?? icon;
+      if (candidate instanceof vscode.Uri || (candidate && typeof candidate.fsPath === 'string')) {
+        iconFilename = path.basename(candidate.fsPath);
+      }
+    }
+  }
+
+  return {
+    name: terminal.name,
+    terminalId: terminalId as string | undefined,
+    iconFilename
+  };
+}
 
 // Terminal entry following API.md
 export interface EditorTerminal {
@@ -184,7 +216,7 @@ export function flushQueue(terminal: vscode.Terminal): string[] {
 export async function renameTerminal(terminal: vscode.Terminal, newName: string): Promise<void> {
   try {
     terminal.show(false);
-    await vscode.commands.executeCommand('workbench.action.terminal.renameWithArg', newName);
+    await vscode.commands.executeCommand('workbench.action.terminal.renameWithArg', { name: newName });
   } catch (err) {
     console.error('[TERMINALS] Failed to rename terminal', err);
   }
@@ -193,7 +225,7 @@ export async function renameTerminal(terminal: vscode.Terminal, newName: string)
 // Lifecycle
 
 export async function scanExisting(
-  inferAgentConfig: (name: string) => Omit<AgentConfig, 'count'> | null,
+  inferAgentConfig: (name: string, knownPrefix?: string | null) => Omit<AgentConfig, 'count'> | null,
   context?: vscode.ExtensionContext
 ): Promise<number> {
   console.log('[TERMINALS] Scanning all terminals...');
@@ -208,15 +240,17 @@ export async function scanExisting(
       continue;
     }
 
-    const info = getTerminalDisplayInfo(terminal.name);
+    // Use the central identification function with all available inputs
+    const identOpts = extractTerminalIdentificationOptions(terminal);
+    const info = getTerminalDisplayInfo(identOpts);
     console.log(`[TERMINALS] Display info for "${terminal.name}": isAgent=${info.isAgent}, prefix=${info.prefix}`);
 
     if (!info.isAgent || !info.prefix) continue;
 
-    const agentConfig = inferAgentConfig(terminal.name);
+    const agentConfig = inferAgentConfig(terminal.name, info.prefix);
     if (!agentConfig) continue;
 
-    const id = nextId(info.prefix);
+    const id = identOpts.terminalId || nextId(info.prefix);
 
     let pid: number | undefined;
     try {
@@ -268,7 +302,8 @@ export function getTerminalsByAgentType(agentType: string): TerminalDetail[] {
   let index = 0;
 
   for (const terminal of vscode.window.terminals) {
-    const info = getTerminalDisplayInfo(terminal.name);
+    const identOpts = extractTerminalIdentificationOptions(terminal);
+    const info = getTerminalDisplayInfo(identOpts);
     if (!info.isAgent || !info.prefix) continue;
 
     // Match by prefix for built-in agents, or by exact name for custom agents

@@ -1,39 +1,32 @@
 // Swarm MCP configuration - VS Code dependent functions
 
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as vscode from 'vscode';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import {
+  AgentCli,
+  isAgentCliAvailable,
+  isAgentMcpEnabled,
+  isAgentCommandInstalled,
+} from './swarm.detect';
 
 const execAsync = promisify(exec);
 
 // Agent swarm data directory
-const AGENT_SWARM_DIR = path.join(os.homedir(), '.agent-swarm', 'agents');
+const AGENT_SWARM_DIR = path.join(os.homedir(), '.swarmify', 'agents');
 
 const SWARM_PACKAGE = '@swarmify/agents-mcp';
 const SWARM_BINARY = 'agents-mcp';
 
-// Check if Swarm MCP server is configured
-export async function isSwarmEnabled(): Promise<boolean> {
-  try {
-    const { stdout } = await execAsync('claude mcp list');
-    return stdout.includes('Swarm');
-  } catch {
-    return false;
-  }
-}
-
-// Check if /swarm slash command is installed
-export function isSwarmCommandInstalled(): boolean {
-  const commandPath = path.join(os.homedir(), '.claude', 'commands', 'swarm.md');
-  return fs.existsSync(commandPath);
-}
 
 export interface AgentInstallStatus {
   installed: boolean;
   cliAvailable: boolean;
+  mcpEnabled: boolean;
+  commandInstalled: boolean;
 }
 
 export interface SwarmStatus {
@@ -46,50 +39,58 @@ export interface SwarmStatus {
   };
 }
 
-// Check if agent CLI is available
-async function isAgentCliAvailable(agentType: 'claude' | 'codex' | 'gemini'): Promise<boolean> {
-  const commands: Record<string, string> = {
-    claude: 'claude --version',
-    codex: 'codex --version',
-    gemini: 'gemini --version',
-  };
-
-  try {
-    await execAsync(commands[agentType]);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-// Get full swarm integration status
+// Get full swarm integration status (per-agent, not globally shared)
 export async function getSwarmStatus(): Promise<SwarmStatus> {
-  const mcpEnabled = await isSwarmEnabled();
-  const commandInstalled = isSwarmCommandInstalled();
-  const swarmFullyInstalled = mcpEnabled && commandInstalled;
-
   const claudeCliAvailable = await isAgentCliAvailable('claude');
   const codexCliAvailable = await isAgentCliAvailable('codex');
   const geminiCliAvailable = await isAgentCliAvailable('gemini');
+
+  const claudeMcp = claudeCliAvailable ? await isAgentMcpEnabled('claude') : false;
+  const codexMcp = codexCliAvailable ? await isAgentMcpEnabled('codex') : false;
+  const geminiMcp = geminiCliAvailable ? await isAgentMcpEnabled('gemini') : false;
+
+  const claudeCmd = claudeCliAvailable ? isAgentCommandInstalled('claude') : false;
+  const codexCmd = codexCliAvailable ? isAgentCommandInstalled('codex') : false;
+  const geminiCmd = geminiCliAvailable ? isAgentCommandInstalled('gemini') : false;
+
+  const mcpEnabled = (!claudeCliAvailable || claudeMcp) &&
+    (!codexCliAvailable || codexMcp) &&
+    (!geminiCliAvailable || geminiMcp);
+
+  const commandInstalled = (!claudeCliAvailable || claudeCmd) &&
+    (!codexCliAvailable || codexCmd) &&
+    (!geminiCliAvailable || geminiCmd);
 
   return {
     mcpEnabled,
     commandInstalled,
     agents: {
       claude: {
-        installed: swarmFullyInstalled && claudeCliAvailable,
+        installed: claudeMcp && claudeCmd && claudeCliAvailable,
         cliAvailable: claudeCliAvailable,
+        mcpEnabled: claudeMcp,
+        commandInstalled: claudeCmd,
       },
       codex: {
-        installed: swarmFullyInstalled && codexCliAvailable,
+        installed: codexMcp && codexCmd && codexCliAvailable,
         cliAvailable: codexCliAvailable,
+        mcpEnabled: codexMcp,
+        commandInstalled: codexCmd,
       },
       gemini: {
-        installed: swarmFullyInstalled && geminiCliAvailable,
+        installed: geminiMcp && geminiCmd && geminiCliAvailable,
         cliAvailable: geminiCliAvailable,
+        mcpEnabled: geminiMcp,
+        commandInstalled: geminiCmd,
       },
     },
   };
+}
+
+// Check if swarm is fully enabled (MCP registered and commands installed)
+export async function isSwarmEnabled(): Promise<boolean> {
+  const status = await getSwarmStatus();
+  return status.mcpEnabled && status.commandInstalled;
 }
 
 // Find agent-swarm binary in common locations
@@ -138,43 +139,53 @@ async function hasBun(): Promise<boolean> {
   }
 }
 
-// Install /swarm slash command from bundled asset for all agents
-function installSwarmCommands(context: vscode.ExtensionContext): { claude: boolean; codex: boolean } {
+// Build Gemini TOML command content from markdown source
+function buildGeminiToml(markdown: string): string {
+  return [
+    'name = "swarm"',
+    'description = "Run Swarm MCP tasks"',
+    'prompt = """',
+    markdown.trimEnd(),
+    '"""',
+    ''
+  ].join('\n');
+}
+
+// Install /swarm command for a specific agent
+function installSwarmCommandForAgent(agent: AgentCli, context: vscode.ExtensionContext): boolean {
   const sourcePath = path.join(context.extensionPath, 'assets', 'swarm.md');
   if (!fs.existsSync(sourcePath)) {
-    return { claude: false, codex: false };
+    return false;
   }
 
   const content = fs.readFileSync(sourcePath, 'utf-8');
-  const results = { claude: false, codex: false };
 
-  // Install for Claude (~/.claude/commands/swarm.md)
   try {
-    const claudeCommandsDir = path.join(os.homedir(), '.claude', 'commands');
-    const claudeTargetPath = path.join(claudeCommandsDir, 'swarm.md');
-    if (!fs.existsSync(claudeCommandsDir)) {
-      fs.mkdirSync(claudeCommandsDir, { recursive: true });
+    if (agent === 'claude') {
+      const dir = path.join(os.homedir(), '.claude', 'commands');
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'swarm.md'), content);
+      return true;
     }
-    fs.writeFileSync(claudeTargetPath, content);
-    results.claude = true;
+
+    if (agent === 'codex') {
+      const dir = path.join(os.homedir(), '.codex', 'prompts');
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'swarm.md'), content);
+      return true;
+    }
+
+    if (agent === 'gemini') {
+      const dir = path.join(os.homedir(), '.gemini', 'commands');
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'swarm.toml'), buildGeminiToml(content));
+      return true;
+    }
   } catch {
-    // Ignore if Claude not available
+    // ignore install failure per agent
   }
 
-  // Install for Codex (~/.codex/prompts/swarm.md)
-  try {
-    const codexPromptsDir = path.join(os.homedir(), '.codex', 'prompts');
-    const codexTargetPath = path.join(codexPromptsDir, 'swarm.md');
-    if (!fs.existsSync(codexPromptsDir)) {
-      fs.mkdirSync(codexPromptsDir, { recursive: true });
-    }
-    fs.writeFileSync(codexTargetPath, content);
-    results.codex = true;
-  } catch {
-    // Ignore if Codex not available
-  }
-
-  return results;
+  return false;
 }
 
 // Install swarm-mcp globally
@@ -205,16 +216,68 @@ async function installSwarm(): Promise<boolean> {
   }
 }
 
-export async function enableSwarm(context: vscode.ExtensionContext): Promise<void> {
-  // Install slash commands for all agents
-  const commandResults = installSwarmCommands(context);
+async function registerMcpForAgent(agent: AgentCli, binaryPath: string): Promise<boolean> {
+  try {
+    if (agent === 'claude') {
+      await execAsync(`claude mcp add --scope user Swarm "${binaryPath}"`);
+      return true;
+    }
+    if (agent === 'codex') {
+      await execAsync(`codex mcp add Swarm "${binaryPath}"`);
+      return true;
+    }
+    if (agent === 'gemini') {
+      await execAsync(`gemini mcp add Swarm "${binaryPath}"`);
+      return true;
+    }
+  } catch {
+    // fallthrough
+  }
+  return false;
+}
 
-  // Check if MCP already enabled
-  if (await isSwarmEnabled()) {
-    const installedCommands = [];
-    if (commandResults.claude) installedCommands.push('Claude');
-    if (commandResults.codex) installedCommands.push('Codex');
+export async function enableSwarm(
+  context: vscode.ExtensionContext,
+  onUpdate?: (status: SwarmStatus) => void
+): Promise<void> {
+  await enableSwarmForAgents(['claude', 'codex', 'gemini'], context, onUpdate);
+}
 
+export async function enableSwarmForAgent(
+  agent: AgentCli,
+  context: vscode.ExtensionContext,
+  onUpdate?: (status: SwarmStatus) => void
+): Promise<void> {
+  await enableSwarmForAgents([agent], context, onUpdate);
+}
+
+async function enableSwarmForAgents(
+  agents: AgentCli[],
+  context: vscode.ExtensionContext,
+  onUpdate?: (status: SwarmStatus) => void
+): Promise<void> {
+  const sendStatus = async () => {
+    if (onUpdate) {
+      onUpdate(await getSwarmStatus());
+    }
+  };
+
+  // Install slash commands for requested agents
+  const installedCommands: string[] = [];
+  for (const agent of agents) {
+    if (installSwarmCommandForAgent(agent, context)) {
+      installedCommands.push(agent.charAt(0).toUpperCase() + agent.slice(1));
+    }
+  }
+
+  // Check if already enabled for all requested agents
+  const status = await getSwarmStatus();
+  const allReady = agents.every((a) => {
+    const s = status.agents[a];
+    return s.cliAvailable ? (s.mcpEnabled && s.commandInstalled) : false;
+  });
+  if (allReady) {
+    await sendStatus();
     if (installedCommands.length > 0) {
       vscode.window.showInformationMessage(`Swarm commands updated for ${installedCommands.join(', ')}.`);
     } else {
@@ -238,6 +301,7 @@ export async function enableSwarm(context: vscode.ExtensionContext): Promise<voi
     }
 
     const installed = await installSwarm();
+    await sendStatus();
     if (!installed) {
       return;
     }
@@ -252,12 +316,26 @@ export async function enableSwarm(context: vscode.ExtensionContext): Promise<voi
   }
 
   try {
-    // Use claude mcp add to register the server
-    await execAsync(`claude mcp add --scope user Swarm "${binaryPath}"`);
-    vscode.window.showInformationMessage('Swarm MCP + /swarm command installed. Reload Claude Code.');
+    const registrations: string[] = [];
+
+    for (const agent of agents) {
+      const ok = await registerMcpForAgent(agent, binaryPath);
+      if (ok) {
+        registrations.push(agent.charAt(0).toUpperCase() + agent.slice(1));
+      }
+      await sendStatus();
+    }
+
+    if (registrations.length === 0) {
+      vscode.window.showWarningMessage('Installed Swarm MCP binary, but could not register with selected CLIs. Make sure Claude/Codex/Gemini CLIs are installed.');
+    } else {
+      vscode.window.showInformationMessage(`Swarm MCP installed and registered for: ${registrations.join(', ')}. Reload your IDE agents.`);
+    }
+    await sendStatus();
   } catch (err) {
     const error = err as Error & { stderr?: string };
     vscode.window.showErrorMessage(`Failed to enable swarm: ${error.stderr || error.message}`);
+    await sendStatus();
   }
 }
 

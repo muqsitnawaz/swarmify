@@ -41,7 +41,7 @@ Configure which agents launch automatically when Cursor opens. Set instance coun
 
 ### Swarm: Multi-Agent Coordination
 
-Enable Swarm to let agents spawn sub-agents within themselves. Get second opinions from different AI models or run parallel tasks from a single agent session.
+Swarm MCP is always available; configure it per agent (Claude, Codex, Gemini) in the dashboard. Agents can spawn sub-agents for parallel work and second opinions.
 
 > The value propositions in this README were researched by spawning Codex and Cursor agents via Swarm to analyze the codebase from different perspectives.
 
@@ -61,7 +61,7 @@ Generate commit messages from your staged changes. Learns from your commit style
 
 1. Install the extension
 2. Spawn your first agent via command palette or shortcut
-3. Open settings (`Agents: Dashboard`) to configure auto-start and add custom agents
+3. Open settings (`Agents`) to configure auto-start and add custom agents
 
 ## Keyboard Shortcuts
 

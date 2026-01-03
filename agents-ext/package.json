@@ -3,7 +3,7 @@
   "displayName": "Agents",
   "publisher": "swarmify",
   "description": "Manage multiple Claude Code, Codex, Gemini, and Cursor terminal agents in the editor",
-  "version": "0.9.95",
+  "version": "0.9.103",
   "license": "MIT",
   "author": "Muqsit Nawaz <dev@muqsitnawaz.com>",
   "icon": "assets/agents.png",
@@ -50,7 +50,7 @@
       },
       {
         "command": "agents.configure",
-        "title": "Agents: Dashboard"
+        "title": "Agents"
       },
       {
         "command": "agents.settings",
@@ -118,7 +118,7 @@
       },
       {
         "command": "agents.enableSwarm",
-        "title": "Agents: Enable Swarm"
+        "title": "Agents: Install Swarm MCP"
       },
       {
         "command": "agents.enableNotifications",
@@ -348,7 +348,8 @@
     "compile:ext": "tsc -p ./",
     "compile:ui": "cd ui && bun run build",
     "watch": "tsc -watch -p ./",
-    "package": "bun run compile && vsce package"
+    "package": "bun run compile && vsce package",
+    "test": "bun test"
   },
   "devDependencies": {
     "@types/node": "^20.x",

@@ -4,9 +4,11 @@ import {
   sanitizeLabel,
   getExpandedAgentName,
   getIconFilename,
+  getPrefixFromIconFilename,
   getTerminalDisplayInfo,
   findTerminalNameByTabLabel,
   formatTerminalTitle,
+  getPrefixFromTerminalId,
   mergeMcpConfig,
   createSwarmServerConfig,
   generateTmuxSessionName,
@@ -155,9 +157,25 @@ describe('getIconFilename', () => {
   });
 });
 
+describe('getIconFilename reverse lookup', () => {
+  test('getPrefixFromIconFilename returns correct prefix', () => {
+    expect(getPrefixFromIconFilename('claude.png')).toBe('CC');
+    expect(getPrefixFromIconFilename('chatgpt.png')).toBe('CX');
+    expect(getPrefixFromIconFilename('gemini.png')).toBe('GX');
+    expect(getPrefixFromIconFilename('opencode.png')).toBe('OC');
+    expect(getPrefixFromIconFilename('cursor.png')).toBe('CR');
+    expect(getPrefixFromIconFilename('agents.png')).toBe('SH');
+  });
+
+  test('getPrefixFromIconFilename returns null for unknown icons', () => {
+    expect(getPrefixFromIconFilename('unknown.png')).toBeNull();
+    expect(getPrefixFromIconFilename('')).toBeNull();
+  });
+});
+
 describe('getTerminalDisplayInfo', () => {
-  test('returns full info for agent terminals without label', () => {
-    expect(getTerminalDisplayInfo('CC')).toEqual({
+  test('Strategy 1: identifies by name parsing', () => {
+    expect(getTerminalDisplayInfo({ name: 'CC' })).toEqual({
       isAgent: true,
       prefix: 'CC',
       label: null,
@@ -165,7 +183,7 @@ describe('getTerminalDisplayInfo', () => {
       statusBarText: 'Claude',
       iconFilename: 'claude.png'
     });
-    expect(getTerminalDisplayInfo('CX')).toEqual({
+    expect(getTerminalDisplayInfo({ name: 'CX' })).toEqual({
       isAgent: true,
       prefix: 'CX',
       label: null,
@@ -173,42 +191,7 @@ describe('getTerminalDisplayInfo', () => {
       statusBarText: 'Codex',
       iconFilename: 'chatgpt.png'
     });
-    expect(getTerminalDisplayInfo('GX')).toEqual({
-      isAgent: true,
-      prefix: 'GX',
-      label: null,
-      expandedName: 'Gemini',
-      statusBarText: 'Gemini',
-      iconFilename: 'gemini.png'
-    });
-    expect(getTerminalDisplayInfo('OC')).toEqual({
-      isAgent: true,
-      prefix: 'OC',
-      label: null,
-      expandedName: 'OpenCode',
-      statusBarText: 'OpenCode',
-      iconFilename: 'opencode.png'
-    });
-    expect(getTerminalDisplayInfo('CR')).toEqual({
-      isAgent: true,
-      prefix: 'CR',
-      label: null,
-      expandedName: 'Cursor',
-      statusBarText: 'Cursor',
-      iconFilename: 'cursor.png'
-    });
-    expect(getTerminalDisplayInfo('SH')).toEqual({
-      isAgent: true,
-      prefix: 'SH',
-      label: null,
-      expandedName: 'Shell',
-      statusBarText: 'Shell',
-      iconFilename: 'agents.png'
-    });
-  });
-
-  test('returns full info for agent terminals with label', () => {
-    expect(getTerminalDisplayInfo('CC - auth feature')).toEqual({
+    expect(getTerminalDisplayInfo({ name: 'CC - auth feature' })).toEqual({
       isAgent: true,
       prefix: 'CC',
       label: 'auth feature',
@@ -216,26 +199,53 @@ describe('getTerminalDisplayInfo', () => {
       statusBarText: 'Claude - auth feature',
       iconFilename: 'claude.png'
     });
-    expect(getTerminalDisplayInfo('GX - refactor')).toEqual({
+  });
+
+  test('Strategy 2: identifies by terminalId when name parsing fails', () => {
+    expect(getTerminalDisplayInfo({ name: 'auth feature', terminalId: 'CC-1735824000000-1' })).toEqual({
       isAgent: true,
-      prefix: 'GX',
-      label: 'refactor',
-      expandedName: 'Gemini',
-      statusBarText: 'Gemini - refactor',
-      iconFilename: 'gemini.png'
+      prefix: 'CC',
+      label: 'auth feature',
+      expandedName: 'Claude',
+      statusBarText: 'Claude - auth feature',
+      iconFilename: 'claude.png'
     });
   });
 
-  test('returns null fields for non-agent terminals', () => {
-    expect(getTerminalDisplayInfo('bash')).toEqual({
-      isAgent: false,
-      prefix: null,
-      label: null,
-      expandedName: null,
-      statusBarText: null,
-      iconFilename: null
+  test('Strategy 3: identifies by iconFilename when other strategies fail', () => {
+    expect(getTerminalDisplayInfo({ name: 'auth feature', iconFilename: 'claude.png' })).toEqual({
+      isAgent: true,
+      prefix: 'CC',
+      label: 'auth feature',
+      expandedName: 'Claude',
+      statusBarText: 'Claude - auth feature',
+      iconFilename: 'claude.png'
     });
-    expect(getTerminalDisplayInfo('zsh')).toEqual({
+  });
+
+  test('priority: name parsing wins over terminalId and iconFilename', () => {
+    // Even with conflicting terminalId/iconFilename, name parsing takes precedence
+    const result = getTerminalDisplayInfo({
+      name: 'CC - explicit label',
+      terminalId: 'CX-123', // Would suggest Codex
+      iconFilename: 'gemini.png' // Would suggest Gemini
+    });
+    expect(result.prefix).toBe('CC');
+    expect(result.label).toBe('explicit label');
+  });
+
+  test('priority: terminalId wins over iconFilename', () => {
+    const result = getTerminalDisplayInfo({
+      name: 'my task',
+      terminalId: 'CX-123',
+      iconFilename: 'gemini.png'
+    });
+    expect(result.prefix).toBe('CX');
+    expect(result.label).toBe('my task');
+  });
+
+  test('returns null fields for non-agent terminals', () => {
+    expect(getTerminalDisplayInfo({ name: 'bash' })).toEqual({
       isAgent: false,
       prefix: null,
       label: null,
@@ -246,7 +256,7 @@ describe('getTerminalDisplayInfo', () => {
   });
 
   test('handles whitespace in terminal names', () => {
-    expect(getTerminalDisplayInfo('  CC  ')).toEqual({
+    expect(getTerminalDisplayInfo({ name: '  CC  ' })).toEqual({
       isAgent: true,
       prefix: 'CC',
       label: null,
@@ -254,6 +264,28 @@ describe('getTerminalDisplayInfo', () => {
       statusBarText: 'Claude',
       iconFilename: 'claude.png'
     });
+  });
+
+  test('treats empty name as no label when identified by other means', () => {
+    const result = getTerminalDisplayInfo({ name: '', terminalId: 'CC-123' });
+    expect(result.isAgent).toBe(true);
+    expect(result.prefix).toBe('CC');
+    expect(result.label).toBeNull();
+  });
+});
+
+describe('getPrefixFromTerminalId', () => {
+  test('extracts prefix from valid ID', () => {
+    expect(getPrefixFromTerminalId('CC-1735824000000-1')).toBe('CC');
+    expect(getPrefixFromTerminalId('CX-123-456')).toBe('CX');
+  });
+
+  test('returns the ID itself if no dashes', () => {
+    expect(getPrefixFromTerminalId('Claude')).toBe('Claude');
+  });
+
+  test('handles empty input', () => {
+    expect(getPrefixFromTerminalId('')).toBeNull();
   });
 });
 
@@ -464,7 +496,7 @@ describe('formatTerminalTitle', () => {
 
   test('includes label when allowed', () => {
     expect(formatTerminalTitle('CR', { label: 'auth', display: { showFullAgentNames: true, showLabelsInTitles: true } }))
-      .toBe('Cursor - auth');
+      .toBe('auth');
   });
 
   test('omits label when showLabelsInTitles is false', () => {
