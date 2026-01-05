@@ -233,6 +233,9 @@ export default function App() {
     claude: true, codex: true, gemini: true, opencode: true, cursor: true, shell: true
   })
 
+  const hasCliInstalled = installedAgents.claude || installedAgents.codex || installedAgents.gemini
+  const showIntegrationCallout = !hasCliInstalled && !swarmStatus.mcpEnabled
+
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       const message = event.data
@@ -388,18 +391,6 @@ export default function App() {
   // Get unique agent types from a task
   const getUniqueAgentTypes = (agents: AgentDetail[]): string[] => {
     return [...new Set(agents.map(a => a.agent_type))]
-  }
-
-  // Get common directory from agents (use first agent's cwd, shortened)
-  const getTaskDirectory = (agents: AgentDetail[]): string | null => {
-    const firstCwd = agents.find(a => a.cwd)?.cwd
-    if (!firstCwd) return null
-    // Shorten home directory
-    const home = firstCwd.match(/^\/Users\/[^/]+/)
-    if (home) {
-      return firstCwd.replace(home[0], '~')
-    }
-    return firstCwd
   }
 
   const handleInstallSwarmAgent = (agent: SwarmAgentType) => {
@@ -630,7 +621,6 @@ export default function App() {
           {paginatedTasks.map(task => {
             const isTaskExpanded = expandedTasks.has(task.task_name)
             const agentTypes = getUniqueAgentTypes(task.agents)
-            const directory = getTaskDirectory(task.agents)
             return (
               <div key={task.task_name} className="rounded-xl bg-[var(--muted)] overflow-hidden">
                 {/* Task header */}
@@ -638,15 +628,14 @@ export default function App() {
                   onClick={() => toggleTaskExpanded(task.task_name)}
                   className="w-full px-4 py-3 hover:bg-[var(--muted-foreground)]/5 transition-colors text-left"
                 >
-                  {/* Row 1: Chevron + Title ... icons */}
-                  <div className="flex items-center gap-3">
+                  <div className="grid grid-cols-[auto,1fr,auto] gap-x-3 gap-y-1 items-center">
                     {isTaskExpanded ? (
                       <ChevronDown className="w-4 h-4 text-[var(--muted-foreground)] flex-shrink-0" />
                     ) : (
                       <ChevronRight className="w-4 h-4 text-[var(--muted-foreground)] flex-shrink-0" />
                     )}
-                    <span className="text-sm font-medium truncate flex-1">{formatTaskName(task.task_name)}</span>
-                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <span className="text-sm font-medium truncate">{formatTaskName(task.task_name)}</span>
+                    <div className="row-span-2 flex items-center gap-1.5 flex-shrink-0">
                       {agentTypes.map(type => (
                         <img
                           key={type}
@@ -657,11 +646,9 @@ export default function App() {
                         />
                       ))}
                     </div>
-                  </div>
-                  {/* Row 2: path ... time (greyed) */}
-                  <div className="flex items-center justify-between mt-1.5 ml-7 text-xs text-[var(--muted-foreground)]">
-                    <span className="font-mono truncate">{directory || 'No directory'}</span>
-                    <span className="flex-shrink-0 ml-3">{formatTimeAgo(task.latest_activity)}</span>
+                    <div className="ml-7 text-xs text-[var(--muted-foreground)]">
+                      {formatTimeAgo(task.latest_activity)}
+                    </div>
                   </div>
                 </button>
 
@@ -834,6 +821,25 @@ export default function App() {
       {/* Tab content */}
       {activeTab === 'overview' && (
         <div className="space-y-8">
+          {showIntegrationCallout && (
+            <section className="px-4 py-3 rounded-xl bg-[var(--muted)] border border-[var(--border)]">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--background)]">
+                  <img src={icons.agents} alt="Agents" className="w-5 h-5" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold">Swarm Integration</p>
+                  <p className="text-xs text-[var(--muted-foreground)]">
+                    Install a CLI agent and enable Swarm to see tasks here.
+                  </p>
+                </div>
+                <Button size="sm" onClick={() => setActiveTab('swarm')}>
+                  Configure
+                </Button>
+              </div>
+            </section>
+          )}
+
           {/* Running Now */}
           <section>
             <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
@@ -976,13 +982,13 @@ export default function App() {
               <div className="space-y-2">
                 {tasks.slice(0, 5).map(task => {
                   const agentTypes = getUniqueAgentTypes(task.agents)
-                  const directory = getTaskDirectory(task.agents)
                   return (
                     <div key={task.task_name} className="px-4 py-3 rounded-xl bg-[var(--muted)]">
-                      {/* Row 1: Title ... icons */}
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-sm font-medium truncate">{formatTaskName(task.task_name)}</span>
-                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <div className="grid grid-cols-[1fr,auto] gap-x-3 gap-y-1 items-center">
+                        <span className="text-sm font-medium truncate">
+                          {formatTaskName(task.task_name)}
+                        </span>
+                        <div className="row-span-2 flex items-center gap-1.5 flex-shrink-0">
                           {agentTypes.map(type => (
                             <img
                               key={type}
@@ -993,11 +999,9 @@ export default function App() {
                             />
                           ))}
                         </div>
-                      </div>
-                      {/* Row 2: path ... time (greyed) */}
-                      <div className="flex items-center justify-between mt-1.5 text-xs text-[var(--muted-foreground)]">
-                        <span className="font-mono truncate">{directory || 'No directory'}</span>
-                        <span className="flex-shrink-0 ml-3">{formatTimeAgo(task.latest_activity)}</span>
+                        <span className="text-xs text-[var(--muted-foreground)]">
+                          {formatTimeAgo(task.latest_activity)}
+                        </span>
                       </div>
                     </div>
                   )
@@ -1011,35 +1015,23 @@ export default function App() {
             <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
               Shortcuts
             </h2>
-            <div className="space-y-2 text-sm">
-              <div className="flex items-center gap-4">
-                <kbd className="px-2 py-1 rounded bg-[var(--muted)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs min-w-[120px] text-center">Cmd+Shift+A</kbd>
-                <span>New agent</span>
-              </div>
-              <div className="flex items-center gap-4">
-                <kbd className="px-2 py-1 rounded bg-[var(--muted)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs min-w-[120px] text-center">Cmd+Shift+L</kbd>
-                <span>Label agent</span>
-              </div>
-              <div className="flex items-center gap-4">
-                <kbd className="px-2 py-1 rounded bg-[var(--muted)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs min-w-[120px] text-center">Cmd+Shift+G</kbd>
-                <span>Commit & push</span>
-              </div>
-              <div className="flex items-center gap-4">
-                <kbd className="px-2 py-1 rounded bg-[var(--muted)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs min-w-[120px] text-center">Cmd+Shift+C</kbd>
-                <span>Clear & restart</span>
-              </div>
-              <div className="flex items-center gap-4">
-                <kbd className="px-2 py-1 rounded bg-[var(--muted)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs min-w-[120px] text-center">Cmd+R</kbd>
-                <span>Next agent</span>
-              </div>
-              <div className="flex items-center gap-4">
-                <kbd className="px-2 py-1 rounded bg-[var(--muted)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs min-w-[120px] text-center">Cmd+E</kbd>
-                <span>Previous agent</span>
-              </div>
-              <div className="flex items-center gap-4">
-                <kbd className="px-2 py-1 rounded bg-[var(--muted)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs min-w-[120px] text-center">Cmd+Shift+'</kbd>
-                <span>Prompts</span>
-              </div>
+            <div className="grid gap-3 sm:grid-cols-2 text-sm">
+              {[
+                ['Cmd+Shift+A', 'New agent'],
+                ['Cmd+Shift+L', 'Label agent'],
+                ['Cmd+Shift+G', 'Commit & push'],
+                ['Cmd+Shift+C', 'Clear & restart'],
+                ['Cmd+R', 'Next agent'],
+                ['Cmd+E', 'Previous agent'],
+                ["Cmd+Shift+'", 'Prompts'],
+              ].map(([keys, label]) => (
+                <div key={keys} className="flex items-center gap-4">
+                  <kbd className="px-2 py-1 rounded bg-[var(--muted)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs min-w-[120px] text-center">
+                    {keys}
+                  </kbd>
+                  <span>{label}</span>
+                </div>
+              ))}
             </div>
           </section>
         </div>
@@ -1050,7 +1042,7 @@ export default function App() {
           {/* Swarm Integration */}
           <section>
             <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
-              Swarm MCP Configuration
+              Swarm Integration
             </h2>
             <div className="space-y-2">
               {(['claude', 'codex', 'gemini'] as SwarmAgentType[]).map((agent) => {

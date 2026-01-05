@@ -281,12 +281,18 @@ export interface TaskSummary {
 
 // Calculate duration string from dates
 function calcDuration(startedAt: Date, completedAt: Date | null, status: string): string | null {
-  let seconds: number;
+  let seconds: number | null = null;
+
   if (completedAt) {
     seconds = (completedAt.getTime() - startedAt.getTime()) / 1000;
   } else if (status === 'running') {
     seconds = (Date.now() - startedAt.getTime()) / 1000;
-  } else {
+  } else if (status === 'completed') {
+    // Completed without an end time recorded; avoid inflating duration.
+    return null;
+  }
+
+  if (seconds === null || seconds < 0) {
     return null;
   }
 
@@ -381,9 +387,28 @@ function parseAgentLog(logPath: string): {
         if (event.type === 'assistant' || event.type === 'message' || event.role === 'assistant') {
           const text = event.content || event.text || event.message || '';
           if (typeof text === 'string' && text.trim()) {
-            // Truncate long messages
             const truncated = text.length > 200 ? text.substring(0, 197) + '...' : text;
             messages.push(truncated);
+          }
+        }
+
+        // Streamed deltas (Claude/Codex) often arrive as text_delta/content_block_delta
+        if (event.delta?.text) {
+          const text = String(event.delta.text);
+          if (text.trim()) {
+            const truncated = text.length > 200 ? text.substring(0, 197) + '...' : text;
+            messages.push(truncated);
+          }
+        }
+
+        if (Array.isArray(event.content)) {
+          for (const block of event.content) {
+            if (block?.type === 'text' && typeof block.text === 'string' && block.text.trim()) {
+              const truncated = block.text.length > 200
+                ? block.text.substring(0, 197) + '...'
+                : block.text;
+              messages.push(truncated);
+            }
           }
         }
       } catch {
