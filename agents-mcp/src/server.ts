@@ -95,8 +95,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             effort: {
               type: 'string',
-              enum: ['medium', 'high'],
-              description: "Effort level: 'medium' (default) uses balanced models, 'high' uses max-capability models.",
+              enum: ['fast', 'default', 'detailed'],
+              description: "Effort level: 'fast' is quickest/cheapest, 'default' is balanced (default), 'detailed' is max-capability.",
             },
             force: {
               type: 'boolean',
@@ -197,7 +197,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         args.prompt as string,
         (args.cwd as string) || null,
         (args.mode as string) || null,
-        (args.effort as 'medium' | 'high') || 'medium',
+        (args.effort as 'fast' | 'default' | 'detailed') || 'default',
         Boolean(args.force)
       );
     } else if (name === 'status') {

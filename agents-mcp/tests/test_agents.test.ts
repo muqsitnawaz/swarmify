@@ -125,13 +125,14 @@ describe('AgentProcess', () => {
 
 describe('Effort Model Mapping', () => {
   test('should have mappings for all effort levels', () => {
-    expect('medium' in EFFORT_MODEL_MAP).toBe(true);
-    expect('high' in EFFORT_MODEL_MAP).toBe(true);
+    expect('fast' in EFFORT_MODEL_MAP).toBe(true);
+    expect('default' in EFFORT_MODEL_MAP).toBe(true);
+    expect('detailed' in EFFORT_MODEL_MAP).toBe(true);
   });
 
   test('should have models for all agent types at each effort level', () => {
     const agentTypes = ['codex', 'cursor', 'gemini', 'claude'] as const;
-    const effortLevels: EffortLevel[] = ['medium', 'high'];
+    const effortLevels: EffortLevel[] = ['fast', 'default', 'detailed'];
 
     for (const effort of effortLevels) {
       for (const agentType of agentTypes) {
@@ -142,28 +143,31 @@ describe('Effort Model Mapping', () => {
     }
   });
 
-  test('should have correct medium effort models', () => {
-    expect(EFFORT_MODEL_MAP.medium.codex).toBe('gpt-5.2-codex');
-    expect(EFFORT_MODEL_MAP.medium.gemini).toBe('gemini-3-flash-preview');
-    expect(EFFORT_MODEL_MAP.medium.claude).toBe('opus-4.5');
-    expect(EFFORT_MODEL_MAP.medium.cursor).toBe('composer-1');
+  test('should have correct fast effort models', () => {
+    expect(EFFORT_MODEL_MAP.fast.codex).toBe('gpt-5.2-codex');
+    expect(EFFORT_MODEL_MAP.fast.gemini).toBe('gemini-3-flash-preview');
+    expect(EFFORT_MODEL_MAP.fast.claude).toBe('claude-haiku-4-5-20251001');
+    expect(EFFORT_MODEL_MAP.fast.cursor).toBe('composer-1');
   });
 
-  test('should have correct high effort models', () => {
-    expect(EFFORT_MODEL_MAP.high.codex).toBe('gpt-5.1-codex-max');
-    expect(EFFORT_MODEL_MAP.high.gemini).toBe('gemini-3-pro-preview');
-    expect(EFFORT_MODEL_MAP.high.claude).toBe('opus-4.5');
-    expect(EFFORT_MODEL_MAP.high.cursor).toBe('composer-1');
+  test('should have correct default effort models', () => {
+    expect(EFFORT_MODEL_MAP.default.codex).toBe('gpt-5.2-codex');
+    expect(EFFORT_MODEL_MAP.default.gemini).toBe('gemini-3-flash-preview');
+    expect(EFFORT_MODEL_MAP.default.claude).toBe('claude-sonnet-4-5');
+    expect(EFFORT_MODEL_MAP.default.cursor).toBe('composer-1');
   });
 
-  test('claude should use opus-4.5 for both effort levels', () => {
-    expect(EFFORT_MODEL_MAP.medium.claude).toBe(EFFORT_MODEL_MAP.high.claude);
-    expect(EFFORT_MODEL_MAP.medium.claude).toBe('opus-4.5');
+  test('should have correct detailed effort models', () => {
+    expect(EFFORT_MODEL_MAP.detailed.codex).toBe('gpt-5.1-codex-max');
+    expect(EFFORT_MODEL_MAP.detailed.gemini).toBe('gemini-3-pro-preview');
+    expect(EFFORT_MODEL_MAP.detailed.claude).toBe('claude-opus-4-5');
+    expect(EFFORT_MODEL_MAP.detailed.cursor).toBe('composer-1');
   });
 
-  test('cursor should use composer-1 for both effort levels', () => {
-    expect(EFFORT_MODEL_MAP.medium.cursor).toBe(EFFORT_MODEL_MAP.high.cursor);
-    expect(EFFORT_MODEL_MAP.medium.cursor).toBe('composer-1');
+  test('cursor should use composer-1 for all effort levels', () => {
+    expect(EFFORT_MODEL_MAP.fast.cursor).toBe('composer-1');
+    expect(EFFORT_MODEL_MAP.default.cursor).toBe('composer-1');
+    expect(EFFORT_MODEL_MAP.detailed.cursor).toBe('composer-1');
   });
 });
 
