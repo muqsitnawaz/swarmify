@@ -103,7 +103,7 @@ export default function Home() {
         {/* Install command */}
         <div className="animate-fade-in-delay-1 flex flex-wrap gap-4 mb-16">
           <a
-            href="https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext"
+            href="https://marketplace.visualstudio.com/items?itemName=swarmify.agents-ext"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 px-5 py-3 bg-white text-black font-medium rounded-lg hover:bg-gray-200 transition-colors"
@@ -282,7 +282,7 @@ export default function Home() {
                 Your editor handles 30 tabs. Now agents live there too. Split-view agents side by side, same shortcuts you use for files.
               </p>
               <a
-                href="https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext"
+                href="https://marketplace.visualstudio.com/items?itemName=swarmify.agents-ext"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-[#3b82f6] text-sm hover:underline"
@@ -407,7 +407,7 @@ export default function Home() {
       </section>
 
       {/* Prompt Library + Markdown */}
-      <section className="px-6 py-24 border-t border-[#1a1a1a]">
+      <section className="px-6 py-24">
         <div className="max-w-5xl mx-auto space-y-16">
           {/* Prompt Library */}
           <div className="grid md:grid-cols-[1fr_1.3fr] gap-8 items-start">
@@ -524,7 +524,7 @@ export default function Home() {
             Run multiple agents. Review their work. Ship faster.
           </p>
           <a
-            href="https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext"
+            href="https://marketplace.visualstudio.com/items?itemName=swarmify.agents-ext"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 px-6 py-3 bg-white text-black font-medium rounded-lg hover:bg-gray-200 transition-colors"
@@ -541,7 +541,7 @@ export default function Home() {
             Swarmify
           </div>
           <div className="flex gap-6">
-            <a href="https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext" className="hover:text-white transition-colors">
+            <a href="https://marketplace.visualstudio.com/items?itemName=swarmify.agents-ext" className="hover:text-white transition-colors">
               VS Code Marketplace
             </a>
             <a href="https://www.npmjs.com/package/@swarmify/agents-mcp" className="hover:text-white transition-colors">

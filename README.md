@@ -9,7 +9,7 @@ True multi-agent coding in your IDE. Run Claude, Codex, Gemini, and Cursor agent
 | Package | Description | Install |
 | --- | --- | --- |
 | [@swarmify/agents-mcp](./agents-mcp) | MCP server for spawning agents | `npx @swarmify/agents-mcp` |
-| [Agents Extension](./agents-ext) | VS Code/Cursor extension | [Marketplace](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext) |
+| [Agents Extension](./agents-ext) | VS Code/Cursor extension | [Marketplace](https://marketplace.visualstudio.com/items?itemName=swarmify.agents-ext) |
 | [Website](./agents-web) | swarmify.co | \- |
 
 ## Quick Start
@@ -31,7 +31,7 @@ opencode mcp add
 
 ### VS Code Extension
 
-Install "Agents" from the VS Code Marketplace, or search for `swarmify.swarm-ext`.
+Install "Agents" from the VS Code Marketplace, or search for `swarmify.agents-ext`.
 
 ## How It Works
 
