@@ -393,6 +393,20 @@ export default function App() {
     return [...new Set(agents.map(a => a.agent_type))]
   }
 
+  const getTaskLatestTime = (task: TaskSummary): string => {
+    const timestamps = task.agents
+      .flatMap(a => [a.completed_at, a.started_at].filter(Boolean))
+      .map(t => new Date(t as string).getTime())
+      .filter(n => !Number.isNaN(n));
+
+    if (timestamps.length === 0 && task.latest_activity) {
+      return task.latest_activity;
+    }
+
+    const latest = timestamps.length ? Math.max(...timestamps) : Date.now();
+    return new Date(latest).toISOString();
+  }
+
   const handleInstallSwarmAgent = (agent: SwarmAgentType) => {
     setSwarmInstalling(true)
     vscode.postMessage({ type: 'installSwarmAgent', agent })
@@ -647,7 +661,7 @@ export default function App() {
                       ))}
                     </div>
                     <div className="ml-7 text-xs text-[var(--muted-foreground)]">
-                      {formatTimeAgo(task.latest_activity)}
+                      {formatTimeAgo(getTaskLatestTime(task))}
                     </div>
                   </div>
                 </button>
@@ -984,9 +998,12 @@ export default function App() {
                   const agentTypes = getUniqueAgentTypes(task.agents)
                   return (
                     <div key={task.task_name} className="px-4 py-3 rounded-xl bg-[var(--muted)]">
-                      <div className="grid grid-cols-[1fr,auto] gap-x-3 gap-y-1 items-center">
+                      <div className="grid grid-cols-[1fr,auto,auto] gap-x-3 gap-y-1 items-center">
                         <span className="text-sm font-medium truncate">
                           {formatTaskName(task.task_name)}
+                        </span>
+                        <span className="text-xs text-[var(--muted-foreground)]">
+                          {formatTimeAgo(getTaskLatestTime(task))}
                         </span>
                         <div className="row-span-2 flex items-center gap-1.5 flex-shrink-0">
                           {agentTypes.map(type => (
@@ -999,9 +1016,7 @@ export default function App() {
                             />
                           ))}
                         </div>
-                        <span className="text-xs text-[var(--muted-foreground)]">
-                          {formatTimeAgo(task.latest_activity)}
-                        </span>
+                        <span className="text-xs text-[var(--muted-foreground)]">&nbsp;</span>
                       </div>
                     </div>
                   )
