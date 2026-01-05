@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Button } from './components/ui/button'
 import { Checkbox } from './components/ui/checkbox'
 import { Input } from './components/ui/input'
-import { Trash2, Plus, X, Star, ChevronDown, ChevronRight, FileEdit, FilePlus, Terminal, MessageSquare, Clock, RefreshCw, Download, ExternalLink, Check } from 'lucide-react'
+import { ChevronDown, ChevronRight, FileEdit, FilePlus, Terminal, MessageSquare, Clock, RefreshCw, Download, ExternalLink, Check } from 'lucide-react'
 
 interface BuiltInAgentSettings {
   login: boolean
@@ -18,6 +18,33 @@ interface CustomAgentSettings {
 
 type SwarmAgentType = 'claude' | 'codex' | 'gemini'
 const ALL_SWARM_AGENTS: SwarmAgentType[] = ['claude', 'codex', 'gemini']
+
+type SkillName =
+  | 'plan'
+  | 'splan'
+  | 'debug'
+  | 'sdebug'
+  | 'sconfirm'
+  | 'clean'
+  | 'sclean'
+  | 'test'
+  | 'stest'
+
+interface SkillAgentStatus {
+  installed: boolean
+  cliAvailable: boolean
+  builtIn: boolean
+}
+
+interface SkillCommandStatus {
+  name: SkillName
+  description: string
+  agents: Record<SwarmAgentType, SkillAgentStatus>
+}
+
+interface SkillsStatus {
+  commands: SkillCommandStatus[]
+}
 
 interface PromptEntry {
   id: string
@@ -109,7 +136,7 @@ interface TerminalDetail {
   index: number
 }
 
-type TabId = 'overview' | 'settings' | 'swarm' | 'prompts' | 'guide'
+type TabId = 'overview' | 'settings' | 'swarm' | 'skills' | 'guide'
 
 declare function acquireVsCodeApi(): {
   postMessage(message: unknown): void
@@ -149,6 +176,12 @@ const SWARM_AGENT_LABELS: Record<SwarmAgentType, string> = {
   claude: 'Claude',
   gemini: 'Gemini'
 }
+
+const SKILL_AGENTS: { key: SwarmAgentType; name: string; icon: string }[] = [
+  { key: 'codex', name: 'Codex', icon: icons.codex },
+  { key: 'gemini', name: 'Gemini', icon: icons.gemini },
+  { key: 'claude', name: 'Claude', icon: icons.claude },
+]
 
 // Install commands/links for each agent
 const AGENT_INSTALL_INFO: Record<string, { command?: string; url?: string }> = {
@@ -203,13 +236,9 @@ export default function App() {
   const [newCommand, setNewCommand] = useState('')
   const [nameError, setNameError] = useState('')
 
-  // Prompt Stash state
-  const [isAddingPrompt, setIsAddingPrompt] = useState(false)
-  const [newPromptTitle, setNewPromptTitle] = useState('')
-  const [newPromptContent, setNewPromptContent] = useState('')
-  const [editingPromptId, setEditingPromptId] = useState<string | null>(null)
-  const [editPromptTitle, setEditPromptTitle] = useState('')
-  const [editPromptContent, setEditPromptContent] = useState('')
+  // Skills state
+  const [skillsStatus, setSkillsStatus] = useState<SkillsStatus | null>(null)
+  const [skillInstalling, setSkillInstalling] = useState(false)
 
   // Tab and Tasks state
   const [activeTab, setActiveTab] = useState<TabId>('overview')
@@ -245,6 +274,9 @@ export default function App() {
         if (message.swarmStatus) {
           setSwarmStatus(message.swarmStatus)
         }
+        if (message.skillsStatus) {
+          setSkillsStatus(message.skillsStatus)
+        }
       } else if (message.type === 'updateRunningCounts') {
         setRunningCounts(message.counts)
       } else if (message.type === 'tasksData') {
@@ -260,10 +292,16 @@ export default function App() {
         setDefaultAgent(message.defaultAgent)
       } else if (message.type === 'swarmStatus') {
         if (message.swarmStatus) setSwarmStatus(message.swarmStatus)
+      } else if (message.type === 'skillsStatus') {
+        if (message.skillsStatus) setSkillsStatus(message.skillsStatus)
       } else if (message.type === 'swarmInstallStart') {
         setSwarmInstalling(true)
       } else if (message.type === 'swarmInstallDone') {
         setSwarmInstalling(false)
+      } else if (message.type === 'skillInstallStart') {
+        setSkillInstalling(true)
+      } else if (message.type === 'skillInstallDone') {
+        setSkillInstalling(false)
       }
     }
 
@@ -537,82 +575,6 @@ export default function App() {
     saveSettings({ ...settings, custom: newCustom })
   }
 
-  // Prompts handlers
-  const getPrompts = (): PromptEntry[] => {
-    return settings?.prompts || []
-  }
-
-  const generateId = (): string => {
-    return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
-  }
-
-  const handleAddPrompt = () => {
-    if (!settings || !newPromptTitle.trim() || !newPromptContent.trim()) return
-
-    const now = Date.now()
-    const newEntry: PromptEntry = {
-      id: generateId(),
-      title: newPromptTitle.trim(),
-      content: newPromptContent.trim(),
-      isFavorite: false,
-      createdAt: now,
-      updatedAt: now,
-      accessedAt: now
-    }
-
-    const newPrompts = [...getPrompts(), newEntry]
-    saveSettings({ ...settings, prompts: newPrompts })
-    setIsAddingPrompt(false)
-    setNewPromptTitle('')
-    setNewPromptContent('')
-  }
-
-  const handleDeletePrompt = (id: string) => {
-    if (!settings) return
-    const newPrompts = getPrompts().filter(p => p.id !== id)
-    saveSettings({ ...settings, prompts: newPrompts })
-  }
-
-  const handleToggleFavorite = (id: string) => {
-    if (!settings) return
-    const newPrompts = getPrompts().map(p =>
-      p.id === id ? { ...p, isFavorite: !p.isFavorite, updatedAt: Date.now() } : p
-    )
-    saveSettings({ ...settings, prompts: newPrompts })
-  }
-
-  const handleStartEdit = (entry: PromptEntry) => {
-    setEditingPromptId(entry.id)
-    setEditPromptTitle(entry.title)
-    setEditPromptContent(entry.content)
-  }
-
-  const handleSaveEdit = () => {
-    if (!settings || !editingPromptId || !editPromptTitle.trim() || !editPromptContent.trim()) return
-
-    const newPrompts = getPrompts().map(p =>
-      p.id === editingPromptId
-        ? { ...p, title: editPromptTitle.trim(), content: editPromptContent.trim(), updatedAt: Date.now() }
-        : p
-    )
-    saveSettings({ ...settings, prompts: newPrompts })
-    setEditingPromptId(null)
-    setEditPromptTitle('')
-    setEditPromptContent('')
-  }
-
-  const handleCancelEdit = () => {
-    setEditingPromptId(null)
-    setEditPromptTitle('')
-    setEditPromptContent('')
-  }
-
-  // Sort prompts: favorites first, then by accessedAt (most recently used first)
-  const sortedPrompts = [...getPrompts()].sort((a, b) => {
-    if (a.isFavorite !== b.isFavorite) return a.isFavorite ? -1 : 1
-    return b.accessedAt - a.accessedAt
-  })
-
   if (!settings) {
     return <div className="text-[var(--muted-foreground)]">Loading...</div>
   }
@@ -816,7 +778,7 @@ export default function App() {
 
         {/* Tab bar */}
         <div className="flex gap-1">
-          {(['overview', 'swarm', 'prompts', 'settings', 'guide'] as TabId[]).map(tab => (
+          {(['overview', 'swarm', 'skills', 'settings', 'guide'] as TabId[]).map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -1156,110 +1118,88 @@ export default function App() {
         </div>
       )}
 
-      {activeTab === 'prompts' && (
+      {activeTab === 'skills' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
-              Prompts
+              Skills
             </h2>
-            {!isAddingPrompt && (
-              <Button variant="secondary" size="sm" onClick={() => setIsAddingPrompt(true)}>
-                <Plus className="w-4 h-4 mr-1" />
-                Add
-              </Button>
-            )}
+            <p className="text-xs text-[var(--muted-foreground)]">
+              Install slash-commands per agent to use Swarm helpers.
+            </p>
           </div>
 
-          {isAddingPrompt && (
-            <div className="px-4 py-3 rounded-xl bg-[var(--muted)] border border-[var(--primary)] space-y-3">
-              <Input
-                placeholder="Title"
-                value={newPromptTitle}
-                onChange={(e) => setNewPromptTitle(e.target.value)}
-                autoFocus
-              />
-              <textarea
-                placeholder="Prompt content..."
-                value={newPromptContent}
-                onChange={(e) => setNewPromptContent(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-[var(--background)] border border-[var(--border)] text-sm resize-none focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
-                rows={4}
-              />
-              <div className="flex justify-end gap-2">
-                <Button variant="ghost" size="sm" onClick={() => {
-                  setIsAddingPrompt(false)
-                  setNewPromptTitle('')
-                  setNewPromptContent('')
-                }}>
-                  Cancel
-                </Button>
-                <Button size="sm" onClick={handleAddPrompt}>
-                  Save
-                </Button>
-              </div>
+          {!skillsStatus ? (
+            <div className="text-sm text-[var(--muted-foreground)] px-4 py-3">
+              Loading skills...
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {skillsStatus.commands.map(skill => (
+                <div key={skill.name} className="px-4 py-3 rounded-xl bg-[var(--muted)]">
+                  <div className="flex items-center gap-3">
+                    <div>
+                      <p className="text-sm font-medium capitalize">{skill.name}</p>
+                      <p className="text-xs text-[var(--muted-foreground)]">{skill.description}</p>
+                    </div>
+                    <div className="flex-1" />
+                    <div className="flex items-center gap-3">
+                      {SKILL_AGENTS.map(agent => {
+                        const status = skill.agents[agent.key]
+                        const isInstalled = status?.installed
+                        const isDisabled = !status?.cliAvailable
+                        return (
+                          <div key={agent.key} className="flex items-center gap-2">
+                            <div
+                              className={`h-9 w-9 rounded-lg bg-[var(--background)] flex items-center justify-center border border-[var(--border)] ${
+                                isInstalled ? '' : 'opacity-60'
+                              }`}
+                            >
+                              <img
+                                src={agent.icon}
+                                alt={agent.name}
+                                className={`w-5 h-5 ${isInstalled ? '' : 'grayscale'}`}
+                              />
+                            </div>
+                            {!isInstalled && (
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                disabled={skillInstalling || isDisabled}
+                                onClick={() =>
+                                  vscode.postMessage({
+                                    type: 'installSkillCommand',
+                                    skill: skill.name,
+                                    agent: agent.key
+                                  })
+                                }
+                              >
+                                {skillInstalling ? (
+                                  <span className="flex items-center gap-1.5">
+                                    <RefreshCw className="w-4 h-4 animate-spin" />
+                                    Installing
+                                  </span>
+                                ) : (
+                                  'Install'
+                                )}
+                              </Button>
+                            )}
+                            {isInstalled && (
+                              <span className="text-xs text-green-400">Installed</span>
+                            )}
+                            {!status?.cliAvailable && (
+                              <span className="text-xs text-[var(--muted-foreground)]">
+                                CLI missing
+                              </span>
+                            )}
+                          </div>
+                        )
+                      })}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
-
-          <div className="space-y-2">
-            {sortedPrompts.length === 0 && !isAddingPrompt && (
-              <p className="text-sm text-[var(--muted-foreground)] px-4 py-3">
-                No prompts saved. Use Cmd+Shift+' to access prompts from any agent terminal.
-              </p>
-            )}
-            {sortedPrompts.map(entry => (
-              <div key={entry.id} className="px-4 py-3 rounded-xl bg-[var(--muted)]">
-                {editingPromptId === entry.id ? (
-                  <div className="space-y-3">
-                    <Input
-                      value={editPromptTitle}
-                      onChange={(e) => setEditPromptTitle(e.target.value)}
-                      autoFocus
-                    />
-                    <textarea
-                      value={editPromptContent}
-                      onChange={(e) => setEditPromptContent(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg bg-[var(--background)] border border-[var(--border)] text-sm resize-none focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
-                      rows={4}
-                    />
-                    <div className="flex justify-end gap-2">
-                      <Button variant="ghost" size="sm" onClick={handleCancelEdit}>
-                        Cancel
-                      </Button>
-                      <Button size="sm" onClick={handleSaveEdit}>
-                        Save
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={() => handleToggleFavorite(entry.id)}
-                        className="text-[var(--muted-foreground)] hover:text-yellow-400 transition-colors"
-                      >
-                        <Star className={`w-4 h-4 ${entry.isFavorite ? 'fill-yellow-400 text-yellow-400' : ''}`} />
-                      </button>
-                      <span
-                        className="text-sm font-medium flex-1 cursor-pointer hover:text-[var(--primary)]"
-                        onClick={() => handleStartEdit(entry)}
-                      >
-                        {entry.title}
-                      </span>
-                      <Button variant="ghost" size="icon" onClick={() => handleDeletePrompt(entry.id)}>
-                        <Trash2 className="w-4 h-4 text-[var(--muted-foreground)]" />
-                      </Button>
-                    </div>
-                    <p
-                      className="text-xs text-[var(--muted-foreground)] line-clamp-2 cursor-pointer hover:text-[var(--foreground)]"
-                      onClick={() => handleStartEdit(entry)}
-                    >
-                      {entry.content}
-                    </p>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
         </div>
       )}
 
