@@ -24,20 +24,26 @@ export const AGENT_COMMANDS: Record<AgentType, string[]> = {
 };
 
 // Effort level type
-export type EffortLevel = 'medium' | 'high';
+export type EffortLevel = 'fast' | 'default' | 'detailed';
 
 // Model mappings by effort level per agent type
-// - medium: balanced models (default)
-// - high: max-capability models
-// Note: cursor always uses composer-1, claude always uses opus-4.5
+// - fast: smallest, cheapest models for quick tasks
+// - default: balanced models (implicit when effort is omitted)
+// - detailed: max-capability models
 export const EFFORT_MODEL_MAP: Record<EffortLevel, Record<AgentType, string>> = {
-  medium: {
+  fast: {
+    codex: 'gpt-5.2-codex',
+    gemini: 'gemini-3-flash-preview',
+    claude: 'claude-haiku-4-5-20251001',
+    cursor: 'composer-1',
+  },
+  default: {
     codex: 'gpt-5.2-codex',
     gemini: 'gemini-3-flash-preview',
     claude: 'claude-sonnet-4-5',
     cursor: 'composer-1',
   },
-  high: {
+  detailed: {
     codex: 'gpt-5.1-codex-max',
     gemini: 'gemini-3-pro-preview',
     claude: 'claude-opus-4-5',
@@ -510,7 +516,7 @@ export class AgentManager {
     prompt: string,
     cwd: string | null = null,
     mode: Mode | null = null,
-    effort: EffortLevel = 'medium'
+    effort: EffortLevel = 'default'
   ): Promise<AgentProcess> {
     await this.initialize();
     const resolvedMode = resolveMode(mode, this.defaultMode);

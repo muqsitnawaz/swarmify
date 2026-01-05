@@ -82,12 +82,12 @@ export async function handleSpawn(
   prompt: string,
   cwd: string | null,
   mode: string | null,
-  effort: 'medium' | 'high' | null = 'medium',
+  effort: 'fast' | 'default' | 'detailed' | null = 'default',
   force: boolean = false
 ): Promise<SpawnResult> {
   const defaultMode = manager.getDefaultMode();
   const resolvedMode = resolveMode(mode, defaultMode);
-  const resolvedEffort = effort ?? 'medium';
+  const resolvedEffort = effort ?? 'default';
 
   console.error(
     `[spawn] Spawning ${agentType} agent for task "${taskName}" [${resolvedMode}] effort=${resolvedEffort} force=${force}...`

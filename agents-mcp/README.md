@@ -44,7 +44,7 @@ spawn(task_name, agent_type, prompt, mode?, cwd?, effort?)
 | `prompt` | Yes | The task for the agent |
 | `mode` | No | `plan` (read-only, default) or `edit` (can write files) |
 | `cwd` | No | Working directory for the agent |
-| `effort` | No | `medium` (default) or `high` for max-capability models |
+| `effort` | No | `fast`, `default` (implicit), or `detailed` for max-capability models |
 
 ### status
 
@@ -117,8 +117,9 @@ Requires Node.js >= 18.17 (ESM, fs.rm, etc.).
 
 | Level | Models Used |
 |-------|-------------|
-| `medium` | Balanced models (default) |
-| `high` | Max-capability models per agent |
+| `fast` | codex: gpt-5.2-codex · claude: claude-haiku-4-5-20251001 · gemini: gemini-3-flash-preview · cursor: composer-1 |
+| `default` | codex: gpt-5.2-codex · claude: claude-sonnet-4-5 · gemini: gemini-3-flash-preview · cursor: composer-1 (default) |
+| `detailed` | codex: gpt-5.1-codex-max · claude: claude-opus-4-5 · gemini: gemini-3-pro-preview · cursor: composer-1 |
 
 ## Environment Variables
 
