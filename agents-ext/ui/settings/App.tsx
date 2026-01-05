@@ -157,7 +157,27 @@ interface TerminalDetail {
   index: number
 }
 
-type TabId = 'overview' | 'settings' | 'swarm' | 'skills' | 'guide'
+interface TodoItem {
+  title: string
+  description?: string
+  completed: boolean
+  line: number
+}
+
+interface TodoFile {
+  path: string
+  items: TodoItem[]
+}
+
+interface AgentSession {
+  agentType: 'claude' | 'codex' | 'gemini'
+  sessionId: string
+  timestamp: string
+  path: string
+  preview?: string
+}
+
+type TabId = 'overview' | 'tasks' | 'sessions' | 'settings' | 'swarm' | 'skills' | 'guide'
 
 declare function acquireVsCodeApi(): {
   postMessage(message: unknown): void
@@ -281,6 +301,14 @@ export default function App() {
   const TASKS_PER_PAGE = 10
   const [swarmInstalling, setSwarmInstalling] = useState(false)
 
+  const [todoFiles, setTodoFiles] = useState<TodoFile[]>([])
+  const [todoLoading, setTodoLoading] = useState(false)
+  const [todoLoaded, setTodoLoaded] = useState(false)
+
+  const [recentSessions, setRecentSessions] = useState<AgentSession[]>([])
+  const [sessionsLoading, setSessionsLoading] = useState(false)
+  const [sessionsLoaded, setSessionsLoaded] = useState(false)
+
   // Agent terminals drill-down state
   const [selectedAgentType, setSelectedAgentType] = useState<string | null>(null)
   const [agentTerminals, setAgentTerminals] = useState<TerminalDetail[]>([])
@@ -313,6 +341,14 @@ export default function App() {
         setTasks(message.tasks || [])
         setTasksLoading(false)
         setTasksLoaded(true)
+      } else if (message.type === 'todoFilesData' || message.type === 'todoFilesUpdated') {
+        setTodoFiles(message.files || [])
+        setTodoLoading(false)
+        setTodoLoaded(true)
+      } else if (message.type === 'sessionsData' || message.type === 'sessionsUpdated') {
+        setRecentSessions(message.sessions || [])
+        setSessionsLoading(false)
+        setSessionsLoaded(true)
       } else if (message.type === 'agentTerminalsData') {
         setAgentTerminals(message.terminals || [])
         setAgentTerminalsLoading(false)
@@ -351,9 +387,31 @@ export default function App() {
     }
   }, [activeTab, tasksLoaded, tasksLoading])
 
+  useEffect(() => {
+    if (activeTab === 'tasks' && !todoLoaded && !todoLoading) {
+      fetchTodoFiles()
+    }
+  }, [activeTab, todoLoaded, todoLoading])
+
+  useEffect(() => {
+    if (activeTab === 'sessions' && !sessionsLoaded && !sessionsLoading) {
+      fetchSessions()
+    }
+  }, [activeTab, sessionsLoaded, sessionsLoading])
+
   const fetchTasks = () => {
     setTasksLoading(true)
     vscode.postMessage({ type: 'fetchTasks' })
+  }
+
+  const fetchTodoFiles = () => {
+    setTodoLoading(true)
+    vscode.postMessage({ type: 'fetchTodoFiles' })
+  }
+
+  const fetchSessions = () => {
+    setSessionsLoading(true)
+    vscode.postMessage({ type: 'fetchSessions' })
   }
 
   const handleAgentClick = (agentKey: string) => {
@@ -366,6 +424,15 @@ export default function App() {
       setAgentTerminalsLoading(true)
       vscode.postMessage({ type: 'fetchAgentTerminals', agentType: agentKey })
     }
+  }
+
+  const handleSpawnTodo = (item: TodoItem, filePath: string) => {
+    setActiveTab('swarm')
+    vscode.postMessage({ type: 'spawnSwarmForTodo', item, filePath })
+  }
+
+  const handleOpenSession = (session: AgentSession) => {
+    vscode.postMessage({ type: 'openSession', session })
   }
 
   const formatTimeSince = (timestamp: number): string => {
@@ -426,6 +493,30 @@ export default function App() {
     if (diffDays === 1) return 'Yesterday'
     if (diffDays < 7) return `${diffDays} days ago`
     return `${Math.floor(diffDays / 7)} weeks ago`
+  }
+
+  const formatSessionTimestamp = (timestamp: string): string => {
+    const date = new Date(timestamp)
+    if (Number.isNaN(date.getTime())) return 'Unknown time'
+    return date.toLocaleString()
+  }
+
+  const formatTimeAgoSafe = (timestamp: string): string => {
+    const date = new Date(timestamp)
+    if (Number.isNaN(date.getTime())) return 'Unknown time'
+    return formatTimeAgo(timestamp)
+  }
+
+  const groupSessionsByAgent = (sessions: AgentSession[]): Record<AgentSession['agentType'], AgentSession[]> => {
+    return sessions.reduce((acc, session) => {
+      acc[session.agentType] = acc[session.agentType] || []
+      acc[session.agentType].push(session)
+      return acc
+    }, {
+      claude: [],
+      codex: [],
+      gemini: []
+    } as Record<AgentSession['agentType'], AgentSession[]>)
   }
 
   const getStatusColor = (status: string): string => {
@@ -820,6 +911,111 @@ export default function App() {
     </div>
   )
 
+  const renderTodoTab = () => (
+    <div className="space-y-4">
+      {todoLoading && todoFiles.length === 0 ? (
+        <div className="text-center py-8 text-[var(--muted-foreground)]">Loading tasks...</div>
+      ) : todoFiles.length === 0 ? (
+        <div className="text-center py-8 text-[var(--muted-foreground)]">
+          No TODO.md items found in this workspace.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {todoFiles.map(file => (
+            <div key={file.path} className="rounded-xl bg-[var(--muted)] px-4 py-3 space-y-3">
+              <div className="flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
+                <span className="uppercase tracking-wide">File</span>
+                <span className="truncate">{file.path}</span>
+                <span className="ml-auto">{file.items.length} items</span>
+              </div>
+              {file.items.length === 0 ? (
+                <div className="text-xs text-[var(--muted-foreground)]">No tasks in this file.</div>
+              ) : (
+                <div className="space-y-2">
+                  {file.items.map((item, index) => (
+                    <div key={`${file.path}-${index}-${item.line}`} className="flex items-start gap-3">
+                      <span
+                        className={`mt-0.5 rounded px-2 py-0.5 text-xs ${
+                          item.completed
+                            ? 'bg-[var(--secondary)] text-[var(--muted-foreground)]'
+                            : 'bg-[var(--background)] text-[var(--foreground)]'
+                        }`}
+                      >
+                        {item.completed ? 'Completed' : 'Open'}
+                      </span>
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-sm font-medium ${item.completed ? 'line-through text-[var(--muted-foreground)]' : ''}`}>
+                            {item.title || 'Untitled task'}
+                          </span>
+                          <span className="text-xs text-[var(--muted-foreground)]">Line {item.line}</span>
+                        </div>
+                        {item.description && (
+                          <p className="text-xs text-[var(--muted-foreground)] whitespace-pre-wrap">
+                            {item.description}
+                          </p>
+                        )}
+                      </div>
+                      {!item.completed && (
+                        <Button size="sm" onClick={() => handleSpawnTodo(item, file.path)}>
+                          Spawn Swarm
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+
+  const renderSessionsTab = () => {
+    const grouped = groupSessionsByAgent(recentSessions)
+    const agentOrder: AgentSession['agentType'][] = ['claude', 'codex', 'gemini']
+
+    return (
+      <div className="space-y-6">
+        {agentOrder.map(agent => {
+          const sessions = grouped[agent]
+          const agentLabel = getAgentDisplayName(agent)
+          return (
+            <section key={agent} className="space-y-3">
+              <h3 className="text-sm font-medium">{agentLabel}</h3>
+              {sessions.length === 0 ? (
+                <div className="text-xs text-[var(--muted-foreground)] px-4 py-3 rounded-xl bg-[var(--muted)]">
+                  No recent sessions found.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {sessions.map(session => (
+                    <button
+                      key={session.path}
+                      onClick={() => handleOpenSession(session)}
+                      className="w-full text-left rounded-xl bg-[var(--muted)] px-4 py-3 hover:bg-[var(--muted-foreground)]/10 transition-colors"
+                    >
+                      <div className="flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
+                        <span className="uppercase tracking-wide">Time</span>
+                        <span>{formatSessionTimestamp(session.timestamp)}</span>
+                        <span className="ml-auto">{formatTimeAgoSafe(session.timestamp)}</span>
+                      </div>
+                      <div className="mt-2 text-sm font-medium truncate">{session.sessionId}</div>
+                      <div className="mt-1 text-xs text-[var(--muted-foreground)] whitespace-pre-wrap">
+                        {session.preview || 'No preview available.'}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </section>
+          )
+        })}
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       {/* Header with tabs */}
@@ -836,7 +1032,7 @@ export default function App() {
 
         {/* Tab bar */}
         <div className="flex gap-1">
-          {(['overview', 'swarm', 'skills', 'settings', 'guide'] as TabId[]).map(tab => (
+          {(['overview', 'tasks', 'sessions', 'swarm', 'skills', 'settings', 'guide'] as TabId[]).map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -1078,6 +1274,48 @@ export default function App() {
         </div>
       )}
 
+      {activeTab === 'tasks' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
+              Tasks
+            </h2>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={fetchTodoFiles}
+              disabled={todoLoading}
+            >
+              Refresh
+            </Button>
+          </div>
+          {renderTodoTab()}
+        </div>
+      )}
+
+      {activeTab === 'sessions' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
+              Sessions
+            </h2>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={fetchSessions}
+              disabled={sessionsLoading}
+            >
+              Refresh
+            </Button>
+          </div>
+          {sessionsLoading && recentSessions.length === 0 ? (
+            <div className="text-center py-8 text-[var(--muted-foreground)]">Loading sessions...</div>
+          ) : (
+            renderSessionsTab()
+          )}
+        </div>
+      )}
+
       {activeTab === 'swarm' && (
         <div className="space-y-8">
           {/* Swarm Integration */}
@@ -1259,6 +1497,7 @@ export default function App() {
                           </div>
                         )
                       })}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -1461,6 +1700,85 @@ export default function App() {
                   </p>
                 </div>
               </label>
+            </div>
+          </section>
+
+          {/* Notifications */}
+          <section>
+            <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
+              Notifications
+            </h2>
+            <div className="space-y-3">
+              <label className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)] cursor-pointer">
+                <Checkbox
+                  checked={(settings.notifications ?? DEFAULT_NOTIFICATION_SETTINGS).enabled}
+                  onCheckedChange={(checked) => updateNotifications({ enabled: !!checked })}
+                />
+                <div>
+                  <p className="text-sm font-medium">Approval notifications</p>
+                  <p className="text-xs text-[var(--muted-foreground)]">
+                    Show notifications when an agent needs approval.
+                  </p>
+                </div>
+              </label>
+
+              <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)]">
+                <div className="flex-1">
+                  <p className="text-sm font-medium">Notification style</p>
+                  <p className="text-xs text-[var(--muted-foreground)]">
+                    Native notifications require the Notifications MCP server.
+                  </p>
+                </div>
+                <select
+                  value={(settings.notifications ?? DEFAULT_NOTIFICATION_SETTINGS).style}
+                  onChange={(e) => updateNotifications({ style: e.target.value as NotificationSettings['style'] })}
+                  className="h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-sm"
+                >
+                  <option value="native">Native OS</option>
+                  <option value="vscode">VS Code</option>
+                </select>
+              </div>
+
+              <div className="px-4 py-3 rounded-xl bg-[var(--muted)] space-y-2">
+                <div>
+                  <p className="text-sm font-medium">Notify agents</p>
+                  <p className="text-xs text-[var(--muted-foreground)]">
+                    Currently supported: Claude Code CLI.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  {NOTIFICATION_AGENTS.map(agent => {
+                    const current = settings.notifications ?? DEFAULT_NOTIFICATION_SETTINGS
+                    const enabled = current.enabledAgents.includes(agent.key)
+                    return (
+                      <label
+                        key={agent.key}
+                        className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
+                          agent.supported
+                            ? 'border-[var(--border)] bg-[var(--background)]'
+                            : 'border-[var(--border)] bg-[var(--background)] opacity-60'
+                        }`}
+                      >
+                        <Checkbox
+                          checked={enabled}
+                          disabled={!agent.supported}
+                          onCheckedChange={(checked) => {
+                            if (!agent.supported) return
+                            const nextAgents = checked
+                              ? [...current.enabledAgents, agent.key].filter((v, i, a) => a.indexOf(v) === i)
+                              : current.enabledAgents.filter(a => a !== agent.key)
+                            updateNotifications({ enabledAgents: nextAgents })
+                          }}
+                        />
+                        <span>{agent.name}</span>
+                        {!agent.supported && (
+                          <span className="text-xs text-[var(--muted-foreground)]">Not supported</span>
+                        )}
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
             </div>
           </section>
         </div>

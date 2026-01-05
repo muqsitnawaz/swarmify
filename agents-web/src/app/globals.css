@@ -40,6 +40,11 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes lane-flow {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
 .animate-fade-in {
   animation: fade-in 0.6s ease-out forwards;
 }
@@ -94,4 +99,20 @@ body {
 .editor-mockup:hover .editor-title-highlight {
   color: #ffffff;
   text-shadow: 0 0 10px rgba(59, 130, 246, 0.6);
+}
+
+.parallel-lane .parallel-flow-1,
+.parallel-lane .parallel-flow-2,
+.parallel-lane .parallel-flow-3 {
+  background-image: linear-gradient(90deg, #0f141a, #1d4ed8, #0f141a);
+  background-size: 200% 100%;
+  animation: lane-flow 2.4s ease-in-out infinite;
+}
+
+.parallel-lane .parallel-flow-2 {
+  animation-delay: 0.4s;
+}
+
+.parallel-lane .parallel-flow-3 {
+  animation-delay: 0.8s;
 }
