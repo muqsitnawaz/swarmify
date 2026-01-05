@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import { maybePromptForAgentSymlinks } from './agentlinks.vscode';
 
 // Track spawned agent terminals per document URI
 const documentAgents = new Map<string, vscode.Terminal>();
@@ -27,6 +28,8 @@ export class AgentsMarkdownEditorProvider implements vscode.CustomTextEditorProv
     webviewPanel: vscode.WebviewPanel,
     _token: vscode.CancellationToken
   ): Promise<void> {
+    await maybePromptForAgentSymlinks(this.context, document);
+
     // Configure webview
     webviewPanel.webview.options = {
       enableScripts: true,
