@@ -4,6 +4,7 @@
 export interface BuiltInAgentConfig {
   login: boolean;
   instances: number;
+  defaultModel?: string;
 }
 
 // Custom agent configuration
@@ -43,6 +44,7 @@ export interface AgentSettings {
   swarmEnabledAgents: SwarmAgentType[];
   prompts: PromptEntry[];
   display: DisplayPreferences;
+  notifications?: NotificationSettings;
 }
 
 // Display preferences for terminal titles and labels
@@ -51,9 +53,30 @@ export interface DisplayPreferences {
   showLabelsInTitles: boolean;
 }
 
+export interface NotificationSettings {
+  enabled: boolean;
+  style: 'native' | 'vscode';
+  enabledAgents: string[];
+}
+
+export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
+  enabled: false,
+  style: 'native',
+  enabledAgents: ['claude']
+};
+
 export const DEFAULT_DISPLAY_PREFERENCES: DisplayPreferences = {
   showFullAgentNames: true,
   showLabelsInTitles: true
+};
+
+export const AGENT_MODELS: Record<string, string[]> = {
+  claude: ['claude-sonnet-4-5', 'claude-opus-4-5', 'claude-haiku-4-5'],
+  codex: ['gpt-5.2-codex', 'gpt-5.1-codex-max'],
+  gemini: ['gemini-3-flash', 'gemini-3-pro'],
+  cursor: ['composer-1'],
+  opencode: [],
+  shell: []
 };
 
 // Default settings (pure function)
@@ -70,7 +93,8 @@ export function getDefaultSettings(): AgentSettings {
     custom: [],
     swarmEnabledAgents: [...ALL_SWARM_AGENTS],
     prompts: [],
-    display: { ...DEFAULT_DISPLAY_PREFERENCES }
+    display: { ...DEFAULT_DISPLAY_PREFERENCES },
+    notifications: { ...DEFAULT_NOTIFICATION_SETTINGS }
   };
 }
 

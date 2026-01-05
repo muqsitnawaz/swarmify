@@ -7,6 +7,7 @@ import { ChevronDown, ChevronRight, FileEdit, FilePlus, Terminal, MessageSquare,
 interface BuiltInAgentSettings {
   login: boolean
   instances: number
+  defaultModel?: string
 }
 
 interface CustomAgentSettings {
@@ -18,6 +19,19 @@ interface CustomAgentSettings {
 
 type SwarmAgentType = 'claude' | 'codex' | 'gemini'
 const ALL_SWARM_AGENTS: SwarmAgentType[] = ['claude', 'codex', 'gemini']
+const AGENT_MODELS: Record<string, string[]> = {
+  claude: ['claude-sonnet-4-5', 'claude-opus-4-5', 'claude-haiku-4-5'],
+  codex: ['gpt-5.2-codex', 'gpt-5.1-codex-max'],
+  gemini: ['gemini-3-flash', 'gemini-3-pro'],
+  cursor: ['composer-1'],
+  opencode: [],
+  shell: []
+}
+const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
+  enabled: false,
+  style: 'native',
+  enabledAgents: ['claude']
+}
 
 type SkillName =
   | 'plan'
@@ -69,11 +83,18 @@ interface AgentSettings {
   swarmEnabledAgents: SwarmAgentType[]
   prompts: PromptEntry[]
   display: DisplayPreferences
+  notifications?: NotificationSettings
 }
 
 interface DisplayPreferences {
   showFullAgentNames: boolean
   showLabelsInTitles: boolean
+}
+
+interface NotificationSettings {
+  enabled: boolean
+  style: 'native' | 'vscode'
+  enabledAgents: string[]
 }
 
 interface RunningCounts {
@@ -216,6 +237,15 @@ const AGENT_KEY_TO_TITLE: Record<string, string> = {
   'opencode': 'OC',
   'cursor': 'CR',
 }
+
+const NOTIFICATION_AGENTS = [
+  { key: 'claude', name: 'Claude', supported: true },
+  { key: 'codex', name: 'Codex', supported: false },
+  { key: 'gemini', name: 'Gemini', supported: false },
+  { key: 'opencode', name: 'OpenCode', supported: false },
+  { key: 'cursor', name: 'Cursor', supported: false },
+  { key: 'shell', name: 'Shell', supported: false },
+]
 
 export default function App() {
   const [settings, setSettings] = useState<AgentSettings | null>(null)
@@ -473,6 +503,18 @@ export default function App() {
     saveSettings(newSettings)
   }
 
+  const updateBuiltInModel = (key: keyof AgentSettings['builtIn'], value: string) => {
+    if (!settings) return
+    const newSettings = {
+      ...settings,
+      builtIn: {
+        ...settings.builtIn,
+        [key]: { ...settings.builtIn[key], defaultModel: value || undefined }
+      }
+    }
+    saveSettings(newSettings)
+  }
+
   const updateDisplay = (field: keyof DisplayPreferences, value: boolean) => {
     if (!settings) return
     const newSettings = {
@@ -490,6 +532,16 @@ export default function App() {
     const newCustom = [...settings.custom]
     newCustom[index] = { ...newCustom[index], [field]: value }
     saveSettings({ ...settings, custom: newCustom })
+  }
+
+  const updateNotifications = (updates: Partial<NotificationSettings>) => {
+    if (!settings) return
+    const current = settings.notifications ?? DEFAULT_NOTIFICATION_SETTINGS
+    const next: NotificationSettings = {
+      ...current,
+      ...updates
+    }
+    saveSettings({ ...settings, notifications: next })
   }
 
   const toggleSwarmAgent = (agent: SwarmAgentType, enabled: boolean) => {
@@ -1281,6 +1333,8 @@ export default function App() {
                 const installed = isAgentInstalled(agent.key)
                 const installInfo = getInstallInfo(agent.key)
                 const isSwarmAgent = ALL_SWARM_AGENTS.includes(agent.key as SwarmAgentType)
+                const modelOptions = AGENT_MODELS[agent.key] || []
+                const modelDisabled = modelOptions.length === 0
 
                 return (
                   <div
@@ -1325,6 +1379,23 @@ export default function App() {
                             />
                           </div>
                         )}
+
+                        <div className="flex items-center gap-2 ml-2">
+                          <label className="text-sm text-[var(--muted-foreground)]">Model</label>
+                          <select
+                            value={config.defaultModel || ''}
+                            onChange={(e) => updateBuiltInModel(agent.key as keyof AgentSettings['builtIn'], e.target.value)}
+                            className="h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-sm"
+                            disabled={modelDisabled}
+                          >
+                            <option value="">
+                              {modelDisabled ? 'No models available' : 'Auto'}
+                            </option>
+                            {modelOptions.map(model => (
+                              <option key={model} value={model}>{model}</option>
+                            ))}
+                          </select>
+                        </div>
                       </>
                     ) : (
                       <>

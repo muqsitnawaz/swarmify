@@ -6,7 +6,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { homedir } from 'os';
 import { exec } from 'child_process';
-import { AgentSettings, getDefaultSettings, CustomAgentConfig, SwarmAgentType, ALL_SWARM_AGENTS, PromptEntry, DEFAULT_DISPLAY_PREFERENCES } from './settings';
+import { AgentSettings, getDefaultSettings, CustomAgentConfig, SwarmAgentType, ALL_SWARM_AGENTS, PromptEntry, DEFAULT_DISPLAY_PREFERENCES, DEFAULT_NOTIFICATION_SETTINGS } from './settings';
 import { readPromptsFromPath, writePromptsToPath, DEFAULT_PROMPTS } from './prompts';
 import * as terminals from './terminals.vscode';
 import * as swarm from './swarm.vscode';
@@ -111,6 +111,21 @@ export function getSettings(context: vscode.ExtensionContext): AgentSettings {
       }
       context.globalState.update('agentSettings', stored);
     }
+    if (!stored.notifications) {
+      stored.notifications = { ...DEFAULT_NOTIFICATION_SETTINGS };
+      context.globalState.update('agentSettings', stored);
+    } else {
+      if (stored.notifications.enabled === undefined) {
+        stored.notifications.enabled = DEFAULT_NOTIFICATION_SETTINGS.enabled;
+      }
+      if (!stored.notifications.style) {
+        stored.notifications.style = DEFAULT_NOTIFICATION_SETTINGS.style;
+      }
+      if (!stored.notifications.enabledAgents || stored.notifications.enabledAgents.length === 0) {
+        stored.notifications.enabledAgents = [...DEFAULT_NOTIFICATION_SETTINGS.enabledAgents];
+      }
+      context.globalState.update('agentSettings', stored);
+    }
     // Migrate: load prompts from file (persists across uninstall)
     if (!stored.prompts || stored.prompts.length === 0) {
       stored.prompts = readPrompts();
@@ -143,13 +158,42 @@ export function getSettings(context: vscode.ExtensionContext): AgentSettings {
       })),
       swarmEnabledAgents: [...ALL_SWARM_AGENTS],
       prompts: readPrompts(),
-      display: { ...DEFAULT_DISPLAY_PREFERENCES }
+      display: { ...DEFAULT_DISPLAY_PREFERENCES },
+      notifications: { ...DEFAULT_NOTIFICATION_SETTINGS }
     };
     context.globalState.update('agentSettings', migrated);
     return migrated;
   }
 
   return getDefaultSettings();
+}
+
+export function getDefaultModel(
+  context: vscode.ExtensionContext,
+  agentType: keyof AgentSettings['builtIn']
+): string | undefined {
+  const settings = getSettings(context);
+  return settings.builtIn[agentType]?.defaultModel;
+}
+
+export async function setDefaultModel(
+  context: vscode.ExtensionContext,
+  agentType: keyof AgentSettings['builtIn'],
+  model: string | undefined
+): Promise<void> {
+  const settings = getSettings(context);
+  const current = settings.builtIn[agentType];
+  const nextSettings: AgentSettings = {
+    ...settings,
+    builtIn: {
+      ...settings.builtIn,
+      [agentType]: {
+        ...current,
+        defaultModel: model || undefined
+      }
+    }
+  };
+  await saveSettings(context, nextSettings);
 }
 
 // Save settings to global state and write configs to files
