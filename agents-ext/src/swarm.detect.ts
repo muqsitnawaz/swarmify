@@ -10,11 +10,16 @@ export type AgentCli = 'claude' | 'codex' | 'gemini';
 
 // Paths where the /swarm command file lives for each CLI
 // Claude, Codex use markdown; Gemini uses TOML commands
-export const AGENT_COMMAND_PATHS: Record<AgentCli, string> = {
-  claude: path.join(os.homedir(), '.claude', 'commands', 'swarm.md'),
-  codex: path.join(os.homedir(), '.codex', 'prompts', 'swarm.md'),
-  gemini: path.join(os.homedir(), '.gemini', 'commands', 'swarm.toml'),
-};
+export function getAgentCommandPath(agent: AgentCli, command: string = 'swarm'): string {
+  const baseDirs: Record<AgentCli, string> = {
+    claude: path.join(os.homedir(), '.claude', 'commands'),
+    codex: path.join(os.homedir(), '.codex', 'prompts'),
+    gemini: path.join(os.homedir(), '.gemini', 'commands'),
+  };
+
+  const ext = agent === 'gemini' ? 'toml' : 'md';
+  return path.join(baseDirs[agent], `${command}.${ext}`);
+}
 
 // Detect whether a CLI binary is available
 export async function isAgentCliAvailable(agent: AgentCli): Promise<boolean> {
@@ -49,7 +54,7 @@ export async function isAgentMcpEnabled(agent: AgentCli): Promise<boolean> {
 }
 
 // Detect whether the /swarm slash-command file is present for a CLI
-export function isAgentCommandInstalled(agent: AgentCli): boolean {
-  const target = AGENT_COMMAND_PATHS[agent];
+export function isAgentCommandInstalled(agent: AgentCli, command: string = 'swarm'): boolean {
+  const target = getAgentCommandPath(agent, command);
   return fs.existsSync(target);
 }

@@ -11,6 +11,7 @@ import {
   isAgentCliAvailable,
   isAgentMcpEnabled,
   isAgentCommandInstalled,
+  getAgentCommandPath,
 } from './swarm.detect';
 
 // Re-export for consumers that need the union type
@@ -41,6 +42,89 @@ export interface SwarmStatus {
   };
 }
 
+export type SkillName =
+  | 'plan'
+  | 'splan'
+  | 'debug'
+  | 'sdebug'
+  | 'sconfirm'
+  | 'clean'
+  | 'sclean'
+  | 'test'
+  | 'stest';
+
+export interface SkillDefinition {
+  name: SkillName;
+  description: string;
+  assets: {
+    claude?: string | 'builtin';
+    codex?: string;
+    gemini?: string;
+  };
+}
+
+export interface SkillAgentStatus {
+  installed: boolean;
+  cliAvailable: boolean;
+  builtIn: boolean;
+}
+
+export interface SkillsStatus {
+  commands: Array<{
+    name: SkillName;
+    description: string;
+    agents: Record<AgentCli, SkillAgentStatus>;
+  }>;
+}
+
+const SKILL_DEFS: SkillDefinition[] = [
+  {
+    name: 'plan',
+    description: 'Create a concise implementation plan',
+    assets: { claude: 'builtin', codex: 'plan.md', gemini: 'plan.toml' },
+  },
+  {
+    name: 'splan',
+    description: 'Sprint-sized plan with parallel steps',
+    assets: { claude: 'splan.md', codex: 'splan.md', gemini: 'splan.toml' },
+  },
+  {
+    name: 'debug',
+    description: 'Diagnose the root cause before fixing',
+    assets: { claude: 'debug.md', codex: 'debug.md', gemini: 'debug.toml' },
+  },
+  {
+    name: 'sdebug',
+    description: 'Parallelize the debugging investigation',
+    assets: { claude: 'sdebug.md', codex: 'sdebug.md', gemini: 'sdebug.toml' },
+  },
+  {
+    name: 'sconfirm',
+    description: 'Confirm with parallel checks',
+    assets: { claude: 'sconfirm.md', codex: 'sconfirm.md', gemini: 'sconfirm.toml' },
+  },
+  {
+    name: 'clean',
+    description: 'Refactor safely for clarity',
+    assets: { claude: 'clean.md', codex: 'clean.md', gemini: 'clean.toml' },
+  },
+  {
+    name: 'sclean',
+    description: 'Parallel refactor plan',
+    assets: { claude: 'sclean.md', codex: 'sclean.md', gemini: 'sclean.toml' },
+  },
+  {
+    name: 'test',
+    description: 'Design a lean test plan',
+    assets: { claude: 'test.md', codex: 'test.md', gemini: 'test.toml' },
+  },
+  {
+    name: 'stest',
+    description: 'Parallelize test creation',
+    assets: { claude: 'stest.md', codex: 'stest.md', gemini: 'stest.toml' },
+  },
+];
+
 // Get full swarm integration status (per-agent, not globally shared)
 export async function getSwarmStatus(): Promise<SwarmStatus> {
   const claudeCliAvailable = await isAgentCliAvailable('claude');
@@ -51,9 +135,9 @@ export async function getSwarmStatus(): Promise<SwarmStatus> {
   const codexMcp = codexCliAvailable ? await isAgentMcpEnabled('codex') : false;
   const geminiMcp = geminiCliAvailable ? await isAgentMcpEnabled('gemini') : false;
 
-  const claudeCmd = claudeCliAvailable ? isAgentCommandInstalled('claude') : false;
-  const codexCmd = codexCliAvailable ? isAgentCommandInstalled('codex') : false;
-  const geminiCmd = geminiCliAvailable ? isAgentCommandInstalled('gemini') : false;
+  const claudeCmd = claudeCliAvailable ? isAgentCommandInstalled('claude', 'swarm') : false;
+  const codexCmd = codexCliAvailable ? isAgentCommandInstalled('codex', 'swarm') : false;
+  const geminiCmd = geminiCliAvailable ? isAgentCommandInstalled('gemini', 'swarm') : false;
 
   const mcpEnabled = (!claudeCliAvailable || claudeMcp) &&
     (!codexCliAvailable || codexMcp) &&
@@ -93,6 +177,78 @@ export async function getSwarmStatus(): Promise<SwarmStatus> {
 export async function isSwarmEnabled(): Promise<boolean> {
   const status = await getSwarmStatus();
   return status.mcpEnabled && status.commandInstalled;
+}
+
+export async function getSkillsStatus(): Promise<SkillsStatus> {
+  const results: SkillsStatus['commands'] = [];
+
+  const availability = {
+    claude: await isAgentCliAvailable('claude'),
+    codex: await isAgentCliAvailable('codex'),
+    gemini: await isAgentCliAvailable('gemini'),
+  };
+
+  for (const skill of SKILL_DEFS) {
+    const agents: Record<AgentCli, SkillAgentStatus> = {
+      claude: {
+        cliAvailable: availability.claude,
+        builtIn: skill.assets.claude === 'builtin',
+        installed:
+          skill.assets.claude === 'builtin' ||
+          (availability.claude && isAgentCommandInstalled('claude', skill.name)),
+      },
+      codex: {
+        cliAvailable: availability.codex,
+        builtIn: false,
+        installed: availability.codex && isAgentCommandInstalled('codex', skill.name),
+      },
+      gemini: {
+        cliAvailable: availability.gemini,
+        builtIn: false,
+        installed: availability.gemini && isAgentCommandInstalled('gemini', skill.name),
+      },
+    };
+
+    results.push({ name: skill.name, description: skill.description, agents });
+  }
+
+  return { commands: results };
+}
+
+export async function installSkillCommand(
+  skill: SkillName,
+  agent: AgentCli,
+  context: vscode.ExtensionContext
+): Promise<boolean> {
+  const def = SKILL_DEFS.find(s => s.name === skill);
+  if (!def) return false;
+
+  const assetName = def.assets[agent];
+  if (!assetName) return false;
+  if (assetName === 'builtin') return true;
+
+  const cliAvailable = await isAgentCliAvailable(agent);
+  if (!cliAvailable) {
+    vscode.window.showWarningMessage(`${agent} CLI not found. Install it first.`);
+    return false;
+  }
+
+  const source = path.join(context.extensionPath, 'assets', 'skills', assetName);
+  if (!fs.existsSync(source)) {
+    vscode.window.showErrorMessage(`Missing skill asset: ${assetName}`);
+    return false;
+  }
+
+  const target = getAgentCommandPath(agent, skill);
+  try {
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.copyFileSync(source, target);
+    return true;
+  } catch (err) {
+    const error = err as Error;
+    vscode.window.showErrorMessage(`Failed to install ${skill} for ${agent}: ${error.message}`);
+    return false;
+  }
 }
 
 // Build Gemini TOML command content from markdown source
