@@ -431,18 +431,24 @@ export default function App() {
     return [...new Set(agents.map(a => a.agent_type))]
   }
 
-  const getTaskLatestTime = (task: TaskSummary): string => {
-    const timestamps = task.agents
+  const getTaskLatestTime = (task: TaskSummary): string | null => {
+    const parsedAgents = task.agents
       .flatMap(a => [a.completed_at, a.started_at].filter(Boolean))
       .map(t => new Date(t as string).getTime())
       .filter(n => !Number.isNaN(n));
 
-    if (timestamps.length === 0 && task.latest_activity) {
-      return task.latest_activity;
+    if (parsedAgents.length > 0) {
+      return new Date(Math.max(...parsedAgents)).toISOString();
     }
 
-    const latest = timestamps.length ? Math.max(...timestamps) : Date.now();
-    return new Date(latest).toISOString();
+    if (task.latest_activity) {
+      const parsed = new Date(task.latest_activity).getTime();
+      if (!Number.isNaN(parsed)) {
+        return new Date(parsed).toISOString();
+      }
+    }
+
+    return null;
   }
 
   const handleInstallSwarmAgent = (agent: SwarmAgentType) => {
@@ -623,7 +629,7 @@ export default function App() {
                       ))}
                     </div>
                     <div className="ml-7 text-xs text-[var(--muted-foreground)]">
-                      {formatTimeAgo(getTaskLatestTime(task))}
+                      {getTaskLatestTime(task) ? formatTimeAgo(getTaskLatestTime(task) as string) : '—'}
                     </div>
                   </div>
                 </button>
@@ -960,25 +966,31 @@ export default function App() {
                   const agentTypes = getUniqueAgentTypes(task.agents)
                   return (
                     <div key={task.task_name} className="px-4 py-3 rounded-xl bg-[var(--muted)]">
-                      <div className="grid grid-cols-[1fr,auto,auto] gap-x-3 gap-y-1 items-center">
-                        <span className="text-sm font-medium truncate">
-                          {formatTaskName(task.task_name)}
-                        </span>
-                        <span className="text-xs text-[var(--muted-foreground)]">
-                          {formatTimeAgo(getTaskLatestTime(task))}
-                        </span>
-                        <div className="row-span-2 flex items-center gap-1.5 flex-shrink-0">
-                          {agentTypes.map(type => (
-                            <img
-                              key={type}
-                              src={icons[type as keyof typeof icons] || icons.agents}
-                              alt={type}
-                              className="w-4 h-4"
-                              title={type}
-                            />
-                          ))}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-sm font-medium truncate">
+                            {formatTaskName(task.task_name)}
+                          </span>
+                          <span className="text-xs text-[var(--muted-foreground)]">
+                            {getTaskLatestTime(task) ? formatTimeAgo(getTaskLatestTime(task) as string) : '—'}
+                          </span>
                         </div>
-                        <span className="text-xs text-[var(--muted-foreground)]">&nbsp;</span>
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-xs text-[var(--muted-foreground)]">
+                            {/* Reserved for future context; keep layout balanced */}
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            {agentTypes.map(type => (
+                              <img
+                                key={type}
+                                src={icons[type as keyof typeof icons] || icons.agents}
+                                alt={type}
+                                className="w-4 h-4"
+                                title={type}
+                              />
+                            ))}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   )
