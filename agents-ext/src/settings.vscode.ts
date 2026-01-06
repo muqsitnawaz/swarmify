@@ -10,6 +10,8 @@ import { AgentSettings, getDefaultSettings, CustomAgentConfig, SwarmAgentType, A
 import { readPromptsFromPath, writePromptsToPath, DEFAULT_PROMPTS } from './prompts';
 import * as terminals from './terminals.vscode';
 import * as swarm from './swarm.vscode';
+import { discoverTodoFiles, spawnSwarmForTodo } from './todos.vscode';
+import { discoverRecentSessions } from './sessions.vscode';
 import { formatTerminalTitle, parseTerminalName } from './utils';
 import { getBuiltInByKey } from './agents';
 
@@ -332,6 +334,24 @@ export function openPanel(context: vscode.ExtensionContext): void {
           const builtIn = getBuiltInByKey(agentKey);
           const commandId = builtIn?.commandId || `agents.new${agentKey.charAt(0).toUpperCase() + agentKey.slice(1)}`;
           vscode.commands.executeCommand(commandId);
+        }
+        break;
+      case 'fetchTodoFiles':
+        const todoFiles = await discoverTodoFiles();
+        settingsPanel?.webview.postMessage({ type: 'todoFilesData', todoFiles });
+        break;
+      case 'fetchSessions':
+        const sessions = await discoverRecentSessions(message.limit || 50);
+        settingsPanel?.webview.postMessage({ type: 'sessionsData', sessions });
+        break;
+      case 'spawnSwarmForTodo':
+        await spawnSwarmForTodo(message.item);
+        break;
+      case 'openSession':
+        // Open session file in editor
+        if (message.session?.path) {
+          const sessionUri = vscode.Uri.file(message.session.path);
+          vscode.window.showTextDocument(sessionUri, { preview: true });
         }
         break;
     }

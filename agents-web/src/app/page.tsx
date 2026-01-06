@@ -389,22 +389,14 @@ export default function Home() {
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-10">
             <h2 className="text-2xl font-bold mb-3">Trusted by engineers at</h2>
-            <p className="text-[#94a3b8]">Logo placeholders for launch.</p>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {[
-              "Google",
-              "TikTok",
-              "Company One",
-              "Company Two",
-            ].map((company) => (
-              <div
-                key={company}
-                className="rounded-xl border border-[#1a1a1a] bg-[#0b1116] px-4 py-6 text-center text-sm text-[#cbd5e1]"
-              >
-                {company}
-              </div>
-            ))}
+          <div className="flex justify-center items-center gap-12 flex-wrap">
+            <div className="rounded-xl border border-[#1a1a1a] bg-[#0b1116] px-8 py-6 flex items-center justify-center">
+              <img src="/users/google.png" alt="Google" className="h-8 object-contain opacity-80 hover:opacity-100 transition-opacity" />
+            </div>
+            <div className="rounded-xl border border-[#1a1a1a] bg-[#0b1116] px-8 py-6 flex items-center justify-center">
+              <img src="/users/tiktok.png" alt="TikTok" className="h-8 object-contain opacity-80 hover:opacity-100 transition-opacity" />
+            </div>
           </div>
         </div>
       </section>
