@@ -764,15 +764,25 @@ async function openSingleAgent(context: vscode.ExtensionContext, agentConfig: Om
     vscode.window.showWarningMessage('Tmux mode is enabled, but tmux is not available on PATH. Falling back to VS Code splits.');
   }
 
+  // Build command with default model if configured
+  const builtInDef = getBuiltInDefByTitle(agentConfig.title);
+  const agentKey = builtInDef?.key as keyof AgentSettings['builtIn'] | undefined;
+  let command = agentConfig.command || '';
+  if (agentKey && command) {
+    const defaultModel = settings.getDefaultModel(context, agentKey);
+    if (defaultModel) {
+      command = `${command} --model ${defaultModel}`;
+    }
+  }
+
   if (tmuxOk) {
     const title = buildTerminalTitle(agentConfig.title, undefined, context);
     const terminalId = terminals.nextId(agentConfig.prefix);
-    const builtInDef = getBuiltInDefByTitle(agentConfig.title);
     const agentType = builtInDef?.key ?? agentConfig.title;
     const terminal = createTmuxTerminal(
       title,
       agentType,
-      agentConfig.command || '',
+      command,
       {
         iconPath: agentConfig.iconPath as vscode.Uri,
         env: {
@@ -811,8 +821,8 @@ async function openSingleAgent(context: vscode.ExtensionContext, agentConfig: Om
 
   const pid = await terminal.processId;
   terminals.register(terminal, terminalId, agentConfig, pid, context);
-  if (agentConfig.command) {
-    terminal.sendText(agentConfig.command);
+  if (command) {
+    terminal.sendText(command);
   }
 }
 
