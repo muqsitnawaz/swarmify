@@ -95,6 +95,38 @@ If tasks have dependencies between agents:
 
 Ask user preference if unclear.
 
+## Common Workflow Questions
+
+### Task Breakdown
+- **User concern**: "How do I split work between agents without stepping on each other?"
+- **How /swarm handles it**: You propose explicit file or module ownership per agent in the context structure so scope is non-overlapping and clear.
+- **Manual intervention**: Needed when the task has unclear boundaries or shared hot paths; you decide a clean ownership split or refactor targets.
+
+### Sequencing
+- **User concern**: "What should run in parallel vs sequential?"
+- **How /swarm handles it**: Independent tasks run in parallel; blockers run first in a short wave, then dependent work starts after outputs land.
+- **Manual intervention**: Needed when dependency order is not obvious; you choose the wave order and explicitly gate on outputs.
+
+### Dependencies
+- **User concern**: "What if Agent B needs Agent A's output?"
+- **How /swarm handles it**: Give Agent B either the required pattern inline or wait for Agent A to finish and then spawn Agent B with the new details.
+- **Manual intervention**: Needed when the dependency is on design or API shape; you resolve the interface or confirm it before spawning.
+
+### Merge Conflicts
+- **User concern**: "What happens if two agents edit the same file?"
+- **How /swarm handles it**: Avoids overlap by assigning file ownership; if overlap is required, run sequential waves with one agent writing and the next applying a small delta.
+- **Manual intervention**: Needed when overlapping edits are unavoidable; you reconcile the conflict by choosing a final, unified change.
+
+### Debugging
+- **User concern**: "How do I figure out which agent broke something?"
+- **How /swarm handles it**: Each agent has a scoped assignment so you can map failures to a file set; verify by checking those files and running the relevant tests.
+- **Manual intervention**: Needed when failures are cross-cutting; you triage by isolating the failing behavior and tracing changes across agents.
+
+### Recovery
+- **User concern**: "What if an agent goes off the rails?"
+- **How /swarm handles it**: Stop the agent, revert or discard its changes in that scope, then reassign the task with tighter constraints.
+- **Manual intervention**: Needed when the failure is systemic; you rewrite the assignment and enforce a stricter success criteria.
+
 ## Post-Completion
 
 ### Git Status Check
