@@ -15,6 +15,14 @@ export interface CustomAgentConfig {
   instances: number;
 }
 
+// Command alias for built-in agents with custom flags
+// e.g., "Fast" alias for Claude with "--model claude-haiku-4-5-20251001"
+export interface CommandAlias {
+  name: string;           // Display name (e.g., "Fast", "Max Context")
+  agent: string;          // Built-in agent key: "claude" | "codex" | "gemini" | etc.
+  flags: string;          // Additional CLI flags (e.g., "--model claude-haiku-4-5-20251001")
+}
+
 // Prompt entry for saving reusable prompts
 export interface PromptEntry {
   id: string;
@@ -41,6 +49,7 @@ export interface AgentSettings {
     shell: BuiltInAgentConfig;
   };
   custom: CustomAgentConfig[];
+  aliases: CommandAlias[];
   swarmEnabledAgents: SwarmAgentType[];
   prompts: PromptEntry[];
   display: DisplayPreferences;

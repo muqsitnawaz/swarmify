@@ -268,6 +268,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 export async function runServer(): Promise<void> {
   // Load enabled agents from config
   const config = await readConfig();
+  manager.setModelOverrides(config.modelOverrides);
   const cliHealth = checkAllClis();
   const installedAgents = Object.entries(cliHealth)
     .filter(([, status]) => status.installed)

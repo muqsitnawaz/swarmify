@@ -4,6 +4,9 @@ Run Subagents, Swarm or Ralph Wiggums from any MCP client.
 
 Spawn CLI agents in parallel so your main agent stays focused. Each subagent runs in its own context and can be polled for progress.
 
+Homepage: https://swarmify.co  
+NPM: https://www.npmjs.com/package/@swarmify/agents-mcp
+
 ## Why This Exists
 
 MCP adoption is accelerating and the ecosystem is organizing around registries, gateways, and enterprise governance. At the same time, teams are pushing toward multi-agent workflows and running into orchestration reliability, tool overload, and security concerns. This server gives you a focused, practical building block for real-world swarm work.
@@ -217,6 +220,48 @@ Cover auth endpoints.
 | `fast` | codex: gpt-5.2-codex, claude: claude-haiku-4-5, gemini: gemini-3-flash, cursor: composer-1 |
 | `default` | codex: gpt-5.2-codex, claude: claude-sonnet-4-5, gemini: gemini-3-flash, cursor: composer-1 |
 | `detailed` | codex: gpt-5.1-codex-max, claude: claude-opus-4-5, gemini: gemini-3-pro, cursor: composer-1 |
+
+## Config
+
+Config lives at `~/.swarmify/config.json`.
+
+Example with per-agent swarm selection and effort model overrides:
+
+```json
+{
+  "agents": {
+    "claude": {
+      "swarm": true,
+      "effort": {
+        "models": {
+          "fast": "claude-haiku-4-5-20251001",
+          "default": "claude-sonnet-4-5",
+          "detailed": "claude-opus-4-5"
+        }
+      }
+    },
+    "codex": { "swarm": true },
+    "gemini": { "swarm": true },
+    "cursor": { "swarm": false }
+  }
+}
+```
+
+Shorthand for a single effort level override:
+
+```json
+{
+  "agents": {
+    "claude": {
+      "swarm": true,
+      "effort": {
+        "level": "fast",
+        "model": "claude-haiku-4-5-20251001"
+      }
+    }
+  }
+}
+```
 
 ## Environment Variables
 

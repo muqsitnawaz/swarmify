@@ -3,7 +3,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 import { randomUUID } from 'crypto';
-import { resolveAgentsDir } from './persistence.js';
+import { resolveAgentsDir, type ModelOverrides } from './persistence.js';
 import { normalizeEvents, AgentType } from './parsers.js';
 
 export enum AgentStatus {
@@ -25,12 +25,13 @@ export const AGENT_COMMANDS: Record<AgentType, string[]> = {
 
 // Effort level type
 export type EffortLevel = 'fast' | 'default' | 'detailed';
+export type EffortModelMap = Record<EffortLevel, Record<AgentType, string>>;
 
 // Model mappings by effort level per agent type
 // - fast: smallest, cheapest models for quick tasks
 // - default: balanced models (implicit when effort is omitted)
 // - detailed: max-capability models
-export const EFFORT_MODEL_MAP: Record<EffortLevel, Record<AgentType, string>> = {
+export const EFFORT_MODEL_MAP: EffortModelMap = {
   fast: {
     codex: 'gpt-5.2-codex',
     gemini: 'gemini-3-flash-preview',
@@ -50,6 +51,36 @@ export const EFFORT_MODEL_MAP: Record<EffortLevel, Record<AgentType, string>> = 
     cursor: 'composer-1',
   },
 };
+
+export function resolveEffortModelMap(
+  base: EffortModelMap,
+  overrides: ModelOverrides | null | undefined
+): EffortModelMap {
+  const resolved: EffortModelMap = {
+    fast: { ...base.fast },
+    default: { ...base.default },
+    detailed: { ...base.detailed },
+  };
+
+  if (!overrides) return resolved;
+
+  for (const [agentType, effortOverrides] of Object.entries(overrides)) {
+    if (!effortOverrides) continue;
+    if (!['codex', 'gemini', 'cursor', 'claude'].includes(agentType)) continue;
+    const typedAgent = agentType as AgentType;
+    for (const level of ['fast', 'default', 'detailed'] as const) {
+      const model = effortOverrides[level];
+      if (typeof model === 'string') {
+        const trimmed = model.trim();
+        if (trimmed) {
+          resolved[level][typedAgent] = trimmed;
+        }
+      }
+    }
+  }
+
+  return resolved;
+}
 
 // Suffix appended to all prompts to ensure agents provide a summary
 const PROMPT_SUFFIX = `
@@ -421,6 +452,7 @@ export class AgentManager {
   private filterByCwd: string | null;
   private cleanupAgeDays: number;
   private defaultMode: Mode;
+  private effortModelMap: EffortModelMap = EFFORT_MODEL_MAP;
 
   private constructorAgentsDir: string | null = null;
 
@@ -430,7 +462,8 @@ export class AgentManager {
     agentsDir: string | null = null,
     defaultMode: Mode | null = null,
     filterByCwd: string | null = null,
-    cleanupAgeDays: number = 7
+    cleanupAgeDays: number = 7,
+    modelOverrides: ModelOverrides | null = null
   ) {
     this.maxAgents = maxAgents;
     this.maxConcurrent = maxConcurrent;
@@ -442,6 +475,7 @@ export class AgentManager {
       throw new Error(`Invalid default_mode '${defaultMode}'. Use 'plan' or 'edit'.`);
     }
     this.defaultMode = resolvedDefaultMode;
+    this.effortModelMap = resolveEffortModelMap(EFFORT_MODEL_MAP, modelOverrides);
 
     this.initialize();
   }
@@ -454,6 +488,10 @@ export class AgentManager {
 
   getDefaultMode(): Mode {
     return this.defaultMode;
+  }
+
+  setModelOverrides(overrides: ModelOverrides | null | undefined): void {
+    this.effortModelMap = resolveEffortModelMap(EFFORT_MODEL_MAP, overrides);
   }
 
   private async loadExistingAgents(): Promise<void> {
@@ -522,7 +560,7 @@ export class AgentManager {
     const resolvedMode = resolveMode(mode, this.defaultMode);
 
     // Resolve model from effort level
-    const resolvedModel: string = EFFORT_MODEL_MAP[effort][agentType];
+    const resolvedModel: string = this.effortModelMap[effort][agentType];
 
     const running = await this.listRunning();
     if (running.length >= this.maxConcurrent) {
