@@ -345,7 +345,7 @@ export function openPanel(context: vscode.ExtensionContext): void {
         settingsPanel?.webview.postMessage({ type: 'sessionsData', sessions });
         break;
       case 'spawnSwarmForTodo':
-        await spawnSwarmForTodo(message.item);
+        await spawnSwarmForTodo(message.item, context);
         break;
       case 'openSession':
         // Open session file in editor
