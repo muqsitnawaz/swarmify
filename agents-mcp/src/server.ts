@@ -40,7 +40,7 @@ IMPORTANT: Avoid spawning the same agent type as yourself. If you are Claude, pr
 
 Only installed agent CLIs are listed below.
 
-Task names must be unique. If a name is already in use, the server will reject the request and suggest a free variant (e.g., "task-1").
+Task names can be reused to group multiple agents under the same task.
 
 MODE PARAMETER (required for writes):
 - mode='edit' - Agent CAN modify files (use this for implementation tasks)
@@ -144,8 +144,8 @@ CURSOR SUPPORT: Send 'since' parameter (ISO timestamp from previous response's '
       {
         name: TOOL_NAMES.stop,
         description: `Stop agents. Two modes:
-- stop(task_name): Stop ALL agents in the task
-- stop(task_name, agent_id): Stop ONE specific agent`,
+- Stop(task_name): Stop ALL agents in the task
+- Stop(task_name, agent_id): Stop ONE specific agent`,
         inputSchema: {
           type: 'object',
           properties: {

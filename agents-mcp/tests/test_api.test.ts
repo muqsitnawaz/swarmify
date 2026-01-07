@@ -76,16 +76,17 @@ describe('API Integration Tests', () => {
       expect(typeof claudeAvailable).toBe('boolean');
     });
 
-    test('should reject duplicate task names and suggest alternative', async () => {
-      console.log('\n--- TEST: duplicate task name rejection ---');
+    test('should allow duplicate task names', async () => {
+      console.log('\n--- TEST: duplicate task name allowed ---');
 
       // Seed an existing agent with the task name
       const existing = new AgentProcess('agent-existing', 'dup-task', 'codex', 'noop', null, 'plan', null, AgentStatus.RUNNING);
       manager['agents'].set(existing.agentId, existing);
 
       let error: any = null;
+      let result: any = null;
       try {
-        await handleSpawn(
+        result = await handleSpawn(
           manager,
           'dup-task',
           'codex',
@@ -98,10 +99,12 @@ describe('API Integration Tests', () => {
         error = err;
       }
 
-      expect(error).toBeTruthy();
-      expect(error.code).toBe('TASK_NAME_IN_USE');
-      expect(error.payload?.suggested_task_name).toBe('dup-task-1');
-      expect(error.payload?.cwd_conflicts).toContain('(none)');
+      if (error) {
+        expect(error.code).not.toBe('TASK_NAME_IN_USE');
+      } else {
+        expect(result).toBeTruthy();
+        expect(result.task_name).toBe('dup-task');
+      }
     });
   });
 

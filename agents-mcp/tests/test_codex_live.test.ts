@@ -176,7 +176,7 @@ describe('Codex Live E2E', () => {
     async function callMCPTool(name: string, args: any): Promise<any> {
       let result: any;
       
-      if (name === 'spawn') {
+      if (name === 'Spawn') {
         if (!args) {
           throw new Error('Missing arguments for spawn');
         }
@@ -189,7 +189,7 @@ describe('Codex Live E2E', () => {
           (args.mode as string) || null,
           (args.model as string) || null
         );
-      } else if (name === 'status') {
+      } else if (name === 'Status') {
         if (!args) {
           throw new Error('Missing arguments for status');
         }
@@ -198,7 +198,7 @@ describe('Codex Live E2E', () => {
           args.task_name as string,
           args.agent_id as string | undefined
         );
-      } else if (name === 'stop') {
+      } else if (name === 'Stop') {
         if (!args) {
           throw new Error('Missing arguments for stop');
         }
@@ -214,8 +214,8 @@ describe('Codex Live E2E', () => {
       return JSON.parse(JSON.stringify(result));
     }
     
-    console.log('Testing MCP spawn command');
-    const spawnResult: SpawnResult = await callMCPTool('spawn', {
+    console.log('Testing MCP Spawn command');
+    const spawnResult: SpawnResult = await callMCPTool('Spawn', {
       task_name: 'test-codex-mcp',
       agent_type: 'codex',
       prompt: prompt,
@@ -226,10 +226,10 @@ describe('Codex Live E2E', () => {
     expect(spawnResult.agent_type).toBe('codex');
     console.log('Spawned agent via MCP:', spawnResult.agent_id);
     
-    console.log('Testing MCP status command');
+    console.log('Testing MCP Status command');
     await pollUntilComplete(manager, 'test-codex-mcp', spawnResult.agent_id, 90, 2000);
 
-    const mcpTaskResult = await callMCPTool('status', {
+    const mcpTaskResult = await callMCPTool('Status', {
       task_name: 'test-codex-mcp',
     });
     const mcpStatusResult = mcpTaskResult.agents.find((a: any) => a.agent_id === spawnResult.agent_id);
@@ -252,8 +252,8 @@ describe('Codex Live E2E', () => {
     expect(mcpStatusResult.last_messages.length).toBeLessThanOrEqual(3);
     expect(mcpStatusResult.last_messages.every((msg: string) => typeof msg === 'string')).toBe(true);
     
-    console.log('Testing MCP stop command');
-    const stopResult = await callMCPTool('stop', {
+    console.log('Testing MCP Stop command');
+    const stopResult = await callMCPTool('Stop', {
       task_name: 'test-codex-mcp',
       agent_id: spawnResult.agent_id,
     });
