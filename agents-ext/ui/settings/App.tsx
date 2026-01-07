@@ -19,6 +19,12 @@ interface CustomAgentSettings {
   instances: number
 }
 
+interface CommandAlias {
+  name: string
+  agent: string
+  flags: string
+}
+
 type SwarmAgentType = 'claude' | 'codex' | 'gemini'
 const ALL_SWARM_AGENTS: SwarmAgentType[] = ['claude', 'codex', 'gemini']
 const AGENT_MODELS: Record<string, string[]> = {
@@ -82,6 +88,7 @@ interface AgentSettings {
     shell: BuiltInAgentSettings
   }
   custom: CustomAgentSettings[]
+  aliases: CommandAlias[]
   swarmEnabledAgents: SwarmAgentType[]
   prompts: PromptEntry[]
   display: DisplayPreferences
@@ -364,6 +371,13 @@ export default function App() {
   const [newName, setNewName] = useState('')
   const [newCommand, setNewCommand] = useState('')
   const [nameError, setNameError] = useState('')
+
+  // Alias editing state
+  const [isAddingAlias, setIsAddingAlias] = useState(false)
+  const [newAliasName, setNewAliasName] = useState('')
+  const [newAliasAgent, setNewAliasAgent] = useState('claude')
+  const [newAliasFlags, setNewAliasFlags] = useState('')
+  const [aliasError, setAliasError] = useState('')
 
   // Skills state
   const [skillsStatus, setSkillsStatus] = useState<SkillsStatus | null>(null)
@@ -801,6 +815,64 @@ export default function App() {
     if (!settings) return
     const newCustom = settings.custom.filter((_, i) => i !== index)
     saveSettings({ ...settings, custom: newCustom })
+  }
+
+  // Alias management functions
+  const validateAliasName = (name: string): string => {
+    if (!name.trim()) return 'Name required'
+    if (name.length > 20) return 'Max 20 characters'
+    if (settings?.aliases?.some(a => a.name.toLowerCase() === name.toLowerCase())) return 'Name already used'
+    return ''
+  }
+
+  const handleAliasNameChange = (value: string) => {
+    setNewAliasName(value)
+    setAliasError(validateAliasName(value))
+  }
+
+  const handleAddAliasClick = () => {
+    setIsAddingAlias(true)
+    setNewAliasName('')
+    setNewAliasAgent('claude')
+    setNewAliasFlags('')
+    setAliasError('')
+  }
+
+  const handleCancelAddAlias = () => {
+    setIsAddingAlias(false)
+    setNewAliasName('')
+    setNewAliasAgent('claude')
+    setNewAliasFlags('')
+    setAliasError('')
+  }
+
+  const handleSaveAlias = () => {
+    const error = validateAliasName(newAliasName)
+    if (error) {
+      setAliasError(error)
+      return
+    }
+    if (!newAliasFlags.trim()) {
+      setAliasError('Flags required')
+      return
+    }
+    if (!settings) return
+
+    const newAlias: CommandAlias = {
+      name: newAliasName.trim(),
+      agent: newAliasAgent,
+      flags: newAliasFlags.trim()
+    }
+    const aliases = settings.aliases || []
+    saveSettings({ ...settings, aliases: [...aliases, newAlias] })
+    handleCancelAddAlias()
+  }
+
+  const removeAlias = (index: number) => {
+    if (!settings) return
+    const aliases = settings.aliases || []
+    const newAliases = aliases.filter((_, i) => i !== index)
+    saveSettings({ ...settings, aliases: newAliases })
   }
 
   if (!settings) {
@@ -1863,6 +1935,89 @@ export default function App() {
                   </div>
                 )
               })}
+            </div>
+          </section>
+
+          {/* Command Aliases */}
+          <section>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
+                Command Aliases
+              </h2>
+              {!isAddingAlias && (
+                <Button size="sm" variant="ghost" onClick={handleAddAliasClick}>
+                  Add Alias
+                </Button>
+              )}
+            </div>
+            <p className="text-xs text-[var(--muted-foreground)] mb-3">
+              Create shortcuts with custom flags. Use via Command Palette: <code className="bg-[var(--background)] px-1 rounded">agents.alias.YourName</code>
+            </p>
+            <div className="space-y-2">
+              {(settings.aliases || []).map((alias, index) => {
+                const agentInfo = BUILT_IN_AGENTS.find(a => a.key === alias.agent)
+                return (
+                  <div key={index} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)]">
+                    <img src={agentInfo?.icon || icons.agents} alt={alias.agent} className="w-5 h-5" />
+                    <span className="text-sm font-medium">{alias.name}</span>
+                    <span className="text-xs text-[var(--muted-foreground)]">{agentInfo?.name || alias.agent}</span>
+                    <code className="text-xs text-[var(--muted-foreground)] bg-[var(--background)] px-2 py-0.5 rounded flex-1 truncate">
+                      {alias.flags}
+                    </code>
+                    <Button size="sm" variant="ghost" onClick={() => removeAlias(index)}>
+                      Remove
+                    </Button>
+                  </div>
+                )
+              })}
+
+              {isAddingAlias && (
+                <div className="px-4 py-3 rounded-xl bg-[var(--muted)] space-y-3">
+                  <div className="grid grid-cols-[1fr,1fr,2fr] gap-3">
+                    <div>
+                      <label className="text-xs text-[var(--muted-foreground)] mb-1 block">Name</label>
+                      <Input
+                        value={newAliasName}
+                        onChange={(e) => handleAliasNameChange(e.target.value)}
+                        placeholder="Fast"
+                        className="w-full"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-[var(--muted-foreground)] mb-1 block">Agent</label>
+                      <select
+                        value={newAliasAgent}
+                        onChange={(e) => setNewAliasAgent(e.target.value)}
+                        className="w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-sm"
+                      >
+                        {BUILT_IN_AGENTS.filter(a => a.key !== 'shell').map(agent => (
+                          <option key={agent.key} value={agent.key}>{agent.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs text-[var(--muted-foreground)] mb-1 block">Flags</label>
+                      <Input
+                        value={newAliasFlags}
+                        onChange={(e) => setNewAliasFlags(e.target.value)}
+                        placeholder="--model claude-haiku-4-5-20251001"
+                        className="w-full"
+                      />
+                    </div>
+                  </div>
+                  {aliasError && <p className="text-xs text-red-400">{aliasError}</p>}
+                  <div className="flex justify-end gap-2">
+                    <Button size="sm" variant="ghost" onClick={handleCancelAddAlias}>Cancel</Button>
+                    <Button size="sm" onClick={handleSaveAlias}>Save</Button>
+                  </div>
+                </div>
+              )}
+
+              {(settings.aliases || []).length === 0 && !isAddingAlias && (
+                <div className="text-sm text-[var(--muted-foreground)] px-4 py-3 rounded-xl bg-[var(--muted)]">
+                  No aliases configured. Add one to create a quick command with preset flags.
+                </div>
+              )}
             </div>
           </section>
 

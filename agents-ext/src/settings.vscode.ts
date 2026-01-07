@@ -133,6 +133,11 @@ export function getSettings(context: vscode.ExtensionContext): AgentSettings {
       stored.prompts = readPrompts();
       context.globalState.update('agentSettings', stored);
     }
+    // Migrate: add aliases array if missing
+    if (!stored.aliases) {
+      stored.aliases = [];
+      context.globalState.update('agentSettings', stored);
+    }
     return stored;
   }
 
@@ -158,6 +163,7 @@ export function getSettings(context: vscode.ExtensionContext): AgentSettings {
         login: false,
         instances: a.count
       })),
+      aliases: [],
       swarmEnabledAgents: [...ALL_SWARM_AGENTS],
       prompts: readPrompts(),
       display: { ...DEFAULT_DISPLAY_PREFERENCES },
