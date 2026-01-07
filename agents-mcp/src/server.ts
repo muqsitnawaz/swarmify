@@ -34,11 +34,14 @@ IMPORTANT: Avoid spawning the same agent type as yourself. If you are Claude, pr
 
 Only installed agent CLIs are listed below.
 
-Task names must be unique. If a name is already in use, the server will reject the request and suggest a free variant (e.g., "task-1"). Set force=true to override, but prefer picking the suggested name. 
+Task names must be unique. If a name is already in use, the server will reject the request and suggest a free variant (e.g., "task-1"). Set force=true to override, but prefer picking the suggested name.
 
 MODE PARAMETER (required for writes):
 - mode='edit' - Agent CAN modify files (use this for implementation tasks)
 - mode='plan' - Agent is READ-ONLY (default, use for research/exploration)
+- mode='ralph' - YOLO mode: Agent autonomously works through all tasks in RALPH.md until done. Requires cwd and RALPH.md file.
+
+RALPH MODE: Spawns ONE agent with full permissions and instructions to work through RALPH.md. The agent reads the task file, understands the system, picks tasks logically, completes them, marks checkboxes, and continues until all tasks are checked. The orchestrator can spawn multiple ralph agents in parallel for different directories/task files.
 
 WAIT BEFORE CHECKING STATUS: After spawning all agents for this task, sleep for at least 2 minutes before checking status. Use: Bash(sleep 120 && echo "Done waiting on Swarm agents. Let's check status") timeout: 2m 30s
 
@@ -90,8 +93,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             mode: {
               type: 'string',
-              enum: ['plan', 'edit'],
-              description: "'edit' allows file modifications, 'plan' is read-only (default).",
+              enum: ['plan', 'edit', 'ralph'],
+              description: "'edit' allows file modifications, 'plan' is read-only (default), 'ralph' is autonomous execution through RALPH.md tasks.",
             },
             effort: {
               type: 'string',

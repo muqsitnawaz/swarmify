@@ -64,7 +64,7 @@ const CLAUDE_PLAN_MODE_PREFIX = `You are running in HEADLESS PLAN MODE. This mod
 
 `;
 
-const VALID_MODES = ['plan', 'edit'] as const;
+const VALID_MODES = ['plan', 'edit', 'ralph'] as const;
 type Mode = typeof VALID_MODES[number];
 
 function normalizeModeValue(modeValue: string | null | undefined): Mode | null {
@@ -653,7 +653,9 @@ export class AgentManager {
       cmd.push('--model', model);
     }
 
-    if (isEditMode) {
+    if (mode === 'ralph') {
+      cmd = this.applyRalphMode(agentType, cmd);
+    } else if (isEditMode) {
       cmd = this.applyEditMode(agentType, cmd);
     }
 
@@ -686,6 +688,35 @@ export class AgentManager {
     }
 
     return editCmd;
+  }
+
+  private applyRalphMode(agentType: AgentType, cmd: string[]): string[] {
+    const ralphCmd: string[] = [...cmd];
+
+    switch (agentType) {
+      case 'codex':
+        ralphCmd.push('--full-auto');
+        break;
+
+      case 'cursor':
+        ralphCmd.push('-f');
+        break;
+
+      case 'gemini':
+        ralphCmd.push('--yolo');
+        break;
+
+      case 'claude':
+        // Replace --permission-mode plan with --dangerously-skip-permissions
+        const permModeIndex = ralphCmd.indexOf('--permission-mode');
+        if (permModeIndex !== -1) {
+          ralphCmd.splice(permModeIndex, 2); // Remove --permission-mode and its value
+        }
+        ralphCmd.push('--dangerously-skip-permissions');
+        break;
+    }
+
+    return ralphCmd;
   }
 
   async get(agentId: string): Promise<AgentProcess | null> {

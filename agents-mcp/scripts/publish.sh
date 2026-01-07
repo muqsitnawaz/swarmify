@@ -14,7 +14,7 @@ if [[ $# -ne 1 ]]; then
 fi
 
 VERSION="$1"
-if [[ ! "$VERSION" =~ ^[0-9]+\\.[0-9]+\\.[0-9]+$ ]]; then
+if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "Invalid version: $VERSION"
   echo "Expected format: x.y.z"
   exit 1
