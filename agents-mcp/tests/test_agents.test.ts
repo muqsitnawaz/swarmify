@@ -8,6 +8,7 @@ import {
   AgentStatus,
   AGENT_COMMANDS,
   EFFORT_MODEL_MAP,
+  resolveEffortModelMap,
   resolveMode,
 } from '../src/agents.js';
 import type { EffortLevel } from '../src/agents.js';
@@ -168,6 +169,64 @@ describe('Effort Model Mapping', () => {
     expect(EFFORT_MODEL_MAP.fast.cursor).toBe('composer-1');
     expect(EFFORT_MODEL_MAP.default.cursor).toBe('composer-1');
     expect(EFFORT_MODEL_MAP.detailed.cursor).toBe('composer-1');
+  });
+});
+
+describe('Effort Model Overrides', () => {
+  test('should apply overrides for a specific agent and effort level', () => {
+    const overrides = {
+      codex: {
+        fast: 'gpt-5.2-codex-mini',
+      },
+    };
+
+    const resolved = resolveEffortModelMap(EFFORT_MODEL_MAP, overrides);
+
+    expect(resolved.fast.codex).toBe('gpt-5.2-codex-mini');
+    expect(resolved.default.codex).toBe(EFFORT_MODEL_MAP.default.codex);
+    expect(resolved.detailed.codex).toBe(EFFORT_MODEL_MAP.detailed.codex);
+  });
+
+  test('should apply multiple level overrides for one agent', () => {
+    const overrides = {
+      claude: {
+        fast: 'claude-haiku-custom',
+        detailed: 'claude-opus-custom',
+      },
+    };
+
+    const resolved = resolveEffortModelMap(EFFORT_MODEL_MAP, overrides);
+
+    expect(resolved.fast.claude).toBe('claude-haiku-custom');
+    expect(resolved.default.claude).toBe(EFFORT_MODEL_MAP.default.claude);
+    expect(resolved.detailed.claude).toBe('claude-opus-custom');
+  });
+
+  test('should ignore empty model strings', () => {
+    const overrides = {
+      gemini: {
+        fast: '',
+      },
+    };
+
+    const resolved = resolveEffortModelMap(EFFORT_MODEL_MAP, overrides);
+
+    expect(resolved.fast.gemini).toBe(EFFORT_MODEL_MAP.fast.gemini);
+  });
+
+  test('should ignore unknown agent types', () => {
+    const overrides = {
+      opencode: {
+        fast: 'opencode-1',
+      },
+    } as any;
+
+    const resolved = resolveEffortModelMap(EFFORT_MODEL_MAP, overrides);
+
+    expect(resolved.fast.codex).toBe(EFFORT_MODEL_MAP.fast.codex);
+    expect(resolved.fast.gemini).toBe(EFFORT_MODEL_MAP.fast.gemini);
+    expect(resolved.fast.claude).toBe(EFFORT_MODEL_MAP.fast.claude);
+    expect(resolved.fast.cursor).toBe(EFFORT_MODEL_MAP.fast.cursor);
   });
 });
 

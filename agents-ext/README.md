@@ -2,6 +2,9 @@
 
 True multi-agent coding in your favorite editor.
 
+Homepage: https://swarmify.co  
+Marketplace: https://marketplace.visualstudio.com/items?itemName=swarmify.agents-ext
+
 ## Why
 
 CLI-based AI agents like Claude Code, Codex, and Gemini are powerful - but running them in separate terminal windows means constantly switching contexts. You lose sight of your code while talking to agents.

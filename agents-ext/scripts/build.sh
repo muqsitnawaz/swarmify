@@ -17,7 +17,7 @@ if ! [[ $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     exit 1
 fi
 
-echo "Building Cursor Agents v${VERSION}..."
+echo "Building agents-ext v${VERSION}..."
 
 # Get the project root directory
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -49,6 +49,6 @@ echo "Creating dist directory..."
 mkdir -p "$DIST_DIR"
 
 echo "Packaging extension..."
-vsce package --out "$DIST_DIR/cursor-agents-${VERSION}.vsix"
+vsce package --out "$DIST_DIR/agents-ext-${VERSION}.vsix"
 
-echo "Build complete: $DIST_DIR/cursor-agents-${VERSION}.vsix"
+echo "Build complete: $DIST_DIR/agents-ext-${VERSION}.vsix"

@@ -69,13 +69,19 @@ async function resolveConfigPath(): Promise<string> {
   return path.join(base, 'config.json');
 }
 
-// Config file structure
+export type EffortLevel = 'fast' | 'default' | 'detailed';
+
+export type ModelOverrides = Partial<Record<AgentType, Partial<Record<EffortLevel, string>>>>;
+
 interface SwarmConfig {
-  enabledAgents: AgentType[];
+  agents?: Record<string, unknown>;
+  defaults?: Record<string, unknown>;
 }
 
-export interface ReadConfigResult extends SwarmConfig {
+export interface ReadConfigResult {
   hasConfig: boolean;
+  enabledAgents: AgentType[];
+  modelOverrides: ModelOverrides;
 }
 
 let AGENTS_DIR: string | null = null;
@@ -98,22 +104,73 @@ async function ensureConfigPath(): Promise<string> {
   return CONFIG_PATH;
 }
 
-// Read swarm config, returns all agents enabled if config doesn't exist
+function normalizeEffortLevel(raw: unknown): EffortLevel | null {
+  if (typeof raw !== 'string') return null;
+  const normalized = raw.trim().toLowerCase();
+  if (normalized === 'fast' || normalized === 'default' || normalized === 'detailed') {
+    return normalized as EffortLevel;
+  }
+  return null;
+}
+
+function normalizeEffortModels(raw: unknown): Partial<Record<EffortLevel, string>> | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const models: Partial<Record<EffortLevel, string>> = {};
+
+  const rawModels = (raw as { models?: Record<string, unknown> }).models;
+  if (rawModels && typeof rawModels === 'object') {
+    for (const level of ['fast', 'default', 'detailed'] as const) {
+      const value = rawModels[level];
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (trimmed) {
+          models[level] = trimmed;
+        }
+      }
+    }
+  }
+
+  const shorthandLevel = normalizeEffortLevel((raw as { level?: unknown }).level);
+  const shorthandModel = typeof (raw as { model?: unknown }).model === 'string'
+    ? (raw as { model?: string }).model?.trim()
+    : '';
+  if (shorthandLevel && shorthandModel) {
+    models[shorthandLevel] = shorthandModel;
+  }
+
+  return Object.keys(models).length > 0 ? models : null;
+}
+
+// Read swarm config, returns empty config if file doesn't exist
 export async function readConfig(): Promise<ReadConfigResult> {
   const configPath = await ensureConfigPath();
   try {
     const data = await fs.readFile(configPath, 'utf-8');
     const config = JSON.parse(data) as SwarmConfig;
-    // Validate that enabledAgents only contains valid agent types
-    if (config.enabledAgents && Array.isArray(config.enabledAgents)) {
-      config.enabledAgents = config.enabledAgents.filter(a => ALL_AGENTS.includes(a));
-    } else {
-      config.enabledAgents = [];
+    const enabledAgents: AgentType[] = [];
+    const modelOverrides: ModelOverrides = {};
+
+    if (config.agents && typeof config.agents === 'object') {
+      for (const [agentKey, agentValue] of Object.entries(config.agents)) {
+        if (!ALL_AGENTS.includes(agentKey as AgentType)) continue;
+        const agentType = agentKey as AgentType;
+        const agentConfig = agentValue && typeof agentValue === 'object' ? agentValue : {};
+        const swarm = (agentConfig as { swarm?: unknown }).swarm;
+        if (swarm === true) {
+          enabledAgents.push(agentType);
+        }
+
+        const effortModels = normalizeEffortModels((agentConfig as { effort?: unknown }).effort);
+        if (effortModels) {
+          modelOverrides[agentType] = effortModels;
+        }
+      }
     }
-    return { ...config, hasConfig: true };
+
+    return { enabledAgents, modelOverrides, hasConfig: true };
   } catch {
     // Config doesn't exist or is invalid, fall back to installed agents
-    return { enabledAgents: [], hasConfig: false };
+    return { enabledAgents: [], modelOverrides: {}, hasConfig: false };
   }
 }
 
