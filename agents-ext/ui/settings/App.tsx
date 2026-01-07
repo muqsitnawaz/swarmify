@@ -261,13 +261,14 @@ const todoMarkdownAllowedTags = [
 
 const todoMarkdownAllowedAttrs = ['href', 'title', 'target', 'rel', 'class']
 
-function renderTodoDescription(desc: string) {
+function renderTodoDescription(desc: string, clamp: boolean = true) {
   const raw = marked.parse(desc)
   const safe = DOMPurify.sanitize(raw, {
     ALLOWED_TAGS: todoMarkdownAllowedTags,
     ALLOWED_ATTR: todoMarkdownAllowedAttrs
   })
-  return <div className="todo-md" dangerouslySetInnerHTML={{ __html: safe }} />
+  const className = clamp ? 'todo-md todo-md-clamp' : 'todo-md'
+  return <div className={className} dangerouslySetInnerHTML={{ __html: safe }} />
 }
 
 const BUILT_IN_AGENTS = [
@@ -284,6 +285,16 @@ const SWARM_AGENT_LABELS: Record<SwarmAgentType, string> = {
   codex: 'Codex',
   claude: 'Claude',
   gemini: 'Gemini'
+}
+
+const TAB_LABELS: Record<TabId, string> = {
+  overview: 'Overview',
+  tasks: 'Todo',
+  sessions: 'Sessions',
+  swarm: 'Swarm',
+  skills: 'Skills',
+  settings: 'Settings',
+  guide: 'Guide'
 }
 
 const SKILL_AGENTS: { key: SwarmAgentType; name: string; icon: string }[] = [
@@ -1020,7 +1031,7 @@ export default function App() {
                         </div>
                         {item.description && (
                           <div className="text-xs text-[var(--muted-foreground)] space-y-2">
-                            {renderTodoDescription(item.description)}
+                            {renderTodoDescription(item.description, true)}
                           </div>
                         )}
                       </div>
@@ -1154,7 +1165,7 @@ export default function App() {
                   : 'text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:bg-[var(--muted)]'
               }`}
             >
-              {tab}
+              {TAB_LABELS[tab]}
             </button>
           ))}
         </div>
@@ -1390,7 +1401,7 @@ export default function App() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
-              Tasks
+              Todo
             </h2>
             <Button
               variant="ghost"
