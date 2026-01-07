@@ -11,9 +11,8 @@ import { readConfig } from './persistence.js';
 
 const manager = new AgentManager(50, 10, null, null, null, 7);
 
-// Enabled agents (loaded from ~/.swarmify/config.json with legacy fallback)
-const defaultAgents: AgentType[] = ['claude', 'codex', 'gemini'];
-let enabledAgents: AgentType[] = [...defaultAgents];
+// Enabled agents (initialized at startup)
+let enabledAgents: AgentType[] = [];
 
 // Agent descriptions for dynamic tool description
 const agentDescriptions: Record<AgentType, string> = {
@@ -266,16 +265,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 export async function runServer(): Promise<void> {
   // Load enabled agents from config
   const config = await readConfig();
-  const requestedAgents = config.enabledAgents.length > 0 ? config.enabledAgents : [...defaultAgents];
-
   const cliHealth = checkAllClis();
-  const availableAgents = requestedAgents.filter(a => cliHealth[a]?.installed);
-  const fallbackAgents = Object.entries(cliHealth)
+  const installedAgents = Object.entries(cliHealth)
     .filter(([, status]) => status.installed)
     .map(([agent]) => agent as AgentType);
 
-  // Prefer the requested agents that are actually installed; otherwise fall back to any installed CLIs
-  enabledAgents = availableAgents.length > 0 ? availableAgents : fallbackAgents;
+  const requestedAgents = config.enabledAgents;
+
+  // Prefer explicitly configured agents, filtered by what's installed.
+  // If no config exists, fall back to the installed list.
+  enabledAgents = config.hasConfig
+    ? requestedAgents.filter(a => cliHealth[a]?.installed)
+    : installedAgents;
 
   console.error('Requested agents:', requestedAgents.join(', '));
   console.error('Enabled agents (installed):', enabledAgents.join(', ') || 'none');

@@ -5,7 +5,7 @@ import { constants as fsConstants } from 'fs';
 import { AgentType } from './parsers.js';
 
 // All supported swarm agent types
-const ALL_AGENTS: AgentType[] = ['claude', 'codex', 'gemini'];
+const ALL_AGENTS: AgentType[] = ['claude', 'codex', 'gemini', 'cursor'];
 
 // Preferred and legacy data roots
 const PRIMARY_BASE_DIR = path.join(homedir(), '.swarmify');
@@ -74,6 +74,10 @@ interface SwarmConfig {
   enabledAgents: AgentType[];
 }
 
+export interface ReadConfigResult extends SwarmConfig {
+  hasConfig: boolean;
+}
+
 let AGENTS_DIR: string | null = null;
 let CONFIG_PATH: string | null = null;
 
@@ -95,7 +99,7 @@ async function ensureConfigPath(): Promise<string> {
 }
 
 // Read swarm config, returns all agents enabled if config doesn't exist
-export async function readConfig(): Promise<SwarmConfig> {
+export async function readConfig(): Promise<ReadConfigResult> {
   const configPath = await ensureConfigPath();
   try {
     const data = await fs.readFile(configPath, 'utf-8');
@@ -104,12 +108,12 @@ export async function readConfig(): Promise<SwarmConfig> {
     if (config.enabledAgents && Array.isArray(config.enabledAgents)) {
       config.enabledAgents = config.enabledAgents.filter(a => ALL_AGENTS.includes(a));
     } else {
-      config.enabledAgents = [...ALL_AGENTS];
+      config.enabledAgents = [];
     }
-    return config;
+    return { ...config, hasConfig: true };
   } catch {
-    // Config doesn't exist or is invalid, return default (all agents)
-    return { enabledAgents: [...ALL_AGENTS] };
+    // Config doesn't exist or is invalid, fall back to installed agents
+    return { enabledAgents: [], hasConfig: false };
   }
 }
 
