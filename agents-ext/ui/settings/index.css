@@ -39,6 +39,12 @@ body {
   color: var(--muted-foreground);
   word-break: break-word;
   overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
+.todo-md-clamp {
+  max-height: calc(1.5em * 5);
+  overflow: hidden;
 }
 
 .todo-md p {
