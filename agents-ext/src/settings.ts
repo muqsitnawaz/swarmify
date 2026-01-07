@@ -100,6 +100,7 @@ export function getDefaultSettings(): AgentSettings {
       shell: { login: false, instances: 1 }
     },
     custom: [],
+    aliases: [],
     swarmEnabledAgents: [...ALL_SWARM_AGENTS],
     prompts: [],
     display: { ...DEFAULT_DISPLAY_PREFERENCES },
