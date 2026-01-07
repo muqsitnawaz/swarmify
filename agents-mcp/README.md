@@ -63,6 +63,17 @@ Edit mode unlocks writes:
 Agents are detached from the MCP server process. Close your IDE and reopen it,
 then reconnect with `status` and `tasks`.
 
+## Common Questions
+
+**"Isn't this overkill for simple tasks?"**
+Yes. For typo fixes or small changes, one agent is fine. But for implementing a complex feature across 20 files, a single agent drowning in context is slower than a focused swarm working in parallel.
+
+**"What if agents conflict?"**
+They don't. The orchestrator (via `/swarm` command) assigns each agent specific files—no overlap. For shared files, it runs agents in sequential waves so there's no collision.
+
+**"How do I monitor what's happening?"**
+Use the Swarm `status` tool to see what each agent is doing: files changed, commands run, last messages. No black box—full visibility into the swarm.
+
 ## API Reference
 
 ### Tools
@@ -85,7 +96,7 @@ spawn(task_name, agent_type, prompt, mode?, cwd?, effort?)
 | `task_name` | Yes | Groups related agents (e.g., "auth-feature") |
 | `agent_type` | Yes | `claude`, `codex`, `gemini`, or `cursor` |
 | `prompt` | Yes | The task for the agent |
-| `mode` | No | `plan` (read-only, default) or `edit` (can write files) |
+| `mode` | No | `plan` (read-only, default), `edit` (can write files), or `ralph` (autonomous through RALPH.md) |
 | `cwd` | No | Working directory for the agent |
 | `effort` | No | `fast`, `default` (implicit), or `detailed` for max-capability models |
 
@@ -144,13 +155,61 @@ The server auto-discovers installed CLIs at startup:
 
 ## Modes
 
-| Mode | File Access | Use Case |
-|------|-------------|----------|
-| `plan` | Read-only | Research, exploration, code review |
-| `edit` | Read + Write | Implementation, refactoring, fixes |
+| Mode | File Access | Auto-loops? | Use Case |
+|------|-------------|-------------|----------|
+| `plan` | Read-only | No | Research, exploration, code review |
+| `edit` | Read + Write | No | Implementation, refactoring, fixes |
+| `ralph` | Full yolo | Yes | Autonomous iteration through RALPH.md tasks |
 
-Default is `plan` for safety. Pass `mode='edit'` when agents need to modify
-files.
+Default is `plan` for safety. Pass `mode='edit'` when agents need to modify files.
+
+### Ralph Mode
+
+Ralph mode spawns ONE agent with full permissions and instructions to autonomously work through all tasks in a `RALPH.md` file.
+
+**RALPH.md format:**
+
+```markdown
+## [ ] Implement user authentication
+
+Add JWT-based auth to the backend API.
+
+### Updates
+
+---
+
+## [x] Add rate limiting middleware
+
+Protect API endpoints from abuse.
+
+### Updates
+- Added middleware with sliding window counter
+- Completed: All endpoints protected
+
+---
+
+## [ ] Write integration tests
+
+Cover auth endpoints.
+
+### Updates
+```
+
+**How it works:**
+1. Create a `RALPH.md` file in your project directory with tasks
+2. Call `spawn(mode='ralph', cwd='./my-project', prompt='Build the auth system')`
+3. MCP spawns ONE agent with full permissions
+4. Agent reads RALPH.md, understands the system, picks tasks logically
+5. For each task: completes work, marks checkbox `## [x]`, adds update
+6. Continues until all tasks checked (or you stop it with `stop` tool)
+
+**Multiple ralph agents:** You can spawn multiple ralph agents in parallel for different directories or different RALPH.md files. The orchestrator controls this.
+
+**Safety:**
+- Scoped by `cwd` - orchestrator controls blast radius
+- RALPH.md must exist before spawn
+- Warns if used in home/system directories
+- Agent logs stored in `~/.swarmify/agents/{id}/stdout.log` like regular agents
 
 ## Effort Levels
 
@@ -165,6 +224,8 @@ files.
 | Variable | Description |
 |----------|-------------|
 | `AGENT_SWARM_DEFAULT_MODE` | Set default mode (`plan` or `edit`) |
+| `AGENTS_SWARM_RALPH_FILE` | Task file name for ralph mode (default: `RALPH.md`) |
+| `AGENTS_SWARM_DISABLE_RALPH` | Set to `true` or `1` to disable ralph mode |
 
 ## Storage
 

@@ -3,6 +3,7 @@
  * These functions can be called directly in tests with a custom AgentManager.
  */
 import * as path from 'path';
+import * as fs from 'fs/promises';
 
 import { AgentManager, AgentStatus, resolveMode } from './agents.js';
 import { AgentType } from './parsers.js';
@@ -93,6 +94,57 @@ export async function handleSpawn(
     `[spawn] Spawning ${agentType} agent for task "${taskName}" [${resolvedMode}] effort=${resolvedEffort} force=${force}...`
   );
 
+  // Ralph mode special handling
+  if (resolvedMode === 'ralph') {
+    if (!cwd) {
+      throw new Error('Ralph mode requires a cwd parameter');
+    }
+
+    // Import ralph utilities
+    const { isDangerousPath, getRalphConfig, buildRalphPrompt } = await import('./ralph.js');
+
+    const resolvedCwd = path.resolve(cwd);
+
+    // Safety check
+    if (isDangerousPath(resolvedCwd)) {
+      throw new Error('⚠️ Ralph mode in home or system directory is risky. Use a project directory.');
+    }
+
+    // Check RALPH.md exists
+    const ralphConfig = getRalphConfig();
+    const ralphFilePath = path.join(resolvedCwd, ralphConfig.ralphFile);
+
+    try {
+      await fs.access(ralphFilePath);
+    } catch {
+      throw new Error(`${ralphConfig.ralphFile} not found in ${resolvedCwd}. Create it first.`);
+    }
+
+    // Build the ralph instruction prompt
+    const ralphPrompt = buildRalphPrompt(prompt, ralphFilePath);
+
+    // Spawn agent with ralph prompt and ralph mode (full permissions)
+    const agent = await manager.spawn(
+      taskName,
+      agentType,
+      ralphPrompt,
+      cwd,
+      resolvedMode,
+      resolvedEffort
+    );
+
+    console.error(`[ralph] Spawned ${agentType} agent ${agent.agentId} for autonomous execution`);
+
+    return {
+      task_name: taskName,
+      agent_id: agent.agentId,
+      agent_type: agent.agentType,
+      status: agent.status,
+      started_at: agent.startedAt.toISOString(),
+    };
+  }
+
+  // Regular spawn logic (plan/edit modes)
   // Enforce unique task names unless explicitly forced
   const existing = await manager.listByTask(taskName);
   const requestedCwd = cwd ? path.resolve(cwd) : null;
