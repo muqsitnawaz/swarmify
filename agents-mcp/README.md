@@ -19,7 +19,7 @@ to make mistakes.
 
 ## What You Get
 
-- A dead simple MCP server with `spawn`, `status`, `stop`, and `tasks` tools
+- A dead simple MCP server with `Spawn`, `Status`, `Stop`, and `Tasks` tools
 - The `/swarm` command to teach an orchestrator how to distribute work
 - Plan vs edit modes that control file access per agent
 - Local logs and durable processes that survive IDE restarts
@@ -66,7 +66,7 @@ Edit mode unlocks writes:
 - Cursor: `-f`
 
 Agents are detached from the MCP server process. Close your IDE and reopen it,
-then reconnect with `status` and `tasks`.
+then reconnect with `Status` and `Tasks`.
 
 ## Common Questions
 
@@ -77,7 +77,7 @@ Yes. For typo fixes or small changes, one agent is fine. But for implementing a 
 They don't. The orchestrator (via `/swarm` command) assigns each agent specific files—no overlap. For shared files, it runs agents in sequential waves so there's no collision.
 
 **"How do I monitor what's happening?"**
-Use the Swarm `status` tool to see what each agent is doing: files changed, commands run, last messages. No black box—full visibility into the swarm.
+Use the Swarm `Status` tool to see what each agent is doing: files changed, commands run, last messages. No black box—full visibility into the swarm.
 
 ## API Reference
 
@@ -85,15 +85,15 @@ Use the Swarm `status` tool to see what each agent is doing: files changed, comm
 
 | Tool | Description |
 |------|-------------|
-| `spawn` | Start an agent on a task. Returns immediately with agent ID. |
-| `status` | Get agent progress: files changed, commands run, last messages. |
-| `stop` | Stop one agent or all agents in a task. |
-| `tasks` | List all tasks with their agents and activity. |
+| `Spawn` | Start an agent on a task. Returns immediately with agent ID. |
+| `Status` | Get agent progress: files changed, commands run, last messages. |
+| `Stop` | Stop one agent or all agents in a task. |
+| `Tasks` | List all tasks with their agents and activity. |
 
-### spawn
+### Spawn
 
 ```
-spawn(task_name, agent_type, prompt, mode?, cwd?, effort?)
+Spawn(task_name, agent_type, prompt, mode?, cwd?, effort?)
 ```
 
 | Parameter | Required | Description |
@@ -105,10 +105,10 @@ spawn(task_name, agent_type, prompt, mode?, cwd?, effort?)
 | `cwd` | No | Working directory for the agent |
 | `effort` | No | `fast`, `default` (implicit), or `detailed` for max-capability models |
 
-### status
+### Status
 
 ```
-status(task_name, filter?)
+Status(task_name, filter?)
 ```
 
 | Parameter | Required | Description |
@@ -119,18 +119,18 @@ status(task_name, filter?)
 Returns files created/modified/read/deleted, bash commands executed, and last
 messages.
 
-### stop
+### Stop
 
 ```
-stop(task_name, agent_id?)
+Stop(task_name, agent_id?)
 ```
 
 Stop all agents in a task, or a specific agent by ID.
 
-### tasks
+### Tasks
 
 ```
-tasks(limit?)
+Tasks(limit?)
 ```
 
 List all tasks sorted by most recent activity. Defaults to 10 tasks when limit is omitted.

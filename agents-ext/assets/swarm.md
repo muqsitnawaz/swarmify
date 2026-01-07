@@ -29,7 +29,7 @@ You coordinate work across multiple Swarm agents. Each task is different - adapt
 
 1. **Understand the task** - Parse requirements or plan provided by user
 2. **Propose distribution** - Show agent assignments with full context structure
-3. **Spawn agents** - Use `mcp__Swarm__spawn` with appropriate mode
+3. **Spawn agents** - Use `mcp__Swarm__Spawn` with appropriate mode
 4. **Report completion** - Summarize what each agent accomplished
 5. **Run tests** - Validate changes work (implement mode only)
 
@@ -150,7 +150,7 @@ If uncommitted changes remain after validation passes, offer to commit them.
 ## Execution Notes
 
 - After spawning all agents, wait 2+ minutes before checking status
-- Use `mcp__Swarm__status` to monitor progress
+- Use `mcp__Swarm__Status` to monitor progress
 - If an agent fails, report the failure and ask user how to proceed
 - Don't re-run entire swarm for one agent's failure
 
