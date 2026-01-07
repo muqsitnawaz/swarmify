@@ -660,6 +660,50 @@ export async function activate(context: vscode.ExtensionContext) {
     console.log(`Registered custom agent command: ${commandId} for ${custom.name}`);
   }
 
+  // Register the "New (Alias)" command - shows a QuickPick of all configured aliases
+  context.subscriptions.push(
+    vscode.commands.registerCommand('agents.newAlias', async () => {
+      const currentSettings = settings.getSettings(context);
+      const aliases = currentSettings.aliases || [];
+
+      if (aliases.length === 0) {
+        const action = await vscode.window.showInformationMessage(
+          'No aliases configured. Create one in the Agents dashboard.',
+          'Open Dashboard'
+        );
+        if (action === 'Open Dashboard') {
+          vscode.commands.executeCommand('agents.configure');
+        }
+        return;
+      }
+
+      // Build QuickPick items
+      const items = aliases.map(alias => {
+        const builtInDef = getBuiltInByKey(alias.agent);
+        const agentName = builtInDef ? getExpandedAgentName(builtInDef.prefix) : alias.agent;
+        return {
+          label: `${agentName} (${alias.name})`,
+          description: alias.flags,
+          alias
+        };
+      });
+
+      const selected = await vscode.window.showQuickPick(items, {
+        placeHolder: 'Select an alias to launch'
+      });
+
+      if (selected) {
+        const builtInDef = getBuiltInByKey(selected.alias.agent);
+        if (builtInDef) {
+          const agentConfig = getBuiltInByTitle(context.extensionPath, builtInDef.title);
+          if (agentConfig) {
+            openSingleAgent(context, agentConfig, selected.alias.flags);
+          }
+        }
+      }
+    })
+  );
+
   // Dynamically register command aliases
   // Aliases let users define shortcuts like "Agents: New Claude (Fast)" with custom flags
   const aliases = customAgentSettings.aliases || [];
