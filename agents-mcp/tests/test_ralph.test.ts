@@ -14,13 +14,13 @@ describe('Ralph Mode Utilities', () => {
   describe('getRalphConfig', () => {
     test('should return default config with RALPH.md as default file', () => {
       // Save original env
-      const originalEnv = process.env.AGENTS_SWARM_RALPH_FILE;
-      const originalDisable = process.env.AGENTS_SWARM_DISABLE_RALPH;
+      const originalEnv = process.env.AGENTS_MCP_RALPH_FILE;
+      const originalDisable = process.env.AGENTS_MCP_DISABLE_RALPH;
 
       try {
         // Clear env vars
-        delete process.env.AGENTS_SWARM_RALPH_FILE;
-        delete process.env.AGENTS_SWARM_DISABLE_RALPH;
+        delete process.env.AGENTS_MCP_RALPH_FILE;
+        delete process.env.AGENTS_MCP_DISABLE_RALPH;
 
         const config = getRalphConfig();
 
@@ -28,81 +28,81 @@ describe('Ralph Mode Utilities', () => {
         expect(config.disabled).toBe(false);
       } finally {
         // Restore env
-        if (originalEnv) process.env.AGENTS_SWARM_RALPH_FILE = originalEnv;
-        if (originalDisable) process.env.AGENTS_SWARM_DISABLE_RALPH = originalDisable;
+        if (originalEnv) process.env.AGENTS_MCP_RALPH_FILE = originalEnv;
+        if (originalDisable) process.env.AGENTS_MCP_DISABLE_RALPH = originalDisable;
       }
     });
 
-    test('should read AGENTS_SWARM_RALPH_FILE from environment', () => {
-      const originalEnv = process.env.AGENTS_SWARM_RALPH_FILE;
-      const originalDisable = process.env.AGENTS_SWARM_DISABLE_RALPH;
+    test('should read AGENTS_MCP_RALPH_FILE from environment', () => {
+      const originalEnv = process.env.AGENTS_MCP_RALPH_FILE;
+      const originalDisable = process.env.AGENTS_MCP_DISABLE_RALPH;
 
       try {
-        process.env.AGENTS_SWARM_RALPH_FILE = 'CUSTOM_TASKS.md';
-        delete process.env.AGENTS_SWARM_DISABLE_RALPH;
+        process.env.AGENTS_MCP_RALPH_FILE = 'CUSTOM_TASKS.md';
+        delete process.env.AGENTS_MCP_DISABLE_RALPH;
 
         const config = getRalphConfig();
 
         expect(config.ralphFile).toBe('CUSTOM_TASKS.md');
         expect(config.disabled).toBe(false);
       } finally {
-        if (originalEnv) process.env.AGENTS_SWARM_RALPH_FILE = originalEnv;
-        else delete process.env.AGENTS_SWARM_RALPH_FILE;
-        if (originalDisable) process.env.AGENTS_SWARM_DISABLE_RALPH = originalDisable;
+        if (originalEnv) process.env.AGENTS_MCP_RALPH_FILE = originalEnv;
+        else delete process.env.AGENTS_MCP_RALPH_FILE;
+        if (originalDisable) process.env.AGENTS_MCP_DISABLE_RALPH = originalDisable;
       }
     });
 
-    test('should read AGENTS_SWARM_DISABLE_RALPH from environment (true)', () => {
-      const originalFile = process.env.AGENTS_SWARM_RALPH_FILE;
-      const originalDisable = process.env.AGENTS_SWARM_DISABLE_RALPH;
+    test('should read AGENTS_MCP_DISABLE_RALPH from environment (true)', () => {
+      const originalFile = process.env.AGENTS_MCP_RALPH_FILE;
+      const originalDisable = process.env.AGENTS_MCP_DISABLE_RALPH;
 
       try {
-        delete process.env.AGENTS_SWARM_RALPH_FILE;
-        process.env.AGENTS_SWARM_DISABLE_RALPH = 'true';
+        delete process.env.AGENTS_MCP_RALPH_FILE;
+        process.env.AGENTS_MCP_DISABLE_RALPH = 'true';
 
         const config = getRalphConfig();
 
         expect(config.disabled).toBe(true);
       } finally {
-        if (originalFile) process.env.AGENTS_SWARM_RALPH_FILE = originalFile;
-        if (originalDisable) process.env.AGENTS_SWARM_DISABLE_RALPH = originalDisable;
-        else delete process.env.AGENTS_SWARM_DISABLE_RALPH;
+        if (originalFile) process.env.AGENTS_MCP_RALPH_FILE = originalFile;
+        if (originalDisable) process.env.AGENTS_MCP_DISABLE_RALPH = originalDisable;
+        else delete process.env.AGENTS_MCP_DISABLE_RALPH;
       }
     });
 
-    test('should read AGENTS_SWARM_DISABLE_RALPH from environment (1)', () => {
-      const originalFile = process.env.AGENTS_SWARM_RALPH_FILE;
-      const originalDisable = process.env.AGENTS_SWARM_DISABLE_RALPH;
+    test('should read AGENTS_MCP_DISABLE_RALPH from environment (1)', () => {
+      const originalFile = process.env.AGENTS_MCP_RALPH_FILE;
+      const originalDisable = process.env.AGENTS_MCP_DISABLE_RALPH;
 
       try {
-        delete process.env.AGENTS_SWARM_RALPH_FILE;
-        process.env.AGENTS_SWARM_DISABLE_RALPH = '1';
+        delete process.env.AGENTS_MCP_RALPH_FILE;
+        process.env.AGENTS_MCP_DISABLE_RALPH = '1';
 
         const config = getRalphConfig();
 
         expect(config.disabled).toBe(true);
       } finally {
-        if (originalFile) process.env.AGENTS_SWARM_RALPH_FILE = originalFile;
-        if (originalDisable) process.env.AGENTS_SWARM_DISABLE_RALPH = originalDisable;
-        else delete process.env.AGENTS_SWARM_DISABLE_RALPH;
+        if (originalFile) process.env.AGENTS_MCP_RALPH_FILE = originalFile;
+        if (originalDisable) process.env.AGENTS_MCP_DISABLE_RALPH = originalDisable;
+        else delete process.env.AGENTS_MCP_DISABLE_RALPH;
       }
     });
 
     test('should treat other values as not disabled', () => {
-      const originalFile = process.env.AGENTS_SWARM_RALPH_FILE;
-      const originalDisable = process.env.AGENTS_SWARM_DISABLE_RALPH;
+      const originalFile = process.env.AGENTS_MCP_RALPH_FILE;
+      const originalDisable = process.env.AGENTS_MCP_DISABLE_RALPH;
 
       try {
-        delete process.env.AGENTS_SWARM_RALPH_FILE;
-        process.env.AGENTS_SWARM_DISABLE_RALPH = 'false';
+        delete process.env.AGENTS_MCP_RALPH_FILE;
+        process.env.AGENTS_MCP_DISABLE_RALPH = 'false';
 
         const config = getRalphConfig();
 
         expect(config.disabled).toBe(false);
       } finally {
-        if (originalFile) process.env.AGENTS_SWARM_RALPH_FILE = originalFile;
-        if (originalDisable) process.env.AGENTS_SWARM_DISABLE_RALPH = originalDisable;
-        else delete process.env.AGENTS_SWARM_DISABLE_RALPH;
+        if (originalFile) process.env.AGENTS_MCP_RALPH_FILE = originalFile;
+        if (originalDisable) process.env.AGENTS_MCP_DISABLE_RALPH = originalDisable;
+        else delete process.env.AGENTS_MCP_DISABLE_RALPH;
       }
     });
   });

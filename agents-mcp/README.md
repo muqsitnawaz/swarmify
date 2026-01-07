@@ -222,9 +222,9 @@ Cover auth endpoints.
 
 | Variable | Description |
 | --- | --- |
-| `AGENT_SWARM_DEFAULT_MODE` | Set default mode (`plan` or `edit`) |
-| `AGENTS_SWARM_RALPH_FILE` | Task file name for ralph mode (default: `RALPH.md`) |
-| `AGENTS_SWARM_DISABLE_RALPH` | Set to `true` or `1` to disable ralph mode |
+| `AGENTS_MCP_DEFAULT_MODE` | Set default mode (`plan` or `edit`) |
+| `AGENTS_MCP_RALPH_FILE` | Task file name for ralph mode (default: `RALPH.md`) |
+| `AGENTS_MCP_DISABLE_RALPH` | Set to `true` or `1` to disable ralph mode |
 
 ## Storage
 
