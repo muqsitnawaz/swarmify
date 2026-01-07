@@ -338,7 +338,7 @@ export function openPanel(context: vscode.ExtensionContext): void {
         break;
       case 'fetchTodoFiles':
         const todoFiles = await discoverTodoFiles();
-        settingsPanel?.webview.postMessage({ type: 'todoFilesData', todoFiles });
+        settingsPanel?.webview.postMessage({ type: 'todoFilesData', files: todoFiles });
         break;
       case 'fetchSessions':
         const sessions = await discoverRecentSessions(message.limit || 50);
