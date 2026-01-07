@@ -1,5 +1,11 @@
 import * as vscode from 'vscode';
 import { TodoFile, TodoItem, parseTodoMd } from './todos';
+import { getBuiltInByTitle } from './agents.vscode';
+import { getBuiltInDefByTitle } from './agents';
+import { CLAUDE_TITLE } from './utils';
+import * as settings from './settings.vscode';
+import type { AgentSettings } from './settings';
+import * as terminals from './terminals.vscode';
 
 const TODO_GLOB = '**/TODO.md';
 const TODO_EXCLUDE = '**/{node_modules,.git}/**';
@@ -44,21 +50,71 @@ export function watchTodoFiles(callback: (files: TodoFile[]) => void): vscode.Di
   return vscode.Disposable.from(...disposables);
 }
 
-export async function spawnSwarmForTodo(item: TodoItem): Promise<void> {
+export async function spawnSwarmForTodo(
+  item: TodoItem,
+  context: vscode.ExtensionContext
+): Promise<void> {
   const title = item.title?.trim() || 'Untitled task';
   const description = item.description ? `\n\n${item.description}` : '';
-  const prompt = `/swarm ${title}${description}`;
+  const task = `${title}${description}`;
 
-  await vscode.env.clipboard.writeText(prompt);
+  const defaultAgentTitle = context.globalState.get<string>('agents.defaultAgentTitle', CLAUDE_TITLE);
+  const defaultDef = getBuiltInDefByTitle(defaultAgentTitle) ?? getBuiltInDefByTitle(CLAUDE_TITLE);
+  if (!defaultDef) {
+    vscode.window.showErrorMessage('Could not determine default agent for swarm');
+    return;
+  }
 
-  try {
-    await vscode.commands.executeCommand('agents.newClaude');
-  } catch (error) {
-    console.error('[TODOS] Failed to open Claude orchestrator', error);
-    await vscode.commands.executeCommand('agents.newAgent');
+  const swarmDef = ['claude', 'codex', 'gemini'].includes(defaultDef.key)
+    ? defaultDef
+    : getBuiltInDefByTitle(CLAUDE_TITLE);
+  if (!swarmDef) {
+    vscode.window.showErrorMessage('Could not determine swarm-capable agent');
+    return;
+  }
+
+  const prompt = swarmDef.key === 'codex'
+    ? `/prompts:swarm ${task}`
+    : `/swarm ${task}`;
+
+  const agentConfig = getBuiltInByTitle(context.extensionPath, swarmDef.title);
+  if (!agentConfig) {
+    vscode.window.showErrorMessage('Could not find agent configuration');
+    return;
+  }
+
+  const defaultModel = settings.getDefaultModel(context, swarmDef.key as keyof AgentSettings['builtIn']);
+  const command = defaultModel ? `${agentConfig.command} --model ${defaultModel}` : agentConfig.command;
+
+  const editorLocation: vscode.TerminalEditorLocationOptions = {
+    viewColumn: vscode.ViewColumn.Active,
+    preserveFocus: false
+  };
+
+  const terminalId = terminals.nextId(agentConfig.prefix);
+  const terminal = vscode.window.createTerminal({
+    iconPath: agentConfig.iconPath,
+    location: editorLocation,
+    name: agentConfig.title,
+    env: {
+      AGENT_TERMINAL_ID: terminalId,
+      DISABLE_AUTO_TITLE: 'true',
+      PROMPT_COMMAND: ''
+    }
+  });
+
+  const pid = await terminal.processId;
+  terminals.register(terminal, terminalId, agentConfig, pid, context);
+
+  terminals.queueMessage(terminal, prompt);
+  if (command) {
+    terminal.sendText(command);
   }
 
   setTimeout(() => {
-    vscode.commands.executeCommand('workbench.action.terminal.paste');
-  }, 1000);
+    const queued = terminals.flushQueue(terminal);
+    for (const msg of queued) {
+      terminal.sendText(msg);
+    }
+  }, 5000);
 }
