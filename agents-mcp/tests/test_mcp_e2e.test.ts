@@ -233,10 +233,10 @@ describe('MCP Server E2E Tests', () => {
     expect(stopResult.stopped.length).toBe(0);
   });
 
-  (SKIP_MCP_E2E ? test.skip : test)('spawn tool validates required parameters', async () => {
+  (SKIP_MCP_E2E ? test.skip : test)('Spawn tool validates required parameters', async () => {
     // Missing required parameters should return an error in the response
     const response = await client.send('tools/call', {
-      name: 'spawn',
+      name: 'Spawn',
       arguments: {
         task_name: 'test-task',
         // Missing agent_type and prompt
@@ -252,9 +252,9 @@ describe('MCP Server E2E Tests', () => {
     expect(parsed.error).toBeDefined();
   });
 
-  (SKIP_MCP_E2E ? test.skip : test)('spawn tool validates agent_type', async () => {
+  (SKIP_MCP_E2E ? test.skip : test)('Spawn tool validates agent_type', async () => {
     const response = await client.send('tools/call', {
-      name: 'spawn',
+      name: 'Spawn',
       arguments: {
         task_name: 'test-task',
         agent_type: 'invalid-agent-type',
@@ -271,9 +271,9 @@ describe('MCP Server E2E Tests', () => {
     expect(parsed.error.toLowerCase()).toContain('unknown');
   });
 
-  (SKIP_MCP_E2E ? test.skip : test)('spawn tool validates mode parameter', async () => {
+  (SKIP_MCP_E2E ? test.skip : test)('Spawn tool validates mode parameter', async () => {
     const response = await client.send('tools/call', {
-      name: 'spawn',
+      name: 'Spawn',
       arguments: {
         task_name: 'test-task',
         agent_type: 'codex',

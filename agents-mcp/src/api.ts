@@ -144,27 +144,6 @@ export async function handleSpawn(
   }
 
   // Regular spawn logic (plan/edit modes)
-  // Enforce unique task names
-  const existing = await manager.listByTask(taskName);
-  const requestedCwd = cwd ? path.resolve(cwd) : null;
-  const sameCwdConflicts = existing.filter(a => (a.cwd || null) === requestedCwd);
-  if (sameCwdConflicts.length > 0) {
-    const cwds = Array.from(new Set(sameCwdConflicts.map(a => a.cwd || null))).map(c => c || '(none)');
-
-    const suggestedTaskName = await suggestTaskName(manager, taskName, requestedCwd);
-
-    const payload = {
-      error: 'task_name_in_use',
-      message: `Task name "${taskName}" is already in use for cwd "${cwds[0]}".`,
-      cwd_conflicts: cwds,
-      suggested_task_name: suggestedTaskName,
-    };
-
-    const err = new Error(payload.message);
-    (err as any).code = 'TASK_NAME_IN_USE';
-    (err as any).payload = payload;
-    throw err;
-  }
 
   const agent = await manager.spawn(
     taskName,
@@ -184,19 +163,6 @@ export async function handleSpawn(
     status: agent.status,
     started_at: agent.startedAt.toISOString(),
   };
-}
-
-async function suggestTaskName(manager: AgentManager, base: string, cwd: string | null): Promise<string> {
-  let suffix = 1;
-  while (true) {
-    const candidate = `${base}-${suffix}`;
-    const conflicts = await manager.listByTask(candidate);
-    const sameCwdConflicts = conflicts.filter(a => (a.cwd || null) === cwd);
-    if (sameCwdConflicts.length === 0) {
-      return candidate;
-    }
-    suffix += 1;
-  }
 }
 
 export async function handleStatus(

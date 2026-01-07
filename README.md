@@ -39,6 +39,40 @@ Install "Agents" from the VS Code Marketplace, or search for `swarmify.agents-ex
 
 **The MCP Server** lets any MCP-compatible agent spawn other agents. Claude can spawn Codex for a quick task. Gemini can spawn Claude for deeper analysis. Agents coordinate without you copy-pasting between terminals.
 
+## Features
+
+### Agent Modes
+
+- **Plan Mode** (default): Read-only for research and exploration
+- **Edit Mode**: Full write access for implementation
+- **Ralph Mode**: Autonomous task execution
+
+### Ralph Mode
+
+Ralph mode spawns an agent that autonomously works through a checklist of tasks in a `RALPH.md` file, marking them complete as it progresses. The agent understands the full system context and picks tasks in a logical order. Perfect for multi-step feature builds or large refactors.
+
+**RALPH.md format:**
+
+```markdown
+## [ ] Task title
+
+Task description
+
+### Updates
+
+---
+
+## [x] Completed task
+
+Task description
+
+### Updates
+- Progress note 1
+- Progress note 2
+```
+
+See [@swarmify/agents-mcp README](./agents-mcp/README.md#ralph-mode) for complete documentation.
+
 ## Supported Agents
 
 | Agent | CLI | Best For |
