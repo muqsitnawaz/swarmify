@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Button } from './components/ui/button'
 import { Checkbox } from './components/ui/checkbox'
 import { Input } from './components/ui/input'
@@ -201,6 +201,65 @@ declare global {
 
 const vscode = acquireVsCodeApi()
 const icons = window.__ICONS__
+
+function renderInlineWithCode(text: string, keyPrefix: string) {
+  const parts = text.split(/(`[^`]+`)/g)
+  return parts.map((part, idx) => {
+    const key = `${keyPrefix}-inline-${idx}`
+    if (part.startsWith('`') && part.endsWith('`') && part.length >= 2) {
+      return (
+        <code
+          key={key}
+          className="px-1 py-0.5 rounded bg-[var(--muted)] text-[var(--foreground)] text-[11px] break-words"
+        >
+          {part.slice(1, -1)}
+        </code>
+      )
+    }
+    return (
+      <span key={key} className="break-words">
+        {part}
+      </span>
+    )
+  })
+}
+
+function renderTodoDescription(desc: string) {
+  const segments = desc.split(/```/g)
+  const nodes: React.ReactNode[] = []
+
+  segments.forEach((segment, idx) => {
+    const keyBase = `seg-${idx}`
+    if (idx % 2 === 1) {
+      const code = segment.trim()
+      if (!code) return
+      nodes.push(
+        <pre
+          key={keyBase}
+          className="bg-[var(--background)] border border-[var(--border)] rounded-md p-3 text-[var(--foreground)] text-[11px] leading-relaxed overflow-auto whitespace-pre break-words"
+        >
+          <code>{code}</code>
+        </pre>
+      )
+      return
+    }
+
+    const paragraphs = segment.split(/\n{2,}/g).filter(p => p.trim().length > 0)
+    if (paragraphs.length === 0) return
+    paragraphs.forEach((para, pIdx) => {
+      nodes.push(
+        <p
+          key={`${keyBase}-p-${pIdx}`}
+          className="whitespace-pre-wrap break-words leading-relaxed"
+        >
+          {renderInlineWithCode(para, `${keyBase}-p-${pIdx}`)}
+        </p>
+      )
+    })
+  })
+
+  return nodes
+}
 
 const BUILT_IN_AGENTS = [
   { key: 'claude', name: 'Claude', icon: icons.claude },
@@ -951,9 +1010,9 @@ export default function App() {
                           <span className="text-xs text-[var(--muted-foreground)]">Line {item.line}</span>
                         </div>
                         {item.description && (
-                          <p className="text-xs text-[var(--muted-foreground)] whitespace-pre-wrap">
-                            {item.description}
-                          </p>
+                          <div className="text-xs text-[var(--muted-foreground)] space-y-2">
+                            {renderTodoDescription(item.description)}
+                          </div>
                         )}
                       </div>
                       {!item.completed && (

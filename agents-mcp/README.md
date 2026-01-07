@@ -1,10 +1,43 @@
 # @swarmify/agents-mcp
 
-True multi-agent coding in your IDE. Spawn Claude, Codex, Gemini, and Cursor agents from a single MCP server.
+**Async subagents for all.**
 
-This [Model Context Protocol](https://modelcontextprotocol.io/) server gives your AI coding agent the ability to spawn, orchestrate, and manage other AI agents. CLI-first, token-optimized, and works with any MCP-compatible host.
+Get the most out of AI coding agents. When your agent searches files and reads code, that fills its context window. At 40% capacity, it gets dumber. At 80%, it's making mistakes.
 
-## Installation
+This MCP server lets your orchestrator spawn subagents in separate context windows. They do the heavy lifting. Your main agent stays sharp.
+
+## What You Get
+
+1. **MCP Server** - Adds `spawn`, `status`, `stop`, `tasks` tools to any MCP-compatible agent
+2. **Orchestration Intelligence** - Pre-built `/swarm` command that teaches your AI how to coordinate work ([see swarm.md](https://github.com/muqsitnawaz/.agents/blob/main/claude/commands/swarm.md))
+
+## How It Works
+
+```
+You: /swarm Implement user authentication with JWT
+
+Orchestrator:
+├── Shows distribution plan (which agents do what)
+├── Defines boundary contracts (no stepping on each other)
+├── Gets your approval
+├── Spawns 3 subagents in parallel
+│   ├── Gemini: JWT token handling
+│   ├── Codex: Auth middleware
+│   └── Cursor: Login/logout endpoints
+├── Monitors progress
+└── Validates + runs tests
+```
+
+Each subagent works in its OWN context window. Your orchestrator stays lean.
+
+## Why This Matters
+
+- **Stay in the "smart zone"** - Subagents prevent context bloat
+- **Work in parallel** - Multiple agents, one task
+- **Fully private** - Tasks stored locally in `~/.swarmify/`
+- **Any agent type** - Claude, Codex, Gemini, Cursor - use the right tool for the job
+
+## Quick Start
 
 ```bash
 # Claude Code
@@ -20,9 +53,23 @@ opencode mcp add
 # Command: npx -y @swarmify/agents-mcp
 ```
 
-The server auto-discovers which agent CLIs you have installed and only exposes those in the `spawn` tool.
+The server auto-discovers which agent CLIs you have installed.
 
-## Tools
+## Optional: Visual Control
+
+Install the [agents-ext](https://marketplace.visualstudio.com/items?itemName=swarmify.agents-ext) VS Code extension to see your swarm in action:
+
+- Agents as editor tabs (not separate windows)
+- Quick-spawn with keyboard shortcuts
+- Track all running tasks at a glance
+
+Works with Cursor, VS Code, and any VS Code-based IDE.
+
+---
+
+## API Reference
+
+### Tools
 
 | Tool | Description |
 |------|-------------|
@@ -98,8 +145,6 @@ The server auto-discovers installed CLIs at startup:
 | Gemini | `gemini` | Complex multi-system features, architectural changes |
 | Cursor | `cursor-agent` | Debugging, bug fixes, tracing through codebases |
 
-Install the CLIs you want to use. The server reports available and missing agents on startup.
-
 ## Modes
 
 | Mode | File Access | Use Case |
@@ -109,23 +154,23 @@ Install the CLIs you want to use. The server reports available and missing agent
 
 Default is `plan` for safety. Pass `mode='edit'` when agents need to modify files.
 
-Data & config are stored under `~/.swarmify` (with a legacy fallback to `~/.agent-swarm`; if neither is writable, it falls back to your temp dir).
-
-Requires Node.js >= 18.17 (ESM, fs.rm, etc.).
-
 ## Effort Levels
 
 | Level | Models Used |
 |-------|-------------|
-| `fast` | codex: gpt-5.2-codex · claude: claude-haiku-4-5-20251001 · gemini: gemini-3-flash-preview · cursor: composer-1 |
-| `default` | codex: gpt-5.2-codex · claude: claude-sonnet-4-5 · gemini: gemini-3-flash-preview · cursor: composer-1 (default) |
-| `detailed` | codex: gpt-5.1-codex-max · claude: claude-opus-4-5 · gemini: gemini-3-pro-preview · cursor: composer-1 |
+| `fast` | codex: gpt-5.2-codex, claude: claude-haiku-4-5, gemini: gemini-3-flash, cursor: composer-1 |
+| `default` | codex: gpt-5.2-codex, claude: claude-sonnet-4-5, gemini: gemini-3-flash, cursor: composer-1 |
+| `detailed` | codex: gpt-5.1-codex-max, claude: claude-opus-4-5, gemini: gemini-3-pro, cursor: composer-1 |
 
 ## Environment Variables
 
 | Variable | Description |
 |----------|-------------|
 | `AGENT_SWARM_DEFAULT_MODE` | Set default mode (`plan` or `edit`) |
+
+## Storage
+
+Data and config are stored under `~/.swarmify/`. Requires Node.js >= 18.17.
 
 ## License
 
