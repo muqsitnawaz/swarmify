@@ -1,15 +1,15 @@
 # @swarmify/agents-mcp
 
-**Async subagents for all.**
+**Run subagents from any MCP client.**
 
-Get the most out of AI coding agents. When your agent searches files and reads code, that fills its context window. At 40% capacity, it gets dumber. At 80%, it's making mistakes.
+Your AI agent searches files, reads code, explores patterns—and all that fills its context window. Around 40% full, it starts getting dumber. By 80%, it's making mistakes.
 
-This MCP server lets your orchestrator spawn subagents in separate context windows. They do the heavy lifting. Your main agent stays sharp.
+This MCP server lets you spawn subagents that work in their own context. They do the heavy lifting. Your main agent stays sharp.
 
 ## What You Get
 
 1. **MCP Server** - Adds `spawn`, `status`, `stop`, `tasks` tools to any MCP-compatible agent
-2. **Orchestration Intelligence** - Pre-built `/swarm` command that teaches your AI how to coordinate work ([see swarm.md](https://github.com/muqsitnawaz/.agents/blob/main/claude/commands/swarm.md))
+2. **The /swarm command** - Pre-built command that teaches your AI how to coordinate work ([see swarm.md](https://github.com/muqsitnawaz/.agents/blob/main/claude/commands/swarm.md))
 
 ## How It Works
 
@@ -30,9 +30,22 @@ Orchestrator:
 
 Each subagent works in its OWN context window. Your orchestrator stays lean.
 
+## Under the Hood
+
+**Headless CLI agents.** We spawn Claude Code, Codex, and Gemini CLIs as background processes—no interactive prompts, just work. Output streams to `~/.swarmify/agents/{id}/stdout.log`.
+
+**Plan vs edit modes.** Plan mode is read-only:
+- Claude: `--permission-mode plan`
+- Codex: sandboxed (no `--full-auto`)
+- Gemini/Cursor: no auto-approve flags
+
+Edit mode unlocks writes—Codex gets `--full-auto`, Claude gets `acceptEdits`, Gemini gets `--yolo`, Cursor gets `-f`.
+
+**Agents survive restarts.** Processes are detached from the MCP server. Close your IDE, reopen it—agents are still running. The server picks them back up from disk.
+
 ## Why This Matters
 
-- **Stay in the "smart zone"** - Subagents prevent context bloat
+- **Keep your main agent responsive** - Subagents prevent context bloat
 - **Work in parallel** - Multiple agents, one task
 - **Fully private** - Tasks stored locally in `~/.swarmify/`
 - **Any agent type** - Claude, Codex, Gemini, Cursor - use the right tool for the job
@@ -57,11 +70,11 @@ The server auto-discovers which agent CLIs you have installed.
 
 ## Optional: Visual Control
 
-Install the [agents-ext](https://marketplace.visualstudio.com/items?itemName=swarmify.agents-ext) VS Code extension to see your swarm in action:
+Install the [agents-ext](https://marketplace.visualstudio.com/items?itemName=swarmify.agents-ext) VS Code extension to monitor your agents live:
 
 - Agents as editor tabs (not separate windows)
 - Quick-spawn with keyboard shortcuts
-- Track all running tasks at a glance
+- Track all running tasks in one view
 
 Works with Cursor, VS Code, and any VS Code-based IDE.
 
@@ -140,7 +153,7 @@ The server auto-discovers installed CLIs at startup:
 
 | Agent | CLI | Best For |
 |-------|-----|----------|
-| Claude | `claude` | Maximum capability, research, exploration |
+| Claude | `claude` | Best for complex research and open-ended exploration |
 | Codex | `codex` | Fast, cheap. Self-contained features |
 | Gemini | `gemini` | Complex multi-system features, architectural changes |
 | Cursor | `cursor-agent` | Debugging, bug fixes, tracing through codebases |
