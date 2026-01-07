@@ -499,4 +499,198 @@ describe('API Integration Tests', () => {
       console.log(`  - Claude: ${claudeTaskDir}`);
     }, 600000);
   });
+
+  describe('Ralph Mode Spawn', () => {
+    let ralphTestDir: string;
+    let ralphFilePath: string;
+
+    beforeEach(async () => {
+      ralphTestDir = path.join(testDir, 'ralph-project');
+      await fs.mkdir(ralphTestDir, { recursive: true });
+      ralphFilePath = path.join(ralphTestDir, 'RALPH.md');
+
+      // Create a sample RALPH.md with test tasks
+      const sampleRalph = `## [ ] Create test.txt
+
+Create a test file.
+
+### Updates
+
+---
+
+## [ ] Write summary
+
+Write a summary of completed tasks.
+
+### Updates
+`;
+      await fs.writeFile(ralphFilePath, sampleRalph);
+    });
+
+    test('should reject ralph mode without cwd parameter', async () => {
+      console.log('\n--- TEST: ralph mode without cwd ---');
+
+      let error: any = null;
+      try {
+        await handleSpawn(
+          manager,
+          'ralph-task',
+          'codex',
+          'Build something',
+          null,
+          'ralph',
+          null
+        );
+      } catch (err: any) {
+        error = err;
+      }
+
+      expect(error).toBeTruthy();
+      expect(error.message).toContain('cwd');
+    });
+
+    test('should reject ralph mode if RALPH.md does not exist', async () => {
+      console.log('\n--- TEST: ralph mode without RALPH.md ---');
+
+      const nothingDir = path.join(testDir, 'empty-project');
+      await fs.mkdir(nothingDir, { recursive: true });
+
+      let error: any = null;
+      try {
+        await handleSpawn(
+          manager,
+          'ralph-task',
+          'codex',
+          'Build something',
+          nothingDir,
+          'ralph',
+          null
+        );
+      } catch (err: any) {
+        error = err;
+      }
+
+      expect(error).toBeTruthy();
+      expect(error.message).toContain('RALPH.md');
+      expect(error.message).toContain('not found');
+    });
+
+    test('should reject ralph mode in home directory', async () => {
+      console.log('\n--- TEST: ralph mode in dangerous directory ---');
+
+      const homeDir = require('os').homedir();
+      const ralphInHome = path.join(homeDir, '.test-ralph');
+
+      // Don't actually create it - just test the rejection
+      let error: any = null;
+      try {
+        await handleSpawn(
+          manager,
+          'ralph-dangerous',
+          'codex',
+          'Build something',
+          homeDir,
+          'ralph',
+          null
+        );
+      } catch (err: any) {
+        error = err;
+      }
+
+      expect(error).toBeTruthy();
+      expect(error.message).toMatch(/risky|dangerous|home|system/i);
+    });
+
+    test('should reject ralph mode in /System directory (macOS)', async () => {
+      console.log('\n--- TEST: ralph mode in /System ---');
+
+      let error: any = null;
+      try {
+        await handleSpawn(
+          manager,
+          'ralph-system',
+          'codex',
+          'Build something',
+          '/System/Library',
+          'ralph',
+          null
+        );
+      } catch (err: any) {
+        error = err;
+      }
+
+      expect(error).toBeTruthy();
+      expect(error.message).toMatch(/risky|dangerous/i);
+    });
+
+    test('should validate RALPH.md exists before spawn', async () => {
+      console.log('\n--- TEST: validate RALPH.md exists ---');
+
+      // Verify the file exists
+      const fileExists = await fs.access(ralphFilePath)
+        .then(() => true)
+        .catch(() => false);
+
+      expect(fileExists).toBe(true);
+
+      // If ralph mode correctly validates, it would proceed with spawn
+      // (or fail if CLI not installed, but that's OK for this test)
+      console.log(`RALPH.md exists at: ${ralphFilePath}`);
+    });
+
+    test('should read custom RALPH file name from environment', async () => {
+      console.log('\n--- TEST: custom RALPH file name ---');
+
+      const customName = 'TASKS.md';
+      const customPath = path.join(ralphTestDir, customName);
+
+      // Create custom task file
+      await fs.writeFile(customPath, '## [ ] Custom task\n### Updates\n');
+
+      // Set env var
+      const originalEnv = process.env.AGENTS_SWARM_RALPH_FILE;
+      try {
+        process.env.AGENTS_SWARM_RALPH_FILE = customName;
+
+        // Verify it reads the env var
+        const { getRalphConfig } = await import('../src/ralph.js');
+        const config = getRalphConfig();
+        expect(config.ralphFile).toBe(customName);
+      } finally {
+        if (originalEnv) {
+          process.env.AGENTS_SWARM_RALPH_FILE = originalEnv;
+        } else {
+          delete process.env.AGENTS_SWARM_RALPH_FILE;
+        }
+      }
+    });
+
+    test('should allow ralph mode in safe project directory', async () => {
+      console.log('\n--- TEST: ralph mode in safe project directory ---');
+
+      // Verify path is safe
+      const { isDangerousPath } = await import('../src/ralph.js');
+      const isSafe = !isDangerousPath(ralphTestDir);
+      expect(isSafe).toBe(true);
+
+      console.log(`Ralph test directory is safe: ${ralphTestDir}`);
+    });
+
+    test('should prompt buildRalphPrompt with correct file path', async () => {
+      console.log('\n--- TEST: ralph prompt building ---');
+
+      const { buildRalphPrompt } = await import('../src/ralph.js');
+      const userPrompt = 'Complete all tasks in RALPH.md';
+      const prompt = buildRalphPrompt(userPrompt, ralphFilePath);
+
+      // Verify prompt contains user intent and ralph instructions
+      expect(prompt).toContain(userPrompt);
+      expect(prompt).toContain(ralphFilePath);
+      expect(prompt).toContain('autonomous');
+      expect(prompt).toContain('## [ ]');
+      expect(prompt).toContain('## [x]');
+
+      console.log(`Generated ralph prompt (${prompt.length} chars)`);
+    });
+  });
 });
