@@ -651,9 +651,9 @@ Write a summary of completed tasks.
       await fs.writeFile(customPath, '## [ ] Custom task\n### Updates\n');
 
       // Set env var
-      const originalEnv = process.env.AGENTS_SWARM_RALPH_FILE;
+      const originalEnv = process.env.AGENTS_MCP_RALPH_FILE;
       try {
-        process.env.AGENTS_SWARM_RALPH_FILE = customName;
+        process.env.AGENTS_MCP_RALPH_FILE = customName;
 
         // Verify it reads the env var
         const { getRalphConfig } = await import('../src/ralph.js');
@@ -661,9 +661,9 @@ Write a summary of completed tasks.
         expect(config.ralphFile).toBe(customName);
       } finally {
         if (originalEnv) {
-          process.env.AGENTS_SWARM_RALPH_FILE = originalEnv;
+          process.env.AGENTS_MCP_RALPH_FILE = originalEnv;
         } else {
-          delete process.env.AGENTS_SWARM_RALPH_FILE;
+          delete process.env.AGENTS_MCP_RALPH_FILE;
         }
       }
     });

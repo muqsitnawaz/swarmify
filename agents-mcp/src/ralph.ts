@@ -7,8 +7,8 @@ export interface RalphConfig {
 }
 
 export function getRalphConfig(): RalphConfig {
-  const ralphFile = process.env.AGENTS_SWARM_RALPH_FILE || 'RALPH.md';
-  const disabledStr = process.env.AGENTS_SWARM_DISABLE_RALPH || 'false';
+  const ralphFile = process.env.AGENTS_MCP_RALPH_FILE || 'RALPH.md';
+  const disabledStr = process.env.AGENTS_MCP_DISABLE_RALPH || 'false';
   const disabled = disabledStr === 'true' || disabledStr === '1';
 
   return {

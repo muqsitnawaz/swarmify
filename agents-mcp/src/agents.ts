@@ -77,7 +77,7 @@ function normalizeModeValue(modeValue: string | null | undefined): Mode | null {
 }
 
 function defaultModeFromEnv(): Mode {
-  for (const envVar of ['AGENT_SWARM_MODE', 'AGENT_SWARM_DEFAULT_MODE']) {
+  for (const envVar of ['AGENTS_MCP_MODE', 'AGENTS_MCP_DEFAULT_MODE']) {
     const rawValue = process.env[envVar];
     const parsed = normalizeModeValue(rawValue);
     if (parsed) {
