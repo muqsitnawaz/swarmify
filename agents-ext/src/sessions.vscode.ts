@@ -6,7 +6,6 @@ import { AgentSession } from './sessions';
 
 const SESSION_EXTENSIONS = new Set(['.jsonl', '.json', '.txt']);
 const MAX_PREVIEW_BYTES = 12 * 1024;
-const MAX_PREVIEW_LINES = 3;
 const MAX_PREVIEW_CHARS = 240;
 
 async function safeReaddir(dir: string): Promise<Dirent[]> {
@@ -76,31 +75,63 @@ function extractTextFromJson(value: unknown): string | null {
   return null;
 }
 
+function extractCandidatesFromValue(value: unknown): Array<{ role?: string; text: string }> {
+  if (!value) return [];
+  if (typeof value === 'string') return [{ text: value }];
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => extractCandidatesFromValue(entry));
+  }
+  if (typeof value !== 'object') return [];
+
+  const obj = value as Record<string, unknown>;
+
+  if (Array.isArray(obj.messages)) {
+    return extractCandidatesFromValue(obj.messages);
+  }
+
+  if (Array.isArray(obj.content)) {
+    return extractCandidatesFromValue(obj.content);
+  }
+
+  const text = extractTextFromJson(obj);
+  if (!text) return [];
+  const role = typeof obj.role === 'string' ? obj.role : undefined;
+  return [{ role, text }];
+}
+
 function extractPreviewLines(head: string): string | undefined {
   const lines = head.split(/\r?\n/);
-  const collected: string[] = [];
+  let firstAny: string | undefined;
 
   for (const line of lines) {
-    if (collected.length >= MAX_PREVIEW_LINES) break;
     if (!line.trim()) continue;
-
-    let text: string | null = null;
     const trimmed = line.trim();
+    let candidates: Array<{ role?: string; text: string }> = [];
+
     if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
       try {
         const parsed = JSON.parse(trimmed);
-        text = extractTextFromJson(parsed);
+        candidates = extractCandidatesFromValue(parsed);
       } catch {
-        text = trimmed;
+        candidates = [];
       }
     } else {
-      text = trimmed;
+      candidates = [{ text: trimmed }];
     }
 
-    if (text) collected.push(text);
+    for (const candidate of candidates) {
+      const text = candidate.text?.trim();
+      if (!text) continue;
+      const role = candidate.role?.toLowerCase();
+      if (role === 'user' || role === 'human') {
+        return normalizePreview(text);
+      }
+      if (!firstAny) firstAny = text;
+    }
   }
 
-  return normalizePreview(collected.join('\n'));
+  if (!firstAny) return undefined;
+  return normalizePreview(firstAny);
 }
 
 async function getPreview(filePath: string): Promise<string | undefined> {

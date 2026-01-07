@@ -308,6 +308,8 @@ export default function App() {
   const [recentSessions, setRecentSessions] = useState<AgentSession[]>([])
   const [sessionsLoading, setSessionsLoading] = useState(false)
   const [sessionsLoaded, setSessionsLoaded] = useState(false)
+  const [sessionsPage, setSessionsPage] = useState(1)
+  const SESSIONS_PER_PAGE = 20
 
   // Agent terminals drill-down state
   const [selectedAgentType, setSelectedAgentType] = useState<string | null>(null)
@@ -411,7 +413,8 @@ export default function App() {
 
   const fetchSessions = () => {
     setSessionsLoading(true)
-    vscode.postMessage({ type: 'fetchSessions' })
+    setSessionsPage(1)
+    vscode.postMessage({ type: 'fetchSessions', limit: 200 })
   }
 
   const handleAgentClick = (agentKey: string) => {
@@ -507,16 +510,13 @@ export default function App() {
     return formatTimeAgo(timestamp)
   }
 
-  const groupSessionsByAgent = (sessions: AgentSession[]): Record<AgentSession['agentType'], AgentSession[]> => {
-    return sessions.reduce((acc, session) => {
-      acc[session.agentType] = acc[session.agentType] || []
-      acc[session.agentType].push(session)
-      return acc
-    }, {
-      claude: [],
-      codex: [],
-      gemini: []
-    } as Record<AgentSession['agentType'], AgentSession[]>)
+  const formatPreview = (preview?: string, maxWords: number = 20): string => {
+    if (!preview) return 'No preview available.'
+    const compact = preview.replace(/\s+/g, ' ').trim()
+    if (!compact) return 'No preview available.'
+    const words = compact.split(' ')
+    if (words.length <= maxWords) return compact
+    return `${words.slice(0, maxWords).join(' ')}...`
   }
 
   const getStatusColor = (status: string): string => {
@@ -973,48 +973,92 @@ export default function App() {
   )
 
   const renderSessionsTab = () => {
-    const grouped = groupSessionsByAgent(recentSessions)
-    const agentOrder: AgentSession['agentType'][] = ['claude', 'codex', 'gemini']
+    const sorted = [...recentSessions].sort((a, b) => {
+      return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    })
+    const totalPages = Math.max(1, Math.ceil(sorted.length / SESSIONS_PER_PAGE))
+    const safePage = Math.min(sessionsPage, totalPages)
+    const start = (safePage - 1) * SESSIONS_PER_PAGE
+    const pageSessions = sorted.slice(start, start + SESSIONS_PER_PAGE)
 
     return (
-      <div className="space-y-6">
-        {agentOrder.map(agent => {
-          const sessions = grouped[agent]
-          const agentLabel = getAgentDisplayName(agent)
-          return (
-            <section key={agent} className="space-y-3">
-              <h3 className="text-sm font-medium">{agentLabel}</h3>
-              {sessions.length === 0 ? (
-                <div className="text-xs text-[var(--muted-foreground)] px-4 py-3 rounded-xl bg-[var(--muted)]">
-                  No recent sessions found.
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {sessions.map(session => (
-                    <button
-                      key={session.path}
-                      onClick={() => handleOpenSession(session)}
-                      className="w-full text-left rounded-xl bg-[var(--muted)] px-4 py-3 hover:bg-[var(--muted-foreground)]/10 transition-colors"
-                    >
-                      <div className="flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
-                        <span className="uppercase tracking-wide">Time</span>
-                        <span>{formatSessionTimestamp(session.timestamp)}</span>
-                        <span className="ml-auto">{formatTimeAgoSafe(session.timestamp)}</span>
-                      </div>
-                      <div className="mt-2 text-sm font-medium truncate">{session.sessionId}</div>
-                      <div className="mt-1 text-xs text-[var(--muted-foreground)] whitespace-pre-wrap">
-                        {session.preview || 'No preview available.'}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </section>
-          )
-        })}
+      <div className="space-y-4">
+        {sessionsLoading && recentSessions.length === 0 ? (
+          <div className="text-center py-8 text-[var(--muted-foreground)]">Loading sessions...</div>
+        ) : recentSessions.length === 0 ? (
+          <div className="text-center py-8 text-[var(--muted-foreground)]">No recent sessions found.</div>
+        ) : (
+          <div className="rounded-xl bg-[var(--muted)] overflow-hidden">
+            <table className="w-full text-left text-sm">
+              <thead className="text-xs uppercase tracking-wide text-[var(--muted-foreground)] border-b border-[var(--border)]">
+                <tr>
+                  <th className="px-4 py-3 w-24">Agent</th>
+                  <th className="px-4 py-3">Session</th>
+                  <th className="px-4 py-3 w-48">Time</th>
+                  <th className="px-4 py-3">Preview</th>
+                  <th className="px-4 py-3 w-24 text-right">Open</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pageSessions.map(session => {
+                  return (
+                    <tr key={session.path} className="border-b border-[var(--border)] last:border-b-0">
+                      <td className="px-4 py-3">
+                        <span className="text-xs font-medium">
+                          {getAgentDisplayName(session.agentType)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 font-medium">{session.sessionId}</td>
+                      <td className="px-4 py-3 text-xs text-[var(--muted-foreground)]">
+                        <div>{formatSessionTimestamp(session.timestamp)}</div>
+                        <div>{formatTimeAgoSafe(session.timestamp)}</div>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-[var(--muted-foreground)]">
+                        <div className="max-h-12 overflow-hidden break-words">
+                          {formatPreview(session.preview)}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <Button size="sm" onClick={() => handleOpenSession(session)}>
+                          Open
+                        </Button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {recentSessions.length > 0 && (
+          <div className="flex items-center justify-between">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSessionsPage(p => Math.max(1, p - 1))}
+              disabled={safePage === 1}
+            >
+              Previous
+            </Button>
+            <span className="text-sm text-[var(--muted-foreground)]">
+              Page {safePage} of {totalPages}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSessionsPage(p => Math.min(totalPages, p + 1))}
+              disabled={safePage >= totalPages}
+            >
+              Next
+            </Button>
+          </div>
+        )}
       </div>
     )
   }
+
+  const basicSkills = skillsStatus?.commands.filter(skill => !skill.name.startsWith('s')) || []
+  const swarmSkills = skillsStatus?.commands.filter(skill => skill.name.startsWith('s')) || []
 
   return (
     <div className="space-y-6">
@@ -1436,71 +1480,145 @@ export default function App() {
               Loading skills...
             </div>
           ) : (
-            <div className="space-y-3">
-              {skillsStatus.commands.map(skill => (
-                <div key={skill.name} className="px-4 py-3 rounded-xl bg-[var(--muted)]">
-                  <div className="flex items-center gap-3">
-                    <div>
-                      <p className="text-sm font-medium capitalize">{skill.name}</p>
-                      <p className="text-xs text-[var(--muted-foreground)]">{skill.description}</p>
-                    </div>
-                    <div className="flex-1" />
+            <div className="space-y-6">
+              <div className="space-y-3">
+                <h3 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
+                  Basic
+                </h3>
+                {basicSkills.map(skill => (
+                  <div key={skill.name} className="px-4 py-3 rounded-xl bg-[var(--muted)]">
                     <div className="flex items-center gap-3">
-                      {SKILL_AGENTS.map(agent => {
-                        const status = skill.agents[agent.key]
-                        const isInstalled = status?.installed
-                        const isDisabled = !status?.cliAvailable
-                        return (
-                          <div key={agent.key} className="flex items-center gap-2">
-                            <div
-                              className={`h-9 w-9 rounded-lg bg-[var(--background)] flex items-center justify-center border border-[var(--border)] ${
-                                isInstalled ? '' : 'opacity-60'
-                              }`}
-                            >
-                              <img
-                                src={agent.icon}
-                                alt={agent.name}
-                                className={`w-5 h-5 ${isInstalled ? '' : 'grayscale'}`}
-                              />
-                            </div>
-                            {!isInstalled && (
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                disabled={skillInstalling || isDisabled}
-                                onClick={() =>
-                                  vscode.postMessage({
-                                    type: 'installSkillCommand',
-                                    skill: skill.name,
-                                    agent: agent.key
-                                  })
-                                }
+                      <div>
+                        <p className="text-sm font-medium capitalize">{skill.name}</p>
+                        <p className="text-xs text-[var(--muted-foreground)]">{skill.description}</p>
+                      </div>
+                      <div className="flex-1" />
+                      <div className="flex items-center gap-3">
+                        {SKILL_AGENTS.map(agent => {
+                          const status = skill.agents[agent.key]
+                          const isInstalled = status?.installed
+                          const isDisabled = !status?.cliAvailable
+                          return (
+                            <div key={agent.key} className="flex items-center gap-2">
+                              <div
+                                className={`h-9 w-9 rounded-lg bg-[var(--background)] flex items-center justify-center border border-[var(--border)] ${
+                                  isInstalled ? '' : 'opacity-60'
+                                }`}
                               >
-                                {skillInstalling ? (
-                                  <span className="flex items-center gap-1.5">
-                                    <RefreshCw className="w-4 h-4 animate-spin" />
-                                    Installing
-                                  </span>
-                                ) : (
-                                  'Install'
-                                )}
-                              </Button>
-                            )}
-                            {isInstalled && (
-                              <span className="text-xs text-green-400">Installed</span>
-                            )}
-                            {!status?.cliAvailable && (
-                              <span className="text-xs text-[var(--muted-foreground)]">
-                                CLI missing
-                              </span>
-                            )}
-                          </div>
-                        )
-                      })}
+                                <img
+                                  src={agent.icon}
+                                  alt={agent.name}
+                                  className={`w-5 h-5 ${isInstalled ? '' : 'grayscale'}`}
+                                />
+                              </div>
+                              {!isInstalled && (
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  disabled={skillInstalling || isDisabled}
+                                  onClick={() =>
+                                    vscode.postMessage({
+                                      type: 'installSkillCommand',
+                                      skill: skill.name,
+                                      agent: agent.key
+                                    })
+                                  }
+                                >
+                                  {skillInstalling ? (
+                                    <span className="flex items-center gap-1.5">
+                                      <RefreshCw className="w-4 h-4 animate-spin" />
+                                      Installing
+                                    </span>
+                                  ) : (
+                                    'Install'
+                                  )}
+                                </Button>
+                              )}
+                              {isInstalled && (
+                                <span className="text-xs text-green-400">Installed</span>
+                              )}
+                              {!status?.cliAvailable && (
+                                <span className="text-xs text-[var(--muted-foreground)]">
+                                  CLI missing
+                                </span>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
+              <div className="space-y-3">
+                <h3 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
+                  Swarm
+                </h3>
+                {swarmSkills.map(skill => (
+                  <div key={skill.name} className="px-4 py-3 rounded-xl bg-[var(--muted)]">
+                    <div className="flex items-center gap-3">
+                      <div>
+                        <p className="text-sm font-medium capitalize">{skill.name}</p>
+                        <p className="text-xs text-[var(--muted-foreground)]">{skill.description}</p>
+                      </div>
+                      <div className="flex-1" />
+                      <div className="flex items-center gap-3">
+                        {SKILL_AGENTS.map(agent => {
+                          const status = skill.agents[agent.key]
+                          const isInstalled = status?.installed
+                          const isDisabled = !status?.cliAvailable
+                          return (
+                            <div key={agent.key} className="flex items-center gap-2">
+                              <div
+                                className={`h-9 w-9 rounded-lg bg-[var(--background)] flex items-center justify-center border border-[var(--border)] ${
+                                  isInstalled ? '' : 'opacity-60'
+                                }`}
+                              >
+                                <img
+                                  src={agent.icon}
+                                  alt={agent.name}
+                                  className={`w-5 h-5 ${isInstalled ? '' : 'grayscale'}`}
+                                />
+                              </div>
+                              {!isInstalled && (
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  disabled={skillInstalling || isDisabled}
+                                  onClick={() =>
+                                    vscode.postMessage({
+                                      type: 'installSkillCommand',
+                                      skill: skill.name,
+                                      agent: agent.key
+                                    })
+                                  }
+                                >
+                                  {skillInstalling ? (
+                                    <span className="flex items-center gap-1.5">
+                                      <RefreshCw className="w-4 h-4 animate-spin" />
+                                      Installing
+                                    </span>
+                                  ) : (
+                                    'Install'
+                                  )}
+                                </Button>
+                              )}
+                              {isInstalled && (
+                                <span className="text-xs text-green-400">Installed</span>
+                              )}
+                              {!status?.cliAvailable && (
+                                <span className="text-xs text-[var(--muted-foreground)]">
+                                  CLI missing
+                                </span>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -1522,7 +1640,7 @@ export default function App() {
                   Install an agent to set a default.
                 </div>
               ) : (
-                <div className="flex gap-3">
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {BUILT_IN_AGENTS
                     .filter(a => a.key !== 'shell' && isAgentInstalled(a.key))
                     .map(agent => {
@@ -1531,7 +1649,7 @@ export default function App() {
                         <button
                           key={agent.key}
                           onClick={() => handleSetDefaultAgent(AGENT_KEY_TO_TITLE[agent.key] || 'CC')}
-                          className={`flex flex-1 min-w-0 items-center gap-3 rounded-xl border px-3 py-3 text-left transition-colors ${
+                          className={`flex min-w-0 items-center gap-3 rounded-xl border px-3 py-3 text-left transition-colors ${
                             isSelected
                               ? 'border-[var(--primary)] bg-[var(--background)] ring-1 ring-[var(--primary)]'
                               : 'border-[var(--border)] bg-[var(--background)] hover:border-[var(--primary)]/60 hover:bg-[var(--muted)]'
