@@ -171,7 +171,7 @@ describe('MCP Server E2E Tests', () => {
     expect(result.serverInfo.name).toBe('agent-swarm');
   });
 
-  (SKIP_MCP_E2E ? test.skip : test)('responds to tools/list request with spawn, status, stop tools', async () => {
+  (SKIP_MCP_E2E ? test.skip : test)('responds to tools/list request with Spawn, Status, Stop, Tasks tools', async () => {
     const response = await client.send('tools/list', {});
 
     expect(response.error).toBeUndefined();
@@ -179,13 +179,13 @@ describe('MCP Server E2E Tests', () => {
 
     const result = response.result as { tools: Array<{ name: string; description: string; inputSchema: unknown }> };
     expect(result.tools).toBeInstanceOf(Array);
-    expect(result.tools.length).toBe(3);
+    expect(result.tools.length).toBe(4);
 
     const toolNames = result.tools.map(t => t.name).sort();
-    expect(toolNames).toEqual(['spawn', 'status', 'stop']);
+    expect(toolNames).toEqual(['Spawn', 'Status', 'Stop', 'Tasks']);
 
     // Verify spawn tool has required parameters
-    const spawnTool = result.tools.find(t => t.name === 'spawn');
+    const spawnTool = result.tools.find(t => t.name === 'Spawn');
     expect(spawnTool).toBeDefined();
     expect(spawnTool!.inputSchema).toBeDefined();
 
@@ -197,7 +197,7 @@ describe('MCP Server E2E Tests', () => {
 
   (SKIP_MCP_E2E ? test.skip : test)('status tool returns empty result for nonexistent task', async () => {
     const response = await client.send('tools/call', {
-      name: 'status',
+      name: 'Status',
       arguments: {
         task_name: 'nonexistent-task-' + Date.now(),
       },
@@ -218,7 +218,7 @@ describe('MCP Server E2E Tests', () => {
 
   (SKIP_MCP_E2E ? test.skip : test)('stop tool handles nonexistent task gracefully', async () => {
     const response = await client.send('tools/call', {
-      name: 'stop',
+      name: 'Stop',
       arguments: {
         task_name: 'nonexistent-task-' + Date.now(),
       },
