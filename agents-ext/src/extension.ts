@@ -660,6 +660,32 @@ export async function activate(context: vscode.ExtensionContext) {
     console.log(`Registered custom agent command: ${commandId} for ${custom.name}`);
   }
 
+  // Dynamically register command aliases
+  // Aliases let users define shortcuts like "Agents: New Claude (Fast)" with custom flags
+  const aliases = customAgentSettings.aliases || [];
+  for (const alias of aliases) {
+    // Get the built-in agent this alias is for
+    const builtInDef = getBuiltInByKey(alias.agent);
+    if (!builtInDef) {
+      console.warn(`Alias "${alias.name}" references unknown agent: ${alias.agent}`);
+      continue;
+    }
+
+    // Create command ID: agents.alias.Fast, agents.alias.MaxContext, etc.
+    const commandId = `agents.alias.${alias.name.replace(/[^a-zA-Z0-9]/g, '')}`;
+    const agentConfig = getBuiltInByTitle(context.extensionPath, builtInDef.title);
+
+    if (agentConfig) {
+      context.subscriptions.push(
+        vscode.commands.registerCommand(commandId, () => {
+          openSingleAgent(context, agentConfig, alias.flags);
+        })
+      );
+
+      console.log(`Registered alias command: ${commandId} -> ${alias.agent} with flags: ${alias.flags}`);
+    }
+  }
+
   // Listen for terminal closures to update our tracking
   context.subscriptions.push(
     vscode.window.onDidCloseTerminal((terminal) => {
@@ -755,7 +781,11 @@ export async function activate(context: vscode.ExtensionContext) {
   }
 }
 
-async function openSingleAgent(context: vscode.ExtensionContext, agentConfig: Omit<AgentConfig, 'count'>) {
+async function openSingleAgent(
+  context: vscode.ExtensionContext,
+  agentConfig: Omit<AgentConfig, 'count'>,
+  additionalFlags?: string
+) {
   const config = vscode.workspace.getConfiguration('agents');
   const enableTmux = config.get<boolean>('enableTmux', false);
   const tmuxOk = enableTmux ? await isTmuxAvailable() : false;
@@ -768,10 +798,17 @@ async function openSingleAgent(context: vscode.ExtensionContext, agentConfig: Om
   const builtInDef = getBuiltInDefByTitle(agentConfig.title);
   const agentKey = builtInDef?.key as keyof AgentSettings['builtIn'] | undefined;
   let command = agentConfig.command || '';
-  if (agentKey && command) {
-    const defaultModel = settings.getDefaultModel(context, agentKey);
-    if (defaultModel) {
-      command = `${command} --model ${defaultModel}`;
+  if (command) {
+    // Only add default model if no explicit --model in additional flags
+    if (agentKey && (!additionalFlags || !additionalFlags.includes('--model'))) {
+      const defaultModel = settings.getDefaultModel(context, agentKey);
+      if (defaultModel) {
+        command = `${command} --model ${defaultModel}`;
+      }
+    }
+    // Append additional flags from alias
+    if (additionalFlags) {
+      command = `${command} ${additionalFlags}`;
     }
   }
 
