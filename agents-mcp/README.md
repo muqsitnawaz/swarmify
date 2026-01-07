@@ -133,7 +133,7 @@ Stop all agents in a task, or a specific agent by ID.
 tasks(limit?)
 ```
 
-List all tasks sorted by most recent activity.
+List all tasks sorted by most recent activity. Defaults to 10 tasks when limit is omitted.
 
 ## Token Optimization
 

@@ -11,6 +11,13 @@ import { readConfig } from './persistence.js';
 
 const manager = new AgentManager(50, 10, null, null, null, 7);
 
+const TOOL_NAMES = {
+  spawn: 'Spawn',
+  status: 'Status',
+  stop: 'Stop',
+  tasks: 'Tasks',
+} as const;
+
 // Enabled agents (initialized at startup)
 let enabledAgents: AgentType[] = [];
 
@@ -33,7 +40,7 @@ IMPORTANT: Avoid spawning the same agent type as yourself. If you are Claude, pr
 
 Only installed agent CLIs are listed below.
 
-Task names must be unique. If a name is already in use, the server will reject the request and suggest a free variant (e.g., "task-1"). Set force=true to override, but prefer picking the suggested name.
+Task names must be unique. If a name is already in use, the server will reject the request and suggest a free variant (e.g., "task-1").
 
 MODE PARAMETER (required for writes):
 - mode='edit' - Agent CAN modify files (use this for implementation tasks)
@@ -44,7 +51,7 @@ RALPH MODE: Spawns ONE agent with full permissions and instructions to work thro
 
 WAIT BEFORE CHECKING STATUS: After spawning all agents for this task, sleep for at least 2 minutes before checking status. Use: Bash(sleep 120 && echo "Done waiting on Swarm agents. Let's check status") timeout: 2m 30s
 
-Do NOT immediately call status - it wastes tokens and returns nothing useful.
+Do NOT immediately call Status - it wastes tokens and returns nothing useful.
 
 Agent selection (in order of preference):
 ${agentList}
@@ -68,7 +75,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
       {
-        name: 'spawn',
+        name: TOOL_NAMES.spawn,
         description: buildSpawnDescription(),
         inputSchema: {
           type: 'object',
@@ -100,16 +107,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               enum: ['fast', 'default', 'detailed'],
               description: "Effort level: 'fast' is quickest/cheapest, 'default' is balanced (default), 'detailed' is max-capability.",
             },
-            force: {
-              type: 'boolean',
-              description: 'Override unique task_name check (allows reusing a task name).',
-            },
           },
           required: ['task_name', 'agent_type', 'prompt'],
         },
       },
       {
-        name: 'status',
+        name: TOOL_NAMES.status,
         description: `Get status of all agents in a task with full details including:
 - Files created/modified/read/deleted (full paths)
 - All bash commands executed
@@ -139,7 +142,7 @@ CURSOR SUPPORT: Send 'since' parameter (ISO timestamp from previous response's '
         },
       },
       {
-        name: 'stop',
+        name: TOOL_NAMES.stop,
         description: `Stop agents. Two modes:
 - stop(task_name): Stop ALL agents in the task
 - stop(task_name, agent_id): Stop ONE specific agent`,
@@ -159,7 +162,7 @@ CURSOR SUPPORT: Send 'since' parameter (ISO timestamp from previous response's '
         },
       },
       {
-        name: 'tasks',
+        name: TOOL_NAMES.tasks,
         description: `List all tasks with their agents and activity details.
 
 Returns tasks sorted by most recent activity, with full agent details including:
@@ -172,7 +175,7 @@ Returns tasks sorted by most recent activity, with full agent details including:
           properties: {
             limit: {
               type: 'number',
-              description: 'Maximum number of tasks to return (optional, defaults to all)',
+              description: 'Maximum number of tasks to return (optional, defaults to 10)',
             },
           },
           required: [],
@@ -184,11 +187,12 @@ Returns tasks sorted by most recent activity, with full agent details including:
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
+  const normalizedName = name.toLowerCase();
 
   try {
     let result: any;
 
-    if (name === 'spawn') {
+    if (normalizedName === 'spawn') {
       if (!args) {
         throw new Error('Missing arguments for spawn');
       }
@@ -199,10 +203,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         args.prompt as string,
         (args.cwd as string) || null,
         (args.mode as string) || null,
-        (args.effort as 'fast' | 'default' | 'detailed') || 'default',
-        Boolean(args.force)
+        (args.effort as 'fast' | 'default' | 'detailed') || 'default'
       );
-    } else if (name === 'status') {
+    } else if (normalizedName === 'status') {
       if (!args) {
         throw new Error('Missing arguments for status');
       }
@@ -212,7 +215,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         args.filter as string | undefined,
         args.since as string | undefined
       );
-    } else if (name === 'stop') {
+    } else if (normalizedName === 'stop') {
       if (!args) {
         throw new Error('Missing arguments for stop');
       }
@@ -221,7 +224,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         args.task_name as string,
         args.agent_id as string | undefined
       );
-    } else if (name === 'tasks') {
+    } else if (normalizedName === 'tasks') {
       result = await handleListTasks(
         manager,
         args?.limit as number | undefined

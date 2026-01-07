@@ -24,7 +24,7 @@ This is a project about something else.
   test('returns true when mcp__Swarm is present', () => {
     const content = `## Instructions
 
-Use mcp__Swarm__spawn to spawn agents.
+Use mcp__Swarm__Spawn to spawn agents.
 `;
     expect(hasSwarmInstructions(content)).toBe(true);
   });
@@ -38,7 +38,7 @@ Use the Swarm MCP extension for agent spawning.
   });
 
   test('is case insensitive', () => {
-    expect(hasSwarmInstructions('use MCP__SWARM__spawn')).toBe(true);
+    expect(hasSwarmInstructions('use MCP__SWARM__Spawn')).toBe(true);
     expect(hasSwarmInstructions('use swarm mcp')).toBe(true);
   });
 });
@@ -56,10 +56,10 @@ describe('getSwarmInstructionsBlock', () => {
 
   test('contains Swarm MCP tools', () => {
     const block = getSwarmInstructionsBlock();
-    expect(block).toContain('mcp__Swarm__spawn');
-    expect(block).toContain('mcp__Swarm__status');
-    expect(block).toContain('mcp__Swarm__read');
-    expect(block).toContain('mcp__Swarm__stop');
+    expect(block).toContain('mcp__Swarm__Spawn');
+    expect(block).toContain('mcp__Swarm__Status');
+    expect(block).toContain('mcp__Swarm__Read');
+    expect(block).toContain('mcp__Swarm__Stop');
   });
 
   test('ends with newline', () => {

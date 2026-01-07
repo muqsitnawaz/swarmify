@@ -83,15 +83,14 @@ export async function handleSpawn(
   prompt: string,
   cwd: string | null,
   mode: string | null,
-  effort: 'fast' | 'default' | 'detailed' | null = 'default',
-  force: boolean = false
+  effort: 'fast' | 'default' | 'detailed' | null = 'default'
 ): Promise<SpawnResult> {
   const defaultMode = manager.getDefaultMode();
   const resolvedMode = resolveMode(mode, defaultMode);
   const resolvedEffort = effort ?? 'default';
 
   console.error(
-    `[spawn] Spawning ${agentType} agent for task "${taskName}" [${resolvedMode}] effort=${resolvedEffort} force=${force}...`
+    `[spawn] Spawning ${agentType} agent for task "${taskName}" [${resolvedMode}] effort=${resolvedEffort}...`
   );
 
   // Ralph mode special handling
@@ -145,11 +144,11 @@ export async function handleSpawn(
   }
 
   // Regular spawn logic (plan/edit modes)
-  // Enforce unique task names unless explicitly forced
+  // Enforce unique task names
   const existing = await manager.listByTask(taskName);
   const requestedCwd = cwd ? path.resolve(cwd) : null;
   const sameCwdConflicts = existing.filter(a => (a.cwd || null) === requestedCwd);
-  if (sameCwdConflicts.length > 0 && !force) {
+  if (sameCwdConflicts.length > 0) {
     const cwds = Array.from(new Set(sameCwdConflicts.map(a => a.cwd || null))).map(c => c || '(none)');
 
     const suggestedTaskName = await suggestTaskName(manager, taskName, requestedCwd);
@@ -339,7 +338,8 @@ export async function handleListTasks(
   manager: AgentManager,
   limit?: number
 ): Promise<ListTasksResult> {
-  console.error(`[tasks] Listing all tasks (limit=${limit || 'none'})...`);
+  const effectiveLimit = limit ?? 10;
+  console.error(`[tasks] Listing all tasks (limit=${effectiveLimit})...`);
 
   const allAgents = await manager.listAll();
 
@@ -418,7 +418,7 @@ export async function handleListTasks(
   tasks.sort((a, b) => new Date(b.latest_activity).getTime() - new Date(a.latest_activity).getTime());
 
   // Apply limit if specified
-  const limitedTasks = limit ? tasks.slice(0, limit) : tasks;
+  const limitedTasks = tasks.slice(0, effectiveLimit);
 
   console.error(`[tasks] Found ${tasks.length} tasks with ${allAgents.length} total agents`);
 
