@@ -1,54 +1,24 @@
 # @swarmify/agents-mcp
 
-**Run subagents from any MCP client.**
+Run subagents from any MCP client.
 
-Your AI agent searches files, reads code, explores patterns—and all that fills its context window. Around 40% full, it starts getting dumber. By 80%, it's making mistakes.
+Spawn CLI agents in parallel so your main agent stays focused. Each subagent runs
+in its own context and can be polled for progress.
 
-This MCP server lets you spawn subagents that work in their own context. They do the heavy lifting. Your main agent stays sharp.
+## Why This Exists
+
+MCP adoption is accelerating and the ecosystem is organizing around registries,
+gateways, and enterprise governance. At the same time, teams are pushing toward
+multi-agent workflows and running into orchestration reliability, tool overload,
+and security concerns. This server gives you a focused, practical building block
+for real-world swarm work.
 
 ## What You Get
 
-1. **MCP Server** - Adds `spawn`, `status`, `stop`, `tasks` tools to any MCP-compatible agent
-2. **The /swarm command** - Pre-built command that teaches your AI how to coordinate work ([see swarm.md](https://github.com/muqsitnawaz/.agents/blob/main/claude/commands/swarm.md))
-
-## How It Works
-
-```
-You: /swarm Implement user authentication with JWT
-
-Orchestrator:
-├── Shows distribution plan (which agents do what)
-├── Defines boundary contracts (no stepping on each other)
-├── Gets your approval
-├── Spawns 3 subagents in parallel
-│   ├── Gemini: JWT token handling
-│   ├── Codex: Auth middleware
-│   └── Cursor: Login/logout endpoints
-├── Monitors progress
-└── Validates + runs tests
-```
-
-Each subagent works in its OWN context window. Your orchestrator stays lean.
-
-## Under the Hood
-
-**Headless CLI agents.** We spawn Claude Code, Codex, and Gemini CLIs as background processes—no interactive prompts, just work. Output streams to `~/.swarmify/agents/{id}/stdout.log`.
-
-**Plan vs edit modes.** Plan mode is read-only:
-- Claude: `--permission-mode plan`
-- Codex: sandboxed (no `--full-auto`)
-- Gemini/Cursor: no auto-approve flags
-
-Edit mode unlocks writes—Codex gets `--full-auto`, Claude gets `acceptEdits`, Gemini gets `--yolo`, Cursor gets `-f`.
-
-**Agents survive restarts.** Processes are detached from the MCP server. Close your IDE, reopen it—agents are still running. The server picks them back up from disk.
-
-## Why This Matters
-
-- **Keep your main agent responsive** - Subagents prevent context bloat
-- **Work in parallel** - Multiple agents, one task
-- **Fully private** - Tasks stored locally in `~/.swarmify/`
-- **Any agent type** - Claude, Codex, Gemini, Cursor - use the right tool for the job
+- MCP server with `spawn`, `status`, `stop`, and `tasks` tools
+- The `/swarm` command to teach an orchestrator how to distribute work
+- Plan vs edit modes that control file access per agent
+- Local logs and durable processes that survive IDE restarts
 
 ## Quick Start
 
@@ -68,17 +38,30 @@ opencode mcp add
 
 The server auto-discovers which agent CLIs you have installed.
 
-## Optional: Visual Control
+## Where It Fits
 
-Install the [agents-ext](https://marketplace.visualstudio.com/items?itemName=swarmify.agents-ext) VS Code extension to monitor your agents live:
+- Parallelize tasks across Claude, Codex, Gemini, and Cursor
+- Keep long-running loops responsive by offloading work to subagents
+- Integrate with MCP registries and gateways without changing your workflow
 
-- Agents as editor tabs (not separate windows)
-- Quick-spawn with keyboard shortcuts
-- Track all running tasks in one view
+## Under the Hood
 
-Works with Cursor, VS Code, and any VS Code-based IDE.
+Headless CLI agents run as background processes. Output streams to
+`~/.swarmify/agents/{id}/stdout.log`.
 
----
+Plan mode is read-only:
+- Claude: `--permission-mode plan`
+- Codex: sandboxed (no `--full-auto`)
+- Gemini and Cursor: no auto-approve flags
+
+Edit mode unlocks writes:
+- Codex: `--full-auto`
+- Claude: `acceptEdits`
+- Gemini: `--yolo`
+- Cursor: `-f`
+
+Agents are detached from the MCP server process. Close your IDE and reopen it,
+then reconnect with `status` and `tasks`.
 
 ## API Reference
 
@@ -117,7 +100,8 @@ status(task_name, filter?)
 | `task_name` | Yes | Task to check |
 | `filter` | No | `running` (default), `completed`, `failed`, `stopped`, or `all` |
 
-Returns files created/modified/read/deleted, bash commands executed, and last messages.
+Returns files created/modified/read/deleted, bash commands executed, and last
+messages.
 
 ### stop
 
@@ -165,7 +149,8 @@ The server auto-discovers installed CLIs at startup:
 | `plan` | Read-only | Research, exploration, code review |
 | `edit` | Read + Write | Implementation, refactoring, fixes |
 
-Default is `plan` for safety. Pass `mode='edit'` when agents need to modify files.
+Default is `plan` for safety. Pass `mode='edit'` when agents need to modify
+files.
 
 ## Effort Levels
 
@@ -184,6 +169,10 @@ Default is `plan` for safety. Pass `mode='edit'` when agents need to modify file
 ## Storage
 
 Data and config are stored under `~/.swarmify/`. Requires Node.js >= 18.17.
+
+## Changelog
+
+See `CHANGELOG.txt` for notable updates.
 
 ## License
 
