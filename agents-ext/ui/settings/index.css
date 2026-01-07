@@ -35,6 +35,69 @@ body {
   max-width: 640px;
 }
 
+.todo-md {
+  color: var(--muted-foreground);
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.todo-md p {
+  margin: 0 0 8px 0;
+  line-height: 1.5;
+}
+
+.todo-md p:last-child {
+  margin-bottom: 0;
+}
+
+.todo-md a {
+  color: var(--foreground);
+  text-decoration: underline;
+}
+
+.todo-md a:hover {
+  color: var(--primary);
+}
+
+.todo-md ul,
+.todo-md ol {
+  margin: 0 0 8px 18px;
+  padding: 0;
+}
+
+.todo-md li {
+  margin: 2px 0;
+}
+
+.todo-md pre {
+  margin: 8px 0;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  overflow: auto;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre;
+}
+
+.todo-md code {
+  font-family: ui-monospace, SFMono-Regular, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.todo-md :not(pre) > code {
+  background: var(--muted);
+  border-radius: 4px;
+  padding: 1px 4px;
+  font-size: 11px;
+}
+
+.todo-md blockquote {
+  margin: 8px 0;
+  padding-left: 10px;
+  border-left: 2px solid var(--border);
+}
+
 /* Refined input styling */
 input[type="number"] {
   -moz-appearance: textfield;

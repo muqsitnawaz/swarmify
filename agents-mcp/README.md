@@ -13,9 +13,13 @@ multi-agent workflows and running into orchestration reliability, tool overload,
 and security concerns. This server gives you a focused, practical building block
 for real-world swarm work.
 
+The API surface is intentionally small, closer to iconic commands like `cd`,
+`ls`, and `git` than a framework. Fewer knobs means less room for an orchestrator
+to make mistakes.
+
 ## What You Get
 
-- MCP server with `spawn`, `status`, `stop`, and `tasks` tools
+- A dead simple MCP server with `spawn`, `status`, `stop`, and `tasks` tools
 - The `/swarm` command to teach an orchestrator how to distribute work
 - Plan vs edit modes that control file access per agent
 - Local logs and durable processes that survive IDE restarts
@@ -43,6 +47,7 @@ The server auto-discovers which agent CLIs you have installed.
 - Parallelize tasks across Claude, Codex, Gemini, and Cursor
 - Keep long-running loops responsive by offloading work to subagents
 - Integrate with MCP registries and gateways without changing your workflow
+- Run Ralph Wiggum loops inside spawned Claude Code agents when the plugin is installed
 
 ## Under the Hood
 
