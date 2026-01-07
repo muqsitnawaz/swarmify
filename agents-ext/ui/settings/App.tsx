@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react'
+import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 import { Button } from './components/ui/button'
 import { Checkbox } from './components/ui/checkbox'
 import { Input } from './components/ui/input'
@@ -202,63 +204,70 @@ declare global {
 const vscode = acquireVsCodeApi()
 const icons = window.__ICONS__
 
-function renderInlineWithCode(text: string, keyPrefix: string) {
-  const parts = text.split(/(`[^`]+`)/g)
-  return parts.map((part, idx) => {
-    const key = `${keyPrefix}-inline-${idx}`
-    if (part.startsWith('`') && part.endsWith('`') && part.length >= 2) {
-      return (
-        <code
-          key={key}
-          className="px-1 py-0.5 rounded bg-[var(--muted)] text-[var(--foreground)] text-[11px] break-words"
-        >
-          {part.slice(1, -1)}
-        </code>
-      )
-    }
-    return (
-      <span key={key} className="break-words">
-        {part}
-      </span>
-    )
-  })
+const todoMarkdownRenderer = new marked.Renderer()
+
+const escapeHtml = (value: string) => {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
 }
 
+todoMarkdownRenderer.link = (href, title, text) => {
+  const safeHref = href || '#'
+  const safeTitle = title ? ` title="${title}"` : ''
+  return `<a href="${safeHref}"${safeTitle} target="_blank" rel="noreferrer">${text}</a>`
+}
+
+todoMarkdownRenderer.code = (code, infostring) => {
+  const lang = (infostring || '').trim()
+  const className = lang ? ` class="todo-md-code language-${lang}"` : ' class="todo-md-code"'
+  return `<pre class="todo-md-pre"><code${className}>${escapeHtml(code)}</code></pre>`
+}
+
+marked.setOptions({
+  gfm: true,
+  breaks: true,
+  headerIds: false,
+  mangle: false,
+  renderer: todoMarkdownRenderer
+})
+
+const todoMarkdownAllowedTags = [
+  'a',
+  'b',
+  'blockquote',
+  'br',
+  'code',
+  'em',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'hr',
+  'i',
+  'li',
+  'ol',
+  'p',
+  'pre',
+  'strong',
+  'span',
+  'ul'
+]
+
+const todoMarkdownAllowedAttrs = ['href', 'title', 'target', 'rel', 'class']
+
 function renderTodoDescription(desc: string) {
-  const segments = desc.split(/```/g)
-  const nodes: React.ReactNode[] = []
-
-  segments.forEach((segment, idx) => {
-    const keyBase = `seg-${idx}`
-    if (idx % 2 === 1) {
-      const code = segment.trim()
-      if (!code) return
-      nodes.push(
-        <pre
-          key={keyBase}
-          className="bg-[var(--background)] border border-[var(--border)] rounded-md p-3 text-[var(--foreground)] text-[11px] leading-relaxed overflow-auto whitespace-pre break-words"
-        >
-          <code>{code}</code>
-        </pre>
-      )
-      return
-    }
-
-    const paragraphs = segment.split(/\n{2,}/g).filter(p => p.trim().length > 0)
-    if (paragraphs.length === 0) return
-    paragraphs.forEach((para, pIdx) => {
-      nodes.push(
-        <p
-          key={`${keyBase}-p-${pIdx}`}
-          className="whitespace-pre-wrap break-words leading-relaxed"
-        >
-          {renderInlineWithCode(para, `${keyBase}-p-${pIdx}`)}
-        </p>
-      )
-    })
+  const raw = marked.parse(desc)
+  const safe = DOMPurify.sanitize(raw, {
+    ALLOWED_TAGS: todoMarkdownAllowedTags,
+    ALLOWED_ATTR: todoMarkdownAllowedAttrs
   })
-
-  return nodes
+  return <div className="todo-md" dangerouslySetInnerHTML={{ __html: safe }} />
 }
 
 const BUILT_IN_AGENTS = [
