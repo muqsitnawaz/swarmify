@@ -345,7 +345,7 @@
         "mac": "cmd+shift+u"
       },
       {
-        "command": "agents.newOpenCode",
+        "command": "agents.configure",
         "key": "ctrl+shift+d",
         "mac": "cmd+shift+d"
       }

@@ -20,7 +20,7 @@ echo "Building extension..."
 bash scripts/build.sh "$VERSION"
 
 # Install the extension
-VSIX_FILE="dist/cursor-agents-${VERSION}.vsix"
+VSIX_FILE="dist/agents-ext-${VERSION}.vsix"
 
 if [ ! -f "$VSIX_FILE" ]; then
     echo "Error: ${VSIX_FILE} not found"
