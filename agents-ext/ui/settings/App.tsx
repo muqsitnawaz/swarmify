@@ -1670,43 +1670,28 @@ export default function App() {
                           const isDisabled = !status?.cliAvailable
                           return (
                             <div key={agent.key} className="flex items-center gap-2">
-                              <div
+                              <button
+                                type="button"
                                 className={`h-9 w-9 rounded-lg bg-[var(--background)] flex items-center justify-center border border-[var(--border)] ${
                                   isInstalled ? '' : 'opacity-60'
-                                }`}
+                                } ${!isInstalled && !isDisabled && !skillInstalling ? 'cursor-pointer' : 'cursor-default'}`}
+                                disabled={isInstalled || isDisabled || skillInstalling}
+                                onClick={() =>
+                                  vscode.postMessage({
+                                    type: 'installSkillCommand',
+                                    skill: skill.name,
+                                    agent: agent.key
+                                  })
+                                }
+                                aria-label={`Install ${skill.name} for ${agent.name}`}
+                                title={!isInstalled && !isDisabled ? 'Install' : undefined}
                               >
                                 <img
                                   src={agent.icon}
                                   alt={agent.name}
                                   className={`w-5 h-5 ${isInstalled ? '' : 'grayscale'}`}
                                 />
-                              </div>
-                              {!isInstalled && (
-                                <Button
-                                  size="sm"
-                                  variant="secondary"
-                                  disabled={skillInstalling || isDisabled}
-                                  onClick={() =>
-                                    vscode.postMessage({
-                                      type: 'installSkillCommand',
-                                      skill: skill.name,
-                                      agent: agent.key
-                                    })
-                                  }
-                                >
-                                  {skillInstalling ? (
-                                    <span className="flex items-center gap-1.5">
-                                      <RefreshCw className="w-4 h-4 animate-spin" />
-                                      Installing
-                                    </span>
-                                  ) : (
-                                    'Install'
-                                  )}
-                                </Button>
-                              )}
-                              {isInstalled && (
-                                <span className="text-xs text-green-400">Installed</span>
-                              )}
+                              </button>
                               {!status?.cliAvailable && (
                                 <span className="text-xs text-[var(--muted-foreground)]">
                                   CLI missing
@@ -1739,43 +1724,28 @@ export default function App() {
                           const isDisabled = !status?.cliAvailable
                           return (
                             <div key={agent.key} className="flex items-center gap-2">
-                              <div
+                              <button
+                                type="button"
                                 className={`h-9 w-9 rounded-lg bg-[var(--background)] flex items-center justify-center border border-[var(--border)] ${
                                   isInstalled ? '' : 'opacity-60'
-                                }`}
+                                } ${!isInstalled && !isDisabled && !skillInstalling ? 'cursor-pointer' : 'cursor-default'}`}
+                                disabled={isInstalled || isDisabled || skillInstalling}
+                                onClick={() =>
+                                  vscode.postMessage({
+                                    type: 'installSkillCommand',
+                                    skill: skill.name,
+                                    agent: agent.key
+                                  })
+                                }
+                                aria-label={`Install ${skill.name} for ${agent.name}`}
+                                title={!isInstalled && !isDisabled ? 'Install' : undefined}
                               >
                                 <img
                                   src={agent.icon}
                                   alt={agent.name}
                                   className={`w-5 h-5 ${isInstalled ? '' : 'grayscale'}`}
                                 />
-                              </div>
-                              {!isInstalled && (
-                                <Button
-                                  size="sm"
-                                  variant="secondary"
-                                  disabled={skillInstalling || isDisabled}
-                                  onClick={() =>
-                                    vscode.postMessage({
-                                      type: 'installSkillCommand',
-                                      skill: skill.name,
-                                      agent: agent.key
-                                    })
-                                  }
-                                >
-                                  {skillInstalling ? (
-                                    <span className="flex items-center gap-1.5">
-                                      <RefreshCw className="w-4 h-4 animate-spin" />
-                                      Installing
-                                    </span>
-                                  ) : (
-                                    'Install'
-                                  )}
-                                </Button>
-                              )}
-                              {isInstalled && (
-                                <span className="text-xs text-green-400">Installed</span>
-                              )}
+                              </button>
                               {!status?.cliAvailable && (
                                 <span className="text-xs text-[var(--muted-foreground)]">
                                   CLI missing
