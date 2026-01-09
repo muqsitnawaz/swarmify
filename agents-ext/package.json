@@ -37,7 +37,8 @@
       }
     ],
     "configurationDefaults": {
-      "terminal.integrated.confirmOnKill": "panel"
+      "terminal.integrated.confirmOnKill": "panel",
+      "terminal.integrated.enablePersistentSessions": false
     },
     "commands": [
       {

@@ -1490,11 +1490,14 @@ async function restoreAgentTerminals(context: vscode.ExtensionContext): Promise<
     // Skip if already tracked properly
     if (terminals.getByTerminal(terminal)) continue;
     // Check if terminal name matches an agent prefix we want to restore
+    // Note: avoid includes() as "sh" would match "zsh"
     const matchesPrefix = toRestore.some(p =>
       terminal.name === p.prefix ||
+      terminal.name.toUpperCase() === p.prefix.toUpperCase() ||
       terminal.name.startsWith(`${p.prefix} `) ||
       terminal.name.startsWith(`${p.prefix}-`) ||
-      terminal.name.includes(p.prefix)
+      terminal.name.startsWith(`${p.prefix.toUpperCase()} `) ||
+      terminal.name.startsWith(`${p.prefix.toUpperCase()}-`)
     );
     if (matchesPrefix) {
       terminal.dispose();
@@ -1509,10 +1512,10 @@ async function restoreAgentTerminals(context: vscode.ExtensionContext): Promise<
     // Handle shell separately (no built-in def)
     let agentConfig: Omit<import('./agents.vscode').AgentConfig, 'count'>;
 
-    if (session.prefix === 'SH') {
-      agentConfig = createAgentConfig(context.extensionPath, 'SH', '', 'agents.png', 'SH');
+    if (session.prefix.toLowerCase() === 'sh') {
+      agentConfig = createAgentConfig(context.extensionPath, 'SH', '', 'agents.png', 'sh');
     } else {
-      const def = getBuiltInDefByTitle(session.prefix);
+      const def = getBuiltInByPrefix(session.prefix);
       if (!def) {
         console.log(`[RESTORE] Unknown prefix: ${session.prefix}, skipping`);
         continue;
