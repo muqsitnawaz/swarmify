@@ -3,14 +3,33 @@
 // Tests will be skipped if CLIs are not available
 
 import { describe, test, expect } from 'bun:test';
+import { spawn } from 'child_process';
 import {
   spawnSimplePrewarmSession,
   needsPrewarming,
   generateClaudeSessionId,
   buildClaudeOpenCommand,
 } from './prewarm.simple';
-import { isCliAvailable } from './prewarm.vscode';
-import { extractSessionId } from './prewarm';
+import { extractSessionId, PrewarmAgentType } from './prewarm';
+
+// Local isCliAvailable for tests (avoid vscode import)
+async function isCliAvailable(agentType: PrewarmAgentType): Promise<boolean> {
+  return new Promise((resolve) => {
+    const proc = spawn(agentType, ['--version'], { shell: true });
+    let resolved = false;
+    const finish = (result: boolean) => {
+      if (resolved) return;
+      resolved = true;
+      resolve(result);
+    };
+    proc.on('close', (code: number) => finish(code === 0));
+    proc.on('error', () => finish(false));
+    setTimeout(() => {
+      proc.kill();
+      finish(false);
+    }, 5000);
+  });
+}
 
 // Longer timeouts for E2E tests (CLI startup can be slow)
 const E2E_TIMEOUT = 60000;

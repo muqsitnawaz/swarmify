@@ -170,6 +170,7 @@ interface TerminalDetail {
   autoLabel: string | null
   createdAt: number
   index: number
+  sessionId: string | null
 }
 
 interface TodoItem {
@@ -1399,6 +1400,9 @@ export default function App() {
                           {agentName} # {terminal.index}
                           {displayLabel && (
                             <span className="text-[var(--muted-foreground)]"> - {displayLabel}</span>
+                          )}
+                          {terminal.sessionId && (
+                            <span className="text-[var(--muted-foreground)]"> · {terminal.sessionId}</span>
                           )}
                         </span>
                         <div className="flex-1" />
