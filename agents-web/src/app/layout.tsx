@@ -33,7 +33,7 @@ export const metadata: Metadata = {
     },
   },
   alternates: {
-    canonical: "https://swarmify.dev",
+    canonical: "https://swarmify.co",
   },
   icons: {
     icon: [
@@ -49,13 +49,13 @@ export const metadata: Metadata = {
   openGraph: {
     title: siteTitle,
     description: siteDescription,
-    url: "https://swarmify.dev",
+    url: "https://swarmify.co",
     siteName: "Swarmify",
     type: "website",
     locale: "en_US",
     images: [
       {
-        url: "https://swarmify.dev/og-image.png",
+        url: "https://swarmify.co/og-image.png",
         width: 1200,
         height: 630,
         alt: "Swarmify - Run Claude, Codex, and Gemini agents in your IDE",
@@ -66,7 +66,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: siteTitle,
     description: siteDescription,
-    images: ["https://swarmify.dev/og-image.png"],
+    images: ["https://swarmify.co/og-image.png"],
     creator: "@swarmify",
   },
   other: {
@@ -75,7 +75,7 @@ export const metadata: Metadata = {
     "apple-mobile-web-app-capable": "yes",
     "apple-mobile-web-app-status-bar-style": "black-translucent",
   },
-  metadataBase: new URL("https://swarmify.dev"),
+  metadataBase: new URL("https://swarmify.co"),
 };
 
 const jsonLd = {
@@ -85,7 +85,7 @@ const jsonLd = {
   applicationCategory: "DeveloperApplication",
   operatingSystem: "VS Code, Cursor",
   description: siteDescription,
-  url: "https://swarmify.dev",
+  url: "https://swarmify.co",
   downloadUrl: "https://marketplace.visualstudio.com/items?itemName=swarmify.agents-ext",
   softwareVersion: "1.0",
   offers: {
