@@ -58,7 +58,7 @@ Automatically discovers TODO.md files in your workspace and displays tasks in th
 
 ### Session History
 
-Browse recent Claude, Codex, and Gemini sessions from your filesystem. Resume any previous session or review conversation history.
+Browse recent Claude, Codex, Gemini, and Cursor sessions from your filesystem. Resume any previous session or review conversation history.
 
 ### Default Models
 
@@ -73,6 +73,7 @@ Enable session warming to reduce agent startup time. Each agent type handles ses
 | Claude | None needed | `claude --session-id <uuid>` |
 | Codex | `codex exec ''` | `codex resume <session-id>` |
 | Gemini | `gemini -p " " -o json` | `gemini --resume <session-id>` |
+| Cursor | `cursor-agent -p "..." --output-format json` | `cursor-agent --resume=<session-id>` |
 
 **Claude**: Session IDs are generated on-demand when opening a terminal. No background prewarming required - Claude accepts custom session IDs via `--session-id`.
 
@@ -80,12 +81,14 @@ Enable session warming to reduce agent startup time. Each agent type handles ses
 
 **Gemini**: Sessions are prewarmed by running `gemini -p " " -o json` to completion, then resolving the session ID via `gemini --list-sessions`. Note: Gemini's `/stats` may show a different "interaction ID" - this is expected; the conversation context is preserved.
 
+**Cursor**: Sessions are prewarmed by running `cursor-agent -p "Hello! Be right back." --output-format json` to completion, then extracting `session_id` from the JSON response.
+
 ### Session Persistence
 
 Every open agent terminal is fully restorable. Terminal state is saved to disk in real-time, so if VS Code crashes or restarts, all your agent tabs come back exactly as they were:
 
 - **Session ID**: Resume the exact conversation where you left off
-- **Icon**: CC, CX, GX icons restored for quick identification
+- **Icon**: CC, CX, GX, CR icons restored for quick identification
 - **Label**: Custom labels you set are preserved
 
 No more losing agent context to crashes. Close VS Code, reopen it, and pick up right where you left off.
