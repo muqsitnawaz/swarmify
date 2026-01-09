@@ -352,7 +352,8 @@ export function openPanel(context: vscode.ExtensionContext): void {
         settingsPanel?.webview.postMessage({ type: 'todoFilesData', files: todoFiles });
         break;
       case 'fetchSessions':
-        const sessions = await discoverRecentSessions(message.limit || 50);
+        const sessionsWorkspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        const sessions = await discoverRecentSessions(message.limit || 50, sessionsWorkspace);
         settingsPanel?.webview.postMessage({ type: 'sessionsData', sessions });
         break;
       case 'spawnSwarmForTodo':
