@@ -5,7 +5,7 @@
       "name": "cursor-agents",
       "dependencies": {
         "@vscode/webview-ui-toolkit": "^1.4.0",
-        "yaml": "^2.7.0",
+        "yaml": "^2.8.2",
       },
       "devDependencies": {
         "@types/node": "^20.x",

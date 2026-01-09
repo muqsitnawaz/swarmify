@@ -373,6 +373,7 @@
     "typescript": "^5.3.3"
   },
   "dependencies": {
-    "@vscode/webview-ui-toolkit": "^1.4.0"
+    "@vscode/webview-ui-toolkit": "^1.4.0",
+    "yaml": "^2.8.2"
   }
 }
