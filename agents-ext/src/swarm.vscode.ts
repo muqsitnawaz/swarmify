@@ -59,7 +59,6 @@ export type SkillName =
   | 'stest'
   | 'ship'
   | 'sship'
-  | 'create'
   | 'simagine';
 
 export interface SkillDefinition {
@@ -143,11 +142,6 @@ const SKILL_DEFS: SkillDefinition[] = [
     name: 'sship',
     description: 'Ship with independent assessment',
     assets: { claude: 'sship.md', codex: 'sship.md', cursor: 'sship.md', gemini: 'sship.toml' },
-  },
-  {
-    name: 'create',
-    description: 'Create a new slash command',
-    assets: { claude: 'create.md', cursor: 'create.md' },
   },
   {
     name: 'simagine',

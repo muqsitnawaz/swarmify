@@ -54,7 +54,6 @@ type SkillName =
   | 'stest'
   | 'ship'
   | 'sship'
-  | 'create'
   | 'simagine'
 
 interface SkillAgentStatus {
@@ -1675,11 +1674,10 @@ export default function App() {
                       </div>
                       <div className="flex-1" />
                       <div className="flex items-center gap-3">
-                        {SKILL_AGENTS.map(agent => {
+                        {SKILL_AGENTS.filter(agent => skill.agents[agent.key]?.supported).map(agent => {
                           const status = skill.agents[agent.key]
                           const isInstalled = status?.installed
-                          const isSupported = status?.supported ?? false
-                          const isDisabled = !isSupported || !status?.cliAvailable
+                          const isDisabled = !status?.cliAvailable
                           return (
                             <div key={agent.key} className="flex items-center gap-2">
                               <button
@@ -1704,12 +1702,7 @@ export default function App() {
                                   className={`w-5 h-5 ${isInstalled ? '' : 'grayscale'}`}
                                 />
                               </button>
-                              {!isSupported && (
-                                <span className="text-xs text-[var(--muted-foreground)]">
-                                  Not supported
-                                </span>
-                              )}
-                              {isSupported && !status?.cliAvailable && (
+                              {!status?.cliAvailable && (
                                 <span className="text-xs text-[var(--muted-foreground)]">
                                   CLI missing
                                 </span>
@@ -1735,11 +1728,10 @@ export default function App() {
                       </div>
                       <div className="flex-1" />
                       <div className="flex items-center gap-3">
-                        {SKILL_AGENTS.map(agent => {
+                        {SKILL_AGENTS.filter(agent => skill.agents[agent.key]?.supported).map(agent => {
                           const status = skill.agents[agent.key]
                           const isInstalled = status?.installed
-                          const isSupported = status?.supported ?? false
-                          const isDisabled = !isSupported || !status?.cliAvailable
+                          const isDisabled = !status?.cliAvailable
                           return (
                             <div key={agent.key} className="flex items-center gap-2">
                               <button
@@ -1764,12 +1756,7 @@ export default function App() {
                                   className={`w-5 h-5 ${isInstalled ? '' : 'grayscale'}`}
                                 />
                               </button>
-                              {!isSupported && (
-                                <span className="text-xs text-[var(--muted-foreground)]">
-                                  Not supported
-                                </span>
-                              )}
-                              {isSupported && !status?.cliAvailable && (
+                              {!status?.cliAvailable && (
                                 <span className="text-xs text-[var(--muted-foreground)]">
                                   CLI missing
                                 </span>
