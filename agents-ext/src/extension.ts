@@ -1511,9 +1511,11 @@ async function restoreAgentTerminals(context: vscode.ExtensionContext): Promise<
   for (const session of toRestore) {
     // Handle shell separately (no built-in def)
     let agentConfig: Omit<import('./agents.vscode').AgentConfig, 'count'>;
+    let displayTitle: string;
 
     if (session.prefix.toLowerCase() === 'sh') {
       agentConfig = createAgentConfig(context.extensionPath, 'SH', '', 'agents.png', 'sh');
+      displayTitle = 'SH';
     } else {
       const def = getBuiltInByPrefix(session.prefix);
       if (!def) {
@@ -1521,9 +1523,10 @@ async function restoreAgentTerminals(context: vscode.ExtensionContext): Promise<
         continue;
       }
       agentConfig = createAgentConfig(context.extensionPath, def.title, def.command, def.icon, def.prefix);
+      displayTitle = def.title;
     }
 
-    const title = buildTerminalTitle(session.prefix, session.label, context);
+    const title = buildTerminalTitle(displayTitle, session.label, context);
 
     const terminal = vscode.window.createTerminal({
       iconPath: agentConfig.iconPath,
