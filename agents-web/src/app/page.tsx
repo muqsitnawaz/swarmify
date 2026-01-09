@@ -343,6 +343,58 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Developer Experience */}
+      <section className="px-6 py-24 border-t border-[#1a1a1a]">
+        <div className="max-w-5xl mx-auto">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl font-bold mb-4">Developer experience</h2>
+            <p className="text-[#94a3b8] max-w-2xl mx-auto">
+              Productivity features that make multi-agent workflows feel native.
+            </p>
+          </div>
+          <div className="grid md:grid-cols-2 gap-6">
+            <div className="p-6 rounded-xl border border-[#1a1a1a] bg-[#0a0a0a]">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="text-[10px] uppercase tracking-wide text-[#7aa2b6] bg-[#0f141a] px-2 py-1 rounded">New</div>
+                <h3 className="text-lg font-semibold">Session persistence</h3>
+              </div>
+              <p className="text-[#94a3b8] text-sm leading-relaxed mb-3">
+                All agent sessions are saved to disk automatically. Crash, close VS Code, or restart your machine. Pick up exactly where you left off.
+              </p>
+              <div className="text-xs text-[#666]">Zero data loss, automatic recovery</div>
+            </div>
+            <div className="p-6 rounded-xl border border-[#1a1a1a] bg-[#0a0a0a]">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="text-[10px] uppercase tracking-wide text-[#7aa2b6] bg-[#0f141a] px-2 py-1 rounded">New</div>
+                <h3 className="text-lg font-semibold">AI git commits</h3>
+              </div>
+              <p className="text-[#94a3b8] text-sm leading-relaxed mb-3">
+                Generate commit messages that match your style. One shortcut to stage, commit, and push with a message that fits your repo conventions.
+              </p>
+              <div className="font-mono text-xs text-[#94a3b8] bg-[#0f141a] px-2 py-1 rounded inline-block">Cmd+Shift+G</div>
+            </div>
+            <div className="p-6 rounded-xl border border-[#1a1a1a] bg-[#0a0a0a]">
+              <h3 className="text-lg font-semibold mb-3">Keyboard-first workflow</h3>
+              <p className="text-[#94a3b8] text-sm leading-relaxed mb-3">
+                12+ shortcuts for spawning agents, switching tabs, labeling sessions, and launching prompts. Stay in flow without reaching for the mouse.
+              </p>
+              <div className="flex flex-wrap gap-2 text-xs">
+                <span className="font-mono text-[#94a3b8] bg-[#0f141a] px-2 py-1 rounded">Cmd+Shift+N</span>
+                <span className="font-mono text-[#94a3b8] bg-[#0f141a] px-2 py-1 rounded">Cmd+Shift+X</span>
+                <span className="font-mono text-[#94a3b8] bg-[#0f141a] px-2 py-1 rounded">Cmd+Shift+L</span>
+              </div>
+            </div>
+            <div className="p-6 rounded-xl border border-[#1a1a1a] bg-[#0a0a0a]">
+              <h3 className="text-lg font-semibold mb-3">TODO.md discovery</h3>
+              <p className="text-[#94a3b8] text-sm leading-relaxed mb-3">
+                Drop a TODO.md in your workspace and Swarmify finds it. Spawn agents directly from task items without copy-pasting prompts.
+              </p>
+              <div className="text-xs text-[#666]">Works with checkbox format and markdown headers</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Use Cases */}
       <section className="px-6 py-24 border-t border-[#1a1a1a]">
         <div className="max-w-5xl mx-auto">
