@@ -42,27 +42,27 @@ export const PREWARM_CONFIGS: Record<PrewarmAgentType, PrewarmConfig> = {
     agentType: 'claude',
     command: 'claude',
     statusCommand: '/status',
-    // Matches: "Session ID: abc123-def456-..."
-    sessionIdPattern: /Session\s+ID:\s*([a-f0-9-]+)/i,
-    exitSequence: ['\x1b', '\x03', '\x03'],  // Esc, Ctrl+C, Ctrl+C
+    // Matches: "Session ID: 01J9..."/"Session: 01J9..."
+    sessionIdPattern: /Session(?:\s+ID)?:\s*([a-zA-Z0-9_-]+)/i,
+    exitSequence: ['\x1b', '\x03', '\x03'],  // Esc, Ctrl+C, Ctrl+C (need Esc first for Claude)
     resumeCommand: (id) => `claude -r ${id}`
   },
   codex: {
     agentType: 'codex',
     command: 'codex',
     statusCommand: '/status',
-    // Matches: "Session: abc123-def456-..."
-    sessionIdPattern: /Session:\s*([a-f0-9-]+)/i,
-    exitSequence: ['\x03'],  // Ctrl+C
+    // Matches: "Session: 01J9..." or "Session ID: 01J9..."
+    sessionIdPattern: /Session(?:\s+ID)?:\s*([a-zA-Z0-9_-]+)/i,
+    exitSequence: ['\x03', '\x03'],  // Ctrl+C twice
     resumeCommand: (id) => `codex resume ${id}`
   },
   gemini: {
     agentType: 'gemini',
     command: 'gemini',
     statusCommand: '/stats',
-    // Matches session ID pattern (TBD - using similar pattern)
-    sessionIdPattern: /Session(?:\s+ID)?:\s*([a-f0-9-]+)/i,
-    exitSequence: ['\x03'],  // Ctrl+C
+    // Matches session ID pattern
+    sessionIdPattern: /Session(?:\s+ID)?:\s*([a-zA-Z0-9_-]+)/i,
+    exitSequence: ['\x03', '\x03'],  // Ctrl+C twice
     resumeCommand: (id) => `gemini --session ${id}`
   }
 };
@@ -91,20 +91,27 @@ export function isCliReady(output: string, agentType: PrewarmAgentType): boolean
     claude: [
       />\s*$/,                    // Prompt ready
       /Welcome.*\n.*>/s,          // Welcome message + prompt
-      /Claude Code v[\d.]+/       // Version banner indicates startup
+      /Claude Code v[\d.]+/,      // Version banner indicates startup
+      /Try "/,                    // "Try ..." suggestion indicates ready
     ],
     codex: [
       />\s*$/,
       /OpenAI Codex.*\n.*>/s,
-      /Context window:/           // Status area indicates ready
+      /Context window:/,          // Status area indicates ready
+      /sandbox/i,                 // Sandbox mode indicator
     ],
     gemini: [
       />\s*$/,
-      /Gemini.*\n.*>/s
+      /Gemini.*\n.*>/s,
+      /gemini/i,                  // Any gemini text
     ]
   };
 
-  return readyPatterns[agentType].some(pattern => pattern.test(output));
+  const ready = readyPatterns[agentType].some(pattern => pattern.test(output));
+  if (ready) {
+    console.log(`[PREWARM] isCliReady(${agentType}): true`);
+  }
+  return ready;
 }
 
 /**
@@ -155,4 +162,104 @@ export function getSupportedAgentTypes(): PrewarmAgentType[] {
  */
 export function supportsPrewarming(agentType: string): agentType is PrewarmAgentType {
   return agentType === 'claude' || agentType === 'codex' || agentType === 'gemini';
+}
+
+// === Blocking Prompt Detection ===
+
+export type BlockedReason = 'trust_prompt' | 'auth_required' | 'rate_limit' | 'unknown_prompt';
+export type FailedReason = 'timeout' | 'cli_error' | 'parse_error' | 'cli_not_found';
+
+export interface PrewarmResult {
+  status: 'success' | 'blocked' | 'failed';
+  sessionId?: string;
+  blockedReason?: BlockedReason;
+  failedReason?: FailedReason;
+  rawOutput?: string;
+}
+
+const BLOCKING_PROMPTS: Record<BlockedReason, RegExp[]> = {
+  trust_prompt: [
+    /Do you trust the files in this folder/i,
+    /Trust the files in this folder/i,
+  ],
+  auth_required: [
+    /Please log in/i,
+    /Authentication required/i,
+    /API key not found/i,
+    /Not authenticated/i,
+    /Sign in to continue/i,
+  ],
+  rate_limit: [
+    /Rate limit exceeded/i,
+    /Too many requests/i,
+    /Please try again later/i,
+  ],
+  unknown_prompt: [], // Fallback, not matched directly
+};
+
+/**
+ * Detect if output contains a blocking prompt
+ */
+export function detectBlockingPrompt(output: string): BlockedReason | null {
+  for (const [reason, patterns] of Object.entries(BLOCKING_PROMPTS)) {
+    if (reason === 'unknown_prompt') continue;
+    if (patterns.some(p => p.test(output))) {
+      return reason as BlockedReason;
+    }
+  }
+  return null;
+}
+
+/**
+ * Strip ANSI escape codes from text
+ */
+export function stripAnsi(text: string): string {
+  // Matches all ANSI escape sequences including:
+  // - CSI sequences: \x1b[ ... (letter)
+  // - OSC sequences: \x1b] ... \x07 or \x1b] ... \x1b\\
+  // - Simple escapes: \x1b followed by single char
+  return text
+    .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')  // CSI sequences
+    .replace(/\x1b\][^\x07]*\x07/g, '')      // OSC sequences (BEL terminated)
+    .replace(/\x1b\][^\x1b]*\x1b\\/g, '')    // OSC sequences (ST terminated)
+    .replace(/\x1b[PX^_][^\x1b]*\x1b\\/g, '') // DCS, SOS, PM, APC sequences
+    .replace(/\x1b[@-Z\\-_]/g, '');          // Single character escapes
+}
+
+/**
+ * UUID pattern for session IDs (UUIDv7 format: 019ba357-61b0-7e51-afdd-cd43c0e32253)
+ */
+const UUID_PATTERN = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+
+/**
+ * Multiple patterns to try for session ID extraction
+ */
+export const SESSION_ID_PATTERNS: RegExp[] = [
+  // UUID format (most common)
+  new RegExp(`Session ID:\\s*(${UUID_PATTERN})`, 'i'),
+  new RegExp(`Session:\\s*(${UUID_PATTERN})`, 'i'),
+  new RegExp(`session_id['":\\s]+(${UUID_PATTERN})`, 'i'),
+  new RegExp(`Current session:\\s*(${UUID_PATTERN})`, 'i'),
+  // Fallback for non-UUID formats
+  /Session ID:\s*([a-zA-Z0-9_-]+)/i,
+  /Session:\s*([a-zA-Z0-9_-]+)/i,
+];
+
+/**
+ * Try multiple patterns to extract session ID
+ */
+export function extractSessionId(output: string): string | null {
+  const cleanOutput = stripAnsi(output);
+  for (const pattern of SESSION_ID_PATTERNS) {
+    const match = cleanOutput.match(pattern);
+    if (match) {
+      console.log(`[PREWARM] extractSessionId: found ${match[1]} with pattern ${pattern}`);
+      return match[1];
+    }
+  }
+  // Log what we're looking at if no match
+  if (cleanOutput.includes('Session') || cleanOutput.includes('session')) {
+    console.log(`[PREWARM] extractSessionId: no UUID match, but found 'session' in: ${cleanOutput.slice(-300)}`);
+  }
+  return null;
 }

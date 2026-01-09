@@ -1,21 +1,22 @@
 // Session pre-warming - VS Code integration
-// Uses child_process to capture CLI output (VS Code terminals don't expose stdout)
+// Uses node-pty for reliable TTY emulation
 
 import * as vscode from 'vscode';
-import { spawn, ChildProcess } from 'child_process';
 import {
   PrewarmAgentType,
   PrewarmedSession,
   SessionPoolState,
   TerminalSessionMapping,
-  PREWARM_CONFIGS,
   DEFAULT_POOL_SIZE,
-  parseSessionId,
-  isCliReady,
   needsReplenishment,
   selectBestSession,
   getSupportedAgentTypes
 } from './prewarm';
+import {
+  spawnPrewarmSessionWithFallback,
+  isCliAvailable as checkCliAvailable,
+  isPtyAvailable
+} from './prewarm.pty';
 
 // GlobalState keys
 const POOL_KEY_PREFIX = 'prewarm.pool.';
@@ -31,7 +32,7 @@ let isInitialized = false;
  * Check if pre-warming is enabled
  */
 export function isEnabled(context: vscode.ExtensionContext): boolean {
-  return context.globalState.get<boolean>(ENABLED_KEY, false);
+  return context.globalState.get<boolean>(ENABLED_KEY, true);
 }
 
 /**
@@ -75,110 +76,51 @@ function loadPool(context: vscode.ExtensionContext, agentType: PrewarmAgentType)
 }
 
 /**
- * Pre-warm a single session using child_process
+ * Pre-warm a single session using PTY (with fallback to spawn)
  */
 async function prewarmSession(
   context: vscode.ExtensionContext,
   agentType: PrewarmAgentType
 ): Promise<PrewarmedSession | null> {
-  const config = PREWARM_CONFIGS[agentType];
   const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
   const pool = getPool(agentType);
 
   pool.pending++;
-  console.log(`[PREWARM] Starting ${agentType} session (pending: ${pool.pending})`);
+  console.log(`[PREWARM] Starting ${agentType} session (pending: ${pool.pending}, pty: ${isPtyAvailable()})`);
 
-  return new Promise((resolve) => {
-    let output = '';
-    let sessionId: string | null = null;
-    let proc: ChildProcess | null = null;
-    let resolved = false;
-    let statusSent = false;
+  try {
+    const result = await spawnPrewarmSessionWithFallback(agentType, cwd);
 
-    const cleanup = () => {
-      if (proc && !proc.killed) {
-        proc.kill();
-      }
-      pool.pending--;
-    };
-
-    const finish = (result: PrewarmedSession | null) => {
-      if (resolved) return;
-      resolved = true;
-      cleanup();
-      resolve(result);
-    };
-
-    try {
-      // Spawn CLI process
-      proc = spawn(config.command, [], {
-        cwd,
-        shell: true,
-        stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env, TERM: 'xterm-256color' }
-      });
-
-      proc.stdout?.on('data', (data: Buffer) => {
-        output += data.toString();
-
-        // Check if CLI is ready and we haven't sent /status yet
-        if (!statusSent && isCliReady(output, agentType)) {
-          statusSent = true;
-          console.log(`[PREWARM] ${agentType} CLI ready, sending ${config.statusCommand}`);
-          proc?.stdin?.write(`${config.statusCommand}\n`);
-        }
-
-        // Try to parse session ID after sending /status
-        if (statusSent && !sessionId) {
-          sessionId = parseSessionId(output, config);
-          if (sessionId) {
-            console.log(`[PREWARM] Got ${agentType} session ID: ${sessionId}`);
-            // Send exit sequence
-            for (const seq of config.exitSequence) {
-              proc?.stdin?.write(seq);
-            }
-          }
-        }
-      });
-
-      proc.stderr?.on('data', (data: Buffer) => {
-        console.log(`[PREWARM] ${agentType} stderr: ${data.toString()}`);
-      });
-
-      proc.on('close', (code) => {
-        console.log(`[PREWARM] ${agentType} process closed with code ${code}`);
-        if (sessionId) {
-          const session: PrewarmedSession = {
-            agentType,
-            sessionId,
-            createdAt: Date.now(),
-            workingDirectory: cwd
-          };
-          finish(session);
-        } else {
-          console.log(`[PREWARM] Failed to get session ID for ${agentType}`);
-          finish(null);
-        }
-      });
-
-      proc.on('error', (err) => {
-        console.error(`[PREWARM] ${agentType} process error:`, err);
-        finish(null);
-      });
-
-      // Timeout after 30 seconds
-      setTimeout(() => {
-        if (!resolved) {
-          console.log(`[PREWARM] ${agentType} session timed out`);
-          finish(null);
-        }
-      }, 30000);
-
-    } catch (err) {
-      console.error(`[PREWARM] Failed to spawn ${agentType}:`, err);
-      finish(null);
+    if (result.status === 'success' && result.sessionId) {
+      console.log(`[PREWARM] ${agentType} session created: ${result.sessionId}`);
+      return {
+        agentType,
+        sessionId: result.sessionId,
+        createdAt: Date.now(),
+        workingDirectory: cwd,
+      };
     }
-  });
+
+    if (result.status === 'blocked') {
+      console.warn(`[PREWARM] ${agentType} blocked: ${result.blockedReason}`);
+      // Show notification for blocking prompts
+      if (result.blockedReason === 'trust_prompt') {
+        vscode.window.showWarningMessage(
+          `Session warming blocked: ${agentType} requires folder trust. Trust this directory in ${agentType} settings to enable warming.`
+        );
+      } else if (result.blockedReason === 'auth_required') {
+        vscode.window.showWarningMessage(
+          `Session warming blocked: ${agentType} requires authentication. Please log in to enable warming.`
+        );
+      }
+    } else if (result.status === 'failed') {
+      console.warn(`[PREWARM] ${agentType} failed: ${result.failedReason}`);
+    }
+
+    return null;
+  } finally {
+    pool.pending--;
+  }
 }
 
 /**
@@ -438,14 +380,5 @@ export function getPoolInfo(): PrewarmPoolInfo[] {
  * Check if CLI is available for an agent type
  */
 export async function isCliAvailable(agentType: PrewarmAgentType): Promise<boolean> {
-  const config = PREWARM_CONFIGS[agentType];
-  return new Promise((resolve) => {
-    const proc = spawn(config.command, ['--version'], { shell: true });
-    proc.on('close', (code) => resolve(code === 0));
-    proc.on('error', () => resolve(false));
-    setTimeout(() => {
-      proc.kill();
-      resolve(false);
-    }, 5000);
-  });
+  return checkCliAvailable(agentType);
 }

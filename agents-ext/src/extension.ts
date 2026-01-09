@@ -395,9 +395,12 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(agentStatusBarItem);
 
   // Scan existing terminals in the editor area to register any agent terminals
-  terminals.scanExisting((name, knownPrefix) => inferAgentConfigFromName(name, context.extensionPath, knownPrefix), context).catch(err => {
-    console.error('[EXTENSION] Error scanning existing terminals:', err);
-  });
+  // Then restore persisted sessions with proper icons/titles
+  terminals.scanExisting((name, knownPrefix) => inferAgentConfigFromName(name, context.extensionPath, knownPrefix), context)
+    .then(() => restoreAgentTerminals(context))
+    .catch(err => {
+      console.error('[EXTENSION] Error scanning/restoring terminals:', err);
+    });
 
   // Register terminals that appear after activation (e.g., restored sessions)
   context.subscriptions.push(
@@ -483,11 +486,11 @@ export async function activate(context: vscode.ExtensionContext) {
   }
 
   // Set initial context keys and subscribe to config changes
-  await updateContextKeys();
+  await updateContextKeys(context);
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration(async (e) => {
       if (e.affectsConfiguration('agents')) {
-        await updateContextKeys();
+        await updateContextKeys(context);
       }
     })
   );
@@ -615,7 +618,7 @@ export async function activate(context: vscode.ExtensionContext) {
       await config.update('agents.enableTmux', !current, vscode.ConfigurationTarget.Global);
       const status = !current ? 'enabled' : 'disabled';
       vscode.window.showInformationMessage(`Tmux mode ${status}. New agent terminals will ${!current ? 'use tmux for per-tab splits' : 'use VS Code editor splits'}.`);
-      await updateContextKeys();
+      await updateContextKeys(context);
     })
   );
 
@@ -626,7 +629,7 @@ export async function activate(context: vscode.ExtensionContext) {
       if (current) {
         await config.update('agents.enableTmux', false, vscode.ConfigurationTarget.Global);
         vscode.window.showInformationMessage('Tmux mode disabled. New agent terminals will use VS Code editor splits.');
-        await updateContextKeys();
+        await updateContextKeys(context);
       }
     })
   );
@@ -656,7 +659,7 @@ export async function activate(context: vscode.ExtensionContext) {
       vscode.window.showInformationMessage(
         enabled ? 'Streamline layout enabled' : 'Streamline layout disabled'
       );
-      await updateContextKeys();
+      await updateContextKeys(context);
     })
   );
 
@@ -664,7 +667,7 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('agents.disableView', async () => {
       await workbench.disableStreamlineLayout();
       vscode.window.showInformationMessage('Streamline layout disabled');
-      await updateContextKeys();
+      await updateContextKeys(context);
     })
   );
 
@@ -674,19 +677,27 @@ export async function activate(context: vscode.ExtensionContext) {
     })
   );
 
-  // Toggle session pre-warming
+  // Enable session pre-warming
   context.subscriptions.push(
-    vscode.commands.registerCommand('agents.toggleWarming', async () => {
+    vscode.commands.registerCommand('agents.enableWarming', async () => {
       const currentEnabled = prewarm.isEnabled(context);
-      const newEnabled = !currentEnabled;
-      await prewarm.setEnabled(context, newEnabled);
+      if (!currentEnabled) {
+        await prewarm.setEnabled(context, true);
+        vscode.window.showInformationMessage('Session warming enabled. Pre-warming Claude, Codex, and Gemini sessions...');
+        await updateContextKeys(context);
+      }
+    })
+  );
 
-      // Update command title based on new state
-      vscode.window.showInformationMessage(
-        newEnabled
-          ? 'Session warming enabled. Pre-warming Claude, Codex, and Gemini sessions...'
-          : 'Session warming disabled.'
-      );
+  // Disable session pre-warming
+  context.subscriptions.push(
+    vscode.commands.registerCommand('agents.disableWarming', async () => {
+      const currentEnabled = prewarm.isEnabled(context);
+      if (currentEnabled) {
+        await prewarm.setEnabled(context, false);
+        vscode.window.showInformationMessage('Session warming disabled.');
+        await updateContextKeys(context);
+      }
     })
   );
 
@@ -1328,13 +1339,16 @@ async function clearActiveTerminal(context: vscode.ExtensionContext) {
   }
 }
 
-async function updateContextKeys(): Promise<void> {
+async function updateContextKeys(context: vscode.ExtensionContext): Promise<void> {
   const config = vscode.workspace.getConfiguration('agents');
   const tmuxEnabled = config.get<boolean>('enableTmux', false);
   await vscode.commands.executeCommand('setContext', 'agents.tmuxEnabled', tmuxEnabled);
 
   const viewEnabled = workbench.isStreamlineLayout();
   await vscode.commands.executeCommand('setContext', 'agents.viewEnabled', viewEnabled);
+
+  const warmingEnabled = prewarm.isEnabled(context);
+  await vscode.commands.executeCommand('setContext', 'agents.warmingEnabled', warmingEnabled);
 }
 
 function commandExists(cmd: string): Promise<boolean> {
@@ -1402,15 +1416,104 @@ async function maybeRunFirstSetup(context: vscode.ExtensionContext, force = fals
 // Store context reference for deactivate
 let extensionContext: vscode.ExtensionContext | undefined;
 
+// Restore agent terminals from persisted sessions
+// Called after scanExisting() on activation
+async function restoreAgentTerminals(context: vscode.ExtensionContext): Promise<void> {
+  const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  if (!workspacePath) return;
+
+  const persisted = terminals.loadPersistedSessions(workspacePath);
+  if (persisted.length === 0) return;
+
+  // Check which persisted sessions are NOT properly tracked
+  // (VS Code may have restored them but without our icons/env vars)
+  const tracked = terminals.getAllTerminals();
+  const trackedIds = new Set(tracked.map(e => e.id));
+
+  const toRestore = persisted.filter(p => !trackedIds.has(p.terminalId));
+  if (toRestore.length === 0) {
+    terminals.clearPersistedSessions(workspacePath);
+    return;
+  }
+
+  // Close any VS Code-restored terminals that match our session prefixes but lack icons
+  // These are "broken" restores we want to replace
+  for (const terminal of vscode.window.terminals) {
+    const opts = terminal.creationOptions as vscode.TerminalOptions;
+    // Skip terminals with custom icons (properly created by us)
+    if (opts?.iconPath) continue;
+    // Skip if already tracked properly
+    if (terminals.getByTerminal(terminal)) continue;
+    // Check if terminal name matches an agent prefix we want to restore
+    const matchesPrefix = toRestore.some(p =>
+      terminal.name === p.prefix ||
+      terminal.name.startsWith(`${p.prefix} `) ||
+      terminal.name.startsWith(`${p.prefix}-`) ||
+      terminal.name.includes(p.prefix)
+    );
+    if (matchesPrefix) {
+      terminal.dispose();
+    }
+  }
+
+  // Small delay to let disposed terminals close
+  await new Promise(r => setTimeout(r, 200));
+
+  // Recreate with proper properties
+  for (const session of toRestore) {
+    // Handle shell separately (no built-in def)
+    let agentConfig: Omit<import('./agents.vscode').AgentConfig, 'count'>;
+
+    if (session.prefix === 'SH') {
+      agentConfig = createAgentConfig(context.extensionPath, 'SH', '', 'agents.png', 'SH');
+    } else {
+      const def = getBuiltInDefByTitle(session.prefix);
+      if (!def) {
+        console.log(`[RESTORE] Unknown prefix: ${session.prefix}, skipping`);
+        continue;
+      }
+      agentConfig = createAgentConfig(context.extensionPath, def.title, def.command, def.icon, def.prefix);
+    }
+
+    const title = buildTerminalTitle(session.prefix, session.label, context);
+
+    const terminal = vscode.window.createTerminal({
+      iconPath: agentConfig.iconPath,
+      location: { viewColumn: vscode.ViewColumn.Active },
+      name: title,
+      env: {
+        AGENT_TERMINAL_ID: session.terminalId,
+        DISABLE_AUTO_TITLE: 'true',
+        PROMPT_COMMAND: ''
+      }
+    });
+
+    const pid = await terminal.processId;
+    terminals.register(terminal, session.terminalId, agentConfig, pid, context, session.label);
+
+    // Restore session tracking metadata if present
+    if (session.sessionId && session.agentType) {
+      terminals.setSessionId(terminal, session.sessionId);
+      terminals.setAgentType(terminal, session.agentType as terminals.SessionAgentType);
+    }
+  }
+
+  terminals.clearPersistedSessions(workspacePath);
+  console.log(`[RESTORE] Restored ${toRestore.length} agent terminal(s)`);
+}
+
 export async function deactivate(): Promise<void> {
   // Mark clean shutdown for prewarm crash recovery
   if (extensionContext) {
     await prewarm.markCleanShutdown(extensionContext);
+
+    // Persist open agent terminals for restore on next launch
+    const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (workspacePath) {
+      terminals.persistSessions(workspacePath);
+    }
   }
 
-  // Dispose all tracked terminals
-  for (const entry of terminals.getAllTerminals()) {
-    entry.terminal.dispose();
-  }
+  // Clear internal tracking (don't dispose terminals - let VS Code handle them)
   terminals.clear();
 }

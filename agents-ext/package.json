@@ -3,7 +3,7 @@
   "displayName": "Agents",
   "publisher": "swarmify",
   "description": "Manage multiple Claude Code, Codex, Gemini, and Cursor terminal agents in the editor",
-  "version": "0.9.123",
+  "version": "0.9.129",
   "license": "MIT",
   "author": "Muqsit Nawaz <dev@muqsitnawaz.com>",
   "icon": "assets/agents.png",
@@ -185,8 +185,12 @@
         "title": "Agents: Prompts"
       },
       {
-        "command": "agents.toggleWarming",
+        "command": "agents.enableWarming",
         "title": "Agents: Enable Warming"
+      },
+      {
+        "command": "agents.disableWarming",
+        "title": "Agents: Disable Warming"
       },
       {
         "command": "agents.init",
@@ -287,6 +291,16 @@
           "command": "agents.disableView",
           "when": "agents.viewEnabled",
           "group": "navigation@4"
+        },
+        {
+          "command": "agents.enableWarming",
+          "when": "!agents.warmingEnabled",
+          "group": "navigation@5"
+        },
+        {
+          "command": "agents.disableWarming",
+          "when": "agents.warmingEnabled",
+          "group": "navigation@5"
         }
       ]
     },
@@ -369,18 +383,22 @@
     "compile:ui": "cd ui && bun run build",
     "watch": "tsc -watch -p ./",
     "package": "bun run compile && vsce package",
+    "rebuild": "electron-rebuild -f -w node-pty",
     "test": "bun test"
   },
   "devDependencies": {
+    "@electron/rebuild": "^3.7.1",
     "@types/node": "^20.x",
     "@types/vscode": "^1.85.0",
     "typescript": "^5.3.3"
   },
   "dependencies": {
     "@vscode/webview-ui-toolkit": "^1.4.0",
+    "node-pty": "^1.0.0",
     "yaml": "^2.8.2"
   },
   "bundledDependencies": [
+    "node-pty",
     "yaml"
   ]
 }

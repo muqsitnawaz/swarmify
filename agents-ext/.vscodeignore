@@ -5,6 +5,9 @@ src/**
 tsconfig.json
 node_modules/**
 **/node_modules/**
+!node_modules/yaml/**
+!node_modules/node-pty/**
+node_modules/node-pty/prebuilds/darwin-*/**
 ui/**
 scripts/**
 *.vsix
