@@ -187,6 +187,10 @@
       {
         "command": "agents.toggleWarming",
         "title": "Agents: Enable Warming"
+      },
+      {
+        "command": "agents.init",
+        "title": "Agents: Init"
       }
     ],
     "configuration": {

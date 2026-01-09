@@ -302,6 +302,39 @@ function installSwarmCommandForAgent(agent: AgentCli, context: vscode.ExtensionC
 
 const NPX_SWARM_CMD = `npx -y ${SWARM_PACKAGE}@latest`;
 
+// CLI npm packages for each agent
+const CLI_PACKAGES: Record<AgentCli, string> = {
+  claude: '@anthropic-ai/claude-code',
+  codex: '@openai/codex',
+  gemini: '@google/gemini-cli'
+};
+
+// Install CLI globally if not present
+async function installCliIfMissing(agent: AgentCli): Promise<boolean> {
+  // Check if CLI is available
+  const cliCommand = agent; // claude, codex, gemini
+  try {
+    await execAsync(`which ${cliCommand}`);
+    return true; // Already installed
+  } catch {
+    // Not installed, proceed with installation
+  }
+
+  const pkg = CLI_PACKAGES[agent];
+  const agentName = agent.charAt(0).toUpperCase() + agent.slice(1);
+
+  try {
+    vscode.window.showInformationMessage(`Installing ${agentName} CLI...`);
+    await execAsync(`npm install -g ${pkg}`);
+    vscode.window.showInformationMessage(`${agentName} CLI installed successfully.`);
+    return true;
+  } catch (err) {
+    const error = err as Error & { stderr?: string };
+    vscode.window.showErrorMessage(`Failed to install ${agentName} CLI: ${error.stderr || error.message}`);
+    return false;
+  }
+}
+
 async function registerMcpForAgent(agent: AgentCli): Promise<boolean> {
   try {
     if (agent === 'claude') {
@@ -372,11 +405,26 @@ async function enableSwarmForAgents(
     return;
   }
 
+  // Install CLIs if missing
+  const installableAgents: AgentCli[] = [];
+  for (const agent of agents) {
+    const installed = await installCliIfMissing(agent);
+    if (installed) {
+      installableAgents.push(agent);
+    }
+    await sendStatus();
+  }
+
+  if (installableAgents.length === 0) {
+    vscode.window.showErrorMessage('Could not install any CLI. Check npm permissions.');
+    return;
+  }
+
   // Register MCP using npx (no local install needed - npx fetches on demand)
   try {
     const registrations: string[] = [];
 
-    for (const agent of agents) {
+    for (const agent of installableAgents) {
       const ok = await registerMcpForAgent(agent);
       if (ok) {
         registrations.push(agent.charAt(0).toUpperCase() + agent.slice(1));

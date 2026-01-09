@@ -15,6 +15,13 @@ import * as swarm from './swarm.vscode';
 import * as notifications from './notifications.vscode';
 import * as terminals from './terminals.vscode';
 import * as workbench from './workbench.vscode';
+import { ensureSymlinksOnWorkspaceOpen, createSymlinksCodebaseWide } from './agentlinks.vscode';
+import {
+  initWorkspaceConfig,
+  getActiveWorkspaceFolder,
+  loadWorkspaceConfig,
+  watchConfigFile,
+} from './swarmifyConfig.vscode';
 import {
   CLAUDE_TITLE,
   CODEX_TITLE,
@@ -429,6 +436,20 @@ export async function activate(context: vscode.ExtensionContext) {
   // Ensure CLAUDE.md has Swarm instructions if Swarm is enabled
   claudemd.ensureSwarmInstructions();
 
+  // Ensure symlinks exist for workspaces with .swarmify config
+  for (const folder of vscode.workspace.workspaceFolders || []) {
+    ensureSymlinksOnWorkspaceOpen(folder).catch(err => {
+      console.error('[agents] Error ensuring symlinks:', err);
+    });
+  }
+
+  // Watch for .swarmify config changes
+  watchConfigFile(context, (workspaceFolder) => {
+    ensureSymlinksOnWorkspaceOpen(workspaceFolder).catch(err => {
+      console.error('[agents] Error ensuring symlinks on config change:', err);
+    });
+  });
+
   // Register URI handler for notification callbacks
   context.subscriptions.push(
     vscode.window.registerUriHandler({
@@ -666,6 +687,35 @@ export async function activate(context: vscode.ExtensionContext) {
           ? 'Session warming enabled. Pre-warming Claude, Codex, and Gemini sessions...'
           : 'Session warming disabled.'
       );
+    })
+  );
+
+  // Agents: Init - create .swarmify config and symlinks
+  context.subscriptions.push(
+    vscode.commands.registerCommand('agents.init', async () => {
+      const workspaceFolder = getActiveWorkspaceFolder();
+      if (!workspaceFolder) {
+        vscode.window.showErrorMessage('No workspace folder open. Please open a folder first.');
+        return;
+      }
+
+      // Create/open .swarmify config
+      const config = await initWorkspaceConfig(workspaceFolder);
+      if (!config) {
+        return;
+      }
+
+      // Create symlinks codebase-wide
+      const { created, errors } = await createSymlinksCodebaseWide(workspaceFolder, config);
+
+      if (errors.length > 0) {
+        vscode.window.showWarningMessage(`Created ${created} symlink(s), but ${errors.length} failed.`);
+        console.error('[agents] Symlink errors:', errors);
+      } else if (created > 0) {
+        vscode.window.showInformationMessage(`Created ${created} symlink(s) in workspace.`);
+      } else {
+        vscode.window.showInformationMessage('.swarmify config ready. No new symlinks needed.');
+      }
     })
   );
 

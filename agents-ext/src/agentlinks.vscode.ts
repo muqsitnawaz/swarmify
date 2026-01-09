@@ -1,12 +1,17 @@
-// VS Code-dependent symlink suggestion for AGENTS.md
+// VS Code-dependent symlink creation for memory files
 
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import {
   getSymlinkTargetsForFileName,
-  getMissingTargets
+  getMissingTargets,
+  getSymlinkTargetsForConfig,
+  isMemorySourceFile,
+  isSymlinkingEnabled,
 } from './agentlinks';
+import { SwarmifyConfig, getDefaultConfig } from './swarmifyConfig';
+import { loadWorkspaceConfig, configExists } from './swarmifyConfig.vscode';
 
 const PROMPT_ACTION_CREATE = 'Create symlinks';
 const PROMPT_ACTION_NOT_NOW = 'Not now';
@@ -20,6 +25,7 @@ function pathExists(filePath: string): boolean {
   }
 }
 
+// Legacy function for backward compatibility - used when no .swarmify config exists
 export async function maybePromptForAgentSymlinks(
   context: vscode.ExtensionContext,
   document: vscode.TextDocument
@@ -30,6 +36,11 @@ export async function maybePromptForAgentSymlinks(
 
   const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
   if (!workspaceFolder) return;
+
+  // If .swarmify exists, use config-driven symlinks instead
+  if (configExists(workspaceFolder)) {
+    return;
+  }
 
   const folderPath = workspaceFolder.uri.fsPath;
   const existingTargets = targets.filter(target => {
@@ -81,4 +92,107 @@ export async function maybePromptForAgentSymlinks(
   }
 
   vscode.window.showInformationMessage('Symlinks created.');
+}
+
+// Create symlink at a specific path
+function createSymlink(sourcePath: string, targetPath: string): string | null {
+  if (pathExists(targetPath)) {
+    return null; // Target exists, skip (safety: don't overwrite)
+  }
+
+  try {
+    const relativeSource = path.relative(path.dirname(targetPath), sourcePath);
+    fs.symlinkSync(relativeSource, targetPath, 'file');
+    return null;
+  } catch (err) {
+    const error = err as Error;
+    return error.message;
+  }
+}
+
+// Find all source files recursively in a directory
+async function findSourceFilesRecursively(
+  rootPath: string,
+  sourceFileName: string
+): Promise<string[]> {
+  const pattern = new vscode.RelativePattern(rootPath, `**/${sourceFileName}`);
+  const files = await vscode.workspace.findFiles(pattern, '**/node_modules/**');
+  return files.map(f => f.fsPath);
+}
+
+// Create symlinks for a single source file in its directory
+function createSymlinksInDirectory(
+  sourcePath: string,
+  config: SwarmifyConfig
+): { created: number; errors: string[] } {
+  const dirPath = path.dirname(sourcePath);
+  const targets = getSymlinkTargetsForConfig(config);
+  const errors: string[] = [];
+  let created = 0;
+
+  for (const target of targets) {
+    const targetPath = path.join(dirPath, target);
+    const error = createSymlink(sourcePath, targetPath);
+    if (error) {
+      errors.push(`${targetPath}: ${error}`);
+    } else if (!pathExists(targetPath)) {
+      // Symlink was not created because target already existed
+    } else {
+      created++;
+    }
+  }
+
+  return { created, errors };
+}
+
+// Create symlinks codebase-wide using config
+export async function createSymlinksCodebaseWide(
+  workspaceFolder: vscode.WorkspaceFolder,
+  config: SwarmifyConfig
+): Promise<{ created: number; errors: string[] }> {
+  if (!isSymlinkingEnabled(config)) {
+    return { created: 0, errors: [] };
+  }
+
+  const sourceFileName = config.memory.source;
+  const sourceFiles = await findSourceFilesRecursively(
+    workspaceFolder.uri.fsPath,
+    sourceFileName
+  );
+
+  let totalCreated = 0;
+  const allErrors: string[] = [];
+
+  for (const sourcePath of sourceFiles) {
+    const { created, errors } = createSymlinksInDirectory(sourcePath, config);
+    totalCreated += created;
+    allErrors.push(...errors);
+  }
+
+  return { created: totalCreated, errors: allErrors };
+}
+
+// Ensure symlinks exist on workspace open (silent, no prompts)
+export async function ensureSymlinksOnWorkspaceOpen(
+  workspaceFolder: vscode.WorkspaceFolder
+): Promise<void> {
+  if (!configExists(workspaceFolder)) {
+    return;
+  }
+
+  const config = await loadWorkspaceConfig(workspaceFolder);
+  if (!isSymlinkingEnabled(config)) {
+    return;
+  }
+
+  const { created, errors } = await createSymlinksCodebaseWide(workspaceFolder, config);
+
+  // Silent operation - only show errors if any
+  if (errors.length > 0) {
+    console.error('[agents] Symlink errors:', errors);
+  }
+
+  if (created > 0) {
+    console.log(`[agents] Created ${created} symlink(s) in workspace`);
+  }
 }
