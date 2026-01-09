@@ -48,12 +48,28 @@ export function createTmuxTerminal(
     },
   });
 
-  const tmuxInit = [
-    `tmux new-session -s ${session} -n main`,
+  // Build a single chained command that:
+  // 1. Creates tmux session in detached mode
+  // 2. Configures mouse and pane labels
+  // 3. Sends agent command directly to the session via send-keys (if provided)
+  // 4. Attaches to the session
+  // This avoids race conditions from using separate sendText calls with timeouts.
+  const escapedName = name.replace(/'/g, "'\\''");
+  const tmuxCommands = [
+    `tmux new-session -d -s ${session} -n main`,
     `tmux set-option -t ${session} mouse on`,
     `tmux set-option -t ${session} pane-border-status top`,
-    `tmux set-option -t ${session} pane-border-format " #{pane_index}: ${name} "`,
-  ].join(' \\; ');
+    `tmux set-option -t ${session} pane-border-format " #{pane_index}: ${escapedName} "`,
+  ];
+
+  if (agentCommand) {
+    const escapedCmd = agentCommand.replace(/'/g, "'\\''");
+    tmuxCommands.push(`tmux send-keys -t ${session} '${escapedCmd}' Enter`);
+  }
+
+  tmuxCommands.push(`tmux attach -t ${session}`);
+
+  const tmuxInit = tmuxCommands.join(' && ');
 
   // Some shells (e.g., with heavy profile scripts) take a moment to populate PATH.
   // Delay sending tmux init so `tmux` resolves consistently instead of failing
@@ -61,13 +77,6 @@ export function createTmuxTerminal(
   setTimeout(() => {
     terminal.sendText(tmuxInit, true);
   }, 2000);
-
-  if (agentCommand) {
-    // Queue the agent command after tmux session is reliably available
-    setTimeout(() => {
-      terminal.sendText(agentCommand, true);
-    }, 2200);
-  }
 
   tmuxTerminals.set(terminal, {
     terminal,
@@ -84,13 +93,24 @@ export function tmuxSplitH(terminal: vscode.Terminal, agentCommand: string): voi
   if (!state) return;
 
   state.paneCount++;
-  terminal.sendText('tmux split-window -v', true);
 
-  if (agentCommand) {
-    setTimeout(() => {
-      terminal.sendText(agentCommand, true);
-    }, 100);
-  }
+  // When inside an attached tmux session (with Claude running), we can't type
+  // shell commands directly - they go to Claude's input. Instead, we use tmux's
+  // prefix key (Ctrl+B) to enter command mode.
+  // \x02 = Ctrl+B (tmux default prefix)
+  terminal.sendText('\x02', false);  // Send tmux prefix
+
+  setTimeout(() => {
+    // ':' enters command-line mode, then we type the split command
+    terminal.sendText(':split-window -v', true);
+
+    if (agentCommand) {
+      // After split, new pane has focus with a shell prompt
+      setTimeout(() => {
+        terminal.sendText(agentCommand, true);
+      }, 200);
+    }
+  }, 50);
 }
 
 export function tmuxSplitV(terminal: vscode.Terminal, agentCommand: string): void {
@@ -98,13 +118,24 @@ export function tmuxSplitV(terminal: vscode.Terminal, agentCommand: string): voi
   if (!state) return;
 
   state.paneCount++;
-  terminal.sendText('tmux split-window -h', true);
 
-  if (agentCommand) {
-    setTimeout(() => {
-      terminal.sendText(agentCommand, true);
-    }, 100);
-  }
+  // When inside an attached tmux session (with Claude running), we can't type
+  // shell commands directly - they go to Claude's input. Instead, we use tmux's
+  // prefix key (Ctrl+B) to enter command mode.
+  // \x02 = Ctrl+B (tmux default prefix)
+  terminal.sendText('\x02', false);  // Send tmux prefix
+
+  setTimeout(() => {
+    // ':' enters command-line mode, then we type the split command
+    terminal.sendText(':split-window -h', true);
+
+    if (agentCommand) {
+      // After split, new pane has focus with a shell prompt
+      setTimeout(() => {
+        terminal.sendText(agentCommand, true);
+      }, 200);
+    }
+  }, 50);
 }
 
 export function isTmuxTerminal(terminal: vscode.Terminal): boolean {
