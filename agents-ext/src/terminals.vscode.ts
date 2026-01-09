@@ -106,6 +106,40 @@ const editorTerminals = new Map<string, EditorTerminal>();
 const terminalToId = new WeakMap<vscode.Terminal, string>();
 let terminalIdCounter = 0;
 
+// Debounced disk persistence
+let persistTimeout: NodeJS.Timeout | null = null;
+
+/**
+ * Schedule disk persistence (debounced to batch rapid changes).
+ * Call this after any terminal state change.
+ */
+export function schedulePersist(): void {
+  const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  if (!workspacePath) return;
+
+  if (persistTimeout) clearTimeout(persistTimeout);
+  persistTimeout = setTimeout(() => {
+    persistSessions(workspacePath);
+    persistTimeout = null;
+    console.log('[TERMINALS] Persisted sessions to disk');
+  }, 500); // 500ms debounce
+}
+
+/**
+ * Persist immediately (for critical operations like deactivate).
+ */
+export function persistNow(): void {
+  const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  if (!workspacePath) return;
+
+  if (persistTimeout) {
+    clearTimeout(persistTimeout);
+    persistTimeout = null;
+  }
+  persistSessions(workspacePath);
+  console.log('[TERMINALS] Persisted sessions to disk (immediate)');
+}
+
 // Accessors
 
 export function getByTerminal(t: vscode.Terminal): EditorTerminal | undefined {
@@ -175,6 +209,9 @@ export function register(
   editorTerminals.set(id, entry);
   terminalToId.set(terminal, id);
   console.log(`[DEBUG register] editorTerminals now has ${editorTerminals.size} entries`);
+
+  // Persist to disk
+  schedulePersist();
 }
 
 export function unregister(terminal: vscode.Terminal): void {
@@ -182,6 +219,9 @@ export function unregister(terminal: vscode.Terminal): void {
   if (id) {
     editorTerminals.delete(id);
     // WeakMap auto-cleans when terminal is GC'd
+
+    // Persist to disk
+    schedulePersist();
   }
 }
 
@@ -199,6 +239,9 @@ export async function setLabel(
       console.log(`[DEBUG setLabel] Persisting label "${label}" for PID ${entry.pid}`);
       await saveStatusBarLabel(context, entry.pid, label);
     }
+
+    // Persist to disk
+    schedulePersist();
   } else {
     console.log(`[DEBUG setLabel] No entry found for terminal - label NOT saved!`);
   }
@@ -216,6 +259,9 @@ export function setSessionId(terminal: vscode.Terminal, sessionId: string): void
   if (entry) {
     entry.sessionId = sessionId;
     console.log(`[TERMINALS] Set sessionId for terminal "${terminal.name}": ${sessionId}`);
+
+    // Persist to disk
+    schedulePersist();
   }
 }
 
@@ -223,6 +269,9 @@ export function setAgentType(terminal: vscode.Terminal, agentType: SessionAgentT
   const entry = getByTerminal(terminal);
   if (entry) {
     entry.agentType = agentType;
+
+    // Persist to disk
+    schedulePersist();
   }
 }
 

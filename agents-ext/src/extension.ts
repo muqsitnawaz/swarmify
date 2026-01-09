@@ -1552,11 +1552,8 @@ export async function deactivate(): Promise<void> {
   if (extensionContext) {
     await prewarm.markCleanShutdown(extensionContext);
 
-    // Persist open agent terminals for restore on next launch
-    const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    if (workspacePath) {
-      terminals.persistSessions(workspacePath);
-    }
+    // Persist open agent terminals for restore on next launch (immediate, not debounced)
+    terminals.persistNow();
   }
 
   // Clear internal tracking (don't dispose terminals - let VS Code handle them)
