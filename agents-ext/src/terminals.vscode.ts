@@ -170,6 +170,8 @@ export function nextId(prefix: string): string {
 }
 
 // Register a terminal with a pre-generated ID
+// IMPORTANT: This function is idempotent - if the terminal is already registered,
+// it will skip registration to prevent race conditions from overwriting sessionId
 export function register(
   terminal: vscode.Terminal,
   id: string,
@@ -178,6 +180,13 @@ export function register(
   context?: vscode.ExtensionContext,
   initialLabel?: string
 ): void {
+  // Check if terminal is already registered (prevents race condition with onDidOpenTerminal)
+  const existingId = terminalToId.get(terminal);
+  if (existingId) {
+    console.log(`[TERMINALS] Terminal "${terminal.name}" already registered with id=${existingId}, skipping duplicate registration`);
+    return;
+  }
+
   console.log(`[DEBUG register] Registering terminal: name="${terminal.name}", id=${id}, pid=${pid}, initialLabel=${initialLabel}`);
 
   const entry: EditorTerminal = {
@@ -262,6 +271,8 @@ export function setSessionId(terminal: vscode.Terminal, sessionId: string): void
 
     // Persist to disk
     schedulePersist();
+  } else {
+    console.error(`[TERMINALS] FAILED to set sessionId - terminal "${terminal.name}" not found in registry. This may indicate a race condition.`);
   }
 }
 
@@ -272,6 +283,8 @@ export function setAgentType(terminal: vscode.Terminal, agentType: SessionAgentT
 
     // Persist to disk
     schedulePersist();
+  } else {
+    console.error(`[TERMINALS] FAILED to set agentType - terminal "${terminal.name}" not found in registry.`);
   }
 }
 

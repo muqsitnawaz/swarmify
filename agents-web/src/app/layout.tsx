@@ -1,39 +1,110 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
+const siteTitle = "Swarmify - AI Agent Orchestration for Your IDE";
+const siteDescription = "VS Code extension for multi-agent coding. Run Claude Code, Codex, and Gemini in parallel tabs. Orchestrate AI agents, see diffs live, ship 3x faster.";
+
 export const metadata: Metadata = {
-  title: "Swarmify - Multi-agent Coding",
-  description: "Run multiple AI agents in parallel. Let your main agent spawn subagents to distribute tasks. Ship features 3x faster.",
+  title: siteTitle,
+  description: siteDescription,
+  keywords: [
+    "VS Code AI extension",
+    "multi-agent coding",
+    "Claude Code VS Code",
+    "Codex CLI",
+    "Gemini CLI",
+    "AI coding assistant",
+    "parallel AI agents",
+    "MCP server",
+    "AI orchestration",
+    "Cursor IDE",
+    "Claude Code extension",
+    "AI developer tools",
+  ],
+  authors: [{ name: "Swarmify" }],
+  creator: "Swarmify",
+  publisher: "Swarmify",
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+    },
+  },
+  alternates: {
+    canonical: "https://swarmify.dev",
+  },
   icons: {
     icon: [
+      { url: "/favicon.ico", sizes: "any" },
       { url: "/logo.png", sizes: "32x32", type: "image/png" },
-      { url: "/logo.png", sizes: "192x192", type: "image/png" },
-      { url: "/logo.png", sizes: "512x512", type: "image/png" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
     ],
     apple: "/apple-touch-icon.png",
+    shortcut: "/favicon.ico",
   },
+  manifest: "/site.webmanifest",
   openGraph: {
-    title: "Swarmify - Multi-agent Coding",
-    description: "Run multiple AI agents in parallel. Let your main agent spawn subagents to distribute tasks. Ship features 3x faster.",
+    title: siteTitle,
+    description: siteDescription,
     url: "https://swarmify.dev",
     siteName: "Swarmify",
     type: "website",
+    locale: "en_US",
     images: [
       {
         url: "https://swarmify.dev/og-image.png",
         width: 1200,
         height: 630,
-        alt: "Swarmify - Multi-agent coding in your IDE",
+        alt: "Swarmify - Run Claude, Codex, and Gemini agents in your IDE",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Swarmify - Multi-agent Coding",
-    description: "Run multiple AI agents in parallel. Let your main agent spawn subagents to distribute tasks. Ship features 3x faster.",
+    title: siteTitle,
+    description: siteDescription,
     images: ["https://swarmify.dev/og-image.png"],
+    creator: "@swarmify",
+  },
+  other: {
+    "theme-color": "#0a0a0a",
+    "msapplication-TileColor": "#0a0a0a",
+    "apple-mobile-web-app-capable": "yes",
+    "apple-mobile-web-app-status-bar-style": "black-translucent",
   },
   metadataBase: new URL("https://swarmify.dev"),
+};
+
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "Swarmify",
+  applicationCategory: "DeveloperApplication",
+  operatingSystem: "VS Code, Cursor",
+  description: siteDescription,
+  url: "https://swarmify.dev",
+  downloadUrl: "https://marketplace.visualstudio.com/items?itemName=swarmify.agents-ext",
+  softwareVersion: "1.0",
+  offers: {
+    "@type": "Offer",
+    price: "0",
+    priceCurrency: "USD",
+  },
+  aggregateRating: {
+    "@type": "AggregateRating",
+    ratingValue: "5",
+    ratingCount: "50",
+  },
+  featureList: [
+    "Run Claude Code, Codex, and Gemini agents in parallel",
+    "See diffs and markdown live in editor tabs",
+    "Session persistence and recovery",
+    "AI-powered git commits",
+    "MCP server for agent orchestration",
+  ],
 };
 
 export default function RootLayout({
@@ -43,6 +114,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
+      <head>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
+      </head>
       <body>{children}</body>
     </html>
   );
