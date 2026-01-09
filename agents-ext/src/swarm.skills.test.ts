@@ -7,7 +7,7 @@ const EXTENSION_PATH = process.cwd();
 
 let tempDir: string;
 
-function makeTarget(agent: 'claude' | 'codex' | 'gemini', command: string): string {
+function makeTarget(agent: 'claude' | 'codex' | 'gemini' | 'cursor', command: string): string {
   const ext = agent === 'gemini' ? 'toml' : 'md';
   return path.join(tempDir, `${agent}-${command}.${ext}`);
 }
@@ -17,9 +17,14 @@ function setupMocks() {
     return {
       getAgentCommandPath: (agent: 'claude' | 'codex' | 'gemini', command = 'swarm') =>
         makeTarget(agent, command),
+      getPromptPackCommandPath: (agent: 'claude' | 'codex' | 'gemini' | 'cursor', command = 'swarm') =>
+        makeTarget(agent, command),
       isAgentCliAvailable: async () => true,
       isAgentMcpEnabled: async () => true,
       isAgentCommandInstalled: (agent: 'claude' | 'codex' | 'gemini', command = 'swarm') =>
+        fs.existsSync(makeTarget(agent, command)),
+      isPromptPackTargetAvailable: async () => true,
+      isPromptPackInstalled: (agent: 'claude' | 'codex' | 'gemini' | 'cursor', command = 'swarm') =>
         fs.existsSync(makeTarget(agent, command)),
     };
   });
@@ -56,8 +61,11 @@ describe('skills status and install', () => {
     expect(plan).toBeDefined();
     expect(plan?.agents.claude.installed).toBe(true);
     expect(plan?.agents.claude.builtIn).toBe(true);
+    expect(plan?.agents.claude.supported).toBe(true);
     expect(plan?.agents.codex.installed).toBe(false);
     expect(plan?.agents.gemini.installed).toBe(false);
+    expect(plan?.agents.cursor.installed).toBe(false);
+    expect(plan?.agents.cursor.supported).toBe(false);
   });
 
   test('installSkillCommand writes the file and flips status', async () => {

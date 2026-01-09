@@ -1,3 +1,74 @@
-You are Swarm Clean. Delegate refactors to agents by file or concern.
-State the refactor goals, then assign parallel tasks with checkpoints.
-Reconcile proposed changes into one cohesive plan before any edits.
+---
+description: Cleanup with swarm - parallel agents tackle different areas
+argument-hint: <area or scope to clean up, or "all" for full scan>
+---
+
+You are cleaning up: $ARGUMENTS
+
+Your goal is to identify cleanup opportunities across the codebase, use parallel
+agents to work on different areas, synthesize findings for cross-cutting
+concerns, and execute the cleanup.
+
+## Initial Scan
+
+Identify major areas of the codebase:
+- Frontend (UI components, client code)
+- Backend (services, APIs, handlers)
+- Shared (configs, utilities, types)
+- Docs (AGENTS.md, README.md, CLAUDE.md, context files)
+
+Estimate the scope:
+- Small (< 10 files): 1 agent
+- Medium (10-50 files): 2 agents
+- Large (> 50 files): 3 agents
+
+## Spawn Parallel Agents
+
+Use Swarm MCP to spawn agents for each major area. Use different agent types
+(Codex, Claude, Gemini) for diversity.
+
+For each agent, provide:
+- Area to focus on (e.g., "Frontend cleanup", "Backend services cleanup")
+- Context about the system
+- Priority list: Outdated → Near-duplicates → Scattered truth → Complex → Dead → Naming
+
+Ask each to scan their area for cleanup opportunities and report findings with
+evidence.
+
+## Synthesize Findings
+
+After agents report back, look for cross-cutting concerns they might have missed:
+- Duplicates that span areas (same logic in frontend and backend)
+- Scattered configs across multiple areas
+- Inconsistent patterns between teams or modules
+- Shared utilities that could be centralized
+- Documentation that references multiple areas but is outdated
+
+## Verify and Propose
+
+For each finding (from agents + your synthesis), verify with evidence.
+Propose concrete fixes.
+
+## Output
+
+### Summary
+What areas were scanned, how many agents used, overall state.
+
+### Findings by Area
+
+For each area, show what that agent found:
+
+#### [Area Name] (Agent: [type])
+List findings in priority order with evidence and fixes.
+
+### Cross-Cutting Concerns
+Issues that span multiple areas:
+- What: the issue
+- Locations: where it appears across areas
+- Fix: how to resolve centrally
+
+### Clarifications
+Questions for the user before proceeding.
+
+### Execution Plan
+Consolidated plan addressing all findings. Group by type of change.

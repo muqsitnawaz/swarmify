@@ -593,15 +593,15 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('agents.setupClaude', () => swarm.enableSwarmForAgent('claude', context))
+    vscode.commands.registerCommand('agents.setupClaude', () => swarm.setupSwarmIntegrationForAgent('claude', context))
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('agents.setupCodex', () => swarm.enableSwarmForAgent('codex', context))
+    vscode.commands.registerCommand('agents.setupCodex', () => swarm.setupSwarmIntegrationForAgent('codex', context))
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('agents.setupGemini', () => swarm.enableSwarmForAgent('gemini', context))
+    vscode.commands.registerCommand('agents.setupGemini', () => swarm.setupSwarmIntegrationForAgent('gemini', context))
   );
 
   context.subscriptions.push(
@@ -1386,7 +1386,7 @@ async function maybeRunFirstSetup(context: vscode.ExtensionContext, force = fals
       const status = await swarm.getSwarmStatus();
       const agentStatus = status.agents[cliAgent];
       if (agentStatus.cliAvailable && (!agentStatus.mcpEnabled || !agentStatus.commandInstalled)) {
-        await swarm.enableSwarmForAgent(cliAgent, context);
+        await swarm.setupSwarmIntegrationForAgent(cliAgent, context);
       }
     }
   } catch {

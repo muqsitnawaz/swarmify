@@ -121,6 +121,52 @@ function defaultModeFromEnv(): Mode {
   return 'plan';
 }
 
+function coerceDate(value: unknown): Date | null {
+  if (value === null || value === undefined) return null;
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const ms = value < 1e12 ? value * 1000 : value;
+    const date = new Date(ms);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const numeric = Number(trimmed);
+    if (!Number.isNaN(numeric)) {
+      const ms = numeric < 1e12 ? numeric * 1000 : numeric;
+      const date = new Date(ms);
+      if (!Number.isNaN(date.getTime())) return date;
+    }
+    const date = new Date(trimmed);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  return null;
+}
+
+function extractTimestamp(raw: any): Date | null {
+  if (!raw || typeof raw !== 'object') return null;
+
+  const candidates = [
+    raw.timestamp,
+    raw.time,
+    raw.created_at,
+    raw.createdAt,
+    raw.ts,
+    raw.started_at,
+    raw.startedAt,
+  ];
+
+  for (const candidate of candidates) {
+    const date = coerceDate(candidate);
+    if (date) return date;
+  }
+
+  return null;
+}
+
 export function resolveMode(
   requestedMode: string | null | undefined,
   defaultMode: Mode = 'plan'
@@ -298,6 +344,7 @@ export class AgentProcess {
     try {
       const stats = await fs.stat(stdoutPath).catch(() => null);
       if (!stats) return;
+      const fallbackTimestamp = (stats.mtime || new Date()).toISOString();
 
       const fd = await fs.open(stdoutPath, 'r');
       const buffer = Buffer.alloc(1024 * 1024);
@@ -314,7 +361,9 @@ export class AgentProcess {
         try {
           const rawEvent = JSON.parse(line);
           const events = normalizeEvents(this.agentType, rawEvent);
+          const resolvedTimestamp = extractTimestamp(rawEvent)?.toISOString() || fallbackTimestamp;
           for (const event of events) {
+            event.timestamp = resolvedTimestamp;
             this.eventsCache.push(event);
 
             if (event.type === 'result' || event.type === 'turn.completed' || event.type === 'thread.completed') {
@@ -331,7 +380,7 @@ export class AgentProcess {
           this.eventsCache.push({
             type: 'raw',
             content: line,
-            timestamp: new Date().toISOString(),
+            timestamp: fallbackTimestamp,
           });
         }
       }
@@ -411,14 +460,13 @@ export class AgentProcess {
       return;
     }
 
-    const fallbackCompletion =
-      this.getLatestEventTime() || this.startedAt || new Date();
-
     if (this.status === AgentStatus.RUNNING) {
       const exitCode = await this.reapProcess();
       await this.readNewEvents();
 
       if (this.status === AgentStatus.RUNNING) {
+        const fallbackCompletion =
+          this.getLatestEventTime() || this.startedAt || new Date();
         if (exitCode !== null && exitCode !== 0) {
           this.status = AgentStatus.FAILED;
         } else {
@@ -427,6 +475,9 @@ export class AgentProcess {
         this.completedAt = fallbackCompletion;
       }
     } else if (!this.completedAt) {
+      await this.readNewEvents();
+      const fallbackCompletion =
+        this.getLatestEventTime() || this.startedAt || new Date();
       this.completedAt = fallbackCompletion;
     }
 

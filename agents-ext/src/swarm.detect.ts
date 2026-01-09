@@ -7,6 +7,7 @@ import { exec } from 'child_process';
 const execAsync = promisify(exec);
 
 export type AgentCli = 'claude' | 'codex' | 'gemini';
+export type PromptPackAgent = AgentCli | 'cursor';
 
 // Paths where the /swarm command file lives for each CLI
 // Claude, Codex use markdown; Gemini uses TOML commands
@@ -19,6 +20,13 @@ export function getAgentCommandPath(agent: AgentCli, command: string = 'swarm'):
 
   const ext = agent === 'gemini' ? 'toml' : 'md';
   return path.join(baseDirs[agent], `${command}.${ext}`);
+}
+
+export function getPromptPackCommandPath(agent: PromptPackAgent, command: string = 'swarm'): string {
+  if (agent === 'cursor') {
+    return path.join(os.homedir(), '.cursor', 'commands', `${command}.md`);
+  }
+  return getAgentCommandPath(agent, command);
 }
 
 // Detect whether a CLI binary is available
@@ -56,5 +64,17 @@ export async function isAgentMcpEnabled(agent: AgentCli): Promise<boolean> {
 // Detect whether the /swarm slash-command file is present for a CLI
 export function isAgentCommandInstalled(agent: AgentCli, command: string = 'swarm'): boolean {
   const target = getAgentCommandPath(agent, command);
+  return fs.existsSync(target);
+}
+
+export function isPromptPackTargetAvailable(agent: PromptPackAgent): Promise<boolean> {
+  if (agent === 'cursor') {
+    return Promise.resolve(fs.existsSync(path.join(os.homedir(), '.cursor')));
+  }
+  return isAgentCliAvailable(agent);
+}
+
+export function isPromptPackInstalled(agent: PromptPackAgent, command: string = 'swarm'): boolean {
+  const target = getPromptPackCommandPath(agent, command);
   return fs.existsSync(target);
 }

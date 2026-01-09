@@ -8,14 +8,19 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import {
   AgentCli,
+  PromptPackAgent,
   isAgentCliAvailable,
   isAgentMcpEnabled,
   isAgentCommandInstalled,
   getAgentCommandPath,
+  getPromptPackCommandPath,
+  isPromptPackTargetAvailable,
+  isPromptPackInstalled,
 } from './swarm.detect';
 
 // Re-export for consumers that need the union type
 export type { AgentCli } from './swarm.detect';
+export type { PromptPackAgent } from './swarm.detect';
 
 const execAsync = promisify(exec);
 
@@ -51,7 +56,11 @@ export type SkillName =
   | 'clean'
   | 'sclean'
   | 'test'
-  | 'stest';
+  | 'stest'
+  | 'ship'
+  | 'sship'
+  | 'create'
+  | 'simagine';
 
 export interface SkillDefinition {
   name: SkillName;
@@ -59,6 +68,7 @@ export interface SkillDefinition {
   assets: {
     claude?: string | 'builtin';
     codex?: string;
+    cursor?: string;
     gemini?: string;
   };
 }
@@ -67,13 +77,14 @@ export interface SkillAgentStatus {
   installed: boolean;
   cliAvailable: boolean;
   builtIn: boolean;
+  supported: boolean;
 }
 
 export interface SkillsStatus {
   commands: Array<{
     name: SkillName;
     description: string;
-    agents: Record<AgentCli, SkillAgentStatus>;
+    agents: Record<PromptPackAgent, SkillAgentStatus>;
   }>;
 }
 
@@ -86,42 +97,62 @@ const SKILL_DEFS: SkillDefinition[] = [
   {
     name: 'splan',
     description: 'Sprint-sized plan with parallel steps',
-    assets: { claude: 'splan.md', codex: 'splan.md', gemini: 'splan.toml' },
+    assets: { claude: 'splan.md', codex: 'splan.md', cursor: 'splan.md', gemini: 'splan.toml' },
   },
   {
     name: 'debug',
     description: 'Diagnose the root cause before fixing',
-    assets: { claude: 'debug.md', codex: 'debug.md', gemini: 'debug.toml' },
+    assets: { claude: 'debug.md', codex: 'debug.md', cursor: 'debug.md', gemini: 'debug.toml' },
   },
   {
     name: 'sdebug',
     description: 'Parallelize the debugging investigation',
-    assets: { claude: 'sdebug.md', codex: 'sdebug.md', gemini: 'sdebug.toml' },
+    assets: { claude: 'sdebug.md', codex: 'sdebug.md', cursor: 'sdebug.md', gemini: 'sdebug.toml' },
   },
   {
     name: 'sconfirm',
     description: 'Confirm with parallel checks',
-    assets: { claude: 'sconfirm.md', codex: 'sconfirm.md', gemini: 'sconfirm.toml' },
+    assets: { claude: 'sconfirm.md', codex: 'sconfirm.md', cursor: 'sconfirm.md', gemini: 'sconfirm.toml' },
   },
   {
     name: 'clean',
     description: 'Refactor safely for clarity',
-    assets: { claude: 'clean.md', codex: 'clean.md', gemini: 'clean.toml' },
+    assets: { claude: 'clean.md', codex: 'clean.md', cursor: 'clean.md', gemini: 'clean.toml' },
   },
   {
     name: 'sclean',
     description: 'Parallel refactor plan',
-    assets: { claude: 'sclean.md', codex: 'sclean.md', gemini: 'sclean.toml' },
+    assets: { claude: 'sclean.md', codex: 'sclean.md', cursor: 'sclean.md', gemini: 'sclean.toml' },
   },
   {
     name: 'test',
     description: 'Design a lean test plan',
-    assets: { claude: 'test.md', codex: 'test.md', gemini: 'test.toml' },
+    assets: { claude: 'test.md', codex: 'test.md', cursor: 'test.md', gemini: 'test.toml' },
   },
   {
     name: 'stest',
     description: 'Parallelize test creation',
-    assets: { claude: 'stest.md', codex: 'stest.md', gemini: 'stest.toml' },
+    assets: { claude: 'stest.md', codex: 'stest.md', cursor: 'stest.md', gemini: 'stest.toml' },
+  },
+  {
+    name: 'ship',
+    description: 'Pre-launch verification',
+    assets: { claude: 'ship.md', codex: 'ship.md', cursor: 'ship.md', gemini: 'ship.toml' },
+  },
+  {
+    name: 'sship',
+    description: 'Ship with independent assessment',
+    assets: { claude: 'sship.md', codex: 'sship.md', cursor: 'sship.md', gemini: 'sship.toml' },
+  },
+  {
+    name: 'create',
+    description: 'Create a new slash command',
+    assets: { claude: 'create.md', cursor: 'create.md' },
+  },
+  {
+    name: 'simagine',
+    description: 'Swarm visual asset prompting',
+    assets: { codex: 'simagine.md' },
   },
 ];
 
@@ -183,29 +214,44 @@ export async function getSkillsStatus(): Promise<SkillsStatus> {
   const results: SkillsStatus['commands'] = [];
 
   const availability = {
-    claude: await isAgentCliAvailable('claude'),
-    codex: await isAgentCliAvailable('codex'),
-    gemini: await isAgentCliAvailable('gemini'),
+    claude: await isPromptPackTargetAvailable('claude'),
+    codex: await isPromptPackTargetAvailable('codex'),
+    gemini: await isPromptPackTargetAvailable('gemini'),
+    cursor: await isPromptPackTargetAvailable('cursor'),
   };
 
   for (const skill of SKILL_DEFS) {
-    const agents: Record<AgentCli, SkillAgentStatus> = {
+    const claudeAsset = skill.assets.claude;
+    const codexAsset = skill.assets.codex;
+    const cursorAsset = skill.assets.cursor;
+    const geminiAsset = skill.assets.gemini;
+
+    const agents: Record<PromptPackAgent, SkillAgentStatus> = {
       claude: {
         cliAvailable: availability.claude,
-        builtIn: skill.assets.claude === 'builtin',
+        builtIn: claudeAsset === 'builtin',
+        supported: !!claudeAsset,
         installed:
-          skill.assets.claude === 'builtin' ||
-          (availability.claude && isAgentCommandInstalled('claude', skill.name)),
+          claudeAsset === 'builtin' ||
+          (!!claudeAsset && availability.claude && isPromptPackInstalled('claude', skill.name)),
       },
       codex: {
         cliAvailable: availability.codex,
         builtIn: false,
-        installed: availability.codex && isAgentCommandInstalled('codex', skill.name),
+        supported: !!codexAsset,
+        installed: !!codexAsset && availability.codex && isPromptPackInstalled('codex', skill.name),
+      },
+      cursor: {
+        cliAvailable: availability.cursor,
+        builtIn: false,
+        supported: !!cursorAsset,
+        installed: !!cursorAsset && availability.cursor && isPromptPackInstalled('cursor', skill.name),
       },
       gemini: {
         cliAvailable: availability.gemini,
         builtIn: false,
-        installed: availability.gemini && isAgentCommandInstalled('gemini', skill.name),
+        supported: !!geminiAsset,
+        installed: !!geminiAsset && availability.gemini && isPromptPackInstalled('gemini', skill.name),
       },
     };
 
@@ -217,19 +263,22 @@ export async function getSkillsStatus(): Promise<SkillsStatus> {
 
 export async function installSkillCommand(
   skill: SkillName,
-  agent: AgentCli,
+  agent: PromptPackAgent,
   context: vscode.ExtensionContext
 ): Promise<boolean> {
   const def = SKILL_DEFS.find(s => s.name === skill);
   if (!def) return false;
 
   const assetName = def.assets[agent];
-  if (!assetName) return false;
+  if (!assetName) {
+    vscode.window.showWarningMessage(`${skill} is not available for ${agent}.`);
+    return false;
+  }
   if (assetName === 'builtin') return true;
 
-  const cliAvailable = await isAgentCliAvailable(agent);
-  if (!cliAvailable) {
-    vscode.window.showWarningMessage(`${agent} CLI not found. Install it first.`);
+  const targetAvailable = await isPromptPackTargetAvailable(agent);
+  if (!targetAvailable) {
+    vscode.window.showWarningMessage(`${agent} not found. Install it first.`);
     return false;
   }
 
@@ -239,7 +288,7 @@ export async function installSkillCommand(
     return false;
   }
 
-  const target = getAgentCommandPath(agent, skill);
+  const target = getPromptPackCommandPath(agent, skill);
   try {
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.copyFileSync(source, target);
@@ -261,6 +310,46 @@ function buildGeminiToml(markdown: string): string {
     '"""',
     ''
   ].join('\n');
+}
+
+async function installPromptPacksForAgent(
+  agent: PromptPackAgent,
+  context: vscode.ExtensionContext
+): Promise<string[]> {
+  const installed: string[] = [];
+  const targetAvailable = await isPromptPackTargetAvailable(agent);
+  if (!targetAvailable) {
+    return installed;
+  }
+
+  for (const skill of SKILL_DEFS) {
+    const assetName = skill.assets[agent];
+    if (!assetName || assetName === 'builtin') {
+      continue;
+    }
+
+    const source = path.join(context.extensionPath, 'assets', 'skills', assetName);
+    if (!fs.existsSync(source)) {
+      vscode.window.showErrorMessage(`Missing skill asset: ${assetName}`);
+      continue;
+    }
+
+    if (isPromptPackInstalled(agent, skill.name)) {
+      continue;
+    }
+
+    const target = getPromptPackCommandPath(agent, skill.name);
+    try {
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.copyFileSync(source, target);
+      installed.push(skill.name);
+    } catch (err) {
+      const error = err as Error;
+      vscode.window.showErrorMessage(`Failed to install ${skill.name} for ${agent}: ${error.message}`);
+    }
+  }
+
+  return installed;
 }
 
 // Install /swarm command for a specific agent
@@ -355,22 +444,22 @@ async function registerMcpForAgent(agent: AgentCli): Promise<boolean> {
   return false;
 }
 
-export async function enableSwarm(
+export async function setupSwarmIntegration(
   context: vscode.ExtensionContext,
   onUpdate?: (status: SwarmStatus) => void
 ): Promise<void> {
-  await enableSwarmForAgents(['claude', 'codex', 'gemini'], context, onUpdate);
+  await setupSwarmIntegrationForAgents(['claude', 'codex', 'gemini'], context, onUpdate);
 }
 
-export async function enableSwarmForAgent(
+export async function setupSwarmIntegrationForAgent(
   agent: AgentCli,
   context: vscode.ExtensionContext,
   onUpdate?: (status: SwarmStatus) => void
 ): Promise<void> {
-  await enableSwarmForAgents([agent], context, onUpdate);
+  await setupSwarmIntegrationForAgents([agent], context, onUpdate);
 }
 
-async function enableSwarmForAgents(
+async function setupSwarmIntegrationForAgents(
   agents: AgentCli[],
   context: vscode.ExtensionContext,
   onUpdate?: (status: SwarmStatus) => void
@@ -381,12 +470,17 @@ async function enableSwarmForAgents(
     }
   };
 
-  // Install slash commands for requested agents
+  // Install /swarm slash commands for requested agents
   const installedCommands: string[] = [];
   for (const agent of agents) {
     if (installSwarmCommandForAgent(agent, context)) {
       installedCommands.push(agent.charAt(0).toUpperCase() + agent.slice(1));
     }
+  }
+
+  // Install prompt packs for requested agents
+  for (const agent of agents) {
+    await installPromptPacksForAgent(agent, context);
   }
 
   // Check if already enabled for all requested agents
