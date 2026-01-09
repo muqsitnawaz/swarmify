@@ -121,8 +121,16 @@
         }
       },
       {
-        "command": "agents.enableSwarm",
-        "title": "Agents: Install Swarm MCP"
+        "command": "agents.setupClaude",
+        "title": "Agents: Setup Claude"
+      },
+      {
+        "command": "agents.setupCodex",
+        "title": "Agents: Setup Codex"
+      },
+      {
+        "command": "agents.setupGemini",
+        "title": "Agents: Setup Gemini"
       },
       {
         "command": "agents.enableNotifications",

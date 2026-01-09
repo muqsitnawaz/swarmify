@@ -572,7 +572,15 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('agents.enableSwarm', () => swarm.enableSwarm(context))
+    vscode.commands.registerCommand('agents.setupClaude', () => swarm.enableSwarmForAgent('claude', context))
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('agents.setupCodex', () => swarm.enableSwarmForAgent('codex', context))
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('agents.setupGemini', () => swarm.enableSwarmForAgent('gemini', context))
   );
 
   context.subscriptions.push(
