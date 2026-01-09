@@ -78,6 +78,16 @@ Enable session warming to reduce agent startup time. Each agent type handles ses
 
 **Codex/Gemini**: Sessions are prewarmed in the background by spawning the CLI, extracting the session ID from output, and immediately killing the process. When you open an agent, it resumes the prewarmed session instantly.
 
+### Session Persistence
+
+Every open agent terminal is fully restorable. Terminal state is saved to disk in real-time, so if VS Code crashes or restarts, all your agent tabs come back exactly as they were:
+
+- **Session ID**: Resume the exact conversation where you left off
+- **Icon**: CC, CX, GX icons restored for quick identification
+- **Label**: Custom labels you set are preserved
+
+No more losing agent context to crashes. Close VS Code, reopen it, and pick up right where you left off.
+
 ### Context-Aware Task Creation
 
 Select text in any terminal, hit a shortcut, and spawn a new agent with that context pre-loaded. The selected text becomes context for your task prompt - no copy-paste needed.
