@@ -415,6 +415,16 @@ export default function App() {
     claude: true, codex: true, gemini: true, opencode: true, cursor: true, shell: true
   })
 
+  // Session pre-warming state
+  const [prewarmEnabled, setPrewarmEnabled] = useState(false)
+  const [prewarmPools, setPrewarmPools] = useState<Array<{
+    agentType: 'claude' | 'codex' | 'gemini'
+    available: number
+    pending: number
+    sessions: Array<{ sessionId: string; createdAt: number; workingDirectory: string }>
+  }>>([])
+  const [prewarmLoaded, setPrewarmLoaded] = useState(false)
+
   const hasCliInstalled = installedAgents.claude || installedAgents.codex || installedAgents.gemini
   const showIntegrationCallout = !hasCliInstalled && !swarmStatus.mcpEnabled
 
@@ -463,6 +473,10 @@ export default function App() {
         setSkillInstalling(true)
       } else if (message.type === 'skillInstallDone') {
         setSkillInstalling(false)
+      } else if (message.type === 'prewarmStatus') {
+        setPrewarmEnabled(message.enabled)
+        setPrewarmPools(message.pools || [])
+        setPrewarmLoaded(true)
       }
     }
 
@@ -471,6 +485,7 @@ export default function App() {
     // Request installed agents and default agent
     vscode.postMessage({ type: 'checkInstalledAgents' })
     vscode.postMessage({ type: 'getDefaultAgent' })
+    vscode.postMessage({ type: 'getPrewarmStatus' })
 
     return () => window.removeEventListener('message', handleMessage)
   }, [])
@@ -508,6 +523,10 @@ export default function App() {
     setSessionsLoading(true)
     setSessionsPage(1)
     vscode.postMessage({ type: 'fetchSessions', limit: 200 })
+  }
+
+  const togglePrewarm = () => {
+    vscode.postMessage({ type: 'togglePrewarm' })
   }
 
   const handleAgentClick = (agentKey: string) => {
@@ -1825,6 +1844,53 @@ export default function App() {
                         </button>
                       )
                     })}
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* Session Warming */}
+          <section>
+            <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
+              Session Warming
+            </h2>
+            <div className="px-4 py-3 rounded-xl bg-[var(--muted)]">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="text-sm font-medium">Pre-warm Sessions</p>
+                  <p className="text-xs text-[var(--muted-foreground)]">
+                    Start agent sessions in background for instant availability
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant={prewarmEnabled ? 'default' : 'outline'}
+                  onClick={togglePrewarm}
+                >
+                  {prewarmEnabled ? 'Enabled' : 'Disabled'}
+                </Button>
+              </div>
+              {prewarmEnabled && prewarmLoaded && prewarmPools.length > 0 && (
+                <div className="mt-4 space-y-3">
+                  <p className="text-xs font-medium text-[var(--muted-foreground)]">Warmed Sessions</p>
+                  {prewarmPools.map(pool => (
+                    <div key={pool.agentType} className="flex items-center gap-3 text-sm">
+                      <img
+                        src={icons[pool.agentType as keyof typeof icons]}
+                        alt={pool.agentType}
+                        className="w-4 h-4"
+                      />
+                      <span className="capitalize w-16">{pool.agentType}</span>
+                      <span className="text-[var(--muted-foreground)]">
+                        {pool.available} ready{pool.pending > 0 ? `, ${pool.pending} warming` : ''}
+                      </span>
+                      {pool.sessions.length > 0 && (
+                        <span className="text-xs text-[var(--muted-foreground)] ml-auto font-mono">
+                          {pool.sessions[0].sessionId.slice(0, 8)}...
+                        </span>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

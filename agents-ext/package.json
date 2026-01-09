@@ -175,6 +175,10 @@
       {
         "command": "agents.prompts",
         "title": "Agents: Prompts"
+      },
+      {
+        "command": "agents.toggleWarming",
+        "title": "Agents: Enable Warming"
       }
     ],
     "configuration": {

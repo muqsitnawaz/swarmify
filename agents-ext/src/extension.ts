@@ -40,6 +40,8 @@ import {
   isTmuxAvailable
 } from './tmux';
 import { DEFAULT_DISPLAY_PREFERENCES } from './settings';
+import * as prewarm from './prewarm.vscode';
+import { supportsPrewarming, buildResumeCommand } from './prewarm';
 
 // Settings types are now imported from ./settings
 // Settings functions are in ./settings.vscode
@@ -366,6 +368,16 @@ function inferAgentConfigFromName(name: string, extensionPath: string, knownPref
 export async function activate(context: vscode.ExtensionContext) {
   console.log('Cursor Agents extension is now active');
 
+  // Store context for deactivate
+  extensionContext = context;
+
+  // Initialize session pre-warming (runs in background)
+  setTimeout(() => {
+    prewarm.initializePrewarming(context).catch(err => {
+      console.error('[PREWARM] Initialization error:', err);
+    });
+  }, 2000);
+
   // Create status bar item for showing active terminal status bar label
   agentStatusBarItem = vscode.window.createStatusBarItem(
     vscode.StatusBarAlignment.Left,
@@ -633,6 +645,22 @@ export async function activate(context: vscode.ExtensionContext) {
     })
   );
 
+  // Toggle session pre-warming
+  context.subscriptions.push(
+    vscode.commands.registerCommand('agents.toggleWarming', async () => {
+      const currentEnabled = prewarm.isEnabled(context);
+      const newEnabled = !currentEnabled;
+      await prewarm.setEnabled(context, newEnabled);
+
+      // Update command title based on new state
+      vscode.window.showInformationMessage(
+        newEnabled
+          ? 'Session warming enabled. Pre-warming Claude, Codex, and Gemini sessions...'
+          : 'Session warming disabled.'
+      );
+    })
+  );
+
   // Register built-in individual agent commands
   for (const def of BUILT_IN_AGENTS) {
     context.subscriptions.push(
@@ -733,6 +761,11 @@ export async function activate(context: vscode.ExtensionContext) {
   // Listen for terminal closures to update our tracking
   context.subscriptions.push(
     vscode.window.onDidCloseTerminal((terminal) => {
+      // Remove prewarm session mapping if exists
+      const entry = terminals.getByTerminal(terminal);
+      if (entry?.id) {
+        prewarm.removeTerminalSession(context, entry.id);
+      }
       terminals.unregister(terminal);
     })
   );
@@ -856,6 +889,21 @@ async function openSingleAgent(
     }
   }
 
+  // Check for pre-warmed session (only for supported agent types without additional flags)
+  const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
+  let prewarmedSession: ReturnType<typeof prewarm.acquireSession> = null;
+  let usePrewarmed = false;
+
+  if (agentKey && supportsPrewarming(agentKey) && !additionalFlags) {
+    prewarmedSession = prewarm.acquireSession(context, agentKey, cwd);
+    if (prewarmedSession) {
+      usePrewarmed = true;
+      // Use resume command instead of regular command
+      command = buildResumeCommand(prewarmedSession);
+      console.log(`[PREWARM] Using pre-warmed ${agentKey} session: ${prewarmedSession.sessionId}`);
+    }
+  }
+
   if (tmuxOk) {
     const title = buildTerminalTitle(agentConfig.title, undefined, context);
     const terminalId = terminals.nextId(agentConfig.prefix);
@@ -877,6 +925,14 @@ async function openSingleAgent(
 
     const pid = await terminal.processId;
     terminals.register(terminal, terminalId, agentConfig, pid, context);
+
+    // Track session ID if using pre-warmed session
+    if (usePrewarmed && prewarmedSession && agentKey && supportsPrewarming(agentKey)) {
+      terminals.setSessionId(terminal, prewarmedSession.sessionId);
+      terminals.setAgentType(terminal, agentKey);
+      await prewarm.recordTerminalSession(context, terminalId, prewarmedSession.sessionId, agentKey, cwd);
+    }
+
     terminal.show();
     return;
   }
@@ -902,6 +958,14 @@ async function openSingleAgent(
 
   const pid = await terminal.processId;
   terminals.register(terminal, terminalId, agentConfig, pid, context);
+
+  // Track session ID if using pre-warmed session
+  if (usePrewarmed && prewarmedSession && agentKey && supportsPrewarming(agentKey)) {
+    terminals.setSessionId(terminal, prewarmedSession.sessionId);
+    terminals.setAgentType(terminal, agentKey);
+    await prewarm.recordTerminalSession(context, terminalId, prewarmedSession.sessionId, agentKey, cwd);
+  }
+
   if (command) {
     terminal.sendText(command);
   }
@@ -1277,7 +1341,15 @@ async function maybeRunFirstSetup(context: vscode.ExtensionContext, force = fals
 
 // Git functions are now in ./git.vscode
 
-export function deactivate() {
+// Store context reference for deactivate
+let extensionContext: vscode.ExtensionContext | undefined;
+
+export async function deactivate(): Promise<void> {
+  // Mark clean shutdown for prewarm crash recovery
+  if (extensionContext) {
+    await prewarm.markCleanShutdown(extensionContext);
+  }
+
   // Dispose all tracked terminals
   for (const entry of terminals.getAllTerminals()) {
     entry.terminal.dispose();
