@@ -66,7 +66,17 @@ Set default models per agent in settings. When you spawn a new agent, it uses yo
 
 ### Session Pre-warming
 
-Enable session warming to pre-start agent sessions in the background. When you spawn a new agent, it connects instantly to a pre-warmed session.
+Enable session warming to reduce agent startup time. Each agent type handles sessions differently:
+
+| Agent | Prewarm | Open Command |
+|-------|---------|--------------|
+| Claude | None needed | `claude --session-id <uuid>` |
+| Codex | `codex exec ''` | `codex resume <session-id>` |
+| Gemini | `gemini -p " " -o json` | `gemini --resume <session-id>` |
+
+**Claude**: Session IDs are generated on-demand when opening a terminal. No background prewarming required - Claude accepts custom session IDs via `--session-id`.
+
+**Codex/Gemini**: Sessions are prewarmed in the background by spawning the CLI, extracting the session ID from output, and immediately killing the process. When you open an agent, it resumes the prewarmed session instantly.
 
 ### Context-Aware Task Creation
 
