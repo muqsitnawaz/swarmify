@@ -1,5 +1,6 @@
 // Session pre-warming - VS Code integration
-// Uses node-pty for reliable TTY emulation
+// Claude: No prewarming needed, generate UUID at open time
+// Codex/Gemini: Spawn process, extract session ID, kill immediately
 
 import * as vscode from 'vscode';
 import {
@@ -13,10 +14,10 @@ import {
   getSupportedAgentTypes
 } from './prewarm';
 import {
-  spawnPrewarmSessionWithFallback,
-  isCliAvailable as checkCliAvailable,
-  isPtyAvailable
-} from './prewarm.pty';
+  spawnSimplePrewarmSession,
+  needsPrewarming,
+  generateClaudeSessionId,
+} from './prewarm.simple';
 
 // GlobalState keys
 const POOL_KEY_PREFIX = 'prewarm.pool.';
@@ -76,7 +77,9 @@ function loadPool(context: vscode.ExtensionContext, agentType: PrewarmAgentType)
 }
 
 /**
- * Pre-warm a single session using PTY (with fallback to spawn)
+ * Pre-warm a single session
+ * Claude: Returns immediately with generated UUID (no actual prewarming)
+ * Codex/Gemini: Spawns process, extracts session ID, kills immediately
  */
 async function prewarmSession(
   context: vscode.ExtensionContext,
@@ -86,10 +89,10 @@ async function prewarmSession(
   const pool = getPool(agentType);
 
   pool.pending++;
-  console.log(`[PREWARM] Starting ${agentType} session (pending: ${pool.pending}, pty: ${isPtyAvailable()})`);
+  console.log(`[PREWARM] Starting ${agentType} session (pending: ${pool.pending})`);
 
   try {
-    const result = await spawnPrewarmSessionWithFallback(agentType, cwd);
+    const result = await spawnSimplePrewarmSession(agentType, cwd);
 
     if (result.status === 'success' && result.sessionId) {
       console.log(`[PREWARM] ${agentType} session created: ${result.sessionId}`);
@@ -380,5 +383,25 @@ export function getPoolInfo(): PrewarmPoolInfo[] {
  * Check if CLI is available for an agent type
  */
 export async function isCliAvailable(agentType: PrewarmAgentType): Promise<boolean> {
-  return checkCliAvailable(agentType);
+  const { spawn } = require('child_process');
+  const command = agentType; // claude, codex, gemini
+
+  return new Promise((resolve) => {
+    const proc = spawn(command, ['--version'], { shell: true });
+    let resolved = false;
+    const finish = (result: boolean) => {
+      if (resolved) return;
+      resolved = true;
+      resolve(result);
+    };
+    proc.on('close', (code: number) => finish(code === 0));
+    proc.on('error', () => finish(false));
+    setTimeout(() => {
+      proc.kill();
+      finish(false);
+    }, 5000);
+  });
 }
+
+// Re-export helpers from prewarm.simple for use in extension.ts
+export { needsPrewarming, generateClaudeSessionId, buildClaudeOpenCommand } from './prewarm.simple';

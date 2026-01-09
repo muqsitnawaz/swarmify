@@ -63,7 +63,7 @@ export const PREWARM_CONFIGS: Record<PrewarmAgentType, PrewarmConfig> = {
     // Matches session ID pattern
     sessionIdPattern: /Session(?:\s+ID)?:\s*([a-zA-Z0-9_-]+)/i,
     exitSequence: ['\x03', '\x03'],  // Ctrl+C twice
-    resumeCommand: (id) => `gemini --session ${id}`
+    resumeCommand: (id) => `gemini --resume ${id}`
   }
 };
 

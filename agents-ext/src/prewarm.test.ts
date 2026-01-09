@@ -253,7 +253,7 @@ describe('buildResumeCommand', () => {
       createdAt: Date.now(),
       workingDirectory: '/test',
     };
-    expect(buildResumeCommand(session)).toBe('gemini --session ghi789');
+    expect(buildResumeCommand(session)).toBe('gemini --resume ghi789');
   });
 });
 
