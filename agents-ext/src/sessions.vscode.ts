@@ -192,38 +192,61 @@ async function buildSession(
   };
 }
 
-async function discoverClaudeSessions(): Promise<AgentSession[]> {
+// Convert workspace path to Claude's project folder name format
+// e.g., /Users/muqsit/src/project -> -Users-muqsit-src-project
+function workspaceToClaudeFolder(workspacePath: string): string {
+  return workspacePath.replace(/\//g, '-');
+}
+
+async function discoverClaudeProjectSessions(projectPath: string): Promise<AgentSession[]> {
+  const sessions: AgentSession[] = [];
+
+  const projectFiles = await safeReaddir(projectPath);
+  for (const entry of projectFiles) {
+    if (entry.isFile()) {
+      const ext = path.extname(entry.name).toLowerCase();
+      if (SESSION_EXTENSIONS.has(ext)) {
+        const session = await buildSession('claude', path.join(projectPath, entry.name));
+        if (session) sessions.push(session);
+      }
+    } else if (entry.isDirectory() && entry.name !== 'sessions') {
+      const nestedFiles = await collectSessionFiles(path.join(projectPath, entry.name), 1);
+      for (const nestedFile of nestedFiles) {
+        const session = await buildSession('claude', nestedFile);
+        if (session) sessions.push(session);
+      }
+    }
+  }
+
+  const sessionsDir = path.join(projectPath, 'sessions');
+  const sessionFiles = await collectSessionFiles(sessionsDir, 2);
+  for (const sessionFile of sessionFiles) {
+    const session = await buildSession('claude', sessionFile);
+    if (session) sessions.push(session);
+  }
+
+  return sessions;
+}
+
+async function discoverClaudeSessions(workspacePath?: string): Promise<AgentSession[]> {
   const root = path.join(homedir(), '.claude', 'projects');
+
+  // If workspace provided, only scan that project folder
+  if (workspacePath) {
+    const projectFolder = workspaceToClaudeFolder(workspacePath);
+    const projectPath = path.join(root, projectFolder);
+    return await discoverClaudeProjectSessions(projectPath);
+  }
+
+  // No filter - scan all projects
   const projects = await safeReaddir(root);
   const sessions: AgentSession[] = [];
 
   for (const project of projects) {
     if (!project.isDirectory()) continue;
     const projectPath = path.join(root, project.name);
-
-    const projectFiles = await safeReaddir(projectPath);
-    for (const entry of projectFiles) {
-      if (entry.isFile()) {
-        const ext = path.extname(entry.name).toLowerCase();
-        if (SESSION_EXTENSIONS.has(ext)) {
-          const session = await buildSession('claude', path.join(projectPath, entry.name));
-          if (session) sessions.push(session);
-        }
-      } else if (entry.isDirectory() && entry.name !== 'sessions') {
-        const nestedFiles = await collectSessionFiles(path.join(projectPath, entry.name), 1);
-        for (const nestedFile of nestedFiles) {
-          const session = await buildSession('claude', nestedFile);
-          if (session) sessions.push(session);
-        }
-      }
-    }
-
-    const sessionsDir = path.join(projectPath, 'sessions');
-    const sessionFiles = await collectSessionFiles(sessionsDir, 2);
-    for (const sessionFile of sessionFiles) {
-      const session = await buildSession('claude', sessionFile);
-      if (session) sessions.push(session);
-    }
+    const projectSessions = await discoverClaudeProjectSessions(projectPath);
+    sessions.push(...projectSessions);
   }
 
   return sessions;
@@ -257,9 +280,12 @@ async function discoverGeminiSessions(): Promise<AgentSession[]> {
   return sessions;
 }
 
-export async function discoverRecentSessions(limit: number = 50): Promise<AgentSession[]> {
+export async function discoverRecentSessions(
+  limit: number = 50,
+  workspacePath?: string
+): Promise<AgentSession[]> {
   const [claudeSessions, codexSessions, geminiSessions] = await Promise.all([
-    discoverClaudeSessions(),
+    discoverClaudeSessions(workspacePath),
     discoverCodexSessions(),
     discoverGeminiSessions()
   ]);
