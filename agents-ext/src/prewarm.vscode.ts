@@ -8,6 +8,7 @@ import {
   PrewarmedSession,
   SessionPoolState,
   TerminalSessionMapping,
+  PREWARM_CONFIGS,
   DEFAULT_POOL_SIZE,
   needsReplenishment,
   selectBestSession,
@@ -384,7 +385,8 @@ export function getPoolInfo(): PrewarmPoolInfo[] {
  */
 export async function isCliAvailable(agentType: PrewarmAgentType): Promise<boolean> {
   const { spawn } = require('child_process');
-  const command = agentType; // claude, codex, gemini
+  const config = PREWARM_CONFIGS[agentType];
+  const command = config.command; // Use config.command (e.g., 'cursor-agent' for cursor)
 
   return new Promise((resolve) => {
     const proc = spawn(command, ['--version'], { shell: true });
