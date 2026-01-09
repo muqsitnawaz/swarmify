@@ -26,6 +26,7 @@ interface CommandAlias {
 }
 
 type SwarmAgentType = 'claude' | 'codex' | 'gemini'
+type PromptPackAgentType = 'claude' | 'codex' | 'gemini' | 'cursor'
 const ALL_SWARM_AGENTS: SwarmAgentType[] = ['claude', 'codex', 'gemini']
 const AGENT_MODELS: Record<string, string[]> = {
   claude: ['claude-sonnet-4-5', 'claude-opus-4-5', 'claude-haiku-4-5'],
@@ -51,17 +52,22 @@ type SkillName =
   | 'sclean'
   | 'test'
   | 'stest'
+  | 'ship'
+  | 'sship'
+  | 'create'
+  | 'simagine'
 
 interface SkillAgentStatus {
   installed: boolean
   cliAvailable: boolean
   builtIn: boolean
+  supported: boolean
 }
 
 interface SkillCommandStatus {
   name: SkillName
   description: string
-  agents: Record<SwarmAgentType, SkillAgentStatus>
+  agents: Record<PromptPackAgentType, SkillAgentStatus>
 }
 
 interface SkillsStatus {
@@ -304,10 +310,11 @@ const TAB_LABELS: Record<TabId, string> = {
   guide: 'Guide'
 }
 
-const SKILL_AGENTS: { key: SwarmAgentType; name: string; icon: string }[] = [
+const SKILL_AGENTS: { key: PromptPackAgentType; name: string; icon: string }[] = [
   { key: 'codex', name: 'Codex', icon: icons.codex },
   { key: 'gemini', name: 'Gemini', icon: icons.gemini },
   { key: 'claude', name: 'Claude', icon: icons.claude },
+  { key: 'cursor', name: 'Cursor', icon: icons.cursor },
 ]
 
 // Install commands/links for each agent
@@ -1227,21 +1234,26 @@ export default function App() {
     )
   }
 
-  const basicSkills = skillsStatus?.commands.filter(skill => !skill.name.startsWith('s')) || []
-  const swarmSkills = skillsStatus?.commands.filter(skill => skill.name.startsWith('s')) || []
+  const swarmSkillNames: SkillName[] = [
+    'splan',
+    'sdebug',
+    'sconfirm',
+    'sclean',
+    'stest',
+    'sship',
+    'simagine',
+  ]
+
+  const basicSkills = skillsStatus?.commands.filter(skill => !swarmSkillNames.includes(skill.name)) || []
+  const swarmSkills = skillsStatus?.commands.filter(skill => swarmSkillNames.includes(skill.name)) || []
 
   return (
     <div className="space-y-6">
       {/* Header with tabs */}
       <header className="pb-4 border-b border-[var(--border)]">
         <div className="flex items-center gap-3 mb-4">
-          <img src={icons.agents} alt="Agents" className="w-10 h-10" />
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight">Agents</h1>
-            <p className="text-sm text-[var(--muted-foreground)]">
-              Multi-agent coding
-            </p>
-          </div>
+          <img src={icons.agents} alt="Agents" className="w-8 h-8" />
+          <h1 className="text-lg font-semibold tracking-tight">Agents</h1>
         </div>
 
         {/* Tab bar */}
@@ -1636,14 +1648,9 @@ export default function App() {
 
       {activeTab === 'skills' && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
-              Skills
-            </h2>
-            <p className="text-xs text-[var(--muted-foreground)]">
-              Install slash-commands per agent to use Swarm helpers.
-            </p>
-          </div>
+          <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
+            Skills
+          </h2>
 
           {!skillsStatus ? (
             <div className="text-sm text-[var(--muted-foreground)] px-4 py-3">
@@ -1667,7 +1674,8 @@ export default function App() {
                         {SKILL_AGENTS.map(agent => {
                           const status = skill.agents[agent.key]
                           const isInstalled = status?.installed
-                          const isDisabled = !status?.cliAvailable
+                          const isSupported = status?.supported ?? false
+                          const isDisabled = !isSupported || !status?.cliAvailable
                           return (
                             <div key={agent.key} className="flex items-center gap-2">
                               <button
@@ -1692,7 +1700,12 @@ export default function App() {
                                   className={`w-5 h-5 ${isInstalled ? '' : 'grayscale'}`}
                                 />
                               </button>
-                              {!status?.cliAvailable && (
+                              {!isSupported && (
+                                <span className="text-xs text-[var(--muted-foreground)]">
+                                  Not supported
+                                </span>
+                              )}
+                              {isSupported && !status?.cliAvailable && (
                                 <span className="text-xs text-[var(--muted-foreground)]">
                                   CLI missing
                                 </span>
@@ -1721,7 +1734,8 @@ export default function App() {
                         {SKILL_AGENTS.map(agent => {
                           const status = skill.agents[agent.key]
                           const isInstalled = status?.installed
-                          const isDisabled = !status?.cliAvailable
+                          const isSupported = status?.supported ?? false
+                          const isDisabled = !isSupported || !status?.cliAvailable
                           return (
                             <div key={agent.key} className="flex items-center gap-2">
                               <button
@@ -1746,7 +1760,12 @@ export default function App() {
                                   className={`w-5 h-5 ${isInstalled ? '' : 'grayscale'}`}
                                 />
                               </button>
-                              {!status?.cliAvailable && (
+                              {!isSupported && (
+                                <span className="text-xs text-[var(--muted-foreground)]">
+                                  Not supported
+                                </span>
+                              )}
+                              {isSupported && !status?.cliAvailable && (
                                 <span className="text-xs text-[var(--muted-foreground)]">
                                   CLI missing
                                 </span>
@@ -1771,16 +1790,13 @@ export default function App() {
             <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
               Default Agent
             </h2>
-            <div className="px-4 py-3 rounded-xl bg-[var(--muted)]">
-              <p className="text-xs text-[var(--muted-foreground)] mb-3">
-                Pick the agent that should open when you press Cmd+Shift+A.
-              </p>
+            <div className="rounded-xl bg-[var(--muted)]">
               {BUILT_IN_AGENTS.filter(a => a.key !== 'shell' && isAgentInstalled(a.key)).length === 0 ? (
-                <div className="text-sm text-[var(--muted-foreground)]">
+                <div className="text-sm text-[var(--muted-foreground)] p-4">
                   Install an agent to set a default.
                 </div>
               ) : (
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 p-4">
                   {BUILT_IN_AGENTS
                     .filter(a => a.key !== 'shell' && isAgentInstalled(a.key))
                     .map(agent => {
@@ -1789,28 +1805,15 @@ export default function App() {
                         <button
                           key={agent.key}
                           onClick={() => handleSetDefaultAgent(AGENT_KEY_TO_TITLE[agent.key] || 'CC')}
-                          className={`flex min-w-0 items-center gap-3 rounded-xl border px-3 py-3 text-left transition-colors ${
+                          className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors ${
                             isSelected
-                              ? 'border-[var(--primary)] bg-[var(--background)] ring-1 ring-[var(--primary)]'
-                              : 'border-[var(--border)] bg-[var(--background)] hover:border-[var(--primary)]/60 hover:bg-[var(--muted)]'
+                              ? 'border-[var(--primary)] bg-[var(--background)]'
+                              : 'border-[var(--border)] bg-[var(--background)] hover:border-[var(--primary)]/60'
                           }`}
                         >
-                          <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--muted)]">
-                            <img src={agent.icon} alt={agent.name} className="w-5 h-5" />
-                          </span>
-                          <div className="flex-1">
-                            <p className="text-sm font-medium">{agent.name}</p>
-                            <p className="text-xs text-[var(--muted-foreground)]">Opens with Cmd+Shift+A</p>
-                          </div>
-                          <span
-                            className={`flex h-5 w-5 items-center justify-center rounded-full border ${
-                              isSelected
-                                ? 'border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]'
-                                : 'border-[var(--border)] text-transparent'
-                            }`}
-                          >
-                            <Check className="w-3 h-3" />
-                          </span>
+                          <img src={agent.icon} alt={agent.name} className="w-5 h-5" />
+                          <span className="text-sm font-medium">{agent.name}</span>
+                          {isSelected && <Check className="w-4 h-4 ml-auto text-[var(--primary)]" />}
                         </button>
                       )
                     })}
@@ -1825,13 +1828,8 @@ export default function App() {
               Session Warming
             </h2>
             <div className="px-4 py-3 rounded-xl bg-[var(--muted)]">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <p className="text-sm font-medium">Pre-warm Sessions</p>
-                  <p className="text-xs text-[var(--muted-foreground)]">
-                    Start agent sessions in background for instant availability
-                  </p>
-                </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Pre-warm sessions</span>
                 <Button
                   size="sm"
                   variant={prewarmEnabled ? 'default' : 'outline'}
@@ -1841,8 +1839,7 @@ export default function App() {
                 </Button>
               </div>
               {prewarmEnabled && prewarmLoaded && prewarmPools.length > 0 && (
-                <div className="mt-4 space-y-3">
-                  <p className="text-xs font-medium text-[var(--muted-foreground)]">Warmed Sessions</p>
+                <div className="mt-3 pt-3 border-t border-[var(--border)] space-y-2">
                   {prewarmPools.map(pool => (
                     <div key={pool.agentType} className="flex items-center gap-3 text-sm">
                       <img
@@ -1851,14 +1848,9 @@ export default function App() {
                         className="w-4 h-4"
                       />
                       <span className="capitalize w-16">{pool.agentType}</span>
-                      <span className="text-[var(--muted-foreground)]">
+                      <span className="text-xs text-[var(--muted-foreground)]">
                         {pool.available} ready{pool.pending > 0 ? `, ${pool.pending} warming` : ''}
                       </span>
-                      {pool.sessions.length > 0 && (
-                        <span className="text-xs text-[var(--muted-foreground)] ml-auto font-mono">
-                          {pool.sessions[0].sessionId.slice(0, 8)}...
-                        </span>
-                      )}
                     </div>
                   ))}
                 </div>
@@ -1986,9 +1978,6 @@ export default function App() {
                 </Button>
               )}
             </div>
-            <p className="text-xs text-[var(--muted-foreground)] mb-3">
-              Create shortcuts with custom flags. Use via Command Palette: <code className="bg-[var(--background)] px-1 rounded">agents.alias.YourName</code>
-            </p>
             <div className="space-y-2">
               {(settings.aliases || []).map((alias, index) => {
                 const agentInfo = BUILT_IN_AGENTS.find(a => a.key === alias.agent)
@@ -2051,7 +2040,7 @@ export default function App() {
 
               {(settings.aliases || []).length === 0 && !isAddingAlias && (
                 <div className="text-sm text-[var(--muted-foreground)] px-4 py-3 rounded-xl bg-[var(--muted)]">
-                  No aliases configured. Add one to create a quick command with preset flags.
+                  No aliases configured.
                 </div>
               )}
             </div>
@@ -2062,18 +2051,13 @@ export default function App() {
             <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
               Display
             </h2>
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-2">
               <label className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)] cursor-pointer">
                 <Checkbox
                   checked={settings.display?.showFullAgentNames}
                   onCheckedChange={(checked) => updateDisplay('showFullAgentNames', !!checked)}
                 />
-                <div>
-                  <p className="text-sm font-medium">Show full agent names</p>
-                  <p className="text-xs text-[var(--muted-foreground)]">
-                    Use names like "Cursor" and "Gemini" instead of "CR" or "GX" in terminal tab titles.
-                  </p>
-                </div>
+                <span className="text-sm">Show full agent names in tabs</span>
               </label>
 
               <label className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)] cursor-pointer">
@@ -2081,12 +2065,7 @@ export default function App() {
                   checked={!settings.display?.showLabelsInTitles}
                   onCheckedChange={(checked) => updateDisplay('showLabelsInTitles', !checked)}
                 />
-                <div>
-                  <p className="text-sm font-medium">Disable labels in titles</p>
-                  <p className="text-xs text-[var(--muted-foreground)]">
-                    Keep labels in the status bar only. When unchecked, labels appear in the tab title (default).
-                  </p>
-                </div>
+                <span className="text-sm">Hide labels in tab titles</span>
               </label>
             </div>
           </section>
@@ -2096,27 +2075,17 @@ export default function App() {
             <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
               Notifications
             </h2>
-            <div className="space-y-3">
+            <div className="space-y-2">
               <label className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)] cursor-pointer">
                 <Checkbox
                   checked={(settings.notifications ?? DEFAULT_NOTIFICATION_SETTINGS).enabled}
                   onCheckedChange={(checked) => updateNotifications({ enabled: !!checked })}
                 />
-                <div>
-                  <p className="text-sm font-medium">Approval notifications</p>
-                  <p className="text-xs text-[var(--muted-foreground)]">
-                    Show notifications when an agent needs approval.
-                  </p>
-                </div>
+                <span className="text-sm">Notify when agent needs approval</span>
               </label>
 
-              <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)]">
-                <div className="flex-1">
-                  <p className="text-sm font-medium">Notification style</p>
-                  <p className="text-xs text-[var(--muted-foreground)]">
-                    Native notifications require the Notifications MCP server.
-                  </p>
-                </div>
+              <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-[var(--muted)]">
+                <span className="text-sm">Style</span>
                 <select
                   value={(settings.notifications ?? DEFAULT_NOTIFICATION_SETTINGS).style}
                   onChange={(e) => updateNotifications({ style: e.target.value as NotificationSettings['style'] })}
@@ -2125,47 +2094,6 @@ export default function App() {
                   <option value="native">Native OS</option>
                   <option value="vscode">VS Code</option>
                 </select>
-              </div>
-
-              <div className="px-4 py-3 rounded-xl bg-[var(--muted)] space-y-2">
-                <div>
-                  <p className="text-sm font-medium">Notify agents</p>
-                  <p className="text-xs text-[var(--muted-foreground)]">
-                    Currently supported: Claude Code CLI.
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-3">
-                  {NOTIFICATION_AGENTS.map(agent => {
-                    const current = settings.notifications ?? DEFAULT_NOTIFICATION_SETTINGS
-                    const enabled = current.enabledAgents.includes(agent.key)
-                    return (
-                      <label
-                        key={agent.key}
-                        className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
-                          agent.supported
-                            ? 'border-[var(--border)] bg-[var(--background)]'
-                            : 'border-[var(--border)] bg-[var(--background)] opacity-60'
-                        }`}
-                      >
-                        <Checkbox
-                          checked={enabled}
-                          disabled={!agent.supported}
-                          onCheckedChange={(checked) => {
-                            if (!agent.supported) return
-                            const nextAgents = checked
-                              ? [...current.enabledAgents, agent.key].filter((v, i, a) => a.indexOf(v) === i)
-                              : current.enabledAgents.filter(a => a !== agent.key)
-                            updateNotifications({ enabledAgents: nextAgents })
-                          }}
-                        />
-                        <span>{agent.name}</span>
-                        {!agent.supported && (
-                          <span className="text-xs text-[var(--muted-foreground)]">Not supported</span>
-                        )}
-                      </label>
-                    )
-                  })}
-                </div>
               </div>
             </div>
           </section>
@@ -2178,64 +2106,26 @@ export default function App() {
             <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
               Quick Start
             </h2>
-            <div className="space-y-3">
-              <div className="px-4 py-3 rounded-xl bg-[var(--muted)]">
-                <div className="flex items-start gap-3">
-                  <span className="text-sm font-semibold text-[var(--primary)]">1</span>
-                  <div>
-                    <p className="text-sm font-medium">Open an agent terminal</p>
-                    <p className="text-xs text-[var(--muted-foreground)] mt-1">
-                      Press Cmd+Shift+A and select an agent (Claude, Codex, Gemini, etc.)
-                    </p>
-                  </div>
-                </div>
+            <div className="space-y-2">
+              <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)]">
+                <span className="text-sm font-semibold text-[var(--primary)] w-4">1</span>
+                <span className="text-sm">Cmd+Shift+A to spawn an agent</span>
               </div>
-              <div className="px-4 py-3 rounded-xl bg-[var(--muted)]">
-                <div className="flex items-start gap-3">
-                  <span className="text-sm font-semibold text-[var(--primary)]">2</span>
-                  <div>
-                    <p className="text-sm font-medium">Start coding with AI</p>
-                    <p className="text-xs text-[var(--muted-foreground)] mt-1">
-                      Type your request in the terminal. The agent will help you write, debug, and refactor code.
-                    </p>
-                  </div>
-                </div>
+              <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)]">
+                <span className="text-sm font-semibold text-[var(--primary)] w-4">2</span>
+                <span className="text-sm">Type your request in the terminal</span>
               </div>
-              <div className="px-4 py-3 rounded-xl bg-[var(--muted)]">
-                <div className="flex items-start gap-3">
-                  <span className="text-sm font-semibold text-[var(--primary)]">3</span>
-                  <div>
-                    <p className="text-sm font-medium">Try multiple agents</p>
-                    <p className="text-xs text-[var(--muted-foreground)] mt-1">
-                      Press Cmd+Shift+P and type "Agents: New Codex" to open another agent. If Codex isn't installed, run <span className="font-mono bg-[var(--background)] px-1 rounded">npm i -g @openai/codex</span> first.
-                    </p>
-                    <p className="text-xs text-[var(--muted-foreground)] mt-2">
-                      Navigate between agents with Cmd+R (next) and Cmd+E (previous). If these conflict with other shortcuts, customize them in VS Code's Keyboard Shortcuts for "Next Agent" and "Previous Agent".
-                    </p>
-                  </div>
-                </div>
+              <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)]">
+                <span className="text-sm font-semibold text-[var(--primary)] w-4">3</span>
+                <span className="text-sm">Cmd+R / Cmd+E to switch agents</span>
               </div>
-              <div className="px-4 py-3 rounded-xl bg-[var(--muted)]">
-                <div className="flex items-start gap-3">
-                  <span className="text-sm font-semibold text-[var(--primary)]">4</span>
-                  <div>
-                    <p className="text-sm font-medium">Use Swarm for parallel work</p>
-                    <p className="text-xs text-[var(--muted-foreground)] mt-1">
-                      Type /swarm in Claude to spawn multiple agents working on subtasks simultaneously.
-                    </p>
-                  </div>
-                </div>
+              <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)]">
+                <span className="text-sm font-semibold text-[var(--primary)] w-4">4</span>
+                <span className="text-sm">/swarm in Claude for parallel agents</span>
               </div>
-              <div className="px-4 py-3 rounded-xl bg-[var(--muted)]">
-                <div className="flex items-start gap-3">
-                  <span className="text-sm font-semibold text-[var(--primary)]">5</span>
-                  <div>
-                    <p className="text-sm font-medium">Save reusable prompts</p>
-                    <p className="text-xs text-[var(--muted-foreground)] mt-1">
-                      Press Cmd+Shift+' to access your prompt library from any agent terminal.
-                    </p>
-                  </div>
-                </div>
+              <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)]">
+                <span className="text-sm font-semibold text-[var(--primary)] w-4">5</span>
+                <span className="text-sm">Cmd+Shift+' for saved prompts</span>
               </div>
             </div>
           </section>
@@ -2245,28 +2135,14 @@ export default function App() {
               Learn More
             </h2>
             <div className="space-y-2">
-              <button
-                onClick={() => vscode.postMessage({ type: 'openGuide', guide: 'getting-started' })}
-                className="w-full px-4 py-3 rounded-xl bg-[var(--muted)] text-left hover:bg-[var(--muted-foreground)]/10 transition-colors"
-              >
-                <p className="text-sm font-medium">Getting Started Guide</p>
-                <p className="text-xs text-[var(--muted-foreground)] mt-1">Complete walkthrough of all features</p>
-              </button>
-              <button
-                onClick={() => vscode.postMessage({ type: 'openGuide', guide: 'swarm' })}
-                className="w-full px-4 py-3 rounded-xl bg-[var(--muted)] text-left hover:bg-[var(--muted-foreground)]/10 transition-colors"
-              >
-                <p className="text-sm font-medium">Swarm Mode</p>
-                <p className="text-xs text-[var(--muted-foreground)] mt-1">How to use multi-agent orchestration</p>
-              </button>
               <a
                 href="https://github.com/muqsitnawaz/swarmify"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="block w-full px-4 py-3 rounded-xl bg-[var(--muted)] text-left hover:bg-[var(--muted-foreground)]/10 transition-colors"
+                className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)] hover:bg-[var(--muted-foreground)]/10 transition-colors"
               >
-                <p className="text-sm font-medium">GitHub Repository</p>
-                <p className="text-xs text-[var(--muted-foreground)] mt-1">Source code, issues, and discussions</p>
+                <ExternalLink className="w-4 h-4 text-[var(--muted-foreground)]" />
+                <span className="text-sm">GitHub</span>
               </a>
             </div>
           </section>

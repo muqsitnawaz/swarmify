@@ -272,7 +272,7 @@ export function openPanel(context: vscode.ExtensionContext): void {
         break;
       case 'enableSwarm':
         settingsPanel?.webview.postMessage({ type: 'swarmInstallStart' });
-        await swarm.enableSwarm(context, (swarmStatus) => {
+        await swarm.setupSwarmIntegration(context, (swarmStatus) => {
           settingsPanel?.webview.postMessage({ type: 'swarmStatus', swarmStatus });
         });
         settingsPanel?.webview.postMessage({ type: 'swarmInstallDone' });
@@ -280,11 +280,15 @@ export function openPanel(context: vscode.ExtensionContext): void {
         break;
       case 'installSwarmAgent':
         settingsPanel?.webview.postMessage({ type: 'swarmInstallStart' });
-        await swarm.enableSwarmForAgent(message.agent, context, (swarmStatus) => {
+        await swarm.setupSwarmIntegrationForAgent(message.agent, context, (swarmStatus) => {
           settingsPanel?.webview.postMessage({ type: 'swarmStatus', swarmStatus });
         });
         const refreshedStatus = await swarm.getSwarmStatus();
         settingsPanel?.webview.postMessage({ type: 'swarmStatus', swarmStatus: refreshedStatus });
+        settingsPanel?.webview.postMessage({
+          type: 'skillsStatus',
+          skillsStatus: await swarm.getSkillsStatus()
+        });
         settingsPanel?.webview.postMessage({ type: 'swarmInstallDone' });
         break;
       case 'fetchTasks':

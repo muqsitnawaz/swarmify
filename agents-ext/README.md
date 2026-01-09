@@ -52,6 +52,22 @@ Swarm MCP is always available; configure it per agent (Claude, Codex, Gemini) in
 
 Label agents by task. The status bar shows the active agent and its label, so you always know which agent you're talking to.
 
+### TODO.md Parsing
+
+Automatically discovers TODO.md files in your workspace and displays tasks in the dashboard. Spawn a Swarm directly from any open task item.
+
+### Session History
+
+Browse recent Claude, Codex, and Gemini sessions from your filesystem. Resume any previous session or review conversation history.
+
+### Default Models
+
+Set default models per agent in settings. When you spawn a new agent, it uses your preferred model automatically.
+
+### Session Pre-warming
+
+Enable session warming to pre-start agent sessions in the background. When you spawn a new agent, it connects instantly to a pre-warmed session.
+
 ### Context-Aware Task Creation
 
 Select text in any terminal, hit a shortcut, and spawn a new agent with that context pre-loaded. The selected text becomes context for your task prompt - no copy-paste needed.
@@ -78,7 +94,7 @@ Generate commit messages from your staged changes. Learns from your commit style
 | `Cmd+Shift+X` | Spawn Codex |
 | `Cmd+Shift+M` | Spawn Gemini |
 | `Cmd+Shift+U` | Spawn Cursor |
-| `Cmd+Shift+D` | Spawn OpenCode |
+| `Cmd+Shift+D` | Open Dashboard |
 
 ## Requirements
 

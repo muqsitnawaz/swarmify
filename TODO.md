@@ -17,23 +17,6 @@ today.
 
 ---
 
-## Ability to auto parse TODO.md files in the project and display the things that need to be done
-### Ability to auto parse TODO.md files in the project and display the things that need to be done in the `Agents` Dashboards and ability to spawn a swarm to finish a task as well from that UX -- you see a tab open with the Orchestrator in front of you, then that orchestrator get passed the task after the tab is open, and then we press send and it starts working
-Initial research: The dashboard UI is in `agents-ext/ui/settings/App.tsx` and already
-shows Swarm tasks fetched from `agents-ext/src/swarm.vscode.ts`. There is no TODO.md
-discovery or parsing logic in the extension. The only markdown swarm entrypoint is
-`agents-ext/src/customEditor.ts` which swarms the current markdown document with
-`/swarm`.
-
----
-
-## Ability to set default models when spwaing these agent Terminal tabs
-### Ability to set default models when spwaing these agent Terminal tabs --- you can configure in the dashboard
-Initial research: Agent settings are defined in `agents-ext/src/settings.ts` and
-persisted through `agents-ext/src/settings.vscode.ts`. Built-in agents only track
-login and instances. The settings UI in `agents-ext/ui/settings/App.tsx` does not
-include model fields today.
-
 ---
 
 ## Use the word Orchestrator on the landing page as its becoming more clear
@@ -51,12 +34,6 @@ There is no section that explains harness engineering benefits or positions
 Swarmify as a harness engineering system today.
 
 ---
-
-## Ability to show recent Claude, Codex or Gemini sessions
-### Ability to show recent Claude, Codex or Gemini sessions --- they can be found easiky on the filesystem like ~/.claude etc.
-Initial research: There is no session discovery in `agents-ext/src` for Claude,
-Codex, or Gemini directories. Existing recent activity in the UI is based on
-Swarm task metadata in `agents-ext/src/swarm.vscode.ts`.
 
 ---
 
@@ -122,12 +99,6 @@ Initial research: The extension has Claude-specific context injection in
 UI or file mapping for multiple context file names today.
 
 ---
-
-## We didnt mention that it configures notificaiton as well so coding agents arent waiting on your approvals
-### We didnt mention that it configures notificaiton as well so coding agents arent waiting on your approvals, we might need to check if thsi ferature is fully working, notifications might only be supported for Claude Code CLI for now
-Initial research: There is no notification configuration in the extension
-settings code. I do not see any approval automation or notification logic in
-`agents-ext/src` or `agents-ext/ui/settings`.
 
 ---
 

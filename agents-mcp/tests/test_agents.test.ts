@@ -122,6 +122,42 @@ describe('AgentProcess', () => {
     expect(duration).not.toBeNull();
     expect(duration).toMatch(/seconds|minutes/);
   });
+
+  test('uses stdout log mtime for completion when events lack timestamps', async () => {
+    const baseDir = path.join(TESTDATA_DIR, `agent_process_${Date.now()}`);
+    const agentId = 'agent-mtime';
+    const agentDir = path.join(baseDir, agentId);
+    const logPath = path.join(agentDir, 'stdout.log');
+    const startedAt = new Date('2024-01-01T00:00:00Z');
+    const logTime = new Date('2024-01-02T03:04:05Z');
+
+    await fs.mkdir(agentDir, { recursive: true });
+    await fs.writeFile(logPath, 'plain text line without json\n');
+    await fs.utimes(logPath, logTime, logTime);
+
+    const agent = new AgentProcess(
+      agentId,
+      'mtime-task',
+      'codex',
+      'Test prompt',
+      null,
+      'plan',
+      999999,
+      AgentStatus.RUNNING,
+      startedAt,
+      null,
+      baseDir
+    );
+
+    try {
+      await agent.updateStatusFromProcess();
+      expect(agent.completedAt).not.toBeNull();
+      const delta = Math.abs((agent.completedAt as Date).getTime() - logTime.getTime());
+      expect(delta).toBeLessThan(1000);
+    } finally {
+      await fs.rm(baseDir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('Effort Model Mapping', () => {
