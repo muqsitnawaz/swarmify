@@ -167,6 +167,11 @@ describe('isCliReady', () => {
     expect(isCliReady('Gemini\n>', 'gemini')).toBe(true);
   });
 
+  test('detects Cursor ready state', () => {
+    expect(isCliReady('{"type":"result","session_id":"abc123"}', 'cursor')).toBe(true);
+    expect(isCliReady('cursor-agent output>', 'cursor')).toBe(true);
+  });
+
   test('not ready during startup', () => {
     expect(isCliReady('Loading...', 'claude')).toBe(false);
     expect(isCliReady('Initializing', 'codex')).toBe(false);
@@ -255,6 +260,16 @@ describe('buildResumeCommand', () => {
     };
     expect(buildResumeCommand(session)).toBe('gemini --resume ghi789');
   });
+
+  test('builds Cursor resume command', () => {
+    const session: PrewarmedSession = {
+      agentType: 'cursor',
+      sessionId: '874384ec-7236-4887-aa1c-f627754ce0c0',
+      createdAt: Date.now(),
+      workingDirectory: '/test',
+    };
+    expect(buildResumeCommand(session)).toBe('cursor-agent --resume=874384ec-7236-4887-aa1c-f627754ce0c0');
+  });
 });
 
 describe('supportsPrewarming', () => {
@@ -262,10 +277,10 @@ describe('supportsPrewarming', () => {
     expect(supportsPrewarming('claude')).toBe(true);
     expect(supportsPrewarming('codex')).toBe(true);
     expect(supportsPrewarming('gemini')).toBe(true);
+    expect(supportsPrewarming('cursor')).toBe(true);
   });
 
   test('returns false for unsupported agents', () => {
-    expect(supportsPrewarming('cursor')).toBe(false);
     expect(supportsPrewarming('opencode')).toBe(false);
     expect(supportsPrewarming('random')).toBe(false);
   });
@@ -286,5 +301,11 @@ describe('PREWARM_CONFIGS', () => {
     // Gemini uses /stats instead of /status
     expect(PREWARM_CONFIGS.gemini.statusCommand).toBe('/stats');
     expect(PREWARM_CONFIGS.gemini.exitSequence).toEqual(['\x03', '\x03']);
+  });
+
+  test('cursor config has correct settings', () => {
+    expect(PREWARM_CONFIGS.cursor.command).toBe('cursor-agent');
+    expect(PREWARM_CONFIGS.cursor.exitSequence).toEqual(['\x03', '\x03']);
+    expect(PREWARM_CONFIGS.cursor.resumeCommand('abc123')).toBe('cursor-agent --resume=abc123');
   });
 });

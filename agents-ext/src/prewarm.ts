@@ -113,6 +113,11 @@ export function isCliReady(output: string, agentType: PrewarmAgentType): boolean
       />\s*$/,
       /Gemini.*\n.*>/s,
       /gemini/i,                  // Any gemini text
+    ],
+    cursor: [
+      />\s*$/,
+      /cursor/i,                  // Any cursor text
+      /"type":\s*"result"/,       // JSON result output
     ]
   };
 
@@ -163,14 +168,14 @@ export function buildResumeCommand(session: PrewarmedSession): string {
  * Get all supported agent types
  */
 export function getSupportedAgentTypes(): PrewarmAgentType[] {
-  return ['claude', 'codex', 'gemini'];
+  return ['claude', 'codex', 'gemini', 'cursor'];
 }
 
 /**
  * Check if an agent type supports pre-warming
  */
 export function supportsPrewarming(agentType: string): agentType is PrewarmAgentType {
-  return agentType === 'claude' || agentType === 'codex' || agentType === 'gemini';
+  return agentType === 'claude' || agentType === 'codex' || agentType === 'gemini' || agentType === 'cursor';
 }
 
 // === Blocking Prompt Detection ===

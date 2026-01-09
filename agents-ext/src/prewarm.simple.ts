@@ -51,6 +51,22 @@ const SIMPLE_PREWARM_CONFIGS: Record<PrewarmAgentType, SimplePrewarmConfig> = {
     },
     timeout: 60000,
   },
+  cursor: {
+    // Spawn cursor-agent with a simple prompt, wait for JSON response
+    method: 'spawn-wait',
+    command: ['cursor-agent', '-p', 'Hello! Be right back.', '--output-format', 'json'],
+    extractSessionId: (output: string): string | null => {
+      // Parse JSON output for session_id
+      // Output: {"type":"result",...,"session_id":"874384ec-7236-4887-aa1c-f627754ce0c0",...}
+      try {
+        const parsed = JSON.parse(output.trim());
+        return parsed.session_id || null;
+      } catch {
+        return null;
+      }
+    },
+    timeout: 30000,
+  },
 };
 
 /**

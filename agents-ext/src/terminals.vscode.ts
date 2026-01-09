@@ -49,7 +49,7 @@ function extractTerminalIdentificationOptions(terminal: vscode.Terminal): Termin
 }
 
 // Agent types that support session tracking
-export type SessionAgentType = 'claude' | 'codex' | 'gemini';
+export type SessionAgentType = 'claude' | 'codex' | 'gemini' | 'cursor';
 
 // Terminal entry following API.md
 export interface EditorTerminal {
