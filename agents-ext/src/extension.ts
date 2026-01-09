@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { BUILT_IN_AGENTS, getBuiltInByKey, getBuiltInDefByTitle } from './agents';
+import { BUILT_IN_AGENTS, getBuiltInByKey, getBuiltInDefByTitle, getBuiltInByPrefix } from './agents';
 import {
   AgentConfig,
   buildIconPath,
@@ -49,6 +49,7 @@ import {
 import { DEFAULT_DISPLAY_PREFERENCES } from './settings';
 import * as prewarm from './prewarm.vscode';
 import { supportsPrewarming, buildResumeCommand } from './prewarm';
+import { needsPrewarming, generateClaudeSessionId, buildClaudeOpenCommand } from './prewarm.simple';
 
 // Settings types are now imported from ./settings
 // Settings functions are in ./settings.vscode
@@ -958,18 +959,28 @@ async function openSingleAgent(
     }
   }
 
-  // Check for pre-warmed session (only for supported agent types without additional flags)
+  // Handle session ID for supported agent types
   const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
   let prewarmedSession: ReturnType<typeof prewarm.acquireSession> = null;
   let usePrewarmed = false;
+  let sessionId: string | null = null;
 
   if (agentKey && supportsPrewarming(agentKey) && !additionalFlags) {
-    prewarmedSession = prewarm.acquireSession(context, agentKey, cwd);
-    if (prewarmedSession) {
-      usePrewarmed = true;
-      // Use resume command instead of regular command
-      command = buildResumeCommand(prewarmedSession);
-      console.log(`[PREWARM] Using pre-warmed ${agentKey} session: ${prewarmedSession.sessionId}`);
+    if (agentKey === 'claude') {
+      // Claude: Generate session ID at open time, no prewarming needed
+      sessionId = generateClaudeSessionId();
+      command = buildClaudeOpenCommand(sessionId);
+      usePrewarmed = true; // For tracking purposes
+      console.log(`[PREWARM] Claude using on-demand session ID: ${sessionId}`);
+    } else if (needsPrewarming(agentKey)) {
+      // Codex/Gemini: Use prewarmed session from pool
+      prewarmedSession = prewarm.acquireSession(context, agentKey, cwd);
+      if (prewarmedSession) {
+        usePrewarmed = true;
+        sessionId = prewarmedSession.sessionId;
+        command = buildResumeCommand(prewarmedSession);
+        console.log(`[PREWARM] Using pre-warmed ${agentKey} session: ${prewarmedSession.sessionId}`);
+      }
     }
   }
 
@@ -995,11 +1006,11 @@ async function openSingleAgent(
     const pid = await terminal.processId;
     terminals.register(terminal, terminalId, agentConfig, pid, context);
 
-    // Track session ID if using pre-warmed session
-    if (usePrewarmed && prewarmedSession && agentKey && supportsPrewarming(agentKey)) {
-      terminals.setSessionId(terminal, prewarmedSession.sessionId);
+    // Track session ID
+    if (usePrewarmed && sessionId && agentKey && supportsPrewarming(agentKey)) {
+      terminals.setSessionId(terminal, sessionId);
       terminals.setAgentType(terminal, agentKey);
-      await prewarm.recordTerminalSession(context, terminalId, prewarmedSession.sessionId, agentKey, cwd);
+      await prewarm.recordTerminalSession(context, terminalId, sessionId, agentKey, cwd);
     }
 
     terminal.show();
@@ -1028,11 +1039,11 @@ async function openSingleAgent(
   const pid = await terminal.processId;
   terminals.register(terminal, terminalId, agentConfig, pid, context);
 
-  // Track session ID if using pre-warmed session
-  if (usePrewarmed && prewarmedSession && agentKey && supportsPrewarming(agentKey)) {
-    terminals.setSessionId(terminal, prewarmedSession.sessionId);
+  // Track session ID
+  if (usePrewarmed && sessionId && agentKey && supportsPrewarming(agentKey)) {
+    terminals.setSessionId(terminal, sessionId);
     terminals.setAgentType(terminal, agentKey);
-    await prewarm.recordTerminalSession(context, terminalId, prewarmedSession.sessionId, agentKey, cwd);
+    await prewarm.recordTerminalSession(context, terminalId, sessionId, agentKey, cwd);
   }
 
   if (command) {
@@ -1168,6 +1179,7 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
     preserveFocus: false
   };
 
+  const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
   let totalCount = 0;
 
   for (const agent of agents) {
@@ -1175,6 +1187,31 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
       // Generate ID first for env var
       const terminalId = terminals.nextId(agent.prefix);
       const title = buildTerminalTitle(agent.title, undefined, context);
+
+      // Determine agent key and handle session ID
+      const builtInDef = getBuiltInByPrefix(agent.prefix);
+      const agentKey = builtInDef?.key as 'claude' | 'codex' | 'gemini' | undefined;
+
+      let command = agent.command;
+      let sessionId: string | null = null;
+
+      if (agentKey && supportsPrewarming(agentKey)) {
+        if (agentKey === 'claude') {
+          // Claude: Generate session ID at open time
+          sessionId = generateClaudeSessionId();
+          command = buildClaudeOpenCommand(sessionId);
+          console.log(`[PREWARM] Auto-open Claude with session ID: ${sessionId}`);
+        } else if (needsPrewarming(agentKey)) {
+          // Codex/Gemini: Use prewarmed session from pool
+          const prewarmedSession = prewarm.acquireSession(context, agentKey, cwd);
+          if (prewarmedSession) {
+            sessionId = prewarmedSession.sessionId;
+            command = buildResumeCommand(prewarmedSession);
+            console.log(`[PREWARM] Auto-open ${agentKey} with pre-warmed session: ${sessionId}`);
+          }
+        }
+      }
+
       const terminal = vscode.window.createTerminal({
         iconPath: agent.iconPath,
         location: editorLocation,
@@ -1188,8 +1225,16 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
 
       const pid = await terminal.processId;
       terminals.register(terminal, terminalId, agent, pid, context);
-      if (agent.command) {
-        terminal.sendText(agent.command);
+
+      // Track session ID
+      if (sessionId && agentKey && supportsPrewarming(agentKey)) {
+        terminals.setSessionId(terminal, sessionId);
+        terminals.setAgentType(terminal, agentKey);
+        await prewarm.recordTerminalSession(context, terminalId, sessionId, agentKey, cwd);
+      }
+
+      if (command) {
+        terminal.sendText(command);
       }
       totalCount++;
     }

@@ -1,32 +1,43 @@
 // End-to-end tests for session pre-warming
 // These tests spawn real CLI processes - no mocking
 // Tests will be skipped if CLIs are not available
-//
-// IMPORTANT: These tests require PTY spawning which is blocked in sandboxed
-// environments (like Claude Code's terminal or bun test). They will work in:
-// - VS Code extension host
-// - Regular terminal (outside Claude Code)
-// - Node.js directly
-//
-// The tests gracefully handle PTY spawn failures and don't fail the test suite.
 
 import { describe, test, expect } from 'bun:test';
 import {
-  spawnPrewarmSession,
-  spawnPrewarmSessionWithFallback,
-  isCliAvailable,
-  isPtyAvailable,
-} from './prewarm.pty';
+  spawnSimplePrewarmSession,
+  needsPrewarming,
+  generateClaudeSessionId,
+  buildClaudeOpenCommand,
+} from './prewarm.simple';
+import { isCliAvailable } from './prewarm.vscode';
+import { extractSessionId } from './prewarm';
 
 // Longer timeouts for E2E tests (CLI startup can be slow)
 const E2E_TIMEOUT = 60000;
 
-describe('PTY availability', () => {
-  test('reports PTY availability status', () => {
-    const available = isPtyAvailable();
-    console.log(`[E2E] node-pty available: ${available}`);
-    // Just check it returns a boolean, don't fail if unavailable
-    expect(typeof available).toBe('boolean');
+describe('Claude session ID generation', () => {
+  test('generates valid UUID for Claude', () => {
+    const sessionId = generateClaudeSessionId();
+    expect(sessionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+    console.log(`[E2E] Generated Claude session ID: ${sessionId}`);
+  });
+
+  test('builds correct Claude open command', () => {
+    const sessionId = '019ba357-61b0-7e51-afdd-cd43c0e32253';
+    const command = buildClaudeOpenCommand(sessionId);
+    expect(command).toBe('claude --session-id 019ba357-61b0-7e51-afdd-cd43c0e32253');
+  });
+
+  test('Claude does not need prewarming', () => {
+    expect(needsPrewarming('claude')).toBe(false);
+  });
+
+  test('Codex needs prewarming', () => {
+    expect(needsPrewarming('codex')).toBe(true);
+  });
+
+  test('Gemini needs prewarming', () => {
+    expect(needsPrewarming('gemini')).toBe(true);
   });
 });
 
@@ -37,42 +48,21 @@ describe('Prewarm E2E - Claude', () => {
     expect(typeof available).toBe('boolean');
   }, E2E_TIMEOUT);
 
-  test('extracts session ID from claude /status', async () => {
-    const available = await isCliAvailable('claude');
-    if (!available) {
-      console.log('[E2E] Skipping: Claude CLI not available');
-      return;
-    }
-
+  test('Claude prewarm returns immediately with generated UUID', async () => {
     const cwd = process.cwd();
-    console.log(`[E2E] Spawning Claude prewarm session in ${cwd}`);
+    console.log(`[E2E] Testing Claude prewarm (should be instant)`);
 
-    const result = await spawnPrewarmSessionWithFallback('claude', cwd);
-    console.log(`[E2E] Claude result: status=${result.status}, sessionId=${result.sessionId}, blocked=${result.blockedReason}, failed=${result.failedReason}`);
+    const startTime = Date.now();
+    const result = await spawnSimplePrewarmSession('claude', cwd);
+    const elapsed = Date.now() - startTime;
 
-    if (result.status === 'blocked') {
-      console.log(`[E2E] Claude blocked: ${result.blockedReason}`);
-      // Not a test failure - just means env isn't configured
-      // Log raw output for debugging
-      if (result.rawOutput) {
-        console.log(`[E2E] Claude raw output (first 500 chars): ${result.rawOutput.slice(0, 500)}`);
-      }
-      return;
-    }
+    console.log(`[E2E] Claude result: status=${result.status}, sessionId=${result.sessionId}, elapsed=${elapsed}ms`);
 
-    if (result.status === 'failed') {
-      console.log(`[E2E] Claude failed: ${result.failedReason}`);
-      if (result.rawOutput) {
-        console.log(`[E2E] Claude raw output (first 500 chars): ${result.rawOutput.slice(0, 500)}`);
-      }
-      // Still not a hard failure - could be config issue
-      return;
-    }
-
+    // Claude should return immediately since we just generate a UUID
     expect(result.status).toBe('success');
     expect(result.sessionId).toBeTruthy();
-    expect(result.sessionId).toMatch(/^[a-zA-Z0-9_-]+$/);
-    console.log(`[E2E] Claude session ID extracted: ${result.sessionId}`);
+    expect(result.sessionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+    expect(elapsed).toBeLessThan(100); // Should be nearly instant
   }, E2E_TIMEOUT);
 });
 
@@ -83,7 +73,7 @@ describe('Prewarm E2E - Codex', () => {
     expect(typeof available).toBe('boolean');
   }, E2E_TIMEOUT);
 
-  test('extracts session ID from codex /status', async () => {
+  test('extracts session ID from codex banner', async () => {
     const available = await isCliAvailable('codex');
     if (!available) {
       console.log('[E2E] Skipping: Codex CLI not available');
@@ -93,7 +83,7 @@ describe('Prewarm E2E - Codex', () => {
     const cwd = process.cwd();
     console.log(`[E2E] Spawning Codex prewarm session in ${cwd}`);
 
-    const result = await spawnPrewarmSessionWithFallback('codex', cwd);
+    const result = await spawnSimplePrewarmSession('codex', cwd);
     console.log(`[E2E] Codex result: status=${result.status}, sessionId=${result.sessionId}, blocked=${result.blockedReason}, failed=${result.failedReason}`);
 
     if (result.status === 'blocked') {
@@ -126,7 +116,7 @@ describe('Prewarm E2E - Gemini', () => {
     expect(typeof available).toBe('boolean');
   }, E2E_TIMEOUT);
 
-  test('extracts session ID from gemini /stats', async () => {
+  test('extracts session ID from gemini JSON output', async () => {
     const available = await isCliAvailable('gemini');
     if (!available) {
       console.log('[E2E] Skipping: Gemini CLI not available');
@@ -136,7 +126,7 @@ describe('Prewarm E2E - Gemini', () => {
     const cwd = process.cwd();
     console.log(`[E2E] Spawning Gemini prewarm session in ${cwd}`);
 
-    const result = await spawnPrewarmSessionWithFallback('gemini', cwd);
+    const result = await spawnSimplePrewarmSession('gemini', cwd);
     console.log(`[E2E] Gemini result: status=${result.status}, sessionId=${result.sessionId}, blocked=${result.blockedReason}, failed=${result.failedReason}`);
 
     if (result.status === 'blocked') {
@@ -162,27 +152,10 @@ describe('Prewarm E2E - Gemini', () => {
   }, E2E_TIMEOUT);
 });
 
-describe('Prewarm fallback behavior', () => {
-  test('gracefully handles unavailable CLI', async () => {
-    // Test with a non-existent CLI
-    const originalConfigs = require('./prewarm').PREWARM_CONFIGS;
-
-    // Create a test that uses the fallback path
-    const result = await spawnPrewarmSessionWithFallback('claude', '/nonexistent/path');
-
-    // Should either succeed, be blocked, or fail gracefully (not throw)
-    expect(['success', 'blocked', 'failed']).toContain(result.status);
-    console.log(`[E2E] Fallback test result: ${result.status}`);
-  }, E2E_TIMEOUT);
-});
-
 describe('Session ID extraction patterns', () => {
   // These tests verify that the patterns work with real-world output formats
-  // by testing the extractSessionId function directly with various formats
 
   test('handles UUID format (primary format for Claude)', async () => {
-    const { extractSessionId } = await import('./prewarm');
-
     // UUIDv7 format - most common for Claude
     expect(extractSessionId('Session ID: 019ba357-61b0-7e51-afdd-cd43c0e32253'))
       .toBe('019ba357-61b0-7e51-afdd-cd43c0e32253');
@@ -196,8 +169,6 @@ describe('Session ID extraction patterns', () => {
   });
 
   test('handles realistic /status output', async () => {
-    const { extractSessionId } = await import('./prewarm');
-
     const statusOutput = `
 Claude Code v2.1.2
 
@@ -212,8 +183,6 @@ Type /help for commands
   });
 
   test('handles fallback formats for other CLIs', async () => {
-    const { extractSessionId } = await import('./prewarm');
-
     // Non-UUID formats (fallback patterns)
     expect(extractSessionId('Session ID: abc123')).toBe('abc123');
     expect(extractSessionId('Session: codex_session_abc')).toBe('codex_session_abc');

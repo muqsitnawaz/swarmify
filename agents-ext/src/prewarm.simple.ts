@@ -1,9 +1,7 @@
-// Simple command-based session pre-warming for all agents
-// Uses non-interactive commands that output session ID directly
-// Much more reliable than PTY-based approach
+// Simple command-based session pre-warming for Codex and Gemini
+// Claude doesn't need prewarming - just generate UUID at terminal open time
 
-import { exec, spawn } from 'child_process';
-import { promisify } from 'util';
+import { spawn } from 'child_process';
 import { randomUUID } from 'crypto';
 import {
   PrewarmAgentType,
@@ -11,30 +9,24 @@ import {
   stripAnsi,
 } from './prewarm';
 
-const execAsync = promisify(exec);
-
 // Configuration for simple command-based prewarm
 interface SimplePrewarmConfig {
-  // Method: 'exec' runs to completion, 'spawn-kill' kills after getting session ID
-  method: 'exec' | 'spawn-kill';
-  // Command args for spawn, or full command for exec
+  // Method: 'none' for Claude (no prewarm), 'spawn-kill' kills after getting session ID
+  method: 'none' | 'spawn-kill';
+  // Command args for spawn
   command: string[];
-  // For Claude: generate UUID ourselves
-  generateSessionId?: () => string;
   // Extract session ID from output (streaming for spawn-kill)
   extractSessionId?: (output: string) => string | null;
   timeout: number;
 }
 
-const UUID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
-
 const SIMPLE_PREWARM_CONFIGS: Record<PrewarmAgentType, SimplePrewarmConfig> = {
   claude: {
-    // Generate UUID ourselves and pass to Claude - runs to completion with empty prompt
-    method: 'exec',
-    command: [], // Will be generated dynamically
-    generateSessionId: () => randomUUID(),
-    timeout: 30000,
+    // Claude doesn't need prewarming - we generate UUID at terminal open time
+    // and pass it via `claude --session-id <uuid>`
+    method: 'none',
+    command: [],
+    timeout: 0,
   },
   gemini: {
     // Spawn gemini, kill as soon as we see session_id in JSON output
@@ -62,17 +54,30 @@ const SIMPLE_PREWARM_CONFIGS: Record<PrewarmAgentType, SimplePrewarmConfig> = {
 };
 
 /**
- * Check if simple prewarm is available for an agent type
- * Now available for all agents!
+ * Check if agent type needs actual prewarming (spawning a process)
+ * Claude doesn't need it - we just generate UUID at open time
  */
-export function hasSimplePrewarm(agentType: PrewarmAgentType): boolean {
-  return agentType in SIMPLE_PREWARM_CONFIGS;
+export function needsPrewarming(agentType: PrewarmAgentType): boolean {
+  return agentType !== 'claude';
+}
+
+/**
+ * Generate a session ID for Claude (no prewarming needed)
+ */
+export function generateClaudeSessionId(): string {
+  return randomUUID();
+}
+
+/**
+ * Build the open command for Claude with a session ID
+ */
+export function buildClaudeOpenCommand(sessionId: string): string {
+  return `claude --session-id ${sessionId}`;
 }
 
 /**
  * Spawn a prewarm session using simple command execution
- * Works for all agents now:
- * - Claude: Generate UUID, pass via --session-id, run to completion
+ * - Claude: Returns immediately with generated UUID (no command execution)
  * - Codex: Spawn 'codex exec', kill as soon as session id appears in banner
  * - Gemini: Spawn with -o json, kill as soon as session_id appears in JSON
  */
@@ -89,64 +94,19 @@ export async function spawnSimplePrewarmSession(
     };
   }
 
-  if (config.method === 'exec') {
-    return spawnExecMethod(agentType, cwd, config);
-  } else {
-    return spawnKillMethod(agentType, cwd, config);
-  }
-}
-
-/**
- * Exec method: Run command to completion (for Claude with pre-generated UUID)
- */
-async function spawnExecMethod(
-  agentType: PrewarmAgentType,
-  cwd: string,
-  config: SimplePrewarmConfig
-): Promise<PrewarmResult> {
-  // Generate session ID for Claude
-  const sessionId = config.generateSessionId?.();
-  if (!sessionId) {
-    return {
-      status: 'failed',
-      failedReason: 'cli_error',
-      rawOutput: 'Failed to generate session ID',
-    };
-  }
-
-  // Build command: claude --session-id "<uuid>" -p ""
-  const command = `claude --session-id "${sessionId}" -p ""`;
-  console.log(`[PREWARM] Simple exec for ${agentType}: ${command}`);
-
-  try {
-    const { stdout, stderr } = await execAsync(command, {
-      cwd,
-      timeout: config.timeout,
-      env: { ...process.env },
-    });
-
-    const output = stdout + stderr;
-    console.log(`[PREWARM] ${agentType} exec completed: ${output.length} bytes`);
-    console.log(`[PREWARM] ${agentType} using pre-generated session ID: ${sessionId}`);
-
+  // Claude: No prewarming needed, generate UUID immediately
+  if (config.method === 'none') {
+    const sessionId = generateClaudeSessionId();
+    console.log(`[PREWARM] Claude using on-demand session ID: ${sessionId}`);
     return {
       status: 'success',
       sessionId,
-      rawOutput: output,
+      rawOutput: 'No prewarming needed for Claude',
     };
-
-  } catch (err: any) {
-    const errorOutput = (err.stdout || '') + (err.stderr || '') + String(err);
-    console.log(`[PREWARM] ${agentType} exec error: ${err.message || err}`);
-
-    if (err.killed || err.signal === 'SIGTERM') {
-      return { status: 'failed', failedReason: 'timeout', rawOutput: errorOutput };
-    }
-    if (errorOutput.includes('authenticate') || errorOutput.includes('log in')) {
-      return { status: 'blocked', blockedReason: 'auth_required', rawOutput: errorOutput };
-    }
-    return { status: 'failed', failedReason: 'cli_error', rawOutput: errorOutput };
   }
+
+  // Codex/Gemini: spawn-kill method
+  return spawnKillMethod(agentType, cwd, config);
 }
 
 /**
