@@ -5,6 +5,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { AgentConfig } from './agents.vscode';
 import { generateTerminalId, RunningCounts } from './terminals';
+import * as sessionsPersist from './sessions.persist';
 import {
   CLAUDE_TITLE,
   CODEX_TITLE,
@@ -67,6 +68,9 @@ export interface EditorTerminal {
 const STATUS_BAR_LABELS_KEY = 'agentStatusBarLabels';
 
 type StatusBarLabelsStorage = { [pid: number]: string };
+
+// Re-export PersistedSession from sessions.persist for external use
+export { PersistedSession } from './sessions.persist';
 
 export function loadStatusBarLabels(context: vscode.ExtensionContext): StatusBarLabelsStorage {
   const stored = context.globalState.get<StatusBarLabelsStorage>(STATUS_BAR_LABELS_KEY);
@@ -417,4 +421,52 @@ export function getTerminalsByAgentType(agentType: string): TerminalDetail[] {
 export function clear(): void {
   editorTerminals.clear();
   terminalIdCounter = 0;
+}
+
+// Session persistence for restore across VS Code restarts
+
+// Build persisted session data from current terminals
+export function buildPersistedSessions(): sessionsPersist.PersistedSession[] {
+  const sessions: sessionsPersist.PersistedSession[] = [];
+
+  for (const entry of editorTerminals.values()) {
+    // Only persist agent terminals (not regular terminals)
+    if (!entry.agentConfig) continue;
+
+    sessions.push({
+      terminalId: entry.id,
+      prefix: entry.agentConfig.prefix,
+      sessionId: entry.sessionId,
+      label: entry.label,
+      agentType: entry.agentType,
+      createdAt: entry.createdAt
+    });
+  }
+
+  return sessions;
+}
+
+// Persist all current sessions for a workspace
+export function persistSessions(workspacePath: string): void {
+  const sessions = buildPersistedSessions();
+  sessionsPersist.saveWorkspaceSessions(workspacePath, sessions, true);
+}
+
+// Load persisted sessions for a workspace
+export function loadPersistedSessions(workspacePath: string): sessionsPersist.PersistedSession[] {
+  return sessionsPersist.getWorkspaceSessions(workspacePath);
+}
+
+// Clear persisted sessions after successful restore
+export function clearPersistedSessions(workspacePath: string): void {
+  sessionsPersist.clearWorkspaceSessions(workspacePath);
+}
+
+// Update a session's metadata (e.g., when CLI sessionId is captured)
+export function updatePersistedSession(
+  workspacePath: string,
+  terminalId: string,
+  updates: Partial<sessionsPersist.PersistedSession>
+): void {
+  sessionsPersist.updateSession(workspacePath, terminalId, updates);
 }

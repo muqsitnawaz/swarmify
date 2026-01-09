@@ -2,12 +2,20 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
   CallToolRequestSchema,
+  InitializeRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { AgentManager, checkAllClis } from './agents.js';
 import { AgentType } from './parsers.js';
 import { handleSpawn, handleStatus, handleStop, handleListTasks } from './api.js';
 import { readConfig } from './persistence.js';
+import {
+  buildVersionNotice,
+  detectClientFromName,
+  getCurrentVersion,
+  initVersionCheck,
+  setDetectedClient,
+} from './version.js';
 
 const manager = new AgentManager(50, 10, null, null, null, 7);
 
@@ -28,6 +36,10 @@ const agentDescriptions: Record<AgentType, string> = {
   claude: 'Maximum capability, research, exploration.',
   gemini: 'Complex multi-system features, architectural changes.',
 };
+
+function withVersionNotice(description: string): string {
+  return description + buildVersionNotice();
+}
 
 function buildSpawnDescription(): string {
   const agentList = enabledAgents
@@ -61,8 +73,8 @@ Choose automatically based on task requirements - don't ask the user.`;
 
 const server = new Server(
   {
-    name: 'agent-swarm',
-    version: '0.2.0',
+    name: 'Swarm',
+    version: getCurrentVersion(),
   },
   {
     capabilities: {
@@ -71,12 +83,31 @@ const server = new Server(
   }
 );
 
+// Capture client info for version warnings
+server.setRequestHandler(InitializeRequestSchema, async (request) => {
+  if (request.params?.clientInfo?.name) {
+    const client = detectClientFromName(request.params.clientInfo.name);
+    setDetectedClient(client);
+  }
+  // Return standard initialize response
+  return {
+    protocolVersion: '2024-11-05',
+    capabilities: {
+      tools: {},
+    },
+    serverInfo: {
+      name: 'Swarm',
+      version: getCurrentVersion(),
+    },
+  };
+});
+
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
       {
         name: TOOL_NAMES.spawn,
-        description: buildSpawnDescription(),
+        description: withVersionNotice(buildSpawnDescription()),
         inputSchema: {
           type: 'object',
           properties: {
@@ -113,14 +144,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: TOOL_NAMES.status,
-        description: `Get status of all agents in a task with full details including:
+        description: withVersionNotice(`Get status of all agents in a task with full details including:
 - Files created/modified/read/deleted (full paths)
 - All bash commands executed
 - Last 3 assistant messages
 
 Use this for polling agent progress.
 
-CURSOR SUPPORT: Send 'since' parameter (ISO timestamp from previous response's 'cursor' field) to get only NEW data since that time. This avoids duplicate data on repeated polls.`,
+CURSOR SUPPORT: Send 'since' parameter (ISO timestamp from previous response's 'cursor' field) to get only NEW data since that time. This avoids duplicate data on repeated polls.`),
         inputSchema: {
           type: 'object',
           properties: {
@@ -143,9 +174,9 @@ CURSOR SUPPORT: Send 'since' parameter (ISO timestamp from previous response's '
       },
       {
         name: TOOL_NAMES.stop,
-        description: `Stop agents. Two modes:
+        description: withVersionNotice(`Stop agents. Two modes:
 - Stop(task_name): Stop ALL agents in the task
-- Stop(task_name, agent_id): Stop ONE specific agent`,
+- Stop(task_name, agent_id): Stop ONE specific agent`),
         inputSchema: {
           type: 'object',
           properties: {
@@ -163,13 +194,13 @@ CURSOR SUPPORT: Send 'since' parameter (ISO timestamp from previous response's '
       },
       {
         name: TOOL_NAMES.tasks,
-        description: `List all tasks with their agents and activity details.
+        description: withVersionNotice(`List all tasks with their agents and activity details.
 
 Returns tasks sorted by most recent activity, with full agent details including:
 - Files created/modified/read/deleted
 - Bash commands executed
 - Last messages from each agent
-- Status and duration`,
+- Status and duration`),
         inputSchema: {
           type: 'object',
           properties: {
@@ -285,9 +316,14 @@ export async function runServer(): Promise<void> {
   console.error('Requested agents:', requestedAgents.join(', '));
   console.error('Enabled agents (installed):', enabledAgents.join(', ') || 'none');
 
+  // Initialize version check (non-blocking, with timeout)
+  initVersionCheck().catch(err => {
+    console.warn('[Swarm] Version check failed:', err);
+  });
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error('Starting agent-swarm MCP server v0.2.0');
+  console.error(`Starting Swarm MCP server v${getCurrentVersion()}`);
 
   // Health check
   const health = cliHealth;
