@@ -76,7 +76,9 @@ Enable session warming to reduce agent startup time. Each agent type handles ses
 
 **Claude**: Session IDs are generated on-demand when opening a terminal. No background prewarming required - Claude accepts custom session IDs via `--session-id`.
 
-**Codex/Gemini**: Sessions are prewarmed in the background by spawning the CLI, extracting the session ID from output, and immediately killing the process. When you open an agent, it resumes the prewarmed session instantly.
+**Codex**: Sessions are prewarmed by spawning `codex exec ''`, extracting the session ID from the banner, and killing immediately. Resume loads the prewarmed session.
+
+**Gemini**: Sessions are prewarmed by running `gemini -p " " -o json` to completion, then resolving the session ID via `gemini --list-sessions`. Note: Gemini's `/stats` may show a different "interaction ID" - this is expected; the conversation context is preserved.
 
 ### Session Persistence
 
