@@ -47,6 +47,9 @@ function extractTerminalIdentificationOptions(terminal: vscode.Terminal): Termin
   };
 }
 
+// Agent types that support session tracking
+export type SessionAgentType = 'claude' | 'codex' | 'gemini';
+
 // Terminal entry following API.md
 export interface EditorTerminal {
   id: string;
@@ -57,6 +60,8 @@ export interface EditorTerminal {
   createdAt: number;
   pid?: number;             // Shell process ID
   messageQueue: string[];   // Queued messages to send after terminal ready
+  sessionId?: string;       // CLI session ID (for resume, history reading)
+  agentType?: SessionAgentType; // Agent type for session operations
 }
 
 const STATUS_BAR_LABELS_KEY = 'agentStatusBarLabels';
@@ -202,6 +207,31 @@ export function setAutoLabel(terminal: vscode.Terminal, autoLabel: string | unde
   }
 }
 
+export function setSessionId(terminal: vscode.Terminal, sessionId: string): void {
+  const entry = getByTerminal(terminal);
+  if (entry) {
+    entry.sessionId = sessionId;
+    console.log(`[TERMINALS] Set sessionId for terminal "${terminal.name}": ${sessionId}`);
+  }
+}
+
+export function setAgentType(terminal: vscode.Terminal, agentType: SessionAgentType): void {
+  const entry = getByTerminal(terminal);
+  if (entry) {
+    entry.agentType = agentType;
+  }
+}
+
+export function getSessionId(terminal: vscode.Terminal): string | undefined {
+  const entry = getByTerminal(terminal);
+  return entry?.sessionId;
+}
+
+export function getAgentType(terminal: vscode.Terminal): SessionAgentType | undefined {
+  const entry = getByTerminal(terminal);
+  return entry?.agentType;
+}
+
 // Message queue management
 
 export function queueMessage(terminal: vscode.Terminal, message: string): void {
@@ -332,6 +362,7 @@ export interface TerminalDetail {
   autoLabel: string | null;
   createdAt: number;
   index: number; // 1-based index within agent type
+  sessionId: string | null; // CLI session ID
 }
 
 // Map from lowercase key (used in UI) to prefix (used in terminal names)
@@ -374,7 +405,8 @@ export function getTerminalsByAgentType(agentType: string): TerminalDetail[] {
       label: entry?.label || info.label || null,
       autoLabel: entry?.autoLabel || null,
       createdAt: entry?.createdAt || Date.now(),
-      index: index
+      index: index,
+      sessionId: entry?.sessionId || null
     });
   }
 

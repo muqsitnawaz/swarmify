@@ -14,6 +14,7 @@ import { discoverTodoFiles, spawnSwarmForTodo } from './todos.vscode';
 import { discoverRecentSessions } from './sessions.vscode';
 import { formatTerminalTitle, parseTerminalName } from './utils';
 import { getBuiltInByKey } from './agents';
+import * as prewarm from './prewarm.vscode';
 
 // Check if a CLI command exists on the system
 function commandExists(cmd: string): Promise<boolean> {
@@ -359,6 +360,22 @@ export function openPanel(context: vscode.ExtensionContext): void {
           const sessionUri = vscode.Uri.file(message.session.path);
           vscode.window.showTextDocument(sessionUri, { preview: true });
         }
+        break;
+      case 'getPrewarmStatus':
+        settingsPanel?.webview.postMessage({
+          type: 'prewarmStatus',
+          enabled: prewarm.isEnabled(context),
+          pools: prewarm.getPoolInfo()
+        });
+        break;
+      case 'togglePrewarm':
+        const newEnabled = !prewarm.isEnabled(context);
+        await prewarm.setEnabled(context, newEnabled);
+        settingsPanel?.webview.postMessage({
+          type: 'prewarmStatus',
+          enabled: newEnabled,
+          pools: prewarm.getPoolInfo()
+        });
         break;
     }
   }, undefined, context.subscriptions);
