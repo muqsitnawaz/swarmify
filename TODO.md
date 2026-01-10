@@ -40,27 +40,11 @@ Initial research: The landing page has a Swarm Mode feature and a parallel agent
 
 ---
 
-## A core upside is also that many coding agents dont have the native capability to spawn subagents
-
-### A core upside is also that many coding agents dont have the native capability to spawn subagents to work on tasks ~ Dex explains several benefits of this, for context gathering because better context engineering, also work gets accomplished faster because multiple agents are working in parallel
-
-Initial research: The use case copy in `agents-web/src/app/page.tsx` mentions that some CLIs lack subagent support. There is no explicit context engineering framing or Dex reference in the current copy.
-
----
-
 ## People might have concerns about oh do they step on each others work or how do you resolve conflicts
 
 ### People might have concerns about oh do they step on each others work or how do you resolve conflicts, basically the /swarm command thats installed instructs the orchestrator agent to basically split the task carefully, tell them instructions like you give to a human co-worker
 
 Initial research: The `/swarm` command content is generated in `agents-ext/src/swarm.vscode.ts` from `assets/swarm.md`. There is no landing page or dashboard explanation that addresses conflict resolution directly.
-
----
-
-## Also, we should mention its capability of simplifying the management of context files
-
-### Also, we should mention its capability of simplifying the management of context files, when you have a workspace open, it shows a map of all the AGENTS.md files (you can pick the default name that should be used e.g. user maybe maintaining GEMINI.md files so they can pick that), but this system takes care of creating symlinks so different coding agents see a unified picture of the whole system which significantly reduces cognitive divergence
-
-Initial research: The extension has Claude-specific context injection in `agents-ext/src/claudemd.vscode.ts` and `agents-ext/src/claudemd.ts`. There is no UI or file mapping for multiple context file names today.
 
 ---
 
