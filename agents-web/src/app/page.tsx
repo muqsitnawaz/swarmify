@@ -84,14 +84,12 @@ export default function Home() {
             </div>
           </div>
           <h1 className="hero-heading text-5xl md:text-7xl font-bold tracking-tight leading-[1.1] mb-6">
-            Harness engineering for CLI orchestrators.
+            Run Claude, Codex, and Gemini in parallel IDE tabs.
             <br />
-            <span className="hero-muted text-[#94a3b8]">Run multiple agents and review their work in your IDE.</span>
+            <span className="hero-muted text-[#94a3b8]">Orchestrate multiple agents and review their work in your editor.</span>
           </h1>
           <p className="text-xl text-[#94a3b8] max-w-2xl mb-10">
-            Swarmify is a harness engineering system that customizes agent integration points like hooks, commands, and
-            context files. It orchestrates multiple CLI agents inside your editor, following the research plan implement
-            workflow popularized by Dex.
+            Swarmify is a harness engineering system for multi-agent orchestration. Two modes: <strong className="text-white">Swarm</strong> for parallel execution across multiple agents, or <strong className="text-white">Ralph</strong> for sequential task completion. Local-first, your code stays on your machine.
           </p>
         </div>
 
@@ -155,7 +153,7 @@ export default function Home() {
               <p className="text-[#94a3b8] text-lg mb-6">
                 Swarmify is not another model. It is a harness engineering system that shapes how CLI agents integrate
                 with your repo. You control hooks, commands, and context files, then let a single orchestrator drive
-                multiple agents through the research plan implement workflow popularized by Dex.
+                multiple agents through the Research-Plan-Implement workflow.
               </p>
               <div className="space-y-4 text-sm text-[#cbd5e1]">
                 <div className="rounded-xl border border-[#1a1a1a] bg-[#0b1116] p-4">
@@ -446,7 +444,7 @@ export default function Home() {
       <section className="px-6 py-24 border-t border-[#1a1a1a]">
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-10">
-            <h2 className="text-2xl font-bold mb-3">Trusted by engineers at</h2>
+            <h2 className="text-2xl font-bold mb-3">Used by engineers from</h2>
           </div>
           <div className="flex justify-center items-center gap-12 flex-wrap">
             <div className="rounded-xl border border-[#1a1a1a] bg-[#0b1116] px-8 py-6 flex items-center justify-center">
