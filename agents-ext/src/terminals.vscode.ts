@@ -339,6 +339,12 @@ export async function scanExisting(
   for (const terminal of vscode.window.terminals) {
     console.log(`[TERMINALS] Checking terminal: "${terminal.name}"`);
 
+    // Skip terminals whose process has exited (tab may still be open)
+    if (terminal.exitStatus !== undefined) {
+      console.log(`[TERMINALS] Process exited, skipping`);
+      continue;
+    }
+
     // Skip if already registered
     if (terminalToId.has(terminal)) {
       console.log(`[TERMINALS] Already registered, skipping`);
@@ -452,6 +458,9 @@ export function getTerminalsByAgentType(agentType: string): TerminalDetail[] {
   let index = 0;
 
   for (const terminal of vscode.window.terminals) {
+    // Skip terminals whose process has exited (tab may still be open)
+    if (terminal.exitStatus !== undefined) continue;
+
     const identOpts = extractTerminalIdentificationOptions(terminal);
     const info = getTerminalDisplayInfo(identOpts);
     if (!info.isAgent || !info.prefix) continue;
