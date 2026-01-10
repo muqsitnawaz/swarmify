@@ -386,6 +386,9 @@ export function countRunning(): RunningCounts {
   };
 
   for (const terminal of vscode.window.terminals) {
+    // Skip terminals whose process has exited (tab may still be open)
+    if (terminal.exitStatus !== undefined) continue;
+
     // Use full identification (name + env + icon) so we keep prefix even when the
     // tab title is just a label (showLabelsInTitles=true) or has been manually renamed.
     const identOpts = extractTerminalIdentificationOptions(terminal);
