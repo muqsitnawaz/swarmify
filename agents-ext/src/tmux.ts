@@ -38,6 +38,7 @@ export function createTmuxTerminal(
   }
 ): vscode.Terminal {
   const session = `agents-${Date.now()}`;
+  const socket = `/tmp/agents-tmux-${session}.sock`;  // Unique socket per session
 
   const terminal = vscode.window.createTerminal({
     name,
@@ -50,25 +51,25 @@ export function createTmuxTerminal(
   });
 
   // Build a single chained command that:
-  // 1. Creates tmux session in detached mode
+  // 1. Creates tmux session in detached mode with pinned socket
   // 2. Configures mouse and pane labels
   // 3. Sends agent command directly to the session via send-keys (if provided)
   // 4. Attaches to the session
-  // This avoids race conditions from using separate sendText calls with timeouts.
+  // Using -S socket ensures both terminal shell and execAsync talk to same server.
   const escapedName = name.replace(/'/g, "'\\''");
   const tmuxCommands = [
-    `tmux new-session -d -s ${session} -n main`,
-    `tmux set-option -t ${session} mouse on`,
-    `tmux set-option -t ${session} pane-border-status top`,
-    `tmux set-option -t ${session} pane-border-format " #{pane_index}: ${escapedName} "`,
+    `tmux -S ${socket} new-session -d -s ${session} -n main`,
+    `tmux -S ${socket} set-option -t ${session} mouse on`,
+    `tmux -S ${socket} set-option -t ${session} pane-border-status top`,
+    `tmux -S ${socket} set-option -t ${session} pane-border-format " #{pane_index}: ${escapedName} "`,
   ];
 
   if (agentCommand) {
     const escapedCmd = agentCommand.replace(/'/g, "'\\''");
-    tmuxCommands.push(`tmux send-keys -t ${session} '${escapedCmd}' Enter`);
+    tmuxCommands.push(`tmux -S ${socket} send-keys -t ${session} '${escapedCmd}' Enter`);
   }
 
-  tmuxCommands.push(`tmux attach -t ${session}`);
+  tmuxCommands.push(`tmux -S ${socket} attach -t ${session}`);
 
   const tmuxInit = tmuxCommands.join(' && ');
 
@@ -82,6 +83,7 @@ export function createTmuxTerminal(
   tmuxTerminals.set(terminal, {
     terminal,
     session,
+    socket,
     agentType,
     paneCount: 1,
   });
@@ -89,54 +91,54 @@ export function createTmuxTerminal(
   return terminal;
 }
 
-export function tmuxSplitH(terminal: vscode.Terminal, agentCommand: string): void {
+export async function tmuxSplitH(terminal: vscode.Terminal, agentCommand: string): Promise<void> {
   const state = tmuxTerminals.get(terminal);
   if (!state) return;
 
-  state.paneCount++;
+  try {
+    // Verify session exists first
+    await execAsync(`tmux -S ${state.socket} has-session -t ${state.session}`);
 
-  // When inside an attached tmux session (with Claude running), we can't type
-  // shell commands directly - they go to Claude's input. Instead, we use tmux's
-  // prefix key (Ctrl+B) to enter command mode.
-  // \x02 = Ctrl+B (tmux default prefix)
-  terminal.sendText('\x02', false);  // Send tmux prefix
+    state.paneCount++;
 
-  setTimeout(() => {
-    // ':' enters command-line mode, then we type the split command
-    terminal.sendText(':split-window -v', true);
-
+    // Use execAsync to run tmux command directly - bypasses terminal input entirely.
+    // This avoids issues with Claude capturing keystrokes.
     if (agentCommand) {
-      // After split, new pane has focus with a shell prompt
-      setTimeout(() => {
-        terminal.sendText(agentCommand, true);
-      }, 200);
+      const escapedCmd = agentCommand.replace(/'/g, "'\\''");
+      await execAsync(`tmux -S ${state.socket} split-window -v -t ${state.session} '${escapedCmd}'`);
+    } else {
+      await execAsync(`tmux -S ${state.socket} split-window -v -t ${state.session}`);
     }
-  }, 50);
+  } catch (err) {
+    console.error('[TMUX] Split H failed:', err);
+    // Session doesn't exist - clean up stale state
+    tmuxTerminals.delete(terminal);
+  }
 }
 
-export function tmuxSplitV(terminal: vscode.Terminal, agentCommand: string): void {
+export async function tmuxSplitV(terminal: vscode.Terminal, agentCommand: string): Promise<void> {
   const state = tmuxTerminals.get(terminal);
   if (!state) return;
 
-  state.paneCount++;
+  try {
+    // Verify session exists first
+    await execAsync(`tmux -S ${state.socket} has-session -t ${state.session}`);
 
-  // When inside an attached tmux session (with Claude running), we can't type
-  // shell commands directly - they go to Claude's input. Instead, we use tmux's
-  // prefix key (Ctrl+B) to enter command mode.
-  // \x02 = Ctrl+B (tmux default prefix)
-  terminal.sendText('\x02', false);  // Send tmux prefix
+    state.paneCount++;
 
-  setTimeout(() => {
-    // ':' enters command-line mode, then we type the split command
-    terminal.sendText(':split-window -h', true);
-
+    // Use execAsync to run tmux command directly - bypasses terminal input entirely.
+    // This avoids issues with Claude capturing keystrokes.
     if (agentCommand) {
-      // After split, new pane has focus with a shell prompt
-      setTimeout(() => {
-        terminal.sendText(agentCommand, true);
-      }, 200);
+      const escapedCmd = agentCommand.replace(/'/g, "'\\''");
+      await execAsync(`tmux -S ${state.socket} split-window -h -t ${state.session} '${escapedCmd}'`);
+    } else {
+      await execAsync(`tmux -S ${state.socket} split-window -h -t ${state.session}`);
     }
-  }, 50);
+  } catch (err) {
+    console.error('[TMUX] Split V failed:', err);
+    // Session doesn't exist - clean up stale state
+    tmuxTerminals.delete(terminal);
+  }
 }
 
 export function isTmuxTerminal(terminal: vscode.Terminal): boolean {
@@ -152,7 +154,10 @@ export function cleanupTmuxTerminal(terminal: vscode.Terminal): void {
   if (!state) return;
 
   try {
-    exec(`tmux kill-session -t ${state.session}`);
+    // Kill session using the pinned socket
+    exec(`tmux -S ${state.socket} kill-session -t ${state.session}`);
+    // Remove the socket file to avoid orphan sockets
+    exec(`rm -f ${state.socket}`);
   } catch {
     // Ignore errors - session may already be dead
   }
