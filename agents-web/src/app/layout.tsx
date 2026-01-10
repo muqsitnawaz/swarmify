@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
-const siteTitle = "Swarmify - AI Agent Orchestration for Your IDE";
+const siteTitle = "Swarmify - Run Multiple AI Coding Agents in VS Code";
 const siteDescription = "VS Code extension for multi-agent coding. Run Claude Code, Codex, and Gemini in parallel tabs. Orchestrate AI agents, see diffs live, ship 3x faster.";
 
 export const metadata: Metadata = {
