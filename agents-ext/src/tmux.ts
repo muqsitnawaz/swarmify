@@ -7,6 +7,7 @@ import * as vscode from 'vscode';
 interface TmuxTerminal {
   terminal: vscode.Terminal;
   session: string;
+  socket: string;  // Pinned tmux socket path for reliable server targeting
   agentType: string;
   paneCount: number;
 }
