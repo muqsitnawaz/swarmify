@@ -10,13 +10,14 @@ type AgentMeta = {
   name: string;
   short: string;
   label: string;
+  logo: string;
 };
 
 const agents: AgentMeta[] = [
-  { id: "claude", name: "Claude", short: "CL", label: "Orchestrator plan" },
-  { id: "codex", name: "Codex", short: "CX", label: "Refactor pass" },
-  { id: "gemini", name: "Gemini", short: "GM", label: "Middleware pass" },
-  { id: "cursor", name: "Cursor", short: "CU", label: "Test sweep" },
+  { id: "claude", name: "Claude", short: "CL", label: "Orchestrator plan", logo: "/claude.png" },
+  { id: "codex", name: "Codex", short: "CX", label: "Refactor pass", logo: "/codex.png" },
+  { id: "gemini", name: "Gemini", short: "GM", label: "Middleware pass", logo: "/gemini.png" },
+  { id: "cursor", name: "Cursor", short: "CU", label: "Test sweep", logo: "/cursor.png" },
 ];
 
 const useCaseItems: {
@@ -67,12 +68,17 @@ export default function Home() {
           <div className="flex items-center gap-4 mb-6">
             <span className="text-[#666] text-sm">Works in</span>
             <div className="flex items-center gap-2 flex-wrap">
-              {["VS Code", "Cursor", "Antigravity Beta"].map((name) => (
+              {[
+                { name: "VS Code", logo: "/vscode.png" },
+                { name: "Cursor", logo: "/cursor.png" },
+                { name: "Antigravity Beta", logo: "/antigravity.png" },
+              ].map((item) => (
                 <span
-                  key={name}
-                  className="rounded-full border border-[#1a1a1a] bg-[#0f141a] px-3 py-1 text-[11px] text-[#cbd5e1]"
+                  key={item.name}
+                  className="flex items-center gap-2 rounded-full border border-[#1a1a1a] bg-[#0f141a] px-3 py-1 text-[11px] text-[#cbd5e1]"
                 >
-                  {name}
+                  <img src={item.logo} alt={item.name} className="w-4 h-4 object-contain" />
+                  {item.name}
                 </span>
               ))}
             </div>
@@ -100,14 +106,14 @@ export default function Home() {
                   setActiveAgent(agent.id);
                   setActivePanel("agent");
                 }}
-                className={`rounded transition-all border border-[#1a1a1a] px-3 py-2 text-xs ${
+                className={`flex items-center gap-2 rounded transition-all border border-[#1a1a1a] px-3 py-2 text-xs ${
                   activeAgent === agent.id
                     ? "bg-[#0f141a] text-white"
                     : "opacity-70 hover:opacity-100 text-[#cbd5e1]"
                 }`}
                 title={agent.name}
               >
-                <span className="font-mono mr-2 text-[10px] text-[#94a3b8]">{agent.short}</span>
+                <img src={agent.logo} alt={agent.name} className="w-4 h-4 object-contain" />
                 <span className="font-medium">{agent.name}</span>
               </button>
             ))}
