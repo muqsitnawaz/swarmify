@@ -5,11 +5,10 @@ import {
   getDefaultConfig,
   parseSwarmifyConfig,
   serializeSwarmifyConfig,
-  isValidMemorySource,
-  isValidSymlinkTarget,
   isValidAgentId,
-  getSymlinkTargetsForSource,
-  getSourceFileName,
+  getSymlinkMappings,
+  getPatterns,
+  getSymlinksForPattern,
 } from './swarmifyConfig';
 
 describe('swarmifyConfig', () => {
@@ -20,14 +19,14 @@ describe('swarmifyConfig', () => {
   });
 
   describe('getDefaultConfig', () => {
-    test('returns default config with AGENTS.md as source', () => {
+    test('returns default config with AGENTS.md pattern', () => {
       const config = getDefaultConfig();
-      expect(config.memory.source).toBe('AGENTS.md');
+      expect(config.memory.files[0].pattern).toBe('AGENTS.md');
     });
 
     test('returns default symlinks as CLAUDE.md and GEMINI.md', () => {
       const config = getDefaultConfig();
-      expect(config.memory.symlinks).toEqual(['CLAUDE.md', 'GEMINI.md']);
+      expect(config.memory.files[0].symlinks).toEqual(['CLAUDE.md', 'GEMINI.md']);
     });
 
     test('returns symlinking enabled by default', () => {
@@ -48,37 +47,6 @@ describe('swarmifyConfig', () => {
     test('returns default todo filename as TODO.md', () => {
       const config = getDefaultConfig();
       expect(config.files.todo).toBe('TODO.md');
-    });
-  });
-
-  describe('isValidMemorySource', () => {
-    test('returns true for AGENTS.md', () => {
-      expect(isValidMemorySource('AGENTS.md')).toBe(true);
-    });
-
-    test('returns true for CLAUDE.md', () => {
-      expect(isValidMemorySource('CLAUDE.md')).toBe(true);
-    });
-
-    test('returns true for GEMINI.md', () => {
-      expect(isValidMemorySource('GEMINI.md')).toBe(true);
-    });
-
-    test('returns false for invalid source', () => {
-      expect(isValidMemorySource('README.md')).toBe(false);
-      expect(isValidMemorySource('agents.md')).toBe(false); // case sensitive
-    });
-  });
-
-  describe('isValidSymlinkTarget', () => {
-    test('returns true for valid targets', () => {
-      expect(isValidSymlinkTarget('AGENTS.md')).toBe(true);
-      expect(isValidSymlinkTarget('CLAUDE.md')).toBe(true);
-      expect(isValidSymlinkTarget('GEMINI.md')).toBe(true);
-    });
-
-    test('returns false for invalid targets', () => {
-      expect(isValidSymlinkTarget('README.md')).toBe(false);
     });
   });
 
@@ -108,14 +76,15 @@ describe('swarmifyConfig', () => {
       expect(config).toEqual(getDefaultConfig());
     });
 
-    test('parses valid YAML config', () => {
+    test('parses new format YAML config', () => {
       const yaml = `
 memory:
-  source: CLAUDE.md
-  symlinks:
-    - AGENTS.md
-    - GEMINI.md
   symlinking: false
+  files:
+    - pattern: CLAUDE.md
+      symlinks:
+        - AGENTS.md
+        - GEMINI.md
 agents:
   - claude
   - codex
@@ -124,33 +93,49 @@ files:
   todo: TODOS.md
 `;
       const config = parseSwarmifyConfig(yaml);
-      expect(config.memory.source).toBe('CLAUDE.md');
-      expect(config.memory.symlinks).toEqual(['AGENTS.md', 'GEMINI.md']);
+      expect(config.memory.files[0].pattern).toBe('CLAUDE.md');
+      expect(config.memory.files[0].symlinks).toEqual(['AGENTS.md', 'GEMINI.md']);
       expect(config.memory.symlinking).toBe(false);
       expect(config.agents).toEqual(['claude', 'codex']);
       expect(config.files.ralph).toBe('TASKS.md');
       expect(config.files.todo).toBe('TODOS.md');
     });
 
-    test('ignores invalid memory source and uses default', () => {
+    test('parses legacy format and migrates to new format', () => {
       const yaml = `
 memory:
-  source: invalid.md
+  source: CLAUDE.md
+  symlinks:
+    - AGENTS.md
+    - GEMINI.md
+  symlinking: false
 `;
       const config = parseSwarmifyConfig(yaml);
-      expect(config.memory.source).toBe('AGENTS.md'); // default
+      // Legacy format should be migrated to new format
+      expect(config.memory.files[0].pattern).toBe('CLAUDE.md');
+      expect(config.memory.files[0].symlinks).toEqual(['AGENTS.md', 'GEMINI.md']);
+      expect(config.memory.symlinking).toBe(false);
     });
 
-    test('filters out invalid symlink targets', () => {
+    test('parses multiple file mappings', () => {
       const yaml = `
 memory:
-  symlinks:
-    - CLAUDE.md
-    - invalid.md
-    - GEMINI.md
+  symlinking: true
+  files:
+    - pattern: AGENTS.md
+      symlinks:
+        - CLAUDE.md
+    - pattern: TASKS.md
+      symlinks:
+        - TASKS_CLAUDE.md
+        - TASKS_GEMINI.md
 `;
       const config = parseSwarmifyConfig(yaml);
-      expect(config.memory.symlinks).toEqual(['CLAUDE.md', 'GEMINI.md']);
+      expect(config.memory.files).toHaveLength(2);
+      expect(config.memory.files[0].pattern).toBe('AGENTS.md');
+      expect(config.memory.files[0].symlinks).toEqual(['CLAUDE.md']);
+      expect(config.memory.files[1].pattern).toBe('TASKS.md');
+      expect(config.memory.files[1].symlinks).toEqual(['TASKS_CLAUDE.md', 'TASKS_GEMINI.md']);
     });
 
     test('filters out invalid agent ids', () => {
@@ -193,6 +178,19 @@ files:
       expect(config.files.ralph).toBe('RALPH.md'); // default
       expect(config.files.todo).toBe('TODO.md'); // default
     });
+
+    test('trims patterns and symlinks', () => {
+      const yaml = `
+memory:
+  files:
+    - pattern: "  AGENTS.md  "
+      symlinks:
+        - "  CLAUDE.md  "
+`;
+      const config = parseSwarmifyConfig(yaml);
+      expect(config.memory.files[0].pattern).toBe('AGENTS.md');
+      expect(config.memory.files[0].symlinks).toEqual(['CLAUDE.md']);
+    });
   });
 
   describe('serializeSwarmifyConfig', () => {
@@ -202,8 +200,7 @@ files:
 
       // Parse it back to verify
       const parsed = parseSwarmifyConfig(yaml);
-      expect(parsed.memory.source).toBe(config.memory.source);
-      expect(parsed.memory.symlinks).toEqual(config.memory.symlinks);
+      expect(parsed.memory.files).toEqual(config.memory.files);
       expect(parsed.memory.symlinking).toBe(config.memory.symlinking);
       expect(parsed.agents).toEqual(config.agents);
       expect(parsed.files.ralph).toBe(config.files.ralph);
@@ -213,9 +210,10 @@ files:
     test('serializes custom config correctly', () => {
       const config: SwarmifyConfig = {
         memory: {
-          source: 'CLAUDE.md',
-          symlinks: ['AGENTS.md'],
           symlinking: false,
+          files: [
+            { pattern: 'CLAUDE.md', symlinks: ['AGENTS.md'] },
+          ],
         },
         agents: ['claude'],
         files: {
@@ -226,8 +224,8 @@ files:
       const yaml = serializeSwarmifyConfig(config);
       const parsed = parseSwarmifyConfig(yaml);
 
-      expect(parsed.memory.source).toBe('CLAUDE.md');
-      expect(parsed.memory.symlinks).toEqual(['AGENTS.md']);
+      expect(parsed.memory.files[0].pattern).toBe('CLAUDE.md');
+      expect(parsed.memory.files[0].symlinks).toEqual(['AGENTS.md']);
       expect(parsed.memory.symlinking).toBe(false);
       expect(parsed.agents).toEqual(['claude']);
       expect(parsed.files.ralph).toBe('TASKS.md');
@@ -235,47 +233,64 @@ files:
     });
   });
 
-  describe('getSymlinkTargetsForSource', () => {
-    test('excludes source from symlink targets', () => {
+  describe('getSymlinkMappings', () => {
+    test('returns all file mappings', () => {
       const config: SwarmifyConfig = {
         memory: {
-          source: 'AGENTS.md',
-          symlinks: ['AGENTS.md', 'CLAUDE.md', 'GEMINI.md'],
           symlinking: true,
+          files: [
+            { pattern: 'AGENTS.md', symlinks: ['CLAUDE.md', 'GEMINI.md'] },
+            { pattern: 'TASKS.md', symlinks: ['TASKS_CLAUDE.md'] },
+          ],
         },
         agents: ['claude'],
         files: { ralph: 'RALPH.md', todo: 'TODO.md' },
       };
-      const targets = getSymlinkTargetsForSource(config);
-      expect(targets).toEqual(['CLAUDE.md', 'GEMINI.md']);
-      expect(targets).not.toContain('AGENTS.md');
-    });
-
-    test('returns all symlinks when source is not in symlinks', () => {
-      const config = getDefaultConfig();
-      // Default: source=AGENTS.md, symlinks=[CLAUDE.md, GEMINI.md]
-      const targets = getSymlinkTargetsForSource(config);
-      expect(targets).toEqual(['CLAUDE.md', 'GEMINI.md']);
+      const mappings = getSymlinkMappings(config);
+      expect(mappings).toHaveLength(2);
+      expect(mappings[0].pattern).toBe('AGENTS.md');
+      expect(mappings[1].pattern).toBe('TASKS.md');
     });
   });
 
-  describe('getSourceFileName', () => {
-    test('returns memory source from config', () => {
-      const config = getDefaultConfig();
-      expect(getSourceFileName(config)).toBe('AGENTS.md');
-    });
-
-    test('returns custom source from config', () => {
+  describe('getPatterns', () => {
+    test('returns all patterns from config', () => {
       const config: SwarmifyConfig = {
         memory: {
-          source: 'CLAUDE.md',
-          symlinks: ['AGENTS.md'],
           symlinking: true,
+          files: [
+            { pattern: 'AGENTS.md', symlinks: ['CLAUDE.md'] },
+            { pattern: 'TASKS.md', symlinks: ['TASKS_CLAUDE.md'] },
+          ],
         },
         agents: ['claude'],
         files: { ralph: 'RALPH.md', todo: 'TODO.md' },
       };
-      expect(getSourceFileName(config)).toBe('CLAUDE.md');
+      const patterns = getPatterns(config);
+      expect(patterns).toEqual(['AGENTS.md', 'TASKS.md']);
+    });
+  });
+
+  describe('getSymlinksForPattern', () => {
+    test('returns symlinks for a specific pattern', () => {
+      const config: SwarmifyConfig = {
+        memory: {
+          symlinking: true,
+          files: [
+            { pattern: 'AGENTS.md', symlinks: ['CLAUDE.md', 'GEMINI.md'] },
+            { pattern: 'TASKS.md', symlinks: ['TASKS_CLAUDE.md'] },
+          ],
+        },
+        agents: ['claude'],
+        files: { ralph: 'RALPH.md', todo: 'TODO.md' },
+      };
+      expect(getSymlinksForPattern(config, 'AGENTS.md')).toEqual(['CLAUDE.md', 'GEMINI.md']);
+      expect(getSymlinksForPattern(config, 'TASKS.md')).toEqual(['TASKS_CLAUDE.md']);
+    });
+
+    test('returns empty array for unknown pattern', () => {
+      const config = getDefaultConfig();
+      expect(getSymlinksForPattern(config, 'UNKNOWN.md')).toEqual([]);
     });
   });
 });

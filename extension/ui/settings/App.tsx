@@ -432,6 +432,24 @@ export default function App() {
   }>>([])
   const [prewarmLoaded, setPrewarmLoaded] = useState(false)
 
+  // Workspace memory config state
+  interface MemoryFileMapping {
+    pattern: string
+    symlinks: string[]
+  }
+  interface WorkspaceMemoryConfig {
+    symlinking: boolean
+    files: MemoryFileMapping[]
+  }
+  interface WorkspaceConfig {
+    memory: WorkspaceMemoryConfig
+    agents: string[]
+    files: { ralph: string; todo: string }
+  }
+  const [workspaceConfig, setWorkspaceConfig] = useState<WorkspaceConfig | null>(null)
+  const [workspaceConfigExists, setWorkspaceConfigExists] = useState(false)
+  const [workspaceConfigLoaded, setWorkspaceConfigLoaded] = useState(false)
+
   const hasCliInstalled = installedAgents.claude || installedAgents.codex || installedAgents.gemini
   const showIntegrationCallout = !hasCliInstalled && !swarmStatus.mcpEnabled
 
@@ -484,6 +502,10 @@ export default function App() {
         setPrewarmEnabled(message.enabled)
         setPrewarmPools(message.pools || [])
         setPrewarmLoaded(true)
+      } else if (message.type === 'workspaceConfigData') {
+        setWorkspaceConfig(message.config)
+        setWorkspaceConfigExists(message.exists)
+        setWorkspaceConfigLoaded(true)
       }
     }
 
@@ -493,6 +515,7 @@ export default function App() {
     vscode.postMessage({ type: 'checkInstalledAgents' })
     vscode.postMessage({ type: 'getDefaultAgent' })
     vscode.postMessage({ type: 'getPrewarmStatus' })
+    vscode.postMessage({ type: 'getWorkspaceConfig' })
 
     return () => window.removeEventListener('message', handleMessage)
   }, [])
@@ -1844,6 +1867,105 @@ export default function App() {
                       </span>
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* Workspace Memory */}
+          <section>
+            <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
+              Workspace Memory
+            </h2>
+            <div className="rounded-xl bg-[var(--muted)]">
+              {workspaceConfigLoaded && !workspaceConfigExists ? (
+                <div className="p-4">
+                  <p className="text-sm text-[var(--muted-foreground)] mb-3">
+                    No .swarmify config found. Initialize to configure memory file symlinks.
+                  </p>
+                  <Button
+                    size="sm"
+                    onClick={() => vscode.postMessage({ type: 'initWorkspaceConfig' })}
+                  >
+                    Initialize Config
+                  </Button>
+                </div>
+              ) : workspaceConfig ? (
+                <div className="p-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Symlinking</span>
+                    <Button
+                      size="sm"
+                      variant={workspaceConfig.memory.symlinking ? 'default' : 'outline'}
+                      onClick={() => {
+                        const updated = {
+                          ...workspaceConfig,
+                          memory: { ...workspaceConfig.memory, symlinking: !workspaceConfig.memory.symlinking }
+                        }
+                        setWorkspaceConfig(updated)
+                        vscode.postMessage({ type: 'saveWorkspaceConfig', config: updated })
+                      }}
+                    >
+                      {workspaceConfig.memory.symlinking ? 'Enabled' : 'Disabled'}
+                    </Button>
+                  </div>
+
+                  {workspaceConfig.memory.symlinking && (
+                    <div className="space-y-3 pt-3 border-t border-[var(--border)]">
+                      <div className="text-xs text-[var(--muted-foreground)] uppercase tracking-wider">
+                        File Mappings
+                      </div>
+                      {workspaceConfig.memory.files.map((mapping, idx) => (
+                        <div key={idx} className="flex items-center gap-2 text-sm">
+                          <span className="font-mono text-xs bg-[var(--background)] px-2 py-1 rounded">
+                            {mapping.pattern}
+                          </span>
+                          <span className="text-[var(--muted-foreground)]">-&gt;</span>
+                          <span className="text-xs text-[var(--muted-foreground)]">
+                            {mapping.symlinks.join(', ') || 'no symlinks'}
+                          </span>
+                          <button
+                            className="ml-auto text-[var(--muted-foreground)] hover:text-[var(--foreground)] text-xs"
+                            onClick={() => {
+                              const newFiles = workspaceConfig.memory.files.filter((_, i) => i !== idx)
+                              const updated = {
+                                ...workspaceConfig,
+                                memory: { ...workspaceConfig.memory, files: newFiles }
+                              }
+                              setWorkspaceConfig(updated)
+                              vscode.postMessage({ type: 'saveWorkspaceConfig', config: updated })
+                            }}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+
+                      <button
+                        className="text-xs text-[var(--primary)] hover:underline"
+                        onClick={() => {
+                          const pattern = prompt('Pattern (source file):', 'AGENTS.md')
+                          if (!pattern) return
+                          const symlinksStr = prompt('Symlinks (comma-separated):', 'CLAUDE.md, GEMINI.md')
+                          if (symlinksStr === null) return
+                          const symlinks = symlinksStr.split(',').map(s => s.trim()).filter(Boolean)
+                          const newFiles = [...workspaceConfig.memory.files, { pattern, symlinks }]
+                          const updated = {
+                            ...workspaceConfig,
+                            memory: { ...workspaceConfig.memory, files: newFiles }
+                          }
+                          setWorkspaceConfig(updated)
+                          vscode.postMessage({ type: 'saveWorkspaceConfig', config: updated })
+                        }}
+                      >
+                        + Add mapping
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="p-4 text-sm text-[var(--muted-foreground)]">
+                  Loading workspace config...
                 </div>
               )}
             </div>

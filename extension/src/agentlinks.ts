@@ -1,6 +1,6 @@
 // Pure functions for memory file symlink suggestions (no VS Code dependencies)
 
-import { SwarmifyConfig, MemorySource, getDefaultConfig } from './swarmifyConfig';
+import { SwarmifyConfig, MemoryFileMapping, getDefaultConfig } from './swarmifyConfig';
 
 // Legacy constants for backward compatibility
 export const AGENTS_FILENAME = 'AGENTS.md';
@@ -26,28 +26,30 @@ export function getMissingTargets(
 }
 
 // Config-driven functions
+
+// Check if a filename is a pattern (source) in the config
 export function isMemorySourceFile(fileName: string, config: SwarmifyConfig): boolean {
-  return fileName === config.memory.source;
+  return config.memory.files.some(f => f.pattern === fileName);
 }
 
-export function getSymlinkTargetsForConfig(config: SwarmifyConfig): string[] {
-  // Return symlinks that are different from the source
-  return config.memory.symlinks.filter(target => target !== config.memory.source);
+// Get all file mappings from config
+export function getFileMappings(config: SwarmifyConfig): MemoryFileMapping[] {
+  return config.memory.files;
 }
 
-export function getSourceFileNameFromConfig(config: SwarmifyConfig): MemorySource {
-  return config.memory.source;
+// Get all patterns (source files) from config
+export function getPatternFiles(config: SwarmifyConfig): string[] {
+  return config.memory.files.map(f => f.pattern);
+}
+
+// Get symlinks for a specific pattern
+export function getSymlinksForPattern(config: SwarmifyConfig, pattern: string): string[] {
+  const mapping = config.memory.files.find(f => f.pattern === pattern);
+  return mapping ? mapping.symlinks : [];
 }
 
 export function isSymlinkingEnabled(config: SwarmifyConfig): boolean {
   return config.memory.symlinking;
-}
-
-// Valid memory source filenames
-const VALID_MEMORY_SOURCES: MemorySource[] = ['AGENTS.md', 'CLAUDE.md', 'GEMINI.md'];
-
-export function isValidMemorySourceFileName(fileName: string): fileName is MemorySource {
-  return VALID_MEMORY_SOURCES.includes(fileName as MemorySource);
 }
 
 export { getDefaultConfig };

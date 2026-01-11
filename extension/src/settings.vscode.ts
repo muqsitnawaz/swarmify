@@ -15,6 +15,8 @@ import { discoverRecentSessions } from './sessions.vscode';
 import { formatTerminalTitle, parseTerminalName } from './utils';
 import { getBuiltInByKey } from './agents';
 import * as prewarm from './prewarm.vscode';
+import * as workspaceConfig from './swarmifyConfig.vscode';
+import { createSymlinksCodebaseWide } from './agentlinks.vscode';
 
 // Check if a CLI command exists on the system
 function commandExists(cmd: string): Promise<boolean> {
@@ -381,6 +383,51 @@ export function openPanel(context: vscode.ExtensionContext): void {
           enabled: newEnabled,
           pools: prewarm.getPoolInfo()
         });
+        break;
+      case 'getWorkspaceConfig':
+        const wsFolder = workspaceConfig.getActiveWorkspaceFolder();
+        if (wsFolder) {
+          const exists = workspaceConfig.configExists(wsFolder);
+          const config = await workspaceConfig.loadWorkspaceConfig(wsFolder);
+          settingsPanel?.webview.postMessage({
+            type: 'workspaceConfigData',
+            config,
+            exists
+          });
+        } else {
+          settingsPanel?.webview.postMessage({
+            type: 'workspaceConfigData',
+            config: null,
+            exists: false
+          });
+        }
+        break;
+      case 'saveWorkspaceConfig':
+        const saveWsFolder = workspaceConfig.getActiveWorkspaceFolder();
+        if (saveWsFolder && message.config) {
+          await workspaceConfig.saveWorkspaceConfig(saveWsFolder, message.config);
+          // Trigger symlink re-creation after config save
+          await createSymlinksCodebaseWide(saveWsFolder, message.config);
+          settingsPanel?.webview.postMessage({
+            type: 'workspaceConfigData',
+            config: message.config,
+            exists: true
+          });
+        }
+        break;
+      case 'initWorkspaceConfig':
+        const initWsFolder = workspaceConfig.getActiveWorkspaceFolder();
+        if (initWsFolder) {
+          const newConfig = await workspaceConfig.initWorkspaceConfig(initWsFolder);
+          if (newConfig) {
+            await createSymlinksCodebaseWide(initWsFolder, newConfig);
+          }
+          settingsPanel?.webview.postMessage({
+            type: 'workspaceConfigData',
+            config: newConfig,
+            exists: true
+          });
+        }
         break;
     }
   }, undefined, context.subscriptions);
