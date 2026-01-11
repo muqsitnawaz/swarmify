@@ -6,11 +6,10 @@ import * as vscode from 'vscode';
 import {
   getSymlinkTargetsForFileName,
   getMissingTargets,
-  getSymlinkTargetsForConfig,
-  isMemorySourceFile,
+  getFileMappings,
   isSymlinkingEnabled,
 } from './agentlinks';
-import { SwarmifyConfig, getDefaultConfig } from './swarmifyConfig';
+import { SwarmifyConfig } from './swarmifyConfig';
 import { loadWorkspaceConfig, configExists } from './swarmifyConfig.vscode';
 
 const PROMPT_ACTION_CREATE = 'Create symlinks';
@@ -123,14 +122,13 @@ async function findSourceFilesRecursively(
 // Create symlinks for a single source file in its directory
 function createSymlinksInDirectory(
   sourcePath: string,
-  config: SwarmifyConfig
+  symlinks: string[]
 ): { created: number; errors: string[] } {
   const dirPath = path.dirname(sourcePath);
-  const targets = getSymlinkTargetsForConfig(config);
   const errors: string[] = [];
   let created = 0;
 
-  for (const target of targets) {
+  for (const target of symlinks) {
     const targetPath = path.join(dirPath, target);
     const error = createSymlink(sourcePath, targetPath);
     if (error) {
@@ -154,19 +152,21 @@ export async function createSymlinksCodebaseWide(
     return { created: 0, errors: [] };
   }
 
-  const sourceFileName = config.memory.source;
-  const sourceFiles = await findSourceFilesRecursively(
-    workspaceFolder.uri.fsPath,
-    sourceFileName
-  );
-
   let totalCreated = 0;
   const allErrors: string[] = [];
 
-  for (const sourcePath of sourceFiles) {
-    const { created, errors } = createSymlinksInDirectory(sourcePath, config);
-    totalCreated += created;
-    allErrors.push(...errors);
+  // Process each file mapping (pattern -> symlinks)
+  for (const mapping of getFileMappings(config)) {
+    const sourceFiles = await findSourceFilesRecursively(
+      workspaceFolder.uri.fsPath,
+      mapping.pattern
+    );
+
+    for (const sourcePath of sourceFiles) {
+      const { created, errors } = createSymlinksInDirectory(sourcePath, mapping.symlinks);
+      totalCreated += created;
+      allErrors.push(...errors);
+    }
   }
 
   return { created: totalCreated, errors: allErrors };

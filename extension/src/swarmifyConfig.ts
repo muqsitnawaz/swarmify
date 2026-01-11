@@ -4,14 +4,17 @@ import * as YAML from 'yaml';
 
 export const SWARMIFY_FILENAME = '.swarmify';
 
-export type MemorySource = 'AGENTS.md' | 'CLAUDE.md' | 'GEMINI.md';
-export type SymlinkTarget = 'AGENTS.md' | 'CLAUDE.md' | 'GEMINI.md';
 export type AgentId = 'claude' | 'codex' | 'gemini' | 'cursor' | 'opencode';
 
+// New memory config structure with explicit pattern -> symlinks mapping
+export interface MemoryFileMapping {
+  pattern: string;      // source file (e.g., 'AGENTS.md')
+  symlinks: string[];   // targets that will symlink to pattern (e.g., ['CLAUDE.md', 'GEMINI.md'])
+}
+
 export interface MemoryConfig {
-  source: MemorySource;
-  symlinks: SymlinkTarget[];
   symlinking: boolean;
+  files: MemoryFileMapping[];
 }
 
 export interface FilesConfig {
@@ -25,16 +28,25 @@ export interface SwarmifyConfig {
   files: FilesConfig;
 }
 
-const VALID_MEMORY_SOURCES: MemorySource[] = ['AGENTS.md', 'CLAUDE.md', 'GEMINI.md'];
-const VALID_SYMLINK_TARGETS: SymlinkTarget[] = ['AGENTS.md', 'CLAUDE.md', 'GEMINI.md'];
+// Legacy types for backward compatibility during parsing
+interface LegacyMemoryConfig {
+  source?: string;
+  symlinks?: string[];
+  symlinking?: boolean;
+}
+
 const VALID_AGENT_IDS: AgentId[] = ['claude', 'codex', 'gemini', 'cursor', 'opencode'];
 
 export function getDefaultConfig(): SwarmifyConfig {
   return {
     memory: {
-      source: 'AGENTS.md',
-      symlinks: ['CLAUDE.md', 'GEMINI.md'],
       symlinking: true,
+      files: [
+        {
+          pattern: 'AGENTS.md',
+          symlinks: ['CLAUDE.md', 'GEMINI.md'],
+        },
+      ],
     },
     agents: ['claude', 'codex', 'gemini'],
     files: {
@@ -44,16 +56,19 @@ export function getDefaultConfig(): SwarmifyConfig {
   };
 }
 
-export function isValidMemorySource(value: string): value is MemorySource {
-  return VALID_MEMORY_SOURCES.includes(value as MemorySource);
-}
-
-export function isValidSymlinkTarget(value: string): value is SymlinkTarget {
-  return VALID_SYMLINK_TARGETS.includes(value as SymlinkTarget);
-}
-
 export function isValidAgentId(value: string): value is AgentId {
   return VALID_AGENT_IDS.includes(value as AgentId);
+}
+
+// Convert legacy config format to new format
+function migrateLegacyMemoryConfig(legacy: LegacyMemoryConfig): MemoryConfig {
+  const source = legacy.source || 'AGENTS.md';
+  const symlinks = (legacy.symlinks || ['CLAUDE.md', 'GEMINI.md']).filter(s => s !== source);
+
+  return {
+    symlinking: legacy.symlinking !== false,
+    files: symlinks.length > 0 ? [{ pattern: source, symlinks }] : [],
+  };
 }
 
 export function parseSwarmifyConfig(yamlContent: string): SwarmifyConfig {
@@ -74,19 +89,34 @@ export function parseSwarmifyConfig(yamlContent: string): SwarmifyConfig {
   if (parsed.memory && typeof parsed.memory === 'object') {
     const mem = parsed.memory as Record<string, unknown>;
 
-    if (typeof mem.source === 'string' && isValidMemorySource(mem.source)) {
-      config.memory.source = mem.source;
-    }
+    // Check if this is the new format (has 'files' array) or legacy format (has 'source')
+    if (Array.isArray(mem.files)) {
+      // New format: memory.files is an array of {pattern, symlinks}
+      const validFiles: MemoryFileMapping[] = [];
+      for (const file of mem.files) {
+        if (file && typeof file === 'object') {
+          const f = file as Record<string, unknown>;
+          if (typeof f.pattern === 'string' && f.pattern.trim()) {
+            const symlinks = Array.isArray(f.symlinks)
+              ? f.symlinks
+                  .filter((s): s is string => typeof s === 'string' && s.trim() !== '')
+                  .map(s => s.trim())
+              : [];
+            validFiles.push({
+              pattern: f.pattern.trim(),
+              symlinks,
+            });
+          }
+        }
+      }
+      config.memory.files = validFiles.length > 0 ? validFiles : defaults.memory.files;
 
-    if (Array.isArray(mem.symlinks)) {
-      const validSymlinks = mem.symlinks.filter(
-        (s): s is SymlinkTarget => typeof s === 'string' && isValidSymlinkTarget(s)
-      );
-      config.memory.symlinks = validSymlinks;
-    }
-
-    if (typeof mem.symlinking === 'boolean') {
-      config.memory.symlinking = mem.symlinking;
+      if (typeof mem.symlinking === 'boolean') {
+        config.memory.symlinking = mem.symlinking;
+      }
+    } else if (typeof mem.source === 'string') {
+      // Legacy format: memory.source + memory.symlinks
+      config.memory = migrateLegacyMemoryConfig(mem as LegacyMemoryConfig);
     }
   }
 
@@ -119,9 +149,11 @@ export function parseSwarmifyConfig(yamlContent: string): SwarmifyConfig {
 export function serializeSwarmifyConfig(config: SwarmifyConfig): string {
   const doc = new YAML.Document({
     memory: {
-      source: config.memory.source,
-      symlinks: config.memory.symlinks,
       symlinking: config.memory.symlinking,
+      files: config.memory.files.map(f => ({
+        pattern: f.pattern,
+        symlinks: f.symlinks,
+      })),
     },
     agents: config.agents,
     files: {
@@ -130,31 +162,21 @@ export function serializeSwarmifyConfig(config: SwarmifyConfig): string {
     },
   });
 
-  // Add comments for documentation
-  const memoryNode = doc.get('memory', true) as YAML.YAMLMap;
-  if (memoryNode) {
-    const sourceNode = memoryNode.get('source', true);
-    if (sourceNode && typeof sourceNode === 'object' && 'comment' in sourceNode) {
-      (sourceNode as YAML.Scalar).comment = ' AGENTS.md | CLAUDE.md | GEMINI.md';
-    }
-    const symlinksNode = memoryNode.get('symlinks', true);
-    if (symlinksNode && typeof symlinksNode === 'object' && 'comment' in symlinksNode) {
-      (symlinksNode as YAML.Scalar).comment = ' targets to symlink to source';
-    }
-    const symlinkingNode = memoryNode.get('symlinking', true);
-    if (symlinkingNode && typeof symlinkingNode === 'object' && 'comment' in symlinkingNode) {
-      (symlinkingNode as YAML.Scalar).comment = ' enable/disable symlink creation';
-    }
-  }
-
   return doc.toString();
 }
 
-export function getSymlinkTargetsForSource(config: SwarmifyConfig): SymlinkTarget[] {
-  // Return symlinks that are different from the source
-  return config.memory.symlinks.filter(target => target !== config.memory.source);
+// Get all symlink mappings from the config
+export function getSymlinkMappings(config: SwarmifyConfig): MemoryFileMapping[] {
+  return config.memory.files;
 }
 
-export function getSourceFileName(config: SwarmifyConfig): MemorySource {
-  return config.memory.source;
+// Get all patterns (source files) from the config
+export function getPatterns(config: SwarmifyConfig): string[] {
+  return config.memory.files.map(f => f.pattern);
+}
+
+// Get symlink targets for a specific pattern
+export function getSymlinksForPattern(config: SwarmifyConfig, pattern: string): string[] {
+  const mapping = config.memory.files.find(f => f.pattern === pattern);
+  return mapping ? mapping.symlinks : [];
 }
