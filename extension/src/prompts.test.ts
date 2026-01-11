@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import {
   readPromptsFromPath,
   writePromptsToPath,
@@ -235,11 +236,14 @@ describe('prompts I/O', () => {
     });
 
     test('returns false on write failure (invalid path)', () => {
-      // Try to write to a path where we can't create directories
-      // On Unix, /proc is read-only
-      const invalidPath = '/proc/invalid/path/prompts.json';
+      // Try to write to a path that doesn't exist with a non-creatable parent
+      // Use a deeply nested path under a file (not directory) which should fail
+      const tempFile = path.join(os.tmpdir(), `test-file-${Date.now()}.txt`);
+      fs.writeFileSync(tempFile, 'test');
+      const invalidPath = path.join(tempFile, 'nested', 'invalid', 'prompts.json');
       const success = writePromptsToPath(invalidPath, DEFAULT_PROMPTS);
       expect(success).toBe(false);
+      fs.unlinkSync(tempFile);
     });
   });
 

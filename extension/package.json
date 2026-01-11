@@ -201,11 +201,6 @@
     "configuration": {
       "title": "Agents: Autogit",
       "properties": {
-        "agents.apiKey": {
-          "type": "string",
-          "default": "",
-          "description": "Your OpenAI API key"
-        },
         "agents.commitMessageExamples": {
           "type": "array",
           "default": [

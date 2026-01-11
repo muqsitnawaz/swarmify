@@ -1,6 +1,8 @@
 // Git commit generation - VS Code dependent functions
 
 import * as vscode from 'vscode';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import {
   buildSystemPrompt,
   formatChangeStatus,
@@ -9,6 +11,8 @@ import {
   prepareCommitContext,
   shouldIgnoreFile
 } from './git';
+
+const execAsync = promisify(exec);
 
 export async function generateCommitMessage(sourceControl?: { rootUri?: vscode.Uri }): Promise<void> {
   const gitExtension = vscode.extensions.getExtension('vscode.git')?.exports;
@@ -62,18 +66,6 @@ export async function generateCommitMessage(sourceControl?: { rootUri?: vscode.U
   }
 
   const config = vscode.workspace.getConfiguration('agents');
-  const apiKey = config.get<string>('apiKey');
-  if (!apiKey) {
-    vscode.window.showErrorMessage('API key not set', 'Open Settings').then(action => {
-      if (action === 'Open Settings') {
-        vscode.commands.executeCommand('workbench.action.openSettings', 'agents.apiKey');
-      }
-    });
-    return;
-  }
-
-  const provider = 'openai';
-  const model = 'gpt-4o-mini';
   const commitMessageExamples = config.get<string[]>('commitMessageExamples', []);
   const ignoreFilesRaw = config.get<string>('ignoreFiles', '');
   const disableAutopush = config.get<boolean>('disableAutopush', false);
@@ -157,30 +149,36 @@ export async function generateCommitMessage(sourceControl?: { rootUri?: vscode.U
 
       const directoryMove = commitContext.moveInfo;
 
-      const systemPrompt = buildSystemPrompt(commitMessageExamples);
+      // Build prompt for claude -p with git diff stat, first ~50 lines of diff, and examples
+      const diffLines = allDiffChanges?.split('\n') || [];
+      const truncatedDiff = diffLines.slice(0, 50).join('\n');
+      const diffSummary = diffLines.length > 50 ? `${truncatedDiff}\n\n... (${diffLines.length - 50} more lines)` : truncatedDiff;
 
-      const endpoint = getApiEndpoint(provider);
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: model,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: commitContext.userPrompt }
-          ]
-        })
-      });
+      const examplesSection = commitMessageExamples.length > 0
+        ? `\n\nCommit message style examples:\n${commitMessageExamples.map(ex => `- ${ex}`).join('\n')}`
+        : '';
 
-      if (!response.ok) {
-        throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+      const promptText = `Generate a concise git commit message for these changes.
+
+Git status:
+${allStatusChanges}
+
+${diffSummary ? `Diff preview:\n${diffSummary}` : ''}${examplesSection}
+
+Return only the commit message, no explanation. Format: <type>: <description>
+Types: feat, fix, docs, refactor, test, build, release`;
+
+      // Escape single quotes in prompt for shell execution
+      const escapedPrompt = promptText.replace(/'/g, "'\\''");
+
+      let commitMessage: string;
+      try {
+        const { stdout } = await execAsync(`claude -p '${escapedPrompt}'`);
+        commitMessage = stdout.trim();
+      } catch (error) {
+        throw new Error(`Failed to generate commit message with claude: ${error instanceof Error ? error.message : String(error)}`);
       }
 
-      const data = await response.json() as { choices: Array<{ message: { content: string } }> };
-      const commitMessage = data.choices[0].message.content.trim();
       repo.inputBox.value = commitMessage;
 
       // Stage all unstaged changes
