@@ -843,7 +843,6 @@ export async function activate(context: vscode.ExtensionContext) {
   // Update status bar when active terminal changes
   context.subscriptions.push(
     vscode.window.onDidChangeActiveTerminal((terminal) => {
-      console.log('[DEBUG] onDidChangeActiveTerminal fired, terminal:', terminal?.name);
       if (!agentStatusBarItem) return;
 
       if (!terminal) {
@@ -853,13 +852,9 @@ export async function activate(context: vscode.ExtensionContext) {
 
       // Check if this is an agent terminal and scroll to bottom
       const agentInfo = identifyAgentTerminal(terminal, context.extensionPath);
-      console.log('[DEBUG] agentInfo:', JSON.stringify({ isAgent: agentInfo.isAgent, prefix: agentInfo.prefix, label: agentInfo.label }));
       if (agentInfo.isAgent) {
         vscode.commands.executeCommand('workbench.action.terminal.scrollToBottom');
       }
-
-      const entry = terminals.getByTerminal(terminal);
-      console.log('[DEBUG] entry for terminal:', entry?.id, 'label:', entry?.label);
 
       updateStatusBarForTerminal(terminal, context.extensionPath);
     })

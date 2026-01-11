@@ -276,7 +276,8 @@ export async function installSkillCommand(
     return false;
   }
 
-  const source = path.join(context.extensionPath, 'assets', 'skills', assetName);
+  const agentDir = agent === 'codex' ? 'prompts' : 'commands';
+  const source = path.join(context.extensionPath, '..', 'prompts', agent, agentDir, assetName);
   if (!fs.existsSync(source)) {
     vscode.window.showErrorMessage(`Missing skill asset: ${assetName}`);
     return false;
@@ -322,7 +323,8 @@ async function installPromptPacksForAgent(
       continue;
     }
 
-    const source = path.join(context.extensionPath, 'assets', 'skills', assetName);
+    const agentDir = agent === 'codex' ? 'prompts' : 'commands';
+  const source = path.join(context.extensionPath, '..', 'prompts', agent, agentDir, assetName);
     if (!fs.existsSync(source)) {
       vscode.window.showErrorMessage(`Missing skill asset: ${assetName}`);
       continue;
@@ -348,7 +350,8 @@ async function installPromptPacksForAgent(
 
 // Install /swarm command for a specific agent
 function installSwarmCommandForAgent(agent: AgentCli, context: vscode.ExtensionContext): boolean {
-  const sourcePath = path.join(context.extensionPath, 'assets', 'swarm.md');
+  const agentDir = agent === 'codex' ? 'prompts' : 'commands';
+  const sourcePath = path.join(context.extensionPath, '..', 'prompts', agent, agentDir, 'swarm.md');
   if (!fs.existsSync(sourcePath)) {
     return false;
   }

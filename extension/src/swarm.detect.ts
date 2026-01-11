@@ -9,6 +9,13 @@ const execAsync = promisify(exec);
 export type AgentCli = 'claude' | 'codex' | 'gemini';
 export type PromptPackAgent = AgentCli | 'cursor';
 
+// Exported paths for testing
+export const AGENT_COMMAND_PATHS: Record<AgentCli, string> = {
+  claude: path.join(os.homedir(), '.claude', 'commands', 'swarm.md'),
+  codex: path.join(os.homedir(), '.codex', 'prompts', 'swarm.md'),
+  gemini: path.join(os.homedir(), '.gemini', 'commands', 'swarm.toml'),
+};
+
 // Paths where the /swarm command file lives for each CLI
 // Claude, Codex use markdown; Gemini uses TOML commands
 export function getAgentCommandPath(agent: AgentCli, command: string = 'swarm'): string {
