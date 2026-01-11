@@ -59,6 +59,8 @@ export type SkillName =
   | 'stest'
   | 'ship'
   | 'sship'
+  | 'recap'
+  | 'srecap'
   | 'simagine';
 
 export interface SkillDefinition {
@@ -142,6 +144,16 @@ const SKILL_DEFS: SkillDefinition[] = [
     name: 'sship',
     description: 'Ship with independent assessment',
     assets: { claude: 'sship.md', codex: 'sship.md', cursor: 'sship.md', gemini: 'sship.toml' },
+  },
+  {
+    name: 'recap',
+    description: 'Facts + grounded hypotheses for handoff',
+    assets: { claude: 'recap.md', codex: 'recap.md', cursor: 'recap.md', gemini: 'recap.toml' },
+  },
+  {
+    name: 'srecap',
+    description: 'Agents investigate gaps before handoff',
+    assets: { claude: 'srecap.md', codex: 'srecap.md', cursor: 'srecap.md', gemini: 'srecap.toml' },
   },
   {
     name: 'simagine',

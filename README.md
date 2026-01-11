@@ -1,16 +1,40 @@
-![Swarmify](https://swarmify.co/logo.png)
-
 # Swarmify
 
 True multi-agent coding in your IDE. Run Claude, Codex, Gemini, and Cursor agents side-by-side with your code.
+
+```
++------------------+     +------------------+     +------------------+
+|   Claude Code    |     |      Codex       |     |      Gemini      |
++--------+---------+     +--------+---------+     +--------+---------+
+         |                        |                        |
+         +------------------------+------------------------+
+                                  |
+                    +-------------+-------------+
+                    |     Swarmify MCP Server   |
+                    |   (Agent Orchestration)   |
+                    +-------------+-------------+
+                                  |
+                    +-------------+-------------+
+                    |    VS Code / Cursor IDE   |
+                    |  (Extension: Editor Tabs) |
+                    +---------------------------+
+```
+
+## Why Swarmify?
+
+**The Problem:** Different AI coding agents excel at different tasks. Claude is great for research. Codex is fast and surgical. Gemini handles complex multi-system changes. But switching between them means copy-pasting context and losing flow.
+
+**The Solution:** Swarmify lets agents orchestrate each other. Claude can spawn Codex for a quick fix while continuing its analysis. Your IDE becomes a control center where agents run as editor tabs, not hidden terminals.
+
+**Harness Engineering:** This is context engineering for multi-agent workflows. Each agent gets exactly the context it needs, nothing more. No token waste, no confusion.
 
 ## Packages
 
 | Package | Description | Install |
 | --- | --- | --- |
-| [@swarmify/agents-mcp](./agents-mcp) | MCP server for spawning agents | `npx @swarmify/agents-mcp` |
-| [Agents Extension](./agents-ext) | VS Code/Cursor extension | [Marketplace](https://marketplace.visualstudio.com/items?itemName=swarmify.agents-ext) |
-| [Website](./agents-web) | [swarmify.co](https://swarmify.co) | \- |
+| [@swarmify/agents-mcp](./server) | MCP server for spawning agents | `npx @swarmify/agents-mcp` |
+| [Agents Extension](./extension) | VS Code/Cursor extension | [Marketplace](https://marketplace.visualstudio.com/items?itemName=swarmify.agents-ext) |
+| [Prompts](./prompts) | Slash commands for all agents | See below |
 
 ## Quick Start
 
@@ -71,7 +95,30 @@ Task description
 - Progress note 2
 ```
 
-See [@swarmify/agents-mcp README](./agents-mcp/README.md#ralph-mode) for complete documentation.
+See [@swarmify/agents-mcp README](./server/README.md#ralph-mode) for complete documentation.
+
+## Prompts
+
+Slash commands calibrated for each agent. Install via the extension or manually copy from `./prompts`.
+
+| Command | Description |
+| --- | --- |
+| `/recap` | Facts + grounded hypotheses for handoff |
+| `/srecap` | Agents investigate gaps before handoff |
+| `/plan` | Create a concise implementation plan |
+| `/splan` | Sprint-sized plan with parallel steps |
+| `/debug` | Diagnose root cause before fixing |
+| `/sdebug` | Parallelize the debugging investigation |
+| `/clean` | Refactor safely for clarity |
+| `/sclean` | Parallel agents tackle different areas |
+| `/test` | Plan critical path tests first |
+| `/stest` | Parallel agents test different paths |
+| `/ship` | Pre-launch verification |
+| `/sship` | Independent agents confirm readiness |
+| `/sconfirm` | Agents confirm analysis without bias |
+| `/swarm` | Distribute tasks across parallel agents |
+
+Commands prefixed with `s` spawn multiple agents for parallel verification.
 
 ## Supported Agents
 
@@ -86,14 +133,19 @@ See [@swarmify/agents-mcp README](./agents-mcp/README.md#ralph-mode) for complet
 
 ```bash
 # MCP Server
-cd agents-mcp && bun install && bun run build
+cd server && bun install && bun run build
 
 # Extension
-cd agents-ext && bun install && bun run compile
-
-# Website
-cd agents-web && bun install && bun run dev
+cd extension && bun install && bun run compile
 ```
+
+## Examples
+
+See [examples/](./examples) for working demos and workflow patterns.
+
+## Website
+
+[swarmify.co](https://swarmify.co) - Landing page with interactive demos.
 
 ## License
 
