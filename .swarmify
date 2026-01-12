@@ -1,0 +1,14 @@
+memory:
+  symlinking: true
+  files:
+    - pattern: AGENTS.md
+      symlinks:
+        - CLAUDE.md
+        - GEMINI.md
+agents:
+  - claude
+  - codex
+  - gemini
+files:
+  ralph: RALPH.md
+  todo: TODO.md

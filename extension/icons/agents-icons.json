@@ -1,0 +1,37 @@
+{
+  "hidesExplorerArrows": false,
+  "iconDefinitions": {
+    "_claude": {
+      "iconPath": "./claude-icon.png"
+    },
+    "_gemini": {
+      "iconPath": "./gemini-icon.png"
+    },
+    "_codex": {
+      "iconPath": "./codex-icon.png",
+      "light": {
+        "iconPath": "./codex-light-icon.png"
+      }
+    },
+    "_agents": {
+      "iconPath": "./codex-light-icon.png"
+    },
+    "_cursor": {
+      "iconPath": "./cursor-icon.png",
+      "light": {
+        "iconPath": "./cursor-light-icon.png"
+      }
+    },
+    "_opencode": {
+      "iconPath": "./opencode-icon.png"
+    }
+  },
+  "fileNames": {
+    "CLAUDE.md": "_claude",
+    "GEMINI.md": "_gemini",
+    "CODEX.md": "_codex",
+    "AGENTS.md": "_agents",
+    "CURSOR.md": "_cursor",
+    "OPENCODE.md": "_opencode"
+  }
+}

@@ -192,7 +192,18 @@ interface AgentSession {
   preview?: string
 }
 
-type TabId = 'overview' | 'tasks' | 'sessions' | 'settings' | 'swarm' | 'skills' | 'guide'
+type ContextAgentType = 'claude' | 'gemini' | 'codex' | 'agents' | 'cursor' | 'opencode' | 'unknown'
+
+interface ContextFile {
+  path: string
+  agent: ContextAgentType
+  preview: string
+  lines: number
+  isSymlink: boolean
+  symlinkTarget?: string
+}
+
+type TabId = 'overview' | 'tasks' | 'sessions' | 'settings' | 'swarm' | 'skills' | 'context' | 'guide'
 
 declare function acquireVsCodeApi(): {
   postMessage(message: unknown): void
@@ -200,14 +211,16 @@ declare function acquireVsCodeApi(): {
   setState(state: unknown): void
 }
 
+type ThemedIcon = { dark: string; light: string }
+
 declare global {
   interface Window {
     __ICONS__: {
       claude: string
-      codex: string
+      codex: ThemedIcon
       gemini: string
       opencode: string
-      cursor: string
+      cursor: ThemedIcon
       agents: string
       shell: string
     }
@@ -216,6 +229,25 @@ declare global {
 
 const vscode = acquireVsCodeApi()
 const icons = window.__ICONS__
+
+function useSystemTheme() {
+  const [isLight, setIsLight] = useState(() => {
+    return !window.matchMedia('(prefers-color-scheme: dark)').matches
+  })
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+    const handler = (e: MediaQueryListEvent) => setIsLight(!e.matches)
+    mediaQuery.addEventListener('change', handler)
+    return () => mediaQuery.removeEventListener('change', handler)
+  }, [])
+
+  return isLight
+}
+
+function getIcon(icon: string | ThemedIcon, isLight: boolean): string {
+  return typeof icon === 'string' ? icon : isLight ? icon.light : icon.dark
+}
 
 const todoMarkdownRenderer = new marked.Renderer()
 
@@ -285,12 +317,12 @@ function renderTodoDescription(desc: string, clamp: boolean = true) {
 }
 
 const BUILT_IN_AGENTS = [
-  { key: 'claude', name: 'Claude', icon: icons.claude },
-  { key: 'codex', name: 'Codex', icon: icons.codex },
-  { key: 'gemini', name: 'Gemini', icon: icons.gemini },
-  { key: 'opencode', name: 'OpenCode', icon: icons.opencode },
-  { key: 'cursor', name: 'Cursor', icon: icons.cursor },
-  { key: 'shell', name: 'Shell', icon: icons.shell },
+  { key: 'claude', name: 'Claude', icon: icons.claude as string | ThemedIcon },
+  { key: 'codex', name: 'Codex', icon: icons.codex as string | ThemedIcon },
+  { key: 'gemini', name: 'Gemini', icon: icons.gemini as string | ThemedIcon },
+  { key: 'opencode', name: 'OpenCode', icon: icons.opencode as string | ThemedIcon },
+  { key: 'cursor', name: 'Cursor', icon: icons.cursor as string | ThemedIcon },
+  { key: 'shell', name: 'Shell', icon: icons.shell as string | ThemedIcon },
 ] as const
 
 const RESERVED_NAMES = ['CC', 'CX', 'GX', 'OC', 'CR', 'SH']
@@ -306,11 +338,12 @@ const TAB_LABELS: Record<TabId, string> = {
   sessions: 'Sessions',
   swarm: 'Swarm',
   skills: 'Skills',
+  context: 'Context',
   settings: 'Settings',
   guide: 'Guide'
 }
 
-const SKILL_AGENTS: { key: PromptPackAgentType; name: string; icon: string }[] = [
+const SKILL_AGENTS: { key: PromptPackAgentType; name: string; icon: string | ThemedIcon }[] = [
   { key: 'codex', name: 'Codex', icon: icons.codex },
   { key: 'gemini', name: 'Gemini', icon: icons.gemini },
   { key: 'claude', name: 'Claude', icon: icons.claude },
@@ -361,6 +394,7 @@ const NOTIFICATION_AGENTS = [
 ]
 
 export default function App() {
+  const isLightTheme = useSystemTheme()
   const [settings, setSettings] = useState<AgentSettings | null>(null)
   const [runningCounts, setRunningCounts] = useState<RunningCounts>({
     claude: 0, codex: 0, gemini: 0, opencode: 0, cursor: 0, shell: 0, custom: {}
@@ -450,6 +484,12 @@ export default function App() {
   const [workspaceConfigExists, setWorkspaceConfigExists] = useState(false)
   const [workspaceConfigLoaded, setWorkspaceConfigLoaded] = useState(false)
 
+  // Context files state
+  const [contextFiles, setContextFiles] = useState<ContextFile[]>([])
+  const [contextLoading, setContextLoading] = useState(false)
+  const [contextLoaded, setContextLoaded] = useState(false)
+  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set())
+
   const hasCliInstalled = installedAgents.claude || installedAgents.codex || installedAgents.gemini
   const showIntegrationCallout = !hasCliInstalled && !swarmStatus.mcpEnabled
 
@@ -506,6 +546,10 @@ export default function App() {
         setWorkspaceConfig(message.config)
         setWorkspaceConfigExists(message.exists)
         setWorkspaceConfigLoaded(true)
+      } else if (message.type === 'contextFilesData') {
+        setContextFiles(message.files || [])
+        setContextLoading(false)
+        setContextLoaded(true)
       }
     }
 
@@ -539,6 +583,12 @@ export default function App() {
     }
   }, [activeTab, sessionsLoaded, sessionsLoading])
 
+  useEffect(() => {
+    if (activeTab === 'context' && !contextLoaded && !contextLoading) {
+      fetchContextFiles()
+    }
+  }, [activeTab, contextLoaded, contextLoading])
+
   const fetchTasks = () => {
     setTasksLoading(true)
     vscode.postMessage({ type: 'fetchTasks' })
@@ -553,6 +603,37 @@ export default function App() {
     setSessionsLoading(true)
     setSessionsPage(1)
     vscode.postMessage({ type: 'fetchSessions', limit: 200 })
+  }
+
+  const fetchContextFiles = () => {
+    setContextLoading(true)
+    vscode.postMessage({ type: 'fetchContextFiles' })
+  }
+
+  const toggleDirExpanded = (dir: string) => {
+    setExpandedDirs(prev => {
+      const next = new Set(prev)
+      if (next.has(dir)) {
+        next.delete(dir)
+      } else {
+        next.add(dir)
+      }
+      return next
+    })
+  }
+
+  const openContextFile = (filePath: string) => {
+    vscode.postMessage({ type: 'openContextFile', path: filePath })
+  }
+
+  const getAgentIcon = (agent: ContextAgentType): string => {
+    if (agent === 'claude') return icons.claude
+    if (agent === 'gemini') return icons.gemini
+    if (agent === 'codex') return getIcon(icons.codex, isLightTheme)
+    if (agent === 'agents') return icons.agents
+    if (agent === 'cursor') return getIcon(icons.cursor, isLightTheme)
+    if (agent === 'opencode') return icons.opencode
+    return icons.agents
   }
 
   const togglePrewarm = () => {
@@ -663,20 +744,20 @@ export default function App() {
 
   const getStatusColor = (status: string): string => {
     switch (status) {
-      case 'running': return 'text-blue-400'
-      case 'completed': return 'text-green-400'
-      case 'failed': return 'text-red-400'
-      case 'stopped': return 'text-yellow-400'
+      case 'running': return 'text-blue-600 dark:text-blue-400'
+      case 'completed': return 'text-green-600 dark:text-green-400'
+      case 'failed': return 'text-red-600 dark:text-red-400'
+      case 'stopped': return 'text-yellow-600 dark:text-yellow-400'
       default: return 'text-[var(--muted-foreground)]'
     }
   }
 
   const getStatusBg = (status: string): string => {
     switch (status) {
-      case 'running': return 'bg-blue-500/20'
-      case 'completed': return 'bg-green-500/20'
-      case 'failed': return 'bg-red-500/20'
-      case 'stopped': return 'bg-yellow-500/20'
+      case 'running': return 'bg-blue-500/10 dark:bg-blue-500/20'
+      case 'completed': return 'bg-green-500/10 dark:bg-green-500/20'
+      case 'failed': return 'bg-red-500/10 dark:bg-red-500/20'
+      case 'stopped': return 'bg-yellow-500/10 dark:bg-yellow-500/20'
       default: return 'bg-[var(--muted)]'
     }
   }
@@ -964,7 +1045,7 @@ export default function App() {
                       {agentTypes.map(type => (
                         <img
                           key={type}
-                          src={icons[type as keyof typeof icons] || icons.agents}
+                          src={getIcon(icons[type as keyof typeof icons] || icons.agents, isLightTheme)}
                           alt={type}
                           className="w-4 h-4"
                           title={type}
@@ -1005,7 +1086,7 @@ export default function App() {
                               <div className="w-3.5 h-3.5" />
                             )}
                             <img
-                              src={icons[agent.agent_type as keyof typeof icons] || icons.agents}
+                              src={getIcon(icons[agent.agent_type as keyof typeof icons] || icons.agents, isLightTheme)}
                               alt={agent.agent_type}
                               className="w-4 h-4"
                             />
@@ -1039,12 +1120,12 @@ export default function App() {
                               {agent.files_created.length > 0 && (
                                 <div>
                                   <div className="flex items-center gap-1.5 text-[var(--muted-foreground)] mb-1">
-                                    <FilePlus className="w-3.5 h-3.5 text-green-400" />
+                                    <FilePlus className="w-3.5 h-3.5 text-green-600 dark:text-green-400" />
                                     Files Created ({agent.files_created.length})
                                   </div>
                                   <div className="space-y-0.5">
                                     {agent.files_created.map((f, i) => (
-                                      <div key={i} className="font-mono text-green-400 truncate">{f}</div>
+                                      <div key={i} className="font-mono text-green-600 dark:text-green-400 truncate">{f}</div>
                                     ))}
                                   </div>
                                 </div>
@@ -1054,12 +1135,12 @@ export default function App() {
                               {agent.files_modified.length > 0 && (
                                 <div>
                                   <div className="flex items-center gap-1.5 text-[var(--muted-foreground)] mb-1">
-                                    <FileEdit className="w-3.5 h-3.5 text-yellow-400" />
+                                    <FileEdit className="w-3.5 h-3.5 text-yellow-600 dark:text-yellow-400" />
                                     Files Modified ({agent.files_modified.length})
                                   </div>
                                   <div className="space-y-0.5">
                                     {agent.files_modified.map((f, i) => (
-                                      <div key={i} className="font-mono text-yellow-400 truncate">{f}</div>
+                                      <div key={i} className="font-mono text-yellow-600 dark:text-yellow-400 truncate">{f}</div>
                                     ))}
                                   </div>
                                 </div>
@@ -1281,7 +1362,7 @@ export default function App() {
 
         {/* Tab bar */}
         <div className="flex gap-1">
-          {(['overview', 'tasks', 'sessions', 'swarm', 'skills', 'settings', 'guide'] as TabId[]).map(tab => (
+          {(['overview', 'tasks', 'sessions', 'swarm', 'skills', 'context', 'settings', 'guide'] as TabId[]).map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -1338,7 +1419,7 @@ export default function App() {
                         : 'bg-[var(--muted)]'
                     } ${count > 0 ? 'cursor-pointer hover:bg-[var(--muted-foreground)]/10' : ''}`}
                   >
-                    <img src={agent.icon} alt={agent.name} className="w-5 h-5" />
+                    <img src={getIcon(agent.icon, isLightTheme)} alt={agent.name} className="w-5 h-5" />
                     <span className="text-sm font-medium">{agent.name}</span>
                     <button
                       onClick={(e) => {
@@ -1414,7 +1495,7 @@ export default function App() {
                     return (
                       <div key={terminal.id} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)]">
                         <img
-                          src={icons[terminal.agentType as keyof typeof icons] || icons.agents}
+                          src={getIcon(icons[terminal.agentType as keyof typeof icons] || icons.agents, isLightTheme)}
                           alt={terminal.agentType}
                           className="w-5 h-5"
                         />
@@ -1483,7 +1564,7 @@ export default function App() {
                             {agentTypes.map(type => (
                               <img
                                 key={type}
-                                src={icons[type as keyof typeof icons] || icons.agents}
+                                src={getIcon(icons[type as keyof typeof icons] || icons.agents, isLightTheme)}
                                 alt={type}
                                 className="w-4 h-4"
                                 title={type}
@@ -1578,12 +1659,12 @@ export default function App() {
             <div className="space-y-2">
               {(['claude', 'codex', 'gemini'] as SwarmAgentType[]).map((agent) => {
                 const status = swarmStatus.agents[agent];
-                const icon = icons[agent];
+                const icon = getIcon(icons[agent], isLightTheme);
                 const label = SWARM_AGENT_LABELS[agent];
                 const showInstall = status.cliAvailable && !(status.mcpEnabled && status.commandInstalled);
                 const statusBadge = status.cliAvailable
                   ? status.installed
-                    ? { text: 'Installed', tone: 'bg-green-500/20 text-green-400' }
+                    ? { text: 'Installed', tone: 'bg-green-500/10 text-green-600 dark:bg-green-500/20 dark:text-green-400' }
                     : { text: 'Not installed', tone: 'bg-[var(--secondary)] text-[var(--muted-foreground)]' }
                   : { text: 'CLI not found', tone: 'bg-[var(--secondary)] text-[var(--muted-foreground)]' };
 
@@ -1595,10 +1676,10 @@ export default function App() {
                       <span className={`px-2 py-0.5 rounded ${statusBadge.tone}`}>{statusBadge.text}</span>
                       {status.cliAvailable && (
                         <>
-                          <span className={`px-2 py-0.5 rounded ${status.mcpEnabled ? 'bg-green-500/15 text-green-300' : 'bg-[var(--secondary)] text-[var(--muted-foreground)]'}`}>
+                          <span className={`px-2 py-0.5 rounded ${status.mcpEnabled ? 'bg-green-500/10 text-green-600 dark:bg-green-500/15 dark:text-green-300' : 'bg-[var(--secondary)] text-[var(--muted-foreground)]'}`}>
                             MCP {status.mcpEnabled ? 'Enabled' : 'Missing'}
                           </span>
-                          <span className={`px-2 py-0.5 rounded ${status.commandInstalled ? 'bg-green-500/15 text-green-300' : 'bg-[var(--secondary)] text-[var(--muted-foreground)]'}`}>
+                          <span className={`px-2 py-0.5 rounded ${status.commandInstalled ? 'bg-green-500/10 text-green-600 dark:bg-green-500/15 dark:text-green-300' : 'bg-[var(--secondary)] text-[var(--muted-foreground)]'}`}>
                             Command {status.commandInstalled ? 'Installed' : 'Missing'}
                           </span>
                         </>
@@ -1720,7 +1801,7 @@ export default function App() {
                                 title={!isInstalled && !isDisabled ? 'Install' : undefined}
                               >
                                 <img
-                                  src={agent.icon}
+                                  src={getIcon(agent.icon, isLightTheme)}
                                   alt={agent.name}
                                   className={`w-5 h-5 ${isInstalled ? '' : 'grayscale'}`}
                                 />
@@ -1774,7 +1855,7 @@ export default function App() {
                                 title={!isInstalled && !isDisabled ? 'Install' : undefined}
                               >
                                 <img
-                                  src={agent.icon}
+                                  src={getIcon(agent.icon, isLightTheme)}
                                   alt={agent.name}
                                   className={`w-5 h-5 ${isInstalled ? '' : 'grayscale'}`}
                                 />
@@ -1797,85 +1878,122 @@ export default function App() {
         </div>
       )}
 
-      {activeTab === 'settings' && (
+      {activeTab === 'context' && (
         <div className="space-y-8">
-          {/* Default Agent */}
+          {/* Memory Files Tree */}
           <section>
-            <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
-              Default Agent
-            </h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
+                Memory Files
+              </h2>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setContextLoaded(false)
+                  fetchContextFiles()
+                }}
+                disabled={contextLoading}
+              >
+                <RefreshCw className={`w-4 h-4 ${contextLoading ? 'animate-spin' : ''}`} />
+              </Button>
+            </div>
             <div className="rounded-xl bg-[var(--muted)]">
-              {BUILT_IN_AGENTS.filter(a => a.key !== 'shell' && isAgentInstalled(a.key)).length === 0 ? (
-                <div className="text-sm text-[var(--muted-foreground)] p-4">
-                  Install an agent to set a default.
+              {contextLoading && contextFiles.length === 0 ? (
+                <div className="p-4 text-sm text-[var(--muted-foreground)]">
+                  Scanning workspace...
+                </div>
+              ) : contextFiles.length === 0 ? (
+                <div className="p-4 text-sm text-[var(--muted-foreground)]">
+                  No memory files found. Create CLAUDE.md, GEMINI.md, or AGENTS.md files to add context for agents.
                 </div>
               ) : (
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 p-4">
-                  {BUILT_IN_AGENTS
-                    .filter(a => a.key !== 'shell' && isAgentInstalled(a.key))
-                    .map(agent => {
-                      const isSelected = (AGENT_TITLE_TO_KEY[defaultAgent] || 'claude') === agent.key
+                <div className="p-2">
+                  {(() => {
+                    // Build tree structure from flat file list
+                    const tree: Record<string, ContextFile[]> = { '.': [] }
+                    contextFiles.forEach(file => {
+                      const parts = file.path.split('/')
+                      if (parts.length === 1) {
+                        tree['.'].push(file)
+                      } else {
+                        const dir = parts.slice(0, -1).join('/')
+                        if (!tree[dir]) tree[dir] = []
+                        tree[dir].push(file)
+                      }
+                    })
+
+                    const dirs = Object.keys(tree).sort((a, b) => {
+                      if (a === '.') return -1
+                      if (b === '.') return 1
+                      return a.localeCompare(b)
+                    })
+
+                    return dirs.map(dir => {
+                      const files = tree[dir]
+                      if (files.length === 0) return null
+
+                      const isRoot = dir === '.'
+                      const isExpanded = isRoot || expandedDirs.has(dir)
+
                       return (
-                        <button
-                          key={agent.key}
-                          onClick={() => handleSetDefaultAgent(AGENT_KEY_TO_TITLE[agent.key] || 'CC')}
-                          className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors ${
-                            isSelected
-                              ? 'border-[var(--primary)] bg-[var(--background)]'
-                              : 'border-[var(--border)] bg-[var(--background)] hover:border-[var(--primary)]/60'
-                          }`}
-                        >
-                          <img src={agent.icon} alt={agent.name} className="w-5 h-5" />
-                          <span className="text-sm font-medium">{agent.name}</span>
-                          {isSelected && <Check className="w-4 h-4 ml-auto text-[var(--primary)]" />}
-                        </button>
+                        <div key={dir}>
+                          {!isRoot && (
+                            <button
+                              onClick={() => toggleDirExpanded(dir)}
+                              className="flex items-center gap-2 w-full px-2 py-1.5 text-sm text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:bg-[var(--background)] rounded-lg"
+                            >
+                              {isExpanded ? (
+                                <ChevronDown className="w-4 h-4" />
+                              ) : (
+                                <ChevronRight className="w-4 h-4" />
+                              )}
+                              <span className="font-mono text-xs">{dir}/</span>
+                            </button>
+                          )}
+                          {isExpanded && files.map(file => (
+                            <button
+                              key={file.path}
+                              onClick={() => openContextFile(file.path)}
+                              className={`flex items-center gap-2 w-full px-2 py-2 text-sm hover:bg-[var(--background)] rounded-lg overflow-hidden ${
+                                !isRoot ? 'ml-6' : ''
+                              }`}
+                            >
+                              <img
+                                src={getAgentIcon(file.agent)}
+                                alt={file.agent}
+                                className="w-4 h-4 flex-shrink-0"
+                              />
+                              <span className={`font-medium flex-shrink-0 ${file.isSymlink ? 'opacity-60' : ''}`}>
+                                {file.path.split('/').pop()}
+                              </span>
+                              {file.isSymlink ? (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--border)] text-[var(--muted-foreground)] flex-shrink-0">
+                                  symlink
+                                </span>
+                              ) : (
+                                <span className="text-xs text-[var(--muted-foreground)] truncate flex-1 text-left min-w-0">
+                                  {file.preview}
+                                </span>
+                              )}
+                              <span className="text-xs text-[var(--muted-foreground)] whitespace-nowrap flex-shrink-0 ml-auto">
+                                {file.lines}L
+                              </span>
+                            </button>
+                          ))}
+                        </div>
                       )
-                    })}
+                    })
+                  })()}
                 </div>
               )}
             </div>
           </section>
 
-          {/* Session Warming */}
+          {/* Symlinking Config (moved from Settings) */}
           <section>
             <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
-              Session Warming
-            </h2>
-            <div className="px-4 py-3 rounded-xl bg-[var(--muted)]">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Pre-warm sessions</span>
-                <Button
-                  size="sm"
-                  variant={prewarmEnabled ? 'default' : 'outline'}
-                  onClick={togglePrewarm}
-                >
-                  {prewarmEnabled ? 'Enabled' : 'Disabled'}
-                </Button>
-              </div>
-              {prewarmEnabled && prewarmLoaded && prewarmPools.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-[var(--border)] space-y-2">
-                  {prewarmPools.map(pool => (
-                    <div key={pool.agentType} className="flex items-center gap-3 text-sm">
-                      <img
-                        src={icons[pool.agentType as keyof typeof icons]}
-                        alt={pool.agentType}
-                        className="w-4 h-4"
-                      />
-                      <span className="capitalize w-16">{pool.agentType}</span>
-                      <span className="text-xs text-[var(--muted-foreground)]">
-                        {pool.available} ready{pool.pending > 0 ? `, ${pool.pending} warming` : ''}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </section>
-
-          {/* Workspace Memory */}
-          <section>
-            <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
-              Workspace Memory
+              Symlinking
             </h2>
             <div className="rounded-xl bg-[var(--muted)]">
               {workspaceConfigLoaded && !workspaceConfigExists ? (
@@ -1893,7 +2011,7 @@ export default function App() {
               ) : workspaceConfig ? (
                 <div className="p-4 space-y-4">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Symlinking</span>
+                    <span className="text-sm font-medium">Auto-create symlinks</span>
                     <Button
                       size="sm"
                       variant={workspaceConfig.memory.symlinking ? 'default' : 'outline'}
@@ -1970,6 +2088,83 @@ export default function App() {
               )}
             </div>
           </section>
+        </div>
+      )}
+
+      {activeTab === 'settings' && (
+        <div className="space-y-8">
+          {/* Default Agent */}
+          <section>
+            <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
+              Default Agent
+            </h2>
+            <div className="rounded-xl bg-[var(--muted)]">
+              {BUILT_IN_AGENTS.filter(a => a.key !== 'shell' && isAgentInstalled(a.key)).length === 0 ? (
+                <div className="text-sm text-[var(--muted-foreground)] p-4">
+                  Install an agent to set a default.
+                </div>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 p-4">
+                  {BUILT_IN_AGENTS
+                    .filter(a => a.key !== 'shell' && isAgentInstalled(a.key))
+                    .map(agent => {
+                      const isSelected = (AGENT_TITLE_TO_KEY[defaultAgent] || 'claude') === agent.key
+                      return (
+                        <button
+                          key={agent.key}
+                          onClick={() => handleSetDefaultAgent(AGENT_KEY_TO_TITLE[agent.key] || 'CC')}
+                          className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors ${
+                            isSelected
+                              ? 'border-[var(--primary)] bg-[var(--background)]'
+                              : 'border-[var(--border)] bg-[var(--background)] hover:border-[var(--primary)]/60'
+                          }`}
+                        >
+                          <img src={getIcon(agent.icon, isLightTheme)} alt={agent.name} className="w-5 h-5" />
+                          <span className="text-sm font-medium">{agent.name}</span>
+                          {isSelected && <Check className="w-4 h-4 ml-auto text-[var(--primary)]" />}
+                        </button>
+                      )
+                    })}
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* Session Warming */}
+          <section>
+            <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
+              Session Warming
+            </h2>
+            <div className="px-4 py-3 rounded-xl bg-[var(--muted)]">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Pre-warm sessions</span>
+                <Button
+                  size="sm"
+                  variant={prewarmEnabled ? 'default' : 'outline'}
+                  onClick={togglePrewarm}
+                >
+                  {prewarmEnabled ? 'Enabled' : 'Disabled'}
+                </Button>
+              </div>
+              {prewarmEnabled && prewarmLoaded && prewarmPools.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-[var(--border)] space-y-2">
+                  {prewarmPools.map(pool => (
+                    <div key={pool.agentType} className="flex items-center gap-3 text-sm">
+                      <img
+                        src={getIcon(icons[pool.agentType as keyof typeof icons], isLightTheme)}
+                        alt={pool.agentType}
+                        className="w-4 h-4"
+                      />
+                      <span className="capitalize w-16">{pool.agentType}</span>
+                      <span className="text-xs text-[var(--muted-foreground)]">
+                        {pool.available} ready{pool.pending > 0 ? `, ${pool.pending} warming` : ''}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </section>
 
           {/* Built-in Agents */}
           <section>
@@ -1990,7 +2185,7 @@ export default function App() {
                     key={agent.key}
                     className={`flex items-center gap-4 px-4 py-3 rounded-xl bg-[var(--muted)] ${!installed ? 'opacity-60' : ''}`}
                   >
-                    <img src={agent.icon} alt={agent.name} className="w-5 h-5" />
+                    <img src={getIcon(agent.icon, isLightTheme)} alt={agent.name} className="w-5 h-5" />
                     <span className="text-sm font-medium w-20">{agent.name}</span>
 
                     {installed ? (
@@ -2143,7 +2338,7 @@ export default function App() {
                       />
                     </div>
                   </div>
-                  {aliasError && <p className="text-xs text-red-400">{aliasError}</p>}
+                  {aliasError && <p className="text-xs text-red-600 dark:text-red-400">{aliasError}</p>}
                   <div className="flex justify-end gap-2">
                     <Button size="sm" variant="ghost" onClick={handleCancelAddAlias}>Cancel</Button>
                     <Button size="sm" onClick={handleSaveAlias}>Save</Button>
