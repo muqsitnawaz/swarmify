@@ -17,6 +17,7 @@ import { getBuiltInByKey } from './agents';
 import * as prewarm from './prewarm.vscode';
 import * as workspaceConfig from './swarmifyConfig.vscode';
 import { createSymlinksCodebaseWide } from './agentlinks.vscode';
+import { scanMemoryFiles } from './contextFiles';
 
 // Check if a CLI command exists on the system
 function commandExists(cmd: string): Promise<boolean> {
@@ -429,6 +430,24 @@ export function openPanel(context: vscode.ExtensionContext): void {
           });
         }
         break;
+      case 'fetchContextFiles':
+        const contextWsFolder = workspaceConfig.getActiveWorkspaceFolder();
+        if (contextWsFolder) {
+          const contextFiles = await scanMemoryFiles(contextWsFolder.uri.fsPath);
+          settingsPanel?.webview.postMessage({ type: 'contextFilesData', files: contextFiles });
+        } else {
+          settingsPanel?.webview.postMessage({ type: 'contextFilesData', files: [] });
+        }
+        break;
+      case 'openContextFile':
+        if (message.path) {
+          const ctxWsFolder = workspaceConfig.getActiveWorkspaceFolder();
+          if (ctxWsFolder) {
+            const fileUri = vscode.Uri.file(path.join(ctxWsFolder.uri.fsPath, message.path));
+            vscode.window.showTextDocument(fileUri, { preview: true });
+          }
+        }
+        break;
     }
   }, undefined, context.subscriptions);
 
@@ -523,9 +542,11 @@ function getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri): s
   // Get asset URIs for icons
   const claudeIcon = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'claude.png'));
   const codexIcon = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'chatgpt.png'));
+  const codexIconLight = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'chatgpt-light.png'));
   const geminiIcon = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'gemini.png'));
   const opencodeIcon = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'opencode.png'));
   const cursorIcon = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'cursor.png'));
+  const cursorIconLight = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'cursor-light.png'));
   const agentsIcon = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'agents.png'));
 
   return `<!DOCTYPE html>
@@ -538,10 +559,10 @@ function getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri): s
     // Inject icon paths for the React app
     window.__ICONS__ = {
       claude: "${claudeIcon}",
-      codex: "${codexIcon}",
+      codex: { dark: "${codexIcon}", light: "${codexIconLight}" },
       gemini: "${geminiIcon}",
       opencode: "${opencodeIcon}",
-      cursor: "${cursorIcon}",
+      cursor: { dark: "${cursorIcon}", light: "${cursorIconLight}" },
       shell: "${agentsIcon}",
       agents: "${agentsIcon}"
     };
