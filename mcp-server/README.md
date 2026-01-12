@@ -4,8 +4,9 @@ Run Subagents, Swarm or Ralph Wiggums from any MCP client.
 
 Spawn CLI agents in parallel so your main agent stays focused. Each subagent runs in its own context and can be polled for progress.
 
-Homepage: https://swarmify.co  
+Homepage: https://swarmify.co
 NPM: https://www.npmjs.com/package/@swarmify/agents-mcp
+VS Code Extension: https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext
 
 ## Why This Exists
 
@@ -273,7 +274,7 @@ Shorthand for a single effort level override:
 
 ## Storage
 
-Data and config are stored under `~/.swarmify/`. Requires Node.js &gt;= 18.17.
+Data and config are stored under `~/.swarmify/`. Requires Node.js >= 18.17.
 
 ## Changelog
 

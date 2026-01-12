@@ -298,15 +298,6 @@ export function openPanel(context: vscode.ExtensionContext): void {
         const tasks = await swarm.fetchTasks(message.limit);
         settingsPanel?.webview.postMessage({ type: 'tasksData', tasks });
         break;
-      case 'installSkillCommand':
-        settingsPanel?.webview.postMessage({ type: 'skillInstallStart' });
-        await swarm.installSkillCommand(message.skill, message.agent, context);
-        settingsPanel?.webview.postMessage({
-          type: 'skillsStatus',
-          skillsStatus: await swarm.getSkillsStatus()
-        });
-        settingsPanel?.webview.postMessage({ type: 'skillInstallDone' });
-        break;
       case 'fetchAgentTerminals':
         const terminalDetails = terminals.getTerminalsByAgentType(message.agentType);
         settingsPanel?.webview.postMessage({

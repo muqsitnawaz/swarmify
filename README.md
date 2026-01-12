@@ -32,8 +32,8 @@ True multi-agent coding in your IDE. Run Claude, Codex, Gemini, and Cursor agent
 
 | Package | Description | Install |
 | --- | --- | --- |
-| [@swarmify/agents-mcp](./server) | MCP server for spawning agents | `npx @swarmify/agents-mcp` |
-| [Agents Extension](./extension) | VS Code/Cursor extension | [Marketplace](https://marketplace.visualstudio.com/items?itemName=swarmify.agents-ext) |
+| [@swarmify/agents-mcp](./mcp-server) | MCP server for spawning agents | `npx @swarmify/agents-mcp` |
+| [Agents Extension](./extension) | VS Code/Cursor extension | [Marketplace](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext) |
 | [Prompts](./prompts) | Slash commands for all agents | See below |
 
 ## Quick Start
@@ -55,7 +55,7 @@ opencode mcp add
 
 ### VS Code Extension
 
-Install "Agents" from the VS Code Marketplace, or search for `swarmify.agents-ext`.
+Install "Agents" from the VS Code Marketplace, or search for `swarmify.swarm-ext`.
 
 ## How It Works
 
@@ -95,7 +95,7 @@ Task description
 - Progress note 2
 ```
 
-See [@swarmify/agents-mcp README](./server/README.md#ralph-mode) for complete documentation.
+See [@swarmify/agents-mcp README](./mcp-server/README.md#ralph-mode) for complete documentation.
 
 ## Prompts
 

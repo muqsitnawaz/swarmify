@@ -7,7 +7,7 @@ export type AgentType = 'claude' | 'gemini' | 'codex' | 'agents' | 'cursor' | 'o
 export interface ContextFile {
   path: string // relative path from workspace root
   agent: AgentType
-  preview: string // first ~80 chars of content
+  preview: string // first ~50 chars of content
   lines: number // total line count
   isSymlink: boolean
   symlinkTarget?: string // if symlink, relative path it points to
@@ -32,8 +32,8 @@ function getPreview(content: string): string {
   for (const line of lines) {
     const trimmed = line.trim()
     if (trimmed && !trimmed.startsWith('#')) {
-      // Truncate to ~80 chars
-      return trimmed.length > 80 ? trimmed.slice(0, 77) + '...' : trimmed
+      // Truncate to ~50 chars
+      return trimmed.length > 50 ? trimmed.slice(0, 47) + '...' : trimmed
     }
   }
   // Fallback to first heading if no content
@@ -41,7 +41,7 @@ function getPreview(content: string): string {
     const trimmed = line.trim()
     if (trimmed.startsWith('#')) {
       const heading = trimmed.replace(/^#+\s*/, '')
-      return heading.length > 80 ? heading.slice(0, 77) + '...' : heading
+      return heading.length > 50 ? heading.slice(0, 47) + '...' : heading
     }
   }
   return ''

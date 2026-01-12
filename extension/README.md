@@ -3,7 +3,7 @@
 True multi-agent coding in your favorite editor.
 
 Homepage: https://swarmify.co  
-Marketplace: https://marketplace.visualstudio.com/items?itemName=swarmify.agents-ext
+Marketplace: https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext
 
 ## Why
 
@@ -21,7 +21,7 @@ Spawn any agent instantly as an editor tab - not buried in the bottom panel. Eac
 
 ### Any Agent Supported
 
-Built-in support for Claude Code, Codex, Gemini, and Cursor. Add custom agents through the settings panel with a 2-letter code and shell command.
+Built-in support for Claude Code, Codex, Gemini, OpenCode, and Cursor. Add custom agents through the settings panel with a 2-letter code and shell command.
 
 ### Agent Safety Modes
 
@@ -88,7 +88,7 @@ Enable session warming to reduce agent startup time. Each agent type handles ses
 Every open agent terminal is fully restorable. Terminal state is saved to disk in real-time, so if VS Code crashes or restarts, all your agent tabs come back exactly as they were:
 
 - **Session ID**: Resume the exact conversation where you left off
-- **Icon**: CC, CX, GX, CR icons restored for quick identification
+- **Icon**: CC, CX, GX, OC, CR icons restored for quick identification
 - **Label**: Custom labels you set are preserved
 
 No more losing agent context to crashes. Close VS Code, reopen it, and pick up right where you left off.
@@ -100,6 +100,18 @@ Select text in any terminal, hit a shortcut, and spawn a new agent with that con
 ### AI Git Commits
 
 Generate commit messages from your staged changes. Learns from your commit style examples, then stages, commits, and pushes in one action.
+
+### Shell Terminals
+
+Spawn plain shell terminals alongside your agents. Same keyboard-driven workflow, same editor tab placement - just without an AI agent attached. Useful for running builds, tests, or other commands while agents work.
+
+### Markdown Editor
+
+Custom editor for `.md` files with image paste support. Drag and drop or paste images directly - they're saved to a configurable assets folder and linked automatically.
+
+### Notifications
+
+Native macOS notifications when agents need attention. Configure per-agent notification settings in the dashboard.
 
 ## Quick Start
 
@@ -120,6 +132,11 @@ Generate commit messages from your staged changes. Learns from your commit style
 | `Cmd+Shift+M` | Spawn Gemini |
 | `Cmd+Shift+U` | Spawn Cursor |
 | `Cmd+Shift+D` | Open Dashboard |
+| `Cmd+Shift+S` | New Shell |
+| `Cmd+Shift+I` | Open Agent |
+| `Cmd+Shift+H` | Horizontal split |
+| `Cmd+Shift+V` | Vertical split |
+| `Cmd+Shift+'` | Prompts |
 
 ## Requirements
 
