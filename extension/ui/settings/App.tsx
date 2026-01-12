@@ -54,6 +54,8 @@ type SkillName =
   | 'stest'
   | 'ship'
   | 'sship'
+  | 'recap'
+  | 'srecap'
   | 'simagine'
 
 interface SkillAgentStatus {
@@ -203,7 +205,7 @@ interface ContextFile {
   symlinkTarget?: string
 }
 
-type TabId = 'overview' | 'tasks' | 'sessions' | 'settings' | 'swarm' | 'skills' | 'context' | 'guide'
+type TabId = 'overview' | 'tasks' | 'sessions' | 'settings' | 'swarm' | 'context' | 'guide'
 
 declare function acquireVsCodeApi(): {
   postMessage(message: unknown): void
@@ -337,18 +339,10 @@ const TAB_LABELS: Record<TabId, string> = {
   tasks: 'Todo',
   sessions: 'Sessions',
   swarm: 'Swarm',
-  skills: 'Skills',
   context: 'Context',
   settings: 'Settings',
   guide: 'Guide'
 }
-
-const SKILL_AGENTS: { key: PromptPackAgentType; name: string; icon: string | ThemedIcon }[] = [
-  { key: 'codex', name: 'Codex', icon: icons.codex },
-  { key: 'gemini', name: 'Gemini', icon: icons.gemini },
-  { key: 'claude', name: 'Claude', icon: icons.claude },
-  { key: 'cursor', name: 'Cursor', icon: icons.cursor },
-]
 
 // Install commands/links for each agent
 const AGENT_INSTALL_INFO: Record<string, { command?: string; url?: string }> = {
@@ -422,7 +416,6 @@ export default function App() {
 
   // Skills state
   const [skillsStatus, setSkillsStatus] = useState<SkillsStatus | null>(null)
-  const [skillInstalling, setSkillInstalling] = useState(false)
 
   // Tab and Tasks state
   const [activeTab, setActiveTab] = useState<TabId>('overview')
@@ -534,10 +527,6 @@ export default function App() {
         setSwarmInstalling(true)
       } else if (message.type === 'swarmInstallDone') {
         setSwarmInstalling(false)
-      } else if (message.type === 'skillInstallStart') {
-        setSkillInstalling(true)
-      } else if (message.type === 'skillInstallDone') {
-        setSkillInstalling(false)
       } else if (message.type === 'prewarmStatus') {
         setPrewarmEnabled(message.enabled)
         setPrewarmPools(message.pools || [])
@@ -1338,18 +1327,20 @@ export default function App() {
     )
   }
 
-  const swarmSkillNames: SkillName[] = [
-    'splan',
-    'sdebug',
-    'sconfirm',
-    'sclean',
-    'stest',
-    'sship',
-    'simagine',
-  ]
-
-  const basicSkills = skillsStatus?.commands.filter(skill => !swarmSkillNames.includes(skill.name)) || []
-  const swarmSkills = skillsStatus?.commands.filter(skill => swarmSkillNames.includes(skill.name)) || []
+  const skillCommands = skillsStatus?.commands ?? []
+  const commandPackNames: string[] = ['swarm', ...skillCommands.map((skill) => skill.name)]
+  const getSkillSummary = (agent: PromptPackAgentType) => {
+    if (!skillsStatus) return null
+    const supported = skillCommands.filter(skill => skill.agents[agent]?.supported)
+    const installed = supported.filter(skill => skill.agents[agent]?.installed)
+    const sample = supported[0]?.agents[agent]
+    return {
+      total: supported.length,
+      installed: installed.length,
+      cliAvailable: sample?.cliAvailable ?? false,
+      builtIn: supported.filter(skill => skill.agents[agent]?.builtIn).length
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -1362,7 +1353,7 @@ export default function App() {
 
         {/* Tab bar */}
         <div className="flex gap-1">
-          {(['overview', 'tasks', 'sessions', 'swarm', 'skills', 'context', 'settings', 'guide'] as TabId[]).map(tab => (
+          {(['overview', 'tasks', 'sessions', 'swarm', 'context', 'settings', 'guide'] as TabId[]).map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -1667,6 +1658,14 @@ export default function App() {
                     ? { text: 'Installed', tone: 'bg-green-500/10 text-green-600 dark:bg-green-500/20 dark:text-green-400' }
                     : { text: 'Not installed', tone: 'bg-[var(--secondary)] text-[var(--muted-foreground)]' }
                   : { text: 'CLI not found', tone: 'bg-[var(--secondary)] text-[var(--muted-foreground)]' };
+                const skillSummary = getSkillSummary(agent);
+                const skillBadge = !skillSummary
+                  ? { text: 'Skills status unknown', tone: 'bg-[var(--secondary)] text-[var(--muted-foreground)]' }
+                  : skillSummary.total === 0
+                    ? { text: 'No skills', tone: 'bg-[var(--secondary)] text-[var(--muted-foreground)]' }
+                    : skillSummary.installed === skillSummary.total
+                      ? { text: 'Skills Installed', tone: 'bg-green-500/10 text-green-600 dark:bg-green-500/15 dark:text-green-300' }
+                      : { text: `Skills ${skillSummary.installed}/${skillSummary.total}`, tone: 'bg-[var(--secondary)] text-[var(--muted-foreground)]' }
 
                 return (
                   <div key={agent} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)]">
@@ -1684,6 +1683,7 @@ export default function App() {
                           </span>
                         </>
                       )}
+                      <span className={`px-2 py-0.5 rounded ${skillBadge.tone}`}>{skillBadge.text}</span>
                     </div>
                     <div className="flex-1" />
                     {showInstall && (
@@ -1691,6 +1691,7 @@ export default function App() {
                         size="sm"
                         onClick={() => handleInstallSwarmAgent(agent)}
                         disabled={swarmInstalling}
+                        title="Installs Swarm and the full command pack"
                       >
                         {swarmInstalling ? (
                           <span className="flex items-center gap-1.5">
@@ -1698,13 +1699,42 @@ export default function App() {
                             Installing...
                           </span>
                         ) : (
-                          'Install'
+                          'Install pack'
                         )}
                       </Button>
                     )}
                   </div>
                 )
               })}
+            </div>
+          </section>
+
+          {/* Command Pack */}
+          <section>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
+                Command Pack
+              </h2>
+              <span className="text-xs text-[var(--muted-foreground)]">
+                Installed via the Swarm button above
+              </span>
+            </div>
+            <div className="px-4 py-3 rounded-xl bg-[var(--muted)] space-y-3">
+              <div className="flex flex-wrap gap-2 text-xs">
+                {commandPackNames.map((name) => (
+                  <span
+                    key={name}
+                    className="px-2 py-0.5 rounded bg-[var(--background)] border border-[var(--border)]"
+                  >
+                    {name}
+                  </span>
+                ))}
+              </div>
+              {!skillsStatus && (
+                <div className="text-xs text-[var(--muted-foreground)]">
+                  Skills status unavailable. Install to refresh.
+                </div>
+              )}
             </div>
           </section>
 
@@ -1750,131 +1780,6 @@ export default function App() {
               </div>
             )}
           </section>
-        </div>
-      )}
-
-      {activeTab === 'skills' && (
-        <div className="space-y-4">
-          <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
-            Skills
-          </h2>
-
-          {!skillsStatus ? (
-            <div className="text-sm text-[var(--muted-foreground)] px-4 py-3">
-              Loading skills...
-            </div>
-          ) : (
-            <div className="space-y-6">
-              <div className="space-y-3">
-                <h3 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
-                  Basic
-                </h3>
-                {basicSkills.map(skill => (
-                  <div key={skill.name} className="px-4 py-3 rounded-xl bg-[var(--muted)]">
-                    <div className="flex items-center gap-3">
-                      <div>
-                        <p className="text-sm font-medium capitalize">{skill.name}</p>
-                        <p className="text-xs text-[var(--muted-foreground)]">{skill.description}</p>
-                      </div>
-                      <div className="flex-1" />
-                      <div className="flex items-center gap-3">
-                        {SKILL_AGENTS.filter(agent => skill.agents[agent.key]?.supported).map(agent => {
-                          const status = skill.agents[agent.key]
-                          const isInstalled = status?.installed
-                          const isDisabled = !status?.cliAvailable
-                          return (
-                            <div key={agent.key} className="flex items-center gap-2">
-                              <button
-                                type="button"
-                                className={`h-9 w-9 rounded-lg bg-[var(--background)] flex items-center justify-center border border-[var(--border)] ${
-                                  isInstalled ? '' : 'opacity-60'
-                                } ${!isInstalled && !isDisabled && !skillInstalling ? 'cursor-pointer' : 'cursor-default'}`}
-                                disabled={isInstalled || isDisabled || skillInstalling}
-                                onClick={() =>
-                                  vscode.postMessage({
-                                    type: 'installSkillCommand',
-                                    skill: skill.name,
-                                    agent: agent.key
-                                  })
-                                }
-                                aria-label={`Install ${skill.name} for ${agent.name}`}
-                                title={!isInstalled && !isDisabled ? 'Install' : undefined}
-                              >
-                                <img
-                                  src={getIcon(agent.icon, isLightTheme)}
-                                  alt={agent.name}
-                                  className={`w-5 h-5 ${isInstalled ? '' : 'grayscale'}`}
-                                />
-                              </button>
-                              {!status?.cliAvailable && (
-                                <span className="text-xs text-[var(--muted-foreground)]">
-                                  CLI missing
-                                </span>
-                              )}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="space-y-3">
-                <h3 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
-                  Swarm
-                </h3>
-                {swarmSkills.map(skill => (
-                  <div key={skill.name} className="px-4 py-3 rounded-xl bg-[var(--muted)]">
-                    <div className="flex items-center gap-3">
-                      <div>
-                        <p className="text-sm font-medium capitalize">{skill.name}</p>
-                        <p className="text-xs text-[var(--muted-foreground)]">{skill.description}</p>
-                      </div>
-                      <div className="flex-1" />
-                      <div className="flex items-center gap-3">
-                        {SKILL_AGENTS.filter(agent => skill.agents[agent.key]?.supported).map(agent => {
-                          const status = skill.agents[agent.key]
-                          const isInstalled = status?.installed
-                          const isDisabled = !status?.cliAvailable
-                          return (
-                            <div key={agent.key} className="flex items-center gap-2">
-                              <button
-                                type="button"
-                                className={`h-9 w-9 rounded-lg bg-[var(--background)] flex items-center justify-center border border-[var(--border)] ${
-                                  isInstalled ? '' : 'opacity-60'
-                                } ${!isInstalled && !isDisabled && !skillInstalling ? 'cursor-pointer' : 'cursor-default'}`}
-                                disabled={isInstalled || isDisabled || skillInstalling}
-                                onClick={() =>
-                                  vscode.postMessage({
-                                    type: 'installSkillCommand',
-                                    skill: skill.name,
-                                    agent: agent.key
-                                  })
-                                }
-                                aria-label={`Install ${skill.name} for ${agent.name}`}
-                                title={!isInstalled && !isDisabled ? 'Install' : undefined}
-                              >
-                                <img
-                                  src={getIcon(agent.icon, isLightTheme)}
-                                  alt={agent.name}
-                                  className={`w-5 h-5 ${isInstalled ? '' : 'grayscale'}`}
-                                />
-                              </button>
-                              {!status?.cliAvailable && (
-                                <span className="text-xs text-[var(--muted-foreground)]">
-                                  CLI missing
-                                </span>
-                              )}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       )}
 
