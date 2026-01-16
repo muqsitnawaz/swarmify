@@ -1,394 +1,51 @@
 import React, { useState, useEffect } from 'react'
-import { marked } from 'marked'
-import DOMPurify from 'dompurify'
 import { Button } from './components/ui/button'
-import { Checkbox } from './components/ui/checkbox'
-import { Input } from './components/ui/input'
-import { ChevronDown, ChevronRight, FileEdit, FilePlus, Terminal, MessageSquare, Clock, RefreshCw, Download, ExternalLink, Check } from 'lucide-react'
 
-interface BuiltInAgentSettings {
-  login: boolean
-  instances: number
-  defaultModel?: string
-}
+// Import extracted modules
+import {
+  AgentSettings,
+  SwarmStatus,
+  SkillsStatus,
+  TaskSummary,
+  TodoFile,
+  UnifiedTask,
+  TaskSource,
+  AgentSession,
+  ContextFile,
+  TerminalDetail,
+  RunningCounts,
+  TabId,
+  IconConfig,
+  PrewarmPool,
+  WorkspaceConfig,
+  SwarmAgentType,
+  TodoItem,
+} from './types'
+import {
+  ALL_SWARM_AGENTS,
+  TAB_LABELS,
+  SESSIONS_PER_PAGE,
+  createBuiltInAgents,
+} from './constants'
+import { useSystemTheme, getVsCodeApi, getIcons, postMessage } from './hooks'
+import { validateAliasName } from './utils'
 
-interface CustomAgentSettings {
-  name: string
-  command: string
-  login: boolean
-  instances: number
-}
+// Tab components
+import { GuideTab } from './components/tabs/GuideTab'
+import { SessionsTab } from './components/tabs/SessionsTab'
+import { TasksTab } from './components/tabs/TasksTab'
+import { ContextTab } from './components/tabs/ContextTab'
+import { OverviewTab } from './components/tabs/OverviewTab'
+import { SettingsTab } from './components/tabs/SettingsTab'
 
-interface CommandAlias {
-  name: string
-  agent: string
-  flags: string
-}
-
-type SwarmAgentType = 'claude' | 'codex' | 'gemini'
-type PromptPackAgentType = 'claude' | 'codex' | 'gemini' | 'cursor'
-const ALL_SWARM_AGENTS: SwarmAgentType[] = ['claude', 'codex', 'gemini']
-const AGENT_MODELS: Record<string, string[]> = {
-  claude: ['claude-sonnet-4-5', 'claude-opus-4-5', 'claude-haiku-4-5'],
-  codex: ['gpt-5.2-codex', 'gpt-5.1-codex-max'],
-  gemini: ['gemini-3-flash', 'gemini-3-pro'],
-  cursor: ['composer-1'],
-  opencode: [],
-  shell: []
-}
-const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
-  enabled: false,
-  style: 'native',
-  enabledAgents: ['claude']
-}
-
-type SkillName =
-  | 'plan'
-  | 'splan'
-  | 'debug'
-  | 'sdebug'
-  | 'sconfirm'
-  | 'clean'
-  | 'sclean'
-  | 'test'
-  | 'stest'
-  | 'ship'
-  | 'sship'
-  | 'recap'
-  | 'srecap'
-  | 'simagine'
-
-interface SkillAgentStatus {
-  installed: boolean
-  cliAvailable: boolean
-  builtIn: boolean
-  supported: boolean
-}
-
-interface SkillCommandStatus {
-  name: SkillName
-  description: string
-  agents: Record<PromptPackAgentType, SkillAgentStatus>
-}
-
-interface SkillsStatus {
-  commands: SkillCommandStatus[]
-}
-
-interface PromptEntry {
-  id: string
-  title: string
-  content: string
-  isFavorite: boolean
-  createdAt: number
-  updatedAt: number
-  accessedAt: number
-}
-
-interface AgentSettings {
-  builtIn: {
-    claude: BuiltInAgentSettings
-    codex: BuiltInAgentSettings
-    gemini: BuiltInAgentSettings
-    opencode: BuiltInAgentSettings
-    cursor: BuiltInAgentSettings
-    shell: BuiltInAgentSettings
-  }
-  custom: CustomAgentSettings[]
-  aliases: CommandAlias[]
-  swarmEnabledAgents: SwarmAgentType[]
-  prompts: PromptEntry[]
-  display: DisplayPreferences
-  notifications?: NotificationSettings
-}
-
-interface DisplayPreferences {
-  showFullAgentNames: boolean
-  showLabelsInTitles: boolean
-}
-
-interface NotificationSettings {
-  enabled: boolean
-  style: 'native' | 'vscode'
-  enabledAgents: string[]
-}
-
-interface RunningCounts {
-  claude: number
-  codex: number
-  gemini: number
-  opencode: number
-  cursor: number
-  shell: number
-  custom: Record<string, number>
-}
-
-interface AgentInstallStatus {
-  installed: boolean
-  cliAvailable: boolean
-  mcpEnabled: boolean
-  commandInstalled: boolean
-}
-
-interface SwarmStatus {
-  mcpEnabled: boolean
-  commandInstalled: boolean
-  agents: {
-    claude: AgentInstallStatus
-    codex: AgentInstallStatus
-    gemini: AgentInstallStatus
-  }
-}
-
-interface AgentDetail {
-  agent_id: string
-  agent_type: string
-  status: string
-  duration: string | null
-  started_at: string
-  completed_at: string | null
-  prompt: string
-  cwd: string | null
-  files_created: string[]
-  files_modified: string[]
-  files_deleted: string[]
-  bash_commands: string[]
-  last_messages: string[]
-}
-
-interface TaskSummary {
-  task_name: string
-  agent_count: number
-  status_counts: { running: number; completed: number; failed: number; stopped: number }
-  latest_activity: string
-  agents: AgentDetail[]
-}
-
-interface TerminalDetail {
-  id: string
-  agentType: string
-  label: string | null
-  autoLabel: string | null
-  createdAt: number
-  index: number
-  sessionId: string | null
-}
-
-interface TodoItem {
-  title: string
-  description?: string
-  completed: boolean
-  line: number
-}
-
-interface TodoFile {
-  path: string
-  items: TodoItem[]
-}
-
-interface AgentSession {
-  agentType: 'claude' | 'codex' | 'gemini'
-  sessionId: string
-  timestamp: string
-  path: string
-  preview?: string
-}
-
-type ContextAgentType = 'claude' | 'gemini' | 'codex' | 'agents' | 'cursor' | 'opencode' | 'unknown'
-
-interface ContextFile {
-  path: string
-  agent: ContextAgentType
-  preview: string
-  lines: number
-  isSymlink: boolean
-  symlinkTarget?: string
-}
-
-type TabId = 'overview' | 'tasks' | 'sessions' | 'settings' | 'swarm' | 'context' | 'guide'
-
-declare function acquireVsCodeApi(): {
-  postMessage(message: unknown): void
-  getState(): unknown
-  setState(state: unknown): void
-}
-
-type ThemedIcon = { dark: string; light: string }
-
-declare global {
-  interface Window {
-    __ICONS__: {
-      claude: string
-      codex: ThemedIcon
-      gemini: string
-      opencode: string
-      cursor: ThemedIcon
-      agents: string
-      shell: string
-    }
-  }
-}
-
-const vscode = acquireVsCodeApi()
-const icons = window.__ICONS__
-
-function useSystemTheme() {
-  const [isLight, setIsLight] = useState(() => {
-    return !window.matchMedia('(prefers-color-scheme: dark)').matches
-  })
-
-  useEffect(() => {
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
-    const handler = (e: MediaQueryListEvent) => setIsLight(!e.matches)
-    mediaQuery.addEventListener('change', handler)
-    return () => mediaQuery.removeEventListener('change', handler)
-  }, [])
-
-  return isLight
-}
-
-function getIcon(icon: string | ThemedIcon, isLight: boolean): string {
-  return typeof icon === 'string' ? icon : isLight ? icon.light : icon.dark
-}
-
-const todoMarkdownRenderer = new marked.Renderer()
-
-const escapeHtml = (value: string) => {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-}
-
-todoMarkdownRenderer.link = (href, title, text) => {
-  const safeHref = href || '#'
-  const safeTitle = title ? ` title="${title}"` : ''
-  return `<a href="${safeHref}"${safeTitle} target="_blank" rel="noreferrer">${text}</a>`
-}
-
-todoMarkdownRenderer.code = (code, infostring) => {
-  const lang = (infostring || '').trim()
-  const className = lang ? ` class="todo-md-code language-${lang}"` : ' class="todo-md-code"'
-  return `<pre class="todo-md-pre"><code${className}>${escapeHtml(code)}</code></pre>`
-}
-
-marked.setOptions({
-  gfm: true,
-  breaks: true,
-  headerIds: false,
-  mangle: false,
-  renderer: todoMarkdownRenderer
-})
-
-const todoMarkdownAllowedTags = [
-  'a',
-  'b',
-  'blockquote',
-  'br',
-  'code',
-  'em',
-  'h1',
-  'h2',
-  'h3',
-  'h4',
-  'h5',
-  'h6',
-  'hr',
-  'i',
-  'li',
-  'ol',
-  'p',
-  'pre',
-  'strong',
-  'span',
-  'ul'
-]
-
-const todoMarkdownAllowedAttrs = ['href', 'title', 'target', 'rel', 'class']
-
-function renderTodoDescription(desc: string, clamp: boolean = true) {
-  const raw = marked.parse(desc)
-  const safe = DOMPurify.sanitize(raw, {
-    ALLOWED_TAGS: todoMarkdownAllowedTags,
-    ALLOWED_ATTR: todoMarkdownAllowedAttrs
-  })
-  const className = clamp ? 'todo-md todo-md-clamp' : 'todo-md'
-  return <div className={className} dangerouslySetInnerHTML={{ __html: safe }} />
-}
-
-const BUILT_IN_AGENTS = [
-  { key: 'claude', name: 'Claude', icon: icons.claude as string | ThemedIcon },
-  { key: 'codex', name: 'Codex', icon: icons.codex as string | ThemedIcon },
-  { key: 'gemini', name: 'Gemini', icon: icons.gemini as string | ThemedIcon },
-  { key: 'opencode', name: 'OpenCode', icon: icons.opencode as string | ThemedIcon },
-  { key: 'cursor', name: 'Cursor', icon: icons.cursor as string | ThemedIcon },
-  { key: 'shell', name: 'Shell', icon: icons.shell as string | ThemedIcon },
-] as const
-
-const RESERVED_NAMES = ['CC', 'CX', 'GX', 'OC', 'CR', 'SH']
-const SWARM_AGENT_LABELS: Record<SwarmAgentType, string> = {
-  codex: 'Codex',
-  claude: 'Claude',
-  gemini: 'Gemini'
-}
-
-const TAB_LABELS: Record<TabId, string> = {
-  overview: 'Overview',
-  tasks: 'Todo',
-  sessions: 'Sessions',
-  swarm: 'Swarm',
-  context: 'Context',
-  settings: 'Settings',
-  guide: 'Guide'
-}
-
-// Install commands/links for each agent
-const AGENT_INSTALL_INFO: Record<string, { command?: string; url?: string }> = {
-  claude: { command: 'npm install -g @anthropic-ai/claude-code' },
-  codex: { command: 'npm install -g @openai/codex' },
-  gemini: { command: 'npm install -g @anthropic-ai/claude-code', url: 'https://github.com/google-gemini/gemini-cli' },
-  opencode: { url: 'https://github.com/opencode-ai/opencode' },
-  cursor: { url: 'https://cursor.com' },
-}
-
-// Map from agent title (CC, CX, etc.) to key (claude, codex, etc.)
-const AGENT_TITLE_TO_KEY: Record<string, string> = {
-  'CC': 'claude',
-  'CX': 'codex',
-  'GX': 'gemini',
-  'OC': 'opencode',
-  'CR': 'cursor',
-  'SH': 'shell',
-  'Claude': 'claude',
-  'Codex': 'codex',
-  'Gemini': 'gemini',
-  'OpenCode': 'opencode',
-  'Cursor': 'cursor',
-  'Shell': 'shell',
-}
-
-// Map from key to title (for dropdown)
-const AGENT_KEY_TO_TITLE: Record<string, string> = {
-  'claude': 'CC',
-  'codex': 'CX',
-  'gemini': 'GX',
-  'opencode': 'OC',
-  'cursor': 'CR',
-}
-
-const NOTIFICATION_AGENTS = [
-  { key: 'claude', name: 'Claude', supported: true },
-  { key: 'codex', name: 'Codex', supported: false },
-  { key: 'gemini', name: 'Gemini', supported: false },
-  { key: 'opencode', name: 'OpenCode', supported: false },
-  { key: 'cursor', name: 'Cursor', supported: false },
-  { key: 'shell', name: 'Shell', supported: false },
-]
+const vscode = getVsCodeApi()
+const icons = getIcons() as IconConfig
+const BUILT_IN_AGENTS = createBuiltInAgents(icons)
 
 export default function App() {
   const isLightTheme = useSystemTheme()
+
+  // Core settings state
   const [settings, setSettings] = useState<AgentSettings | null>(null)
   const [runningCounts, setRunningCounts] = useState<RunningCounts>({
     claude: 0, codex: 0, gemini: 0, opencode: 0, cursor: 0, shell: 0, custom: {}
@@ -402,77 +59,55 @@ export default function App() {
       gemini: { installed: false, cliAvailable: false, mcpEnabled: false, commandInstalled: false },
     }
   })
-  const [isAdding, setIsAdding] = useState(false)
-  const [newName, setNewName] = useState('')
-  const [newCommand, setNewCommand] = useState('')
-  const [nameError, setNameError] = useState('')
 
-  // Alias editing state
-  const [isAddingAlias, setIsAddingAlias] = useState(false)
-  const [newAliasName, setNewAliasName] = useState('')
-  const [newAliasAgent, setNewAliasAgent] = useState('claude')
-  const [newAliasFlags, setNewAliasFlags] = useState('')
-  const [aliasError, setAliasError] = useState('')
-
-  // Skills state
+  // Skills and tab state
   const [skillsStatus, setSkillsStatus] = useState<SkillsStatus | null>(null)
-
-  // Tab and Tasks state
   const [activeTab, setActiveTab] = useState<TabId>('overview')
   const [tasks, setTasks] = useState<TaskSummary[]>([])
   const [tasksLoading, setTasksLoading] = useState(false)
   const [tasksLoaded, setTasksLoaded] = useState(false)
-  const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set())
-  const [expandedAgents, setExpandedAgents] = useState<Set<string>>(new Set())
-  const [tasksPage, setTasksPage] = useState(1)
-  const TASKS_PER_PAGE = 10
   const [swarmInstalling, setSwarmInstalling] = useState(false)
+  const [commandPackInstalling, setCommandPackInstalling] = useState(false)
 
+  // Session tasks state
+  const [sessionTasks, setSessionTasks] = useState<Record<string, TaskSummary[]>>({})
+  const [sessionTasksLoading, setSessionTasksLoading] = useState<Record<string, boolean>>({})
+
+  // Todo and unified tasks state
   const [todoFiles, setTodoFiles] = useState<TodoFile[]>([])
   const [todoLoading, setTodoLoading] = useState(false)
   const [todoLoaded, setTodoLoaded] = useState(false)
+  const [unifiedTasks, setUnifiedTasks] = useState<UnifiedTask[]>([])
+  const [unifiedTasksLoading, setUnifiedTasksLoading] = useState(false)
+  const [unifiedTasksLoaded, setUnifiedTasksLoaded] = useState(false)
+  const [availableSources, setAvailableSources] = useState<{ markdown: boolean; linear: boolean; github: boolean }>({
+    markdown: true, linear: false, github: false
+  })
+  const [expandedSources, setExpandedSources] = useState<Set<TaskSource>>(new Set(['markdown']))
 
+  // Sessions state
   const [recentSessions, setRecentSessions] = useState<AgentSession[]>([])
   const [sessionsLoading, setSessionsLoading] = useState(false)
   const [sessionsLoaded, setSessionsLoaded] = useState(false)
   const [sessionsPage, setSessionsPage] = useState(1)
-  const SESSIONS_PER_PAGE = 20
 
-  // Agent terminals drill-down state
+  // Agent terminals state
   const [selectedAgentType, setSelectedAgentType] = useState<string | null>(null)
   const [agentTerminals, setAgentTerminals] = useState<TerminalDetail[]>([])
   const [agentTerminalsLoading, setAgentTerminalsLoading] = useState(false)
 
-  // Default agent and installed agents state
+  // Default agent and installed agents
   const [defaultAgent, setDefaultAgent] = useState<string>('CC')
   const [installedAgents, setInstalledAgents] = useState<Record<string, boolean>>({
     claude: true, codex: true, gemini: true, opencode: true, cursor: true, shell: true
   })
 
-  // Session pre-warming state
+  // Prewarm state
   const [prewarmEnabled, setPrewarmEnabled] = useState(false)
-  const [prewarmPools, setPrewarmPools] = useState<Array<{
-    agentType: 'claude' | 'codex' | 'gemini'
-    available: number
-    pending: number
-    sessions: Array<{ sessionId: string; createdAt: number; workingDirectory: string }>
-  }>>([])
+  const [prewarmPools, setPrewarmPools] = useState<PrewarmPool[]>([])
   const [prewarmLoaded, setPrewarmLoaded] = useState(false)
 
-  // Workspace memory config state
-  interface MemoryFileMapping {
-    pattern: string
-    symlinks: string[]
-  }
-  interface WorkspaceMemoryConfig {
-    symlinking: boolean
-    files: MemoryFileMapping[]
-  }
-  interface WorkspaceConfig {
-    memory: WorkspaceMemoryConfig
-    agents: string[]
-    files: { ralph: string; todo: string }
-  }
+  // Workspace config state
   const [workspaceConfig, setWorkspaceConfig] = useState<WorkspaceConfig | null>(null)
   const [workspaceConfigExists, setWorkspaceConfigExists] = useState(false)
   const [workspaceConfigLoaded, setWorkspaceConfigLoaded] = useState(false)
@@ -481,70 +116,109 @@ export default function App() {
   const [contextFiles, setContextFiles] = useState<ContextFile[]>([])
   const [contextLoading, setContextLoading] = useState(false)
   const [contextLoaded, setContextLoaded] = useState(false)
-  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set())
+  const [collapsedDirs, setCollapsedDirs] = useState<Set<string>>(new Set())
+
+  // Alias editing state
+  const [isAddingAlias, setIsAddingAlias] = useState(false)
+  const [newAliasName, setNewAliasName] = useState('')
+  const [newAliasAgent, setNewAliasAgent] = useState('claude')
+  const [newAliasFlags, setNewAliasFlags] = useState('')
+  const [aliasError, setAliasError] = useState('')
 
   const hasCliInstalled = installedAgents.claude || installedAgents.codex || installedAgents.gemini
   const showIntegrationCallout = !hasCliInstalled && !swarmStatus.mcpEnabled
 
+  // Message handler
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       const message = event.data
-      if (message.type === 'init') {
-        setSettings(message.settings)
-        setRunningCounts(message.runningCounts)
-        if (message.swarmStatus) {
-          setSwarmStatus(message.swarmStatus)
-        }
-        if (message.skillsStatus) {
-          setSkillsStatus(message.skillsStatus)
-        }
-      } else if (message.type === 'updateRunningCounts') {
-        setRunningCounts(message.counts)
-      } else if (message.type === 'tasksData') {
-        setTasks(message.tasks || [])
-        setTasksLoading(false)
-        setTasksLoaded(true)
-      } else if (message.type === 'todoFilesData' || message.type === 'todoFilesUpdated') {
-        setTodoFiles(message.files || [])
-        setTodoLoading(false)
-        setTodoLoaded(true)
-      } else if (message.type === 'sessionsData' || message.type === 'sessionsUpdated') {
-        setRecentSessions(message.sessions || [])
-        setSessionsLoading(false)
-        setSessionsLoaded(true)
-      } else if (message.type === 'agentTerminalsData') {
-        setAgentTerminals(message.terminals || [])
-        setAgentTerminalsLoading(false)
-      } else if (message.type === 'installedAgentsData') {
-        setInstalledAgents(message.installedAgents)
-      } else if (message.type === 'defaultAgentData') {
-        setDefaultAgent(message.defaultAgent)
-      } else if (message.type === 'swarmStatus') {
-        if (message.swarmStatus) setSwarmStatus(message.swarmStatus)
-      } else if (message.type === 'skillsStatus') {
-        if (message.skillsStatus) setSkillsStatus(message.skillsStatus)
-      } else if (message.type === 'swarmInstallStart') {
-        setSwarmInstalling(true)
-      } else if (message.type === 'swarmInstallDone') {
-        setSwarmInstalling(false)
-      } else if (message.type === 'prewarmStatus') {
-        setPrewarmEnabled(message.enabled)
-        setPrewarmPools(message.pools || [])
-        setPrewarmLoaded(true)
-      } else if (message.type === 'workspaceConfigData') {
-        setWorkspaceConfig(message.config)
-        setWorkspaceConfigExists(message.exists)
-        setWorkspaceConfigLoaded(true)
-      } else if (message.type === 'contextFilesData') {
-        setContextFiles(message.files || [])
-        setContextLoading(false)
-        setContextLoaded(true)
+      switch (message.type) {
+        case 'init':
+          setSettings(message.settings)
+          setRunningCounts(message.runningCounts)
+          if (message.swarmStatus) setSwarmStatus(message.swarmStatus)
+          if (message.skillsStatus) setSkillsStatus(message.skillsStatus)
+          break
+        case 'updateRunningCounts':
+          setRunningCounts(message.counts)
+          break
+        case 'tasksData':
+          setTasks(message.tasks || [])
+          setTasksLoading(false)
+          setTasksLoaded(true)
+          break
+        case 'todoFilesData':
+        case 'todoFilesUpdated':
+          setTodoFiles(message.files || [])
+          setTodoLoading(false)
+          setTodoLoaded(true)
+          break
+        case 'sessionsData':
+        case 'sessionsUpdated':
+          setRecentSessions(message.sessions || [])
+          setSessionsLoading(false)
+          setSessionsLoaded(true)
+          break
+        case 'agentTerminalsData':
+          setAgentTerminals(message.terminals || [])
+          setAgentTerminalsLoading(false)
+          break
+        case 'installedAgentsData':
+          setInstalledAgents(message.installedAgents)
+          break
+        case 'defaultAgentData':
+          setDefaultAgent(message.defaultAgent)
+          break
+        case 'swarmStatus':
+          if (message.swarmStatus) setSwarmStatus(message.swarmStatus)
+          break
+        case 'skillsStatus':
+          if (message.skillsStatus) setSkillsStatus(message.skillsStatus)
+          break
+        case 'swarmInstallStart':
+          setSwarmInstalling(true)
+          break
+        case 'swarmInstallDone':
+          setSwarmInstalling(false)
+          break
+        case 'commandPackInstallStart':
+          setCommandPackInstalling(true)
+          break
+        case 'commandPackInstallDone':
+          setCommandPackInstalling(false)
+          break
+        case 'prewarmStatus':
+          setPrewarmEnabled(message.enabled)
+          setPrewarmPools(message.pools || [])
+          setPrewarmLoaded(true)
+          break
+        case 'workspaceConfigData':
+          setWorkspaceConfig(message.config)
+          setWorkspaceConfigExists(message.exists)
+          setWorkspaceConfigLoaded(true)
+          break
+        case 'contextFilesData':
+          setContextFiles(message.files || [])
+          setContextLoading(false)
+          setContextLoaded(true)
+          break
+        case 'unifiedTasksData':
+          setUnifiedTasks(message.tasks || [])
+          setUnifiedTasksLoading(false)
+          setUnifiedTasksLoaded(true)
+          break
+        case 'taskSourcesData':
+          setAvailableSources(message.sources || { markdown: true, linear: false, github: false })
+          break
+        case 'sessionTasksData':
+          setSessionTasks(prev => ({ ...prev, [message.sessionId]: message.tasks || [] }))
+          setSessionTasksLoading(prev => ({ ...prev, [message.sessionId]: false }))
+          break
       }
     }
 
     window.addEventListener('message', handleMessage)
     vscode.postMessage({ type: 'ready' })
-    // Request installed agents and default agent
     vscode.postMessage({ type: 'checkInstalledAgents' })
     vscode.postMessage({ type: 'getDefaultAgent' })
     vscode.postMessage({ type: 'getPrewarmStatus' })
@@ -553,18 +227,19 @@ export default function App() {
     return () => window.removeEventListener('message', handleMessage)
   }, [])
 
-  // Fetch tasks when switching to swarm tab (only if not already loaded)
+  // Tab-specific data loading
   useEffect(() => {
-    if ((activeTab === 'swarm' || activeTab === 'overview') && !tasksLoaded && !tasksLoading) {
+    if (activeTab === 'overview' && !tasksLoaded && !tasksLoading) {
       fetchTasks()
     }
-  }, [activeTab, tasksLoaded, tasksLoading])
-
-  useEffect(() => {
     if (activeTab === 'tasks' && !todoLoaded && !todoLoading) {
       fetchTodoFiles()
     }
-  }, [activeTab, todoLoaded, todoLoading])
+    if (activeTab === 'tasks' && !unifiedTasksLoaded && !unifiedTasksLoading) {
+      fetchUnifiedTasks()
+      detectTaskSources()
+    }
+  }, [activeTab, tasksLoaded, tasksLoading, todoLoaded, todoLoading, unifiedTasksLoaded, unifiedTasksLoading])
 
   useEffect(() => {
     if (activeTab === 'sessions' && !sessionsLoaded && !sessionsLoading) {
@@ -578,6 +253,17 @@ export default function App() {
     }
   }, [activeTab, contextLoaded, contextLoading])
 
+  useEffect(() => {
+    if (!selectedAgentType || agentTerminals.length === 0) return
+    for (const terminal of agentTerminals) {
+      if (!terminal.sessionId) continue
+      if (sessionTasks[terminal.sessionId]) continue
+      if (sessionTasksLoading[terminal.sessionId]) continue
+      fetchTasksBySession(terminal.sessionId)
+    }
+  }, [selectedAgentType, agentTerminals, sessionTasks, sessionTasksLoading])
+
+  // Data fetching functions
   const fetchTasks = () => {
     setTasksLoading(true)
     vscode.postMessage({ type: 'fetchTasks' })
@@ -586,6 +272,15 @@ export default function App() {
   const fetchTodoFiles = () => {
     setTodoLoading(true)
     vscode.postMessage({ type: 'fetchTodoFiles' })
+  }
+
+  const fetchUnifiedTasks = () => {
+    setUnifiedTasksLoading(true)
+    vscode.postMessage({ type: 'fetchUnifiedTasks' })
+  }
+
+  const detectTaskSources = () => {
+    vscode.postMessage({ type: 'detectTaskSources' })
   }
 
   const fetchSessions = () => {
@@ -599,39 +294,23 @@ export default function App() {
     vscode.postMessage({ type: 'fetchContextFiles' })
   }
 
-  const toggleDirExpanded = (dir: string) => {
-    setExpandedDirs(prev => {
+  const fetchTasksBySession = (sessionId: string) => {
+    setSessionTasksLoading(prev => ({ ...prev, [sessionId]: true }))
+    vscode.postMessage({ type: 'fetchTasksBySession', sessionId })
+  }
+
+  // Handler functions
+  const toggleSourceExpanded = (source: TaskSource) => {
+    setExpandedSources(prev => {
       const next = new Set(prev)
-      if (next.has(dir)) {
-        next.delete(dir)
-      } else {
-        next.add(dir)
-      }
+      if (next.has(source)) next.delete(source)
+      else next.add(source)
       return next
     })
   }
 
-  const openContextFile = (filePath: string) => {
-    vscode.postMessage({ type: 'openContextFile', path: filePath })
-  }
-
-  const getAgentIcon = (agent: ContextAgentType): string => {
-    if (agent === 'claude') return icons.claude
-    if (agent === 'gemini') return icons.gemini
-    if (agent === 'codex') return getIcon(icons.codex, isLightTheme)
-    if (agent === 'agents') return icons.agents
-    if (agent === 'cursor') return getIcon(icons.cursor, isLightTheme)
-    if (agent === 'opencode') return icons.opencode
-    return icons.agents
-  }
-
-  const togglePrewarm = () => {
-    vscode.postMessage({ type: 'togglePrewarm' })
-  }
-
   const handleAgentClick = (agentKey: string) => {
     if (selectedAgentType === agentKey) {
-      // Toggle off if already selected
       setSelectedAgentType(null)
       setAgentTerminals([])
     } else {
@@ -642,7 +321,7 @@ export default function App() {
   }
 
   const handleSpawnTodo = (item: TodoItem, filePath: string) => {
-    setActiveTab('swarm')
+    setActiveTab('overview')
     vscode.postMessage({ type: 'spawnSwarmForTodo', item, filePath })
   }
 
@@ -650,138 +329,9 @@ export default function App() {
     vscode.postMessage({ type: 'openSession', session })
   }
 
-  const formatTimeSince = (timestamp: number): string => {
-    const now = Date.now()
-    const diffMs = now - timestamp
-    const diffMins = Math.floor(diffMs / 60000)
-    const diffHours = Math.floor(diffMs / 3600000)
-    const diffDays = Math.floor(diffMs / 86400000)
-
-    if (diffMins < 1) return 'just started'
-    if (diffMins < 60) return `${diffMins}m ago`
-    if (diffHours < 24) return `${diffHours}h ago`
-    return `${diffDays}d ago`
-  }
-
-  const getAgentDisplayName = (agentKey: string): string => {
-    const agent = BUILT_IN_AGENTS.find(a => a.key === agentKey)
-    return agent?.name || agentKey.charAt(0).toUpperCase() + agentKey.slice(1)
-  }
-
-  const toggleTaskExpanded = (taskName: string) => {
-    setExpandedTasks(prev => {
-      const next = new Set(prev)
-      if (next.has(taskName)) {
-        next.delete(taskName)
-      } else {
-        next.add(taskName)
-      }
-      return next
-    })
-  }
-
-  const toggleAgentExpanded = (agentId: string) => {
-    setExpandedAgents(prev => {
-      const next = new Set(prev)
-      if (next.has(agentId)) {
-        next.delete(agentId)
-      } else {
-        next.add(agentId)
-      }
-      return next
-    })
-  }
-
-  const formatTimeAgo = (isoDate: string): string => {
-    const date = new Date(isoDate)
-    const now = new Date()
-    const diffMs = now.getTime() - date.getTime()
-    const diffMins = Math.floor(diffMs / 60000)
-    const diffHours = Math.floor(diffMs / 3600000)
-    const diffDays = Math.floor(diffMs / 86400000)
-
-    if (diffMins < 1) return 'Just now'
-    if (diffMins === 1) return '1 min ago'
-    if (diffMins < 60) return `${diffMins} mins ago`
-    if (diffHours === 1) return '1 hour ago'
-    if (diffHours < 24) return `${diffHours} hours ago`
-    if (diffDays === 1) return 'Yesterday'
-    if (diffDays < 7) return `${diffDays} days ago`
-    return `${Math.floor(diffDays / 7)} weeks ago`
-  }
-
-  const formatSessionTimestamp = (timestamp: string): string => {
-    const date = new Date(timestamp)
-    if (Number.isNaN(date.getTime())) return 'Unknown time'
-    return date.toLocaleString()
-  }
-
-  const formatTimeAgoSafe = (timestamp: string): string => {
-    const date = new Date(timestamp)
-    if (Number.isNaN(date.getTime())) return 'Unknown time'
-    return formatTimeAgo(timestamp)
-  }
-
-  const formatPreview = (preview?: string, maxWords: number = 20): string => {
-    if (!preview) return 'No preview available.'
-    const compact = preview.replace(/\s+/g, ' ').trim()
-    if (!compact) return 'No preview available.'
-    const words = compact.split(' ')
-    if (words.length <= maxWords) return compact
-    return `${words.slice(0, maxWords).join(' ')}...`
-  }
-
-  const getStatusColor = (status: string): string => {
-    switch (status) {
-      case 'running': return 'text-blue-600 dark:text-blue-400'
-      case 'completed': return 'text-green-600 dark:text-green-400'
-      case 'failed': return 'text-red-600 dark:text-red-400'
-      case 'stopped': return 'text-yellow-600 dark:text-yellow-400'
-      default: return 'text-[var(--muted-foreground)]'
-    }
-  }
-
-  const getStatusBg = (status: string): string => {
-    switch (status) {
-      case 'running': return 'bg-blue-500/10 dark:bg-blue-500/20'
-      case 'completed': return 'bg-green-500/10 dark:bg-green-500/20'
-      case 'failed': return 'bg-red-500/10 dark:bg-red-500/20'
-      case 'stopped': return 'bg-yellow-500/10 dark:bg-yellow-500/20'
-      default: return 'bg-[var(--muted)]'
-    }
-  }
-
-  // Format task name: convert kebab-case to Title Case
-  const formatTaskName = (name: string): string => {
-    return name
-      .split('-')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-      .join(' ')
-  }
-
-  // Get unique agent types from a task
-  const getUniqueAgentTypes = (agents: AgentDetail[]): string[] => {
-    return [...new Set(agents.map(a => a.agent_type))]
-  }
-
-  const getTaskLatestTime = (task: TaskSummary): string | null => {
-    const parsedAgents = task.agents
-      .flatMap(a => [a.completed_at, a.started_at].filter(Boolean))
-      .map(t => new Date(t as string).getTime())
-      .filter(n => !Number.isNaN(n));
-
-    if (parsedAgents.length > 0) {
-      return new Date(Math.max(...parsedAgents)).toISOString();
-    }
-
-    if (task.latest_activity) {
-      const parsed = new Date(task.latest_activity).getTime();
-      if (!Number.isNaN(parsed)) {
-        return new Date(parsed).toISOString();
-      }
-    }
-
-    return null;
+  const saveSettings = (newSettings: AgentSettings) => {
+    setSettings(newSettings)
+    vscode.postMessage({ type: 'saveSettings', settings: newSettings })
   }
 
   const handleInstallSwarmAgent = (agent: SwarmAgentType) => {
@@ -789,77 +339,9 @@ export default function App() {
     vscode.postMessage({ type: 'installSwarmAgent', agent })
   }
 
-  const saveSettings = (newSettings: AgentSettings) => {
-    setSettings(newSettings)
-    vscode.postMessage({ type: 'saveSettings', settings: newSettings })
-  }
-
-  const updateBuiltIn = (key: keyof AgentSettings['builtIn'], field: 'login' | 'instances', value: boolean | number) => {
-    if (!settings) return
-    const newSettings = {
-      ...settings,
-      builtIn: {
-        ...settings.builtIn,
-        [key]: { ...settings.builtIn[key], [field]: value }
-      }
-    }
-    saveSettings(newSettings)
-  }
-
-  const updateBuiltInModel = (key: keyof AgentSettings['builtIn'], value: string) => {
-    if (!settings) return
-    const newSettings = {
-      ...settings,
-      builtIn: {
-        ...settings.builtIn,
-        [key]: { ...settings.builtIn[key], defaultModel: value || undefined }
-      }
-    }
-    saveSettings(newSettings)
-  }
-
-  const updateDisplay = (field: keyof DisplayPreferences, value: boolean) => {
-    if (!settings) return
-    const newSettings = {
-      ...settings,
-      display: {
-        ...settings.display,
-        [field]: value
-      }
-    }
-    saveSettings(newSettings)
-  }
-
-  const updateCustom = (index: number, field: 'login' | 'instances', value: boolean | number) => {
-    if (!settings) return
-    const newCustom = [...settings.custom]
-    newCustom[index] = { ...newCustom[index], [field]: value }
-    saveSettings({ ...settings, custom: newCustom })
-  }
-
-  const updateNotifications = (updates: Partial<NotificationSettings>) => {
-    if (!settings) return
-    const current = settings.notifications ?? DEFAULT_NOTIFICATION_SETTINGS
-    const next: NotificationSettings = {
-      ...current,
-      ...updates
-    }
-    saveSettings({ ...settings, notifications: next })
-  }
-
-  const toggleSwarmAgent = (agent: SwarmAgentType, enabled: boolean) => {
-    if (!settings) return
-    const current = settings.swarmEnabledAgents || ALL_SWARM_AGENTS
-    const newEnabled = enabled
-      ? [...current, agent].filter((v, i, a) => a.indexOf(v) === i)
-      : current.filter(a => a !== agent)
-    saveSettings({ ...settings, swarmEnabledAgents: newEnabled })
-  }
-
-  const isSwarmAgentEnabled = (agent: SwarmAgentType): boolean => {
-    if (!settings) return true
-    const enabled = settings.swarmEnabledAgents || ALL_SWARM_AGENTS
-    return enabled.includes(agent)
+  const handleInstallCommandPack = () => {
+    setCommandPackInstalling(true)
+    vscode.postMessage({ type: 'installCommandPack' })
   }
 
   const handleSetDefaultAgent = (agentTitle: string) => {
@@ -867,86 +349,37 @@ export default function App() {
     vscode.postMessage({ type: 'setDefaultAgent', agentTitle })
   }
 
-  const isAgentInstalled = (agentKey: string): boolean => {
-    return installedAgents[agentKey] ?? true
+  const togglePrewarm = () => {
+    vscode.postMessage({ type: 'togglePrewarm' })
   }
 
-  const getInstallInfo = (agentKey: string) => {
-    return AGENT_INSTALL_INFO[agentKey]
+  const toggleDirExpanded = (dir: string) => {
+    setCollapsedDirs(prev => {
+      const next = new Set(prev)
+      if (next.has(dir)) next.delete(dir)
+      else next.add(dir)
+      return next
+    })
   }
 
-  const validateName = (name: string): string => {
-    const upper = name.toUpperCase()
-    if (upper.length === 0) return 'Name required'
-    if (upper.length > 2) return 'Max 2 characters'
-    if (!/^[A-Z]+$/.test(upper)) return 'Letters only'
-    if (RESERVED_NAMES.includes(upper)) return 'Name already used'
-    if (settings?.custom.some(a => a.name === upper)) return 'Name already used'
-    return ''
+  const openContextFile = (filePath: string) => {
+    vscode.postMessage({ type: 'openContextFile', path: filePath })
   }
 
-  const handleNameChange = (value: string) => {
-    const upper = value.toUpperCase().slice(0, 2)
-    setNewName(upper)
-    setNameError(validateName(upper))
-  }
-
-  const handleAddClick = () => {
-    setIsAdding(true)
-    setNewName('')
-    setNewCommand('')
-    setNameError('')
-  }
-
-  const handleCancelAdd = () => {
-    setIsAdding(false)
-    setNewName('')
-    setNewCommand('')
-    setNameError('')
-  }
-
-  const handleSave = () => {
-    const error = validateName(newName)
-    if (error) {
-      setNameError(error)
-      return
-    }
-    if (!newCommand.trim()) {
-      setNameError('Command required')
-      return
-    }
+  const handleUpdateTaskSources = (updates: Partial<AgentSettings['taskSources']>) => {
     if (!settings) return
-
-    const newAgent: CustomAgentSettings = {
-      name: newName.toUpperCase(),
-      command: newCommand.trim(),
-      login: false,
-      instances: 1
+    const newSettings = {
+      ...settings,
+      taskSources: { ...settings.taskSources, ...updates }
     }
-    saveSettings({ ...settings, custom: [...settings.custom, newAgent] })
-    setIsAdding(false)
-    setNewName('')
-    setNewCommand('')
-    setNameError('')
+    saveSettings(newSettings)
+    if (updates.linear || updates.github) fetchUnifiedTasks()
   }
 
-  const removeCustomAgent = (index: number) => {
-    if (!settings) return
-    const newCustom = settings.custom.filter((_, i) => i !== index)
-    saveSettings({ ...settings, custom: newCustom })
-  }
-
-  // Alias management functions
-  const validateAliasName = (name: string): string => {
-    if (!name.trim()) return 'Name required'
-    if (name.length > 20) return 'Max 20 characters'
-    if (settings?.aliases?.some(a => a.name.toLowerCase() === name.toLowerCase())) return 'Name already used'
-    return ''
-  }
-
+  // Alias handlers
   const handleAliasNameChange = (value: string) => {
     setNewAliasName(value)
-    setAliasError(validateAliasName(value))
+    setAliasError(validateAliasName(value, settings?.aliases || []))
   }
 
   const handleAddAliasClick = () => {
@@ -966,7 +399,7 @@ export default function App() {
   }
 
   const handleSaveAlias = () => {
-    const error = validateAliasName(newAliasName)
+    const error = validateAliasName(newAliasName, settings?.aliases || [])
     if (error) {
       setAliasError(error)
       return
@@ -976,370 +409,32 @@ export default function App() {
       return
     }
     if (!settings) return
-
-    const newAlias: CommandAlias = {
-      name: newAliasName.trim(),
-      agent: newAliasAgent,
-      flags: newAliasFlags.trim()
-    }
     const aliases = settings.aliases || []
-    saveSettings({ ...settings, aliases: [...aliases, newAlias] })
+    saveSettings({
+      ...settings,
+      aliases: [...aliases, { name: newAliasName.trim(), agent: newAliasAgent, flags: newAliasFlags.trim() }]
+    })
     handleCancelAddAlias()
   }
 
-  const removeAlias = (index: number) => {
+  const handleRemoveAlias = (index: number) => {
     if (!settings) return
     const aliases = settings.aliases || []
-    const newAliases = aliases.filter((_, i) => i !== index)
-    saveSettings({ ...settings, aliases: newAliases })
+    saveSettings({ ...settings, aliases: aliases.filter((_, i) => i !== index) })
+  }
+
+  // Workspace config handlers
+  const handleInitWorkspaceConfig = () => {
+    vscode.postMessage({ type: 'initWorkspaceConfig' })
+  }
+
+  const handleSaveWorkspaceConfig = (config: WorkspaceConfig) => {
+    setWorkspaceConfig(config)
+    vscode.postMessage({ type: 'saveWorkspaceConfig', config })
   }
 
   if (!settings) {
     return <div className="text-[var(--muted-foreground)]">Loading...</div>
-  }
-
-  // Get paginated tasks
-  const paginatedTasks = tasks.slice((tasksPage - 1) * TASKS_PER_PAGE, tasksPage * TASKS_PER_PAGE)
-
-  // Render Tasks tab content
-  const renderTasksTab = () => (
-    <div className="space-y-4">
-      {/* Tasks list */}
-      {tasksLoading && tasks.length === 0 ? (
-        <div className="text-center py-8 text-[var(--muted-foreground)]">Loading tasks...</div>
-      ) : tasks.length === 0 ? (
-        <div className="text-center py-8 text-[var(--muted-foreground)]">
-          No tasks found. Spawn agents via /swarm to see them here.
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {paginatedTasks.map(task => {
-            const isTaskExpanded = expandedTasks.has(task.task_name)
-            const agentTypes = getUniqueAgentTypes(task.agents)
-            return (
-              <div key={task.task_name} className="rounded-xl bg-[var(--muted)] overflow-hidden">
-                {/* Task header */}
-                <button
-                  onClick={() => toggleTaskExpanded(task.task_name)}
-                  className="w-full px-4 py-3 hover:bg-[var(--muted-foreground)]/5 transition-colors text-left"
-                >
-                  <div className="grid grid-cols-[auto,1fr,auto] gap-x-3 gap-y-1 items-center">
-                    {isTaskExpanded ? (
-                      <ChevronDown className="w-4 h-4 text-[var(--muted-foreground)] flex-shrink-0" />
-                    ) : (
-                      <ChevronRight className="w-4 h-4 text-[var(--muted-foreground)] flex-shrink-0" />
-                    )}
-                    <span className="text-sm font-medium truncate">{formatTaskName(task.task_name)}</span>
-                    <div className="row-span-2 flex items-center gap-1.5 flex-shrink-0">
-                      {agentTypes.map(type => (
-                        <img
-                          key={type}
-                          src={getIcon(icons[type as keyof typeof icons] || icons.agents, isLightTheme)}
-                          alt={type}
-                          className="w-4 h-4"
-                          title={type}
-                        />
-                      ))}
-                    </div>
-                    <div className="ml-7 text-xs text-[var(--muted-foreground)]">
-                      {getTaskLatestTime(task) ? formatTimeAgo(getTaskLatestTime(task) as string) : '—'}
-                    </div>
-                  </div>
-                </button>
-
-                {/* Expanded task content */}
-                {isTaskExpanded && (
-                  <div className="border-t border-[var(--border)] px-4 py-3 space-y-3">
-                    {task.agents.map(agent => {
-                      const isAgentExpanded = expandedAgents.has(agent.agent_id)
-                      const hasDetails = agent.files_created.length > 0 ||
-                        agent.files_modified.length > 0 ||
-                        agent.bash_commands.length > 0 ||
-                        agent.last_messages.length > 0
-
-                      return (
-                        <div key={agent.agent_id} className="rounded-lg bg-[var(--background)] border border-[var(--border)]">
-                          {/* Agent header */}
-                          <button
-                            onClick={() => hasDetails && toggleAgentExpanded(agent.agent_id)}
-                            className={`w-full flex items-center gap-3 px-3 py-2.5 ${hasDetails ? 'cursor-pointer hover:bg-[var(--muted)]/50' : 'cursor-default'}`}
-                            disabled={!hasDetails}
-                          >
-                            {hasDetails ? (
-                              isAgentExpanded ? (
-                                <ChevronDown className="w-3.5 h-3.5 text-[var(--muted-foreground)]" />
-                              ) : (
-                                <ChevronRight className="w-3.5 h-3.5 text-[var(--muted-foreground)]" />
-                              )
-                            ) : (
-                              <div className="w-3.5 h-3.5" />
-                            )}
-                            <img
-                              src={getIcon(icons[agent.agent_type as keyof typeof icons] || icons.agents, isLightTheme)}
-                              alt={agent.agent_type}
-                              className="w-4 h-4"
-                            />
-                            <span className="text-sm font-medium capitalize">{agent.agent_type}</span>
-                            <span className="text-xs text-[var(--muted-foreground)] font-mono">{agent.agent_id}</span>
-                            <span className={`px-1.5 py-0.5 text-xs rounded ${getStatusBg(agent.status)} ${getStatusColor(agent.status)}`}>
-                              {agent.status}
-                            </span>
-                            {agent.duration && (
-                              <span className="text-xs text-[var(--muted-foreground)] flex items-center gap-1">
-                                <Clock className="w-3 h-3" />
-                                {agent.duration}
-                              </span>
-                            )}
-                          </button>
-
-                          {/* Agent details */}
-                          {isAgentExpanded && hasDetails && (
-                            <div className="border-t border-[var(--border)] px-3 py-2.5 space-y-3 text-xs">
-                              {/* Prompt */}
-                              {agent.prompt && (
-                                <div>
-                                  <div className="text-[var(--muted-foreground)] mb-1">Prompt</div>
-                                  <div className="text-[var(--foreground)] bg-[var(--muted)] rounded px-2 py-1.5 whitespace-pre-wrap">
-                                    {agent.prompt}
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Files created */}
-                              {agent.files_created.length > 0 && (
-                                <div>
-                                  <div className="flex items-center gap-1.5 text-[var(--muted-foreground)] mb-1">
-                                    <FilePlus className="w-3.5 h-3.5 text-green-600 dark:text-green-400" />
-                                    Files Created ({agent.files_created.length})
-                                  </div>
-                                  <div className="space-y-0.5">
-                                    {agent.files_created.map((f, i) => (
-                                      <div key={i} className="font-mono text-green-600 dark:text-green-400 truncate">{f}</div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Files modified */}
-                              {agent.files_modified.length > 0 && (
-                                <div>
-                                  <div className="flex items-center gap-1.5 text-[var(--muted-foreground)] mb-1">
-                                    <FileEdit className="w-3.5 h-3.5 text-yellow-600 dark:text-yellow-400" />
-                                    Files Modified ({agent.files_modified.length})
-                                  </div>
-                                  <div className="space-y-0.5">
-                                    {agent.files_modified.map((f, i) => (
-                                      <div key={i} className="font-mono text-yellow-600 dark:text-yellow-400 truncate">{f}</div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Bash commands */}
-                              {agent.bash_commands.length > 0 && (
-                                <div>
-                                  <div className="flex items-center gap-1.5 text-[var(--muted-foreground)] mb-1">
-                                    <Terminal className="w-3.5 h-3.5" />
-                                    Commands ({agent.bash_commands.length})
-                                  </div>
-                                  <div className="space-y-0.5 font-mono bg-[var(--muted)] rounded px-2 py-1.5">
-                                    {agent.bash_commands.map((cmd, i) => (
-                                      <div key={i} className="text-[var(--foreground)] truncate">$ {cmd}</div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Last messages */}
-                              {agent.last_messages.length > 0 && (
-                                <div>
-                                  <div className="flex items-center gap-1.5 text-[var(--muted-foreground)] mb-1">
-                                    <MessageSquare className="w-3.5 h-3.5" />
-                                    Last Messages
-                                  </div>
-                                  <div className="space-y-1.5">
-                                    {agent.last_messages.map((msg, i) => (
-                                      <div key={i} className="bg-[var(--muted)] rounded px-2 py-1.5 text-[var(--foreground)] whitespace-pre-wrap">
-                                        {msg}
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
-
-  const renderTodoTab = () => (
-    <div className="space-y-4">
-      {todoLoading && todoFiles.length === 0 ? (
-        <div className="text-center py-8 text-[var(--muted-foreground)]">Loading tasks...</div>
-      ) : todoFiles.length === 0 ? (
-        <div className="text-center py-8 text-[var(--muted-foreground)]">
-          No TODO.md items found in this workspace.
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {todoFiles.map(file => (
-            <div key={file.path} className="rounded-xl bg-[var(--muted)] px-4 py-3 space-y-3">
-              <div className="flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
-                <span className="uppercase tracking-wide">File</span>
-                <span className="truncate">{file.path}</span>
-                <span className="ml-auto">{file.items.length} items</span>
-              </div>
-              {file.items.length === 0 ? (
-                <div className="text-xs text-[var(--muted-foreground)]">No tasks in this file.</div>
-              ) : (
-                <div className="space-y-2">
-                  {file.items.map((item, index) => (
-                    <div key={`${file.path}-${index}-${item.line}`} className="flex items-start gap-3">
-                      <span
-                        className={`mt-0.5 rounded px-2 py-0.5 text-xs ${
-                          item.completed
-                            ? 'bg-[var(--secondary)] text-[var(--muted-foreground)]'
-                            : 'bg-[var(--background)] text-[var(--foreground)]'
-                        }`}
-                      >
-                        {item.completed ? 'Completed' : 'Open'}
-                      </span>
-                      <div className="flex-1 min-w-0 space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className={`text-sm font-medium ${item.completed ? 'line-through text-[var(--muted-foreground)]' : ''}`}>
-                            {item.title || 'Untitled task'}
-                          </span>
-                          <span className="text-xs text-[var(--muted-foreground)]">Line {item.line}</span>
-                        </div>
-                        {item.description && (
-                          <div className="text-xs text-[var(--muted-foreground)] space-y-2">
-                            {renderTodoDescription(item.description, true)}
-                          </div>
-                        )}
-                      </div>
-                      {!item.completed && (
-                        <Button size="sm" onClick={() => handleSpawnTodo(item, file.path)}>
-                          Spawn Swarm
-                        </Button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-
-  const renderSessionsTab = () => {
-    const sorted = [...recentSessions].sort((a, b) => {
-      return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-    })
-    const totalPages = Math.max(1, Math.ceil(sorted.length / SESSIONS_PER_PAGE))
-    const safePage = Math.min(sessionsPage, totalPages)
-    const start = (safePage - 1) * SESSIONS_PER_PAGE
-    const pageSessions = sorted.slice(start, start + SESSIONS_PER_PAGE)
-
-    return (
-      <div className="space-y-4">
-        {sessionsLoading && recentSessions.length === 0 ? (
-          <div className="text-center py-8 text-[var(--muted-foreground)]">Loading sessions...</div>
-        ) : recentSessions.length === 0 ? (
-          <div className="text-center py-8 text-[var(--muted-foreground)]">No recent sessions found.</div>
-        ) : (
-          <div className="rounded-xl bg-[var(--muted)] overflow-hidden">
-            <table className="w-full text-left text-sm">
-              <thead className="text-xs uppercase tracking-wide text-[var(--muted-foreground)] border-b border-[var(--border)]">
-                <tr>
-                  <th className="px-4 py-3 w-24">Agent</th>
-                  <th className="px-4 py-3">Session</th>
-                  <th className="px-4 py-3 w-48">Time</th>
-                  <th className="px-4 py-3">Preview</th>
-                  <th className="px-4 py-3 w-24 text-right">Open</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pageSessions.map(session => {
-                  return (
-                    <tr key={session.path} className="border-b border-[var(--border)] last:border-b-0">
-                      <td className="px-4 py-3">
-                        <span className="text-xs font-medium">
-                          {getAgentDisplayName(session.agentType)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 font-medium">{session.sessionId}</td>
-                      <td className="px-4 py-3 text-xs text-[var(--muted-foreground)]">
-                        <div>{formatSessionTimestamp(session.timestamp)}</div>
-                        <div>{formatTimeAgoSafe(session.timestamp)}</div>
-                      </td>
-                      <td className="px-4 py-3 text-xs text-[var(--muted-foreground)]">
-                        <div className="max-h-12 overflow-hidden break-words">
-                          {formatPreview(session.preview)}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <Button size="sm" onClick={() => handleOpenSession(session)}>
-                          Open
-                        </Button>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-        {recentSessions.length > 0 && (
-          <div className="flex items-center justify-between">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setSessionsPage(p => Math.max(1, p - 1))}
-              disabled={safePage === 1}
-            >
-              Previous
-            </Button>
-            <span className="text-sm text-[var(--muted-foreground)]">
-              Page {safePage} of {totalPages}
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setSessionsPage(p => Math.min(totalPages, p + 1))}
-              disabled={safePage >= totalPages}
-            >
-              Next
-            </Button>
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  const skillCommands = skillsStatus?.commands ?? []
-  const commandPackNames: string[] = ['swarm', ...skillCommands.map((skill) => skill.name)]
-  const getSkillSummary = (agent: PromptPackAgentType) => {
-    if (!skillsStatus) return null
-    const supported = skillCommands.filter(skill => skill.agents[agent]?.supported)
-    const installed = supported.filter(skill => skill.agents[agent]?.installed)
-    const sample = supported[0]?.agents[agent]
-    return {
-      total: supported.length,
-      installed: installed.length,
-      cliAvailable: sample?.cliAvailable ?? false,
-      builtIn: supported.filter(skill => skill.agents[agent]?.builtIn).length
-    }
   }
 
   return (
@@ -1350,10 +445,8 @@ export default function App() {
           <img src={icons.agents} alt="Agents" className="w-8 h-8" />
           <h1 className="text-lg font-semibold tracking-tight">Agents</h1>
         </div>
-
-        {/* Tab bar */}
         <div className="flex gap-1">
-          {(['overview', 'tasks', 'sessions', 'swarm', 'context', 'settings', 'guide'] as TabId[]).map(tab => (
+          {(['overview', 'tasks', 'sessions', 'context', 'settings', 'guide'] as TabId[]).map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -1371,996 +464,107 @@ export default function App() {
 
       {/* Tab content */}
       {activeTab === 'overview' && (
-        <div className="space-y-8">
-          {showIntegrationCallout && (
-            <section className="px-4 py-3 rounded-xl bg-[var(--muted)] border border-[var(--border)]">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--background)]">
-                  <img src={icons.agents} alt="Agents" className="w-5 h-5" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-semibold">Swarm Integration</p>
-                  <p className="text-xs text-[var(--muted-foreground)]">
-                    Install a CLI agent and enable Swarm to see tasks here.
-                  </p>
-                </div>
-                <Button size="sm" onClick={() => setActiveTab('swarm')}>
-                  Configure
-                </Button>
-              </div>
-            </section>
-          )}
-
-          {/* Running Now */}
-          <section>
-            <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
-              Running Now
-            </h2>
-            <div className="flex flex-wrap gap-3">
-              {BUILT_IN_AGENTS.map(agent => {
-                const count = runningCounts[agent.key as keyof typeof runningCounts] as number
-                const isSelected = selectedAgentType === agent.key
-                return (
-                  <div
-                    key={agent.key}
-                    onClick={() => count > 0 && handleAgentClick(agent.key)}
-                    className={`group flex items-center gap-2.5 px-4 py-2.5 rounded-xl transition-colors ${
-                      isSelected
-                        ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
-                        : 'bg-[var(--muted)]'
-                    } ${count > 0 ? 'cursor-pointer hover:bg-[var(--muted-foreground)]/10' : ''}`}
-                  >
-                    <img src={getIcon(agent.icon, isLightTheme)} alt={agent.name} className="w-5 h-5" />
-                    <span className="text-sm font-medium">{agent.name}</span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        vscode.postMessage({ type: 'spawnAgent', agentKey: agent.key })
-                      }}
-                      className={`w-6 text-center text-base font-semibold tabular-nums transition-colors ${isSelected ? '' : 'text-[var(--foreground)]'} hover:text-[var(--primary)]`}
-                    >
-                      <span className="group-hover:hidden">{count}</span>
-                      <span className="hidden group-hover:inline">+</span>
-                    </button>
-                  </div>
-                )
-              })}
-              {Object.entries(runningCounts.custom).map(([name, count]) => {
-                const isSelected = selectedAgentType === name
-                return (
-                  <div
-                    key={name}
-                    onClick={() => count > 0 && handleAgentClick(name)}
-                    className={`group flex items-center gap-2.5 px-4 py-2.5 rounded-xl transition-colors ${
-                      isSelected
-                        ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
-                        : 'bg-[var(--muted)]'
-                    } ${count > 0 ? 'cursor-pointer hover:bg-[var(--muted-foreground)]/10' : ''}`}
-                  >
-                    <img src={icons.agents} alt={name} className="w-5 h-5" />
-                    <span className="text-sm font-medium">{name}</span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        vscode.postMessage({ type: 'spawnAgent', agentKey: name, isCustom: true })
-                      }}
-                      className={`w-6 text-center text-base font-semibold tabular-nums transition-colors ${isSelected ? '' : 'text-[var(--foreground)]'} hover:text-[var(--primary)]`}
-                    >
-                      <span className="group-hover:hidden">{count}</span>
-                      <span className="hidden group-hover:inline">+</span>
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
-          </section>
-
-          {/* Agent Terminals (shown when an agent is clicked) */}
-          {selectedAgentType && (
-            <section>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
-                  {getAgentDisplayName(selectedAgentType)} Agents
-                </h2>
-                <button
-                  onClick={() => {
-                    setSelectedAgentType(null)
-                    setAgentTerminals([])
-                  }}
-                  className="text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-                >
-                  Close
-                </button>
-              </div>
-              {agentTerminalsLoading ? (
-                <div className="text-sm text-[var(--muted-foreground)] py-4">Loading...</div>
-              ) : agentTerminals.length === 0 ? (
-                <div className="text-sm text-[var(--muted-foreground)] py-4">
-                  No terminals found for {getAgentDisplayName(selectedAgentType)}.
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {agentTerminals.map(terminal => {
-                    const displayLabel = terminal.label || terminal.autoLabel
-                    const agentName = getAgentDisplayName(terminal.agentType)
-                    return (
-                      <div key={terminal.id} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)]">
-                        <img
-                          src={getIcon(icons[terminal.agentType as keyof typeof icons] || icons.agents, isLightTheme)}
-                          alt={terminal.agentType}
-                          className="w-5 h-5"
-                        />
-                        <span className="text-sm font-medium">
-                          {agentName} # {terminal.index}
-                          {displayLabel && (
-                            <span className="text-[var(--muted-foreground)]"> - {displayLabel}</span>
-                          )}
-                          {terminal.sessionId && (
-                            <span className="text-[var(--muted-foreground)]"> · {terminal.sessionId}</span>
-                          )}
-                        </span>
-                        <div className="flex-1" />
-                        <span className="text-xs text-[var(--muted-foreground)]">
-                          {formatTimeSince(terminal.createdAt)}
-                        </span>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </section>
-          )}
-
-          {/* Recent Swarms */}
-          <section>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
-                Recent Swarms
-              </h2>
-              {tasks.length > 0 && (
-                <button
-                  onClick={() => setActiveTab('swarm')}
-                  className="text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-                >
-                  View all
-                </button>
-              )}
-            </div>
-            {tasksLoading && tasks.length === 0 ? (
-              <div className="text-sm text-[var(--muted-foreground)] py-4">Loading...</div>
-            ) : tasks.length === 0 ? (
-              <div className="text-sm text-[var(--muted-foreground)] py-4">
-                No recent swarms. Use /swarm to spawn agents.
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {tasks.slice(0, 5).map(task => {
-                  const agentTypes = getUniqueAgentTypes(task.agents)
-                  return (
-                    <div key={task.task_name} className="px-4 py-3 rounded-xl bg-[var(--muted)]">
-                      <div className="space-y-1.5">
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-sm font-medium truncate">
-                            {formatTaskName(task.task_name)}
-                          </span>
-                          <span className="text-xs text-[var(--muted-foreground)]">
-                            {getTaskLatestTime(task) ? formatTimeAgo(getTaskLatestTime(task) as string) : '—'}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-xs text-[var(--muted-foreground)]">
-                            {/* Reserved for future context; keep layout balanced */}
-                          </span>
-                          <div className="flex items-center gap-1.5">
-                            {agentTypes.map(type => (
-                              <img
-                                key={type}
-                                src={getIcon(icons[type as keyof typeof icons] || icons.agents, isLightTheme)}
-                                alt={type}
-                                className="w-4 h-4"
-                                title={type}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </section>
-
-          {/* Shortcuts */}
-          <section>
-            <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
-              Shortcuts
-            </h2>
-            <div className="grid gap-3 sm:grid-cols-2 text-sm">
-              {[
-                ['Cmd+Shift+A', 'New agent'],
-                ['Cmd+Shift+L', 'Label agent'],
-                ['Cmd+Shift+G', 'Commit & push'],
-                ['Cmd+Shift+C', 'Clear & restart'],
-                ['Cmd+R', 'Next agent'],
-                ['Cmd+E', 'Previous agent'],
-                ["Cmd+Shift+'", 'Prompts'],
-              ].map(([keys, label]) => (
-                <div key={keys} className="flex items-center gap-4">
-                  <kbd className="px-2 py-1 rounded bg-[var(--muted)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs min-w-[120px] text-center">
-                    {keys}
-                  </kbd>
-                  <span>{label}</span>
-                </div>
-              ))}
-            </div>
-          </section>
-        </div>
+        <OverviewTab
+          showIntegrationCallout={showIntegrationCallout}
+          runningCounts={runningCounts}
+          builtInAgents={BUILT_IN_AGENTS}
+          selectedAgentType={selectedAgentType}
+          agentTerminals={agentTerminals}
+          agentTerminalsLoading={agentTerminalsLoading}
+          sessionTasks={sessionTasks}
+          sessionTasksLoading={sessionTasksLoading}
+          tasks={tasks}
+          tasksLoading={tasksLoading}
+          icons={icons}
+          isLightTheme={isLightTheme}
+          onAgentClick={handleAgentClick}
+          onCloseAgentTerminals={() => { setSelectedAgentType(null); setAgentTerminals([]) }}
+          onNavigateToSettings={() => setActiveTab('settings')}
+          onRefreshTasks={fetchTasks}
+        />
       )}
 
       {activeTab === 'tasks' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
-              Todo
-            </h2>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={fetchTodoFiles}
-              disabled={todoLoading}
-            >
-              Refresh
-            </Button>
-          </div>
-          {renderTodoTab()}
-        </div>
+        <TasksTab
+          todoFiles={todoFiles}
+          unifiedTasks={unifiedTasks}
+          todoLoading={todoLoading}
+          unifiedTasksLoading={unifiedTasksLoading}
+          expandedSources={expandedSources}
+          availableSources={availableSources}
+          settings={settings}
+          onToggleSource={toggleSourceExpanded}
+          onSpawnTodo={handleSpawnTodo}
+          onRefresh={() => { fetchTodoFiles(); fetchUnifiedTasks() }}
+          onUpdateTaskSources={handleUpdateTaskSources}
+        />
       )}
 
       {activeTab === 'sessions' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
-              Sessions
-            </h2>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={fetchSessions}
-              disabled={sessionsLoading}
-            >
-              Refresh
-            </Button>
-          </div>
-          {sessionsLoading && recentSessions.length === 0 ? (
-            <div className="text-center py-8 text-[var(--muted-foreground)]">Loading sessions...</div>
-          ) : (
-            renderSessionsTab()
-          )}
-        </div>
-      )}
-
-      {activeTab === 'swarm' && (
-        <div className="space-y-8">
-          {/* Swarm Integration */}
-          <section>
-            <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
-              Swarm Integration
-            </h2>
-            <div className="space-y-2">
-              {(['claude', 'codex', 'gemini'] as SwarmAgentType[]).map((agent) => {
-                const status = swarmStatus.agents[agent];
-                const icon = getIcon(icons[agent], isLightTheme);
-                const label = SWARM_AGENT_LABELS[agent];
-                const showInstall = status.cliAvailable && !(status.mcpEnabled && status.commandInstalled);
-                const statusBadge = status.cliAvailable
-                  ? status.installed
-                    ? { text: 'Installed', tone: 'bg-green-500/10 text-green-600 dark:bg-green-500/20 dark:text-green-400' }
-                    : { text: 'Not installed', tone: 'bg-[var(--secondary)] text-[var(--muted-foreground)]' }
-                  : { text: 'CLI not found', tone: 'bg-[var(--secondary)] text-[var(--muted-foreground)]' };
-                const skillSummary = getSkillSummary(agent);
-                const skillBadge = !skillSummary
-                  ? { text: 'Skills status unknown', tone: 'bg-[var(--secondary)] text-[var(--muted-foreground)]' }
-                  : skillSummary.total === 0
-                    ? { text: 'No skills', tone: 'bg-[var(--secondary)] text-[var(--muted-foreground)]' }
-                    : skillSummary.installed === skillSummary.total
-                      ? { text: 'Skills Installed', tone: 'bg-green-500/10 text-green-600 dark:bg-green-500/15 dark:text-green-300' }
-                      : { text: `Skills ${skillSummary.installed}/${skillSummary.total}`, tone: 'bg-[var(--secondary)] text-[var(--muted-foreground)]' }
-
-                return (
-                  <div key={agent} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)]">
-                    <img src={icon} alt={label} className="w-5 h-5" />
-                    <span className="text-sm font-medium w-20">{label}</span>
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className={`px-2 py-0.5 rounded ${statusBadge.tone}`}>{statusBadge.text}</span>
-                      {status.cliAvailable && (
-                        <>
-                          <span className={`px-2 py-0.5 rounded ${status.mcpEnabled ? 'bg-green-500/10 text-green-600 dark:bg-green-500/15 dark:text-green-300' : 'bg-[var(--secondary)] text-[var(--muted-foreground)]'}`}>
-                            MCP {status.mcpEnabled ? 'Enabled' : 'Missing'}
-                          </span>
-                          <span className={`px-2 py-0.5 rounded ${status.commandInstalled ? 'bg-green-500/10 text-green-600 dark:bg-green-500/15 dark:text-green-300' : 'bg-[var(--secondary)] text-[var(--muted-foreground)]'}`}>
-                            Command {status.commandInstalled ? 'Installed' : 'Missing'}
-                          </span>
-                        </>
-                      )}
-                      <span className={`px-2 py-0.5 rounded ${skillBadge.tone}`}>{skillBadge.text}</span>
-                    </div>
-                    <div className="flex-1" />
-                    {showInstall && (
-                      <Button
-                        size="sm"
-                        onClick={() => handleInstallSwarmAgent(agent)}
-                        disabled={swarmInstalling}
-                        title="Installs Swarm and the full command pack"
-                      >
-                        {swarmInstalling ? (
-                          <span className="flex items-center gap-1.5">
-                            <RefreshCw className="w-4 h-4 animate-spin" />
-                            Installing...
-                          </span>
-                        ) : (
-                          'Install pack'
-                        )}
-                      </Button>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          </section>
-
-          {/* Command Pack */}
-          <section>
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
-                Command Pack
-              </h2>
-              <span className="text-xs text-[var(--muted-foreground)]">
-                Installed via the Swarm button above
-              </span>
-            </div>
-            <div className="px-4 py-3 rounded-xl bg-[var(--muted)] space-y-3">
-              <div className="flex flex-wrap gap-2 text-xs">
-                {commandPackNames.map((name) => (
-                  <span
-                    key={name}
-                    className="px-2 py-0.5 rounded bg-[var(--background)] border border-[var(--border)]"
-                  >
-                    {name}
-                  </span>
-                ))}
-              </div>
-              {!skillsStatus && (
-                <div className="text-xs text-[var(--muted-foreground)]">
-                  Skills status unavailable. Install to refresh.
-                </div>
-              )}
-            </div>
-          </section>
-
-          {/* Tasks */}
-          <section>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
-                Tasks
-              </h2>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={fetchTasks}
-                disabled={tasksLoading}
-              >
-                <RefreshCw className={`w-4 h-4 mr-1.5 ${tasksLoading ? 'animate-spin' : ''}`} />
-                Refresh
-              </Button>
-            </div>
-            {renderTasksTab()}
-            {/* Pagination */}
-            {tasks.length > TASKS_PER_PAGE && (
-              <div className="flex items-center justify-center gap-2 mt-4">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setTasksPage(p => Math.max(1, p - 1))}
-                  disabled={tasksPage === 1}
-                >
-                  Previous
-                </Button>
-                <span className="text-sm text-[var(--muted-foreground)]">
-                  Page {tasksPage} of {Math.ceil(tasks.length / TASKS_PER_PAGE)}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setTasksPage(p => Math.min(Math.ceil(tasks.length / TASKS_PER_PAGE), p + 1))}
-                  disabled={tasksPage >= Math.ceil(tasks.length / TASKS_PER_PAGE)}
-                >
-                  Next
-                </Button>
-              </div>
-            )}
-          </section>
-        </div>
+        <SessionsTab
+          sessions={recentSessions}
+          loading={sessionsLoading}
+          page={sessionsPage}
+          onPageChange={setSessionsPage}
+          onOpenSession={handleOpenSession}
+          onRefresh={fetchSessions}
+        />
       )}
 
       {activeTab === 'context' && (
-        <div className="space-y-8">
-          {/* Memory Files Tree */}
-          <section>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
-                Memory Files
-              </h2>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  setContextLoaded(false)
-                  fetchContextFiles()
-                }}
-                disabled={contextLoading}
-              >
-                <RefreshCw className={`w-4 h-4 ${contextLoading ? 'animate-spin' : ''}`} />
-              </Button>
-            </div>
-            <div className="rounded-xl bg-[var(--muted)]">
-              {contextLoading && contextFiles.length === 0 ? (
-                <div className="p-4 text-sm text-[var(--muted-foreground)]">
-                  Scanning workspace...
-                </div>
-              ) : contextFiles.length === 0 ? (
-                <div className="p-4 text-sm text-[var(--muted-foreground)]">
-                  No memory files found. Create CLAUDE.md, GEMINI.md, or AGENTS.md files to add context for agents.
-                </div>
-              ) : (
-                <div className="p-2">
-                  {(() => {
-                    // Build tree structure from flat file list
-                    const tree: Record<string, ContextFile[]> = { '.': [] }
-                    contextFiles.forEach(file => {
-                      const parts = file.path.split('/')
-                      if (parts.length === 1) {
-                        tree['.'].push(file)
-                      } else {
-                        const dir = parts.slice(0, -1).join('/')
-                        if (!tree[dir]) tree[dir] = []
-                        tree[dir].push(file)
-                      }
-                    })
-
-                    const dirs = Object.keys(tree).sort((a, b) => {
-                      if (a === '.') return -1
-                      if (b === '.') return 1
-                      return a.localeCompare(b)
-                    })
-
-                    return dirs.map(dir => {
-                      const files = tree[dir]
-                      if (files.length === 0) return null
-
-                      const isRoot = dir === '.'
-                      const isExpanded = isRoot || expandedDirs.has(dir)
-
-                      return (
-                        <div key={dir}>
-                          {!isRoot && (
-                            <button
-                              onClick={() => toggleDirExpanded(dir)}
-                              className="flex items-center gap-2 w-full px-2 py-1.5 text-sm text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:bg-[var(--background)] rounded-lg"
-                            >
-                              {isExpanded ? (
-                                <ChevronDown className="w-4 h-4" />
-                              ) : (
-                                <ChevronRight className="w-4 h-4" />
-                              )}
-                              <span className="font-mono text-xs">{dir}/</span>
-                            </button>
-                          )}
-                          {isExpanded && files.map(file => (
-                            <button
-                              key={file.path}
-                              onClick={() => openContextFile(file.path)}
-                              className={`flex items-center gap-2 w-full px-2 py-2 text-sm hover:bg-[var(--background)] rounded-lg overflow-hidden ${
-                                !isRoot ? 'ml-6' : ''
-                              }`}
-                            >
-                              <img
-                                src={getAgentIcon(file.agent)}
-                                alt={file.agent}
-                                className="w-4 h-4 flex-shrink-0"
-                              />
-                              <span className={`font-medium flex-shrink-0 ${file.isSymlink ? 'opacity-60' : ''}`}>
-                                {file.path.split('/').pop()}
-                              </span>
-                              {file.isSymlink ? (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--border)] text-[var(--muted-foreground)] flex-shrink-0">
-                                  symlink
-                                </span>
-                              ) : (
-                                <span className="text-xs text-[var(--muted-foreground)] truncate flex-1 text-left min-w-0">
-                                  {file.preview}
-                                </span>
-                              )}
-                              <span className="text-xs text-[var(--muted-foreground)] whitespace-nowrap flex-shrink-0 ml-auto">
-                                {file.lines}L
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                      )
-                    })
-                  })()}
-                </div>
-              )}
-            </div>
-          </section>
-
-          {/* Symlinking Config (moved from Settings) */}
-          <section>
-            <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
-              Symlinking
-            </h2>
-            <div className="rounded-xl bg-[var(--muted)]">
-              {workspaceConfigLoaded && !workspaceConfigExists ? (
-                <div className="p-4">
-                  <p className="text-sm text-[var(--muted-foreground)] mb-3">
-                    No .swarmify config found. Initialize to configure memory file symlinks.
-                  </p>
-                  <Button
-                    size="sm"
-                    onClick={() => vscode.postMessage({ type: 'initWorkspaceConfig' })}
-                  >
-                    Initialize Config
-                  </Button>
-                </div>
-              ) : workspaceConfig ? (
-                <div className="p-4 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Auto-create symlinks</span>
-                    <Button
-                      size="sm"
-                      variant={workspaceConfig.memory.symlinking ? 'default' : 'outline'}
-                      onClick={() => {
-                        const updated = {
-                          ...workspaceConfig,
-                          memory: { ...workspaceConfig.memory, symlinking: !workspaceConfig.memory.symlinking }
-                        }
-                        setWorkspaceConfig(updated)
-                        vscode.postMessage({ type: 'saveWorkspaceConfig', config: updated })
-                      }}
-                    >
-                      {workspaceConfig.memory.symlinking ? 'Enabled' : 'Disabled'}
-                    </Button>
-                  </div>
-
-                  {workspaceConfig.memory.symlinking && (
-                    <div className="space-y-3 pt-3 border-t border-[var(--border)]">
-                      <div className="text-xs text-[var(--muted-foreground)] uppercase tracking-wider">
-                        File Mappings
-                      </div>
-                      {workspaceConfig.memory.files.map((mapping, idx) => (
-                        <div key={idx} className="flex items-center gap-2 text-sm">
-                          <span className="font-mono text-xs bg-[var(--background)] px-2 py-1 rounded">
-                            {mapping.pattern}
-                          </span>
-                          <span className="text-[var(--muted-foreground)]">-&gt;</span>
-                          <span className="text-xs text-[var(--muted-foreground)]">
-                            {mapping.symlinks.join(', ') || 'no symlinks'}
-                          </span>
-                          <button
-                            className="ml-auto text-[var(--muted-foreground)] hover:text-[var(--foreground)] text-xs"
-                            onClick={() => {
-                              const newFiles = workspaceConfig.memory.files.filter((_, i) => i !== idx)
-                              const updated = {
-                                ...workspaceConfig,
-                                memory: { ...workspaceConfig.memory, files: newFiles }
-                              }
-                              setWorkspaceConfig(updated)
-                              vscode.postMessage({ type: 'saveWorkspaceConfig', config: updated })
-                            }}
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      ))}
-
-                      <button
-                        className="text-xs text-[var(--primary)] hover:underline"
-                        onClick={() => {
-                          const pattern = prompt('Pattern (source file):', 'AGENTS.md')
-                          if (!pattern) return
-                          const symlinksStr = prompt('Symlinks (comma-separated):', 'CLAUDE.md, GEMINI.md')
-                          if (symlinksStr === null) return
-                          const symlinks = symlinksStr.split(',').map(s => s.trim()).filter(Boolean)
-                          const newFiles = [...workspaceConfig.memory.files, { pattern, symlinks }]
-                          const updated = {
-                            ...workspaceConfig,
-                            memory: { ...workspaceConfig.memory, files: newFiles }
-                          }
-                          setWorkspaceConfig(updated)
-                          vscode.postMessage({ type: 'saveWorkspaceConfig', config: updated })
-                        }}
-                      >
-                        + Add mapping
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="p-4 text-sm text-[var(--muted-foreground)]">
-                  Loading workspace config...
-                </div>
-              )}
-            </div>
-          </section>
-        </div>
+        <ContextTab
+          contextFiles={contextFiles}
+          loading={contextLoading}
+          collapsedDirs={collapsedDirs}
+          icons={icons}
+          isLightTheme={isLightTheme}
+          onRefresh={() => { setContextLoaded(false); fetchContextFiles() }}
+          onToggleDir={toggleDirExpanded}
+          onOpenFile={openContextFile}
+        />
       )}
 
       {activeTab === 'settings' && (
-        <div className="space-y-8">
-          {/* Default Agent */}
-          <section>
-            <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
-              Default Agent
-            </h2>
-            <div className="rounded-xl bg-[var(--muted)]">
-              {BUILT_IN_AGENTS.filter(a => a.key !== 'shell' && isAgentInstalled(a.key)).length === 0 ? (
-                <div className="text-sm text-[var(--muted-foreground)] p-4">
-                  Install an agent to set a default.
-                </div>
-              ) : (
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 p-4">
-                  {BUILT_IN_AGENTS
-                    .filter(a => a.key !== 'shell' && isAgentInstalled(a.key))
-                    .map(agent => {
-                      const isSelected = (AGENT_TITLE_TO_KEY[defaultAgent] || 'claude') === agent.key
-                      return (
-                        <button
-                          key={agent.key}
-                          onClick={() => handleSetDefaultAgent(AGENT_KEY_TO_TITLE[agent.key] || 'CC')}
-                          className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors ${
-                            isSelected
-                              ? 'border-[var(--primary)] bg-[var(--background)]'
-                              : 'border-[var(--border)] bg-[var(--background)] hover:border-[var(--primary)]/60'
-                          }`}
-                        >
-                          <img src={getIcon(agent.icon, isLightTheme)} alt={agent.name} className="w-5 h-5" />
-                          <span className="text-sm font-medium">{agent.name}</span>
-                          {isSelected && <Check className="w-4 h-4 ml-auto text-[var(--primary)]" />}
-                        </button>
-                      )
-                    })}
-                </div>
-              )}
-            </div>
-          </section>
-
-          {/* Session Warming */}
-          <section>
-            <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
-              Session Warming
-            </h2>
-            <div className="px-4 py-3 rounded-xl bg-[var(--muted)]">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Pre-warm sessions</span>
-                <Button
-                  size="sm"
-                  variant={prewarmEnabled ? 'default' : 'outline'}
-                  onClick={togglePrewarm}
-                >
-                  {prewarmEnabled ? 'Enabled' : 'Disabled'}
-                </Button>
-              </div>
-              {prewarmEnabled && prewarmLoaded && prewarmPools.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-[var(--border)] space-y-2">
-                  {prewarmPools.map(pool => (
-                    <div key={pool.agentType} className="flex items-center gap-3 text-sm">
-                      <img
-                        src={getIcon(icons[pool.agentType as keyof typeof icons], isLightTheme)}
-                        alt={pool.agentType}
-                        className="w-4 h-4"
-                      />
-                      <span className="capitalize w-16">{pool.agentType}</span>
-                      <span className="text-xs text-[var(--muted-foreground)]">
-                        {pool.available} ready{pool.pending > 0 ? `, ${pool.pending} warming` : ''}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </section>
-
-          {/* Built-in Agents */}
-          <section>
-            <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
-              Built-in Agents
-            </h2>
-            <div className="space-y-2">
-              {BUILT_IN_AGENTS.filter(a => a.key !== 'shell').map(agent => {
-                const config = settings.builtIn[agent.key as keyof AgentSettings['builtIn']]
-                const installed = isAgentInstalled(agent.key)
-                const installInfo = getInstallInfo(agent.key)
-                const isSwarmAgent = ALL_SWARM_AGENTS.includes(agent.key as SwarmAgentType)
-                const modelOptions = AGENT_MODELS[agent.key] || []
-                const modelDisabled = modelOptions.length === 0
-
-                return (
-                  <div
-                    key={agent.key}
-                    className={`flex items-center gap-4 px-4 py-3 rounded-xl bg-[var(--muted)] ${!installed ? 'opacity-60' : ''}`}
-                  >
-                    <img src={getIcon(agent.icon, isLightTheme)} alt={agent.name} className="w-5 h-5" />
-                    <span className="text-sm font-medium w-20">{agent.name}</span>
-
-                    {installed ? (
-                      <>
-                        {/* Swarm checkbox */}
-                        {isSwarmAgent && (
-                          <div className="flex items-center gap-2">
-                            <Checkbox
-                              checked={isSwarmAgentEnabled(agent.key as SwarmAgentType)}
-                              onCheckedChange={(checked) => toggleSwarmAgent(agent.key as SwarmAgentType, !!checked)}
-                            />
-                            <label className="text-sm text-[var(--muted-foreground)]">Swarm</label>
-                          </div>
-                        )}
-
-                        {/* Startup checkbox */}
-                        <div className="flex items-center gap-2">
-                          <Checkbox
-                            checked={config.login}
-                            onCheckedChange={(checked) => updateBuiltIn(agent.key as keyof AgentSettings['builtIn'], 'login', !!checked)}
-                          />
-                          <label className="text-sm text-[var(--muted-foreground)]">Startup</label>
-                        </div>
-
-                        {/* Instances */}
-                        {config.login && (
-                          <div className="flex items-center gap-2 ml-2">
-                            <Input
-                              type="number"
-                              min={1}
-                              max={10}
-                              value={config.instances}
-                              onChange={(e) => updateBuiltIn(agent.key as keyof AgentSettings['builtIn'], 'instances', Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
-                              className="w-14 text-center"
-                            />
-                          </div>
-                        )}
-
-                        <div className="flex items-center gap-2 ml-2">
-                          <label className="text-sm text-[var(--muted-foreground)]">Model</label>
-                          <select
-                            value={config.defaultModel || ''}
-                            onChange={(e) => updateBuiltInModel(agent.key as keyof AgentSettings['builtIn'], e.target.value)}
-                            className="h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-sm"
-                            disabled={modelDisabled}
-                          >
-                            <option value="">
-                              {modelDisabled ? 'No models available' : 'Auto'}
-                            </option>
-                            {modelOptions.map(model => (
-                              <option key={model} value={model}>{model}</option>
-                            ))}
-                          </select>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <span className="text-xs text-[var(--muted-foreground)]">Not installed</span>
-                        <div className="flex-1" />
-                        {installInfo?.command && (
-                          <button
-                            onClick={() => navigator.clipboard.writeText(installInfo.command!)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-[var(--primary)] text-[var(--primary-foreground)] rounded-lg hover:opacity-90 transition-opacity"
-                            title={`Copy: ${installInfo.command}`}
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                            Copy Install
-                          </button>
-                        )}
-                        {installInfo?.url && (
-                          <a
-                            href={installInfo.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-[var(--secondary)] text-[var(--foreground)] rounded-lg hover:opacity-90 transition-opacity"
-                          >
-                            <ExternalLink className="w-3.5 h-3.5" />
-                            Install
-                          </a>
-                        )}
-                      </>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          </section>
-
-          {/* Command Aliases */}
-          <section>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
-                Command Aliases
-              </h2>
-              {!isAddingAlias && (
-                <Button size="sm" variant="ghost" onClick={handleAddAliasClick}>
-                  Add Alias
-                </Button>
-              )}
-            </div>
-            <div className="space-y-2">
-              {(settings.aliases || []).map((alias, index) => {
-                const agentInfo = BUILT_IN_AGENTS.find(a => a.key === alias.agent)
-                return (
-                  <div key={index} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)]">
-                    <img src={agentInfo?.icon || icons.agents} alt={alias.agent} className="w-5 h-5" />
-                    <span className="text-sm font-medium">{alias.name}</span>
-                    <span className="text-xs text-[var(--muted-foreground)]">{agentInfo?.name || alias.agent}</span>
-                    <code className="text-xs text-[var(--muted-foreground)] bg-[var(--background)] px-2 py-0.5 rounded flex-1 truncate">
-                      {alias.flags}
-                    </code>
-                    <Button size="sm" variant="ghost" onClick={() => removeAlias(index)}>
-                      Remove
-                    </Button>
-                  </div>
-                )
-              })}
-
-              {isAddingAlias && (
-                <div className="px-4 py-3 rounded-xl bg-[var(--muted)] space-y-3">
-                  <div className="grid grid-cols-[1fr,1fr,2fr] gap-3">
-                    <div>
-                      <label className="text-xs text-[var(--muted-foreground)] mb-1 block">Name</label>
-                      <Input
-                        value={newAliasName}
-                        onChange={(e) => handleAliasNameChange(e.target.value)}
-                        placeholder="Fast"
-                        className="w-full"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-[var(--muted-foreground)] mb-1 block">Agent</label>
-                      <select
-                        value={newAliasAgent}
-                        onChange={(e) => setNewAliasAgent(e.target.value)}
-                        className="w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-sm"
-                      >
-                        {BUILT_IN_AGENTS.filter(a => a.key !== 'shell').map(agent => (
-                          <option key={agent.key} value={agent.key}>{agent.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-xs text-[var(--muted-foreground)] mb-1 block">Flags</label>
-                      <Input
-                        value={newAliasFlags}
-                        onChange={(e) => setNewAliasFlags(e.target.value)}
-                        placeholder="--model claude-haiku-4-5-20251001"
-                        className="w-full"
-                      />
-                    </div>
-                  </div>
-                  {aliasError && <p className="text-xs text-red-600 dark:text-red-400">{aliasError}</p>}
-                  <div className="flex justify-end gap-2">
-                    <Button size="sm" variant="ghost" onClick={handleCancelAddAlias}>Cancel</Button>
-                    <Button size="sm" onClick={handleSaveAlias}>Save</Button>
-                  </div>
-                </div>
-              )}
-
-              {(settings.aliases || []).length === 0 && !isAddingAlias && (
-                <div className="text-sm text-[var(--muted-foreground)] px-4 py-3 rounded-xl bg-[var(--muted)]">
-                  No aliases configured.
-                </div>
-              )}
-            </div>
-          </section>
-
-          {/* Display Preferences */}
-          <section>
-            <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
-              Display
-            </h2>
-            <div className="flex flex-col gap-2">
-              <label className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)] cursor-pointer">
-                <Checkbox
-                  checked={settings.display?.showFullAgentNames}
-                  onCheckedChange={(checked) => updateDisplay('showFullAgentNames', !!checked)}
-                />
-                <span className="text-sm">Show full agent names in tabs</span>
-              </label>
-
-              <label className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)] cursor-pointer">
-                <Checkbox
-                  checked={!settings.display?.showLabelsInTitles}
-                  onCheckedChange={(checked) => updateDisplay('showLabelsInTitles', !checked)}
-                />
-                <span className="text-sm">Hide labels in tab titles</span>
-              </label>
-            </div>
-          </section>
-
-          {/* Notifications */}
-          <section>
-            <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
-              Notifications
-            </h2>
-            <div className="space-y-2">
-              <label className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)] cursor-pointer">
-                <Checkbox
-                  checked={(settings.notifications ?? DEFAULT_NOTIFICATION_SETTINGS).enabled}
-                  onCheckedChange={(checked) => updateNotifications({ enabled: !!checked })}
-                />
-                <span className="text-sm">Notify when agent needs approval</span>
-              </label>
-
-              <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-[var(--muted)]">
-                <span className="text-sm">Style</span>
-                <select
-                  value={(settings.notifications ?? DEFAULT_NOTIFICATION_SETTINGS).style}
-                  onChange={(e) => updateNotifications({ style: e.target.value as NotificationSettings['style'] })}
-                  className="h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-sm"
-                >
-                  <option value="native">Native OS</option>
-                  <option value="vscode">VS Code</option>
-                </select>
-              </div>
-            </div>
-          </section>
-        </div>
+        <SettingsTab
+          settings={settings}
+          swarmStatus={swarmStatus}
+          skillsStatus={skillsStatus}
+          builtInAgents={BUILT_IN_AGENTS}
+          defaultAgent={defaultAgent}
+          installedAgents={installedAgents}
+          icons={icons}
+          isLightTheme={isLightTheme}
+          swarmInstalling={swarmInstalling}
+          commandPackInstalling={commandPackInstalling}
+          prewarmEnabled={prewarmEnabled}
+          prewarmLoaded={prewarmLoaded}
+          prewarmPools={prewarmPools}
+          workspaceConfig={workspaceConfig}
+          workspaceConfigLoaded={workspaceConfigLoaded}
+          workspaceConfigExists={workspaceConfigExists}
+          isAddingAlias={isAddingAlias}
+          newAliasName={newAliasName}
+          newAliasAgent={newAliasAgent}
+          newAliasFlags={newAliasFlags}
+          aliasError={aliasError}
+          onSaveSettings={saveSettings}
+          onInstallSwarmAgent={handleInstallSwarmAgent}
+          onInstallCommandPack={handleInstallCommandPack}
+          onSetDefaultAgent={handleSetDefaultAgent}
+          onTogglePrewarm={togglePrewarm}
+          onAddAliasClick={handleAddAliasClick}
+          onCancelAddAlias={handleCancelAddAlias}
+          onSaveAlias={handleSaveAlias}
+          onRemoveAlias={handleRemoveAlias}
+          onAliasNameChange={handleAliasNameChange}
+          onAliasAgentChange={setNewAliasAgent}
+          onAliasFlagsChange={setNewAliasFlags}
+          onInitWorkspaceConfig={handleInitWorkspaceConfig}
+          onSaveWorkspaceConfig={handleSaveWorkspaceConfig}
+        />
       )}
 
-      {activeTab === 'guide' && (
-        <div className="space-y-6">
-          <section>
-            <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
-              Quick Start
-            </h2>
-            <div className="space-y-2">
-              <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)]">
-                <span className="text-sm font-semibold text-[var(--primary)] w-4">1</span>
-                <span className="text-sm">Cmd+Shift+A to spawn an agent</span>
-              </div>
-              <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)]">
-                <span className="text-sm font-semibold text-[var(--primary)] w-4">2</span>
-                <span className="text-sm">Type your request in the terminal</span>
-              </div>
-              <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)]">
-                <span className="text-sm font-semibold text-[var(--primary)] w-4">3</span>
-                <span className="text-sm">Cmd+R / Cmd+E to switch agents</span>
-              </div>
-              <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)]">
-                <span className="text-sm font-semibold text-[var(--primary)] w-4">4</span>
-                <span className="text-sm">/swarm in Claude for parallel agents</span>
-              </div>
-              <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)]">
-                <span className="text-sm font-semibold text-[var(--primary)] w-4">5</span>
-                <span className="text-sm">Cmd+Shift+' for saved prompts</span>
-              </div>
-            </div>
-          </section>
-
-          <section>
-            <h2 className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-4">
-              Learn More
-            </h2>
-            <div className="space-y-2">
-              <a
-                href="https://github.com/muqsitnawaz/swarmify"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)] hover:bg-[var(--muted-foreground)]/10 transition-colors"
-              >
-                <ExternalLink className="w-4 h-4 text-[var(--muted-foreground)]" />
-                <span className="text-sm">GitHub</span>
-              </a>
-            </div>
-          </section>
-        </div>
-      )}
+      {activeTab === 'guide' && <GuideTab />}
 
       {/* Footer */}
       <footer className="pt-6 mt-8 border-t border-[var(--border)]">

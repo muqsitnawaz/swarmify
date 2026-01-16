@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { parseTodoMd } from '../src/todos';
+import { parseTodoMd } from '../src/core/todos';
 
 describe('parseTodoMd', () => {
   test('parses checkbox tasks with completion states and descriptions', () => {

@@ -133,7 +133,7 @@ Commands prefixed with `s` spawn multiple agents for parallel verification.
 
 ```bash
 # MCP Server
-cd server && bun install && bun run build
+cd mcp-server && bun install && bun run build
 
 # Extension
 cd extension && bun install && bun run compile
