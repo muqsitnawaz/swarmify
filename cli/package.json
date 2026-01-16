@@ -1,0 +1,36 @@
+{
+  "name": "@swarmify/cli",
+  "version": "0.1.0",
+  "description": "CLI tool for syncing skills across AI coding agents (Claude, Codex, Gemini, Cursor)",
+  "main": "dist/index.js",
+  "bin": {
+    "swarm-cli": "dist/index.js"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js"
+  },
+  "keywords": [
+    "claude",
+    "codex",
+    "gemini",
+    "cursor",
+    "ai",
+    "skills",
+    "cli"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "commander": "^12.1.0",
+    "ora": "^8.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0"
+  }
+}
