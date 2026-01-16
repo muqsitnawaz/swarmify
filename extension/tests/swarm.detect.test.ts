@@ -6,7 +6,7 @@ import {
   isAgentCliAvailable,
   isAgentCommandInstalled,
   isAgentMcpEnabled,
-} from '../src/swarm.detect';
+} from '../src/core/swarm.detect';
 
 const AGENTS: AgentCli[] = ['claude', 'codex', 'gemini'];
 
