@@ -33,6 +33,34 @@ bun test           # 166 tests, no mocks
 - **Prefix constants**: CC=Claude, CX=Codex, GX=Gemini, OC=OpenCode, CR=Cursor, SH=Shell (in `utils.ts`).
 - **Tmux socket pinning**: Each tmux session uses a dedicated socket (`/tmp/agents-tmux-{session}.sock`) to ensure `terminal.sendText()` and `execAsync()` talk to the same server. Split operations use `execAsync()` directly to bypass terminal input (avoids Claude capturing keystrokes).
 
+## Terminal Titles
+
+Terminal tab titles are constructed from prefix + sessionChunk + label. User preferences control display:
+
+| Setting | Effect |
+|---------|--------|
+| `showFullAgentNames` | `CC` vs `Claude` |
+| `showSessionIdInTitles` | Include first 8 chars of session UUID |
+| `showLabelsInTitles` | Include user-set label |
+| `labelReplacesTitle` | Label replaces full title vs appends with dash |
+
+**Label behavior:**
+
+| showLabelsInTitles | labelReplacesTitle | Session | Label | Result |
+|--------------------|-------------------|---------|-------|--------|
+| false | any | any | any | `Claude` or `Claude 12345678` |
+| true | false (default) | no | yes | `Claude - auth feature` |
+| true | false (default) | yes | yes | `Claude 12345678 - auth feature` |
+| true | true | no | yes | `auth feature` |
+| true | true | yes | yes | `Claude 12345678 - auth feature` |
+
+**Key identifiers** (stored in terminal env vars):
+- `AGENT_TERMINAL_ID`: Internal tracking ID (`CC-1705123456789-1`)
+- `AGENT_SESSION_ID`: CLI session UUID (`4a78949e-xxxx-xxxx-xxxx-xxxxxxxxxxxx`)
+- `sessionChunk`: First 8 chars of sessionId, shown in tab title
+
+**Session restoration**: `scanExisting()` extracts both env vars at startup to restore session tracking for terminals that survived VS Code restart.
+
 ## Dashboard Tabs
 
 Overview | Swarm | Prompts | Guide

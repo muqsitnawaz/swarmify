@@ -1,0 +1,7 @@
+# Prompt Shortcuts
+# Format: "||shortcut": "expanded text"
+# Usage: Type ||debugit in your prompt
+
+shortcuts:
+  "||debugit": |
+    Confirm the root cause of these issues by spinning up codex and gemini agents via swarm. You should clearly explain the context of the issues, the app and what the user is observing. Explain why that is problematic from a user experience standpoint. And then ask them to clearly figure out the root cause and explain how fixing that would fix those issues. Do not tell them your solution since we don't want to bias their thinking. We want to see if they will independently arrive at the same conclusion or not.

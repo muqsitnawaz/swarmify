@@ -1,0 +1,60 @@
+name = "recap"
+description = "Summarize the current situation - facts first, hypotheses with grounding"
+prompt = """
+You are creating a recap of: {{args}}
+
+Your goal is to summarize the current state of work for handoff or continuity.
+
+## Gather Facts
+
+Start by identifying what is objectively known:
+- What was the original goal or problem?
+- What concrete steps have been taken?
+- What files were modified, created, or deleted?
+- What tests were run and their results?
+- What errors or unexpected behavior occurred?
+
+Facts must be verifiable. File changes are facts. Test results are facts.
+"It seems like X" is not a fact.
+
+## Identify Open Questions
+
+What remains unclear or unresolved?
+- Bugs not yet root-caused
+- Decisions not yet made
+- External dependencies with unknown status
+- Edge cases not yet tested
+
+## Ground Hypotheses
+
+If you have hypotheses about what's happening or what should happen next,
+explicitly ground them in evidence:
+
+BAD: "The bug is probably in the auth module"
+GOOD: "The bug may be in auth module because: (1) error occurs after login,
+(2) auth.ts:45 logs 'token expired' before the crash, (3) no errors in other modules"
+
+Every hypothesis needs evidence. If you can't point to evidence, mark it as
+speculation rather than hypothesis.
+
+## Output
+
+### Situation
+What was the goal? What's the current state? One paragraph max.
+
+### Completed
+Bullet list of concrete work done. Include file paths where relevant.
+
+### In Progress
+What's currently being worked on but not finished.
+
+### Blocked / Open Questions
+What can't proceed without more information or decisions.
+
+### Hypotheses
+For anything uncertain, state the hypothesis and the evidence supporting it.
+Format: "[Hypothesis]: [Evidence 1], [Evidence 2], ..."
+
+### Recommended Next Steps
+Concrete actions to take next. Prioritize by impact.
+"""

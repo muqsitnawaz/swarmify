@@ -1,0 +1,14 @@
+context:
+  - source: AGENTS.md
+    aliases:
+      - CLAUDE.md
+      - GEMINI.md
+
+agents:
+  - claude
+  - codex
+  - gemini
+
+tasks:
+  ralph: RALPH.md
+  todo: TODO.md

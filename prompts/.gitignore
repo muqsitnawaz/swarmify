@@ -1,0 +1,25 @@
+# OS files
+.DS_Store
+.AppleDouble
+.LSOverride
+*.zip
+
+# Sensitive data (just in case)
+**/settings.json
+**/settings.local.json
+
+# Only track permissions.json, not full settings
+!.claude/permissions.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*~

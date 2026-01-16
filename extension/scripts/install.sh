@@ -28,7 +28,18 @@ if [ ! -f "$VSIX_FILE" ]; then
 fi
 
 echo "Installing extension..."
+if ! command -v cursor >/dev/null 2>&1; then
+    echo "Error: cursor CLI not found on PATH"
+    exit 1
+fi
+
+if ! command -v code >/dev/null 2>&1; then
+    echo "Error: VS Code CLI (code) not found on PATH"
+    exit 1
+fi
+
 cursor --install-extension "$VSIX_FILE" --force
+code --install-extension "$VSIX_FILE" --force
 
 echo "Extension installed successfully!"
-echo "Restart Cursor to activate the extension."
+echo "Restart Cursor and VS Code to activate the extension."
