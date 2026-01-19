@@ -7,7 +7,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { AgentManager, checkAllClis } from './agents.js';
 import { AgentType } from './parsers.js';
-import { handleSpawn, handleStatus, handleStop } from './api.js';
+import { handleSpawn, handleStatus, handleStop, handleTasks } from './api.js';
 import { readConfig } from './persistence.js';
 import {
   buildVersionNotice,
@@ -23,10 +23,18 @@ const TOOL_NAMES = {
   spawn: 'Spawn',
   status: 'Status',
   stop: 'Stop',
+  tasks: 'Tasks',
 } as const;
 
 export function getParentSessionIdFromEnv(): string | null {
   const raw = process.env.AGENT_SESSION_ID;
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  return trimmed ? trimmed : null;
+}
+
+export function getWorkspaceFromEnv(): string | null {
+  const raw = process.env.AGENT_WORKSPACE_DIR;
   if (!raw) return null;
   const trimmed = raw.trim();
   return trimmed ? trimmed : null;
@@ -179,10 +187,7 @@ CURSOR SUPPORT: Send 'since' parameter (ISO timestamp from previous response's '
               description: 'Optional ISO timestamp - return only events after this time. Use cursor from previous response to get delta updates.',
             },
           },
-          anyOf: [
-            { required: ['task_name'] },
-            { required: ['parent_session_id'] },
-          ],
+          required: ['task_name'],
         },
       },
       {
@@ -205,6 +210,26 @@ CURSOR SUPPORT: Send 'since' parameter (ISO timestamp from previous response's '
           required: ['task_name'],
         },
       },
+      {
+        name: TOOL_NAMES.tasks,
+        description: withVersionNotice(`List all tasks with their agents and activity details.
+
+Returns tasks sorted by most recent activity, with full agent details including:
+- Files created/modified/read/deleted
+- Bash commands executed
+- Last messages from each agent
+- Status and duration`),
+        inputSchema: {
+          type: 'object',
+          properties: {
+            limit: {
+              type: 'number',
+              description: 'Maximum number of tasks to return (optional, defaults to 10)',
+            },
+          },
+          required: [],
+        },
+      },
     ],
   };
 });
@@ -221,6 +246,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         throw new Error('Missing arguments for spawn');
       }
       const parentSessionId = getParentSessionIdFromEnv();
+      const workspaceDir = getWorkspaceFromEnv();
       result = await handleSpawn(
         manager,
         args.task_name as string,
@@ -229,7 +255,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         (args.cwd as string) || null,
         (args.mode as string) || null,
         (args.effort as 'fast' | 'default' | 'detailed') || 'default',
-        parentSessionId
+        parentSessionId,
+        workspaceDir
       );
     } else if (normalizedName === 'status') {
       if (!args) {
@@ -251,6 +278,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         args.task_name as string,
         args.agent_id as string | undefined
       );
+    } else if (normalizedName === 'tasks') {
+      const limit = args?.limit as number | undefined;
+      result = await handleTasks(manager, limit || 10);
     } else {
       result = { error: `Unknown tool: ${name}` };
     }

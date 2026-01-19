@@ -32,6 +32,27 @@ function commandExists(cmd: string): Promise<boolean> {
   });
 }
 
+// Get GitHub repo from git remote (returns "username/repo" or null)
+function getGitHubRepo(workspacePath: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    exec('git remote get-url origin', { cwd: workspacePath }, (err, stdout) => {
+      if (err || !stdout) {
+        resolve(null);
+        return;
+      }
+      const url = stdout.trim();
+      // Parse GitHub URL formats:
+      // https://github.com/user/repo.git
+      // git@github.com:user/repo.git
+      // https://github.com/user/repo
+      const httpsMatch = url.match(/github\.com\/([^/]+\/[^/]+?)(?:\.git)?$/);
+      const sshMatch = url.match(/github\.com:([^/]+\/[^/]+?)(?:\.git)?$/);
+      const repo = httpsMatch?.[1] || sshMatch?.[1] || null;
+      resolve(repo);
+    });
+  });
+}
+
 // Check which agents are installed
 export async function checkInstalledAgents(): Promise<Record<string, boolean>> {
   const agents = [
@@ -285,16 +306,23 @@ export function openPanel(context: vscode.ExtensionContext): void {
     if (!settingsPanel) return;
     const settings = getSettings(context);
     const runningCounts = terminals.countRunning();
-      const swarmStatus = await swarm.getSwarmStatus();
-      const skillsStatus = await swarm.getSkillsStatus();
-      settingsPanel.webview.postMessage({
-        type: 'init',
-        settings,
-        runningCounts,
-        swarmStatus,
-        skillsStatus
-      });
-    };
+    const swarmStatus = await swarm.getSwarmStatus();
+    const skillsStatus = await swarm.getSkillsStatus();
+    const wsFolder = workspaceConfig.getActiveWorkspaceFolder();
+    const workspacePath = wsFolder?.uri.fsPath || null;
+    const githubRepo = workspacePath ? await getGitHubRepo(workspacePath) : null;
+    const dismissedTaskIds = context.globalState.get<string[]>('agents.dismissedTaskIds', []);
+    settingsPanel.webview.postMessage({
+      type: 'init',
+      settings,
+      runningCounts,
+      swarmStatus,
+      skillsStatus,
+      workspacePath,
+      githubRepo,
+      dismissedTaskIds
+    });
+  };
 
   settingsPanel.webview.html = getWebviewContent(settingsPanel.webview, context.extensionUri);
 
@@ -344,7 +372,8 @@ export function openPanel(context: vscode.ExtensionContext): void {
         settingsPanel?.webview.postMessage({ type: 'commandPackInstallDone' });
         break;
       case 'fetchTasks':
-        const tasks = await swarm.fetchTasks(message.limit);
+        const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        const tasks = await swarm.fetchTasks(message.limit, workspacePath);
         settingsPanel?.webview.postMessage({ type: 'tasksData', tasks });
         break;
       case 'fetchTasksBySession':
@@ -400,19 +429,34 @@ export function openPanel(context: vscode.ExtensionContext): void {
         }
         break;
       case 'fetchTodoFiles':
-        const todoFiles = await discoverTodoFiles();
-        settingsPanel?.webview.postMessage({ type: 'todoFilesData', files: todoFiles });
+        try {
+          const todoFiles = await discoverTodoFiles();
+          settingsPanel?.webview.postMessage({ type: 'todoFilesData', files: todoFiles });
+        } catch (err) {
+          console.error('[SETTINGS] Error fetching todo files:', err);
+          settingsPanel?.webview.postMessage({ type: 'todoFilesData', files: [] });
+        }
         break;
       case 'fetchUnifiedTasks':
-        // Fetch tasks from all enabled sources (markdown, linear, github)
-        const currentSettings = getSettings(context);
-        const unifiedTasks = await fetchAllTasks(currentSettings.taskSources);
-        settingsPanel?.webview.postMessage({ type: 'unifiedTasksData', tasks: unifiedTasks });
+        try {
+          // Fetch tasks from all enabled sources (markdown, linear, github)
+          const currentSettings = getSettings(context);
+          const unifiedTasks = await fetchAllTasks(currentSettings.taskSources);
+          settingsPanel?.webview.postMessage({ type: 'unifiedTasksData', tasks: unifiedTasks });
+        } catch (err) {
+          console.error('[SETTINGS] Error fetching unified tasks:', err);
+          settingsPanel?.webview.postMessage({ type: 'unifiedTasksData', tasks: [] });
+        }
         break;
       case 'detectTaskSources':
-        // Detect which task sources are available
-        const availableSources = await detectAvailableSources();
-        settingsPanel?.webview.postMessage({ type: 'taskSourcesData', sources: availableSources });
+        try {
+          // Detect which task sources are available
+          const availableSources = await detectAvailableSources();
+          settingsPanel?.webview.postMessage({ type: 'taskSourcesData', sources: availableSources });
+        } catch (err) {
+          console.error('[SETTINGS] Error detecting task sources:', err);
+          settingsPanel?.webview.postMessage({ type: 'taskSourcesData', sources: { markdown: true, linear: false, github: false } });
+        }
         break;
       case 'fetchSessions':
         const sessionsWorkspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -449,17 +493,20 @@ export function openPanel(context: vscode.ExtensionContext): void {
         const wsFolder = workspaceConfig.getActiveWorkspaceFolder();
         if (wsFolder) {
           const exists = workspaceConfig.configExists(wsFolder);
-          const config = await workspaceConfig.loadWorkspaceConfig(wsFolder);
+          const userExists = workspaceConfig.userConfigExists();
+          const config = exists ? await workspaceConfig.loadWorkspaceConfig(wsFolder) : null;
           settingsPanel?.webview.postMessage({
             type: 'workspaceConfigData',
             config,
-            exists
+            exists,
+            userExists
           });
         } else {
           settingsPanel?.webview.postMessage({
             type: 'workspaceConfigData',
             config: null,
-            exists: false
+            exists: false,
+            userExists: workspaceConfig.userConfigExists()
           });
         }
         break;
@@ -468,11 +515,13 @@ export function openPanel(context: vscode.ExtensionContext): void {
         if (saveWsFolder && message.config) {
           await workspaceConfig.saveWorkspaceConfig(saveWsFolder, message.config);
           // Trigger symlink re-creation after config save
-          await createSymlinksCodebaseWide(saveWsFolder, message.config);
+          const mergedConfig = await workspaceConfig.loadWorkspaceConfig(saveWsFolder);
+          await createSymlinksCodebaseWide(saveWsFolder, mergedConfig);
           settingsPanel?.webview.postMessage({
             type: 'workspaceConfigData',
             config: message.config,
-            exists: true
+            exists: true,
+            userExists: workspaceConfig.userConfigExists()
           });
         }
         break;
@@ -481,21 +530,28 @@ export function openPanel(context: vscode.ExtensionContext): void {
         if (initWsFolder) {
           const newConfig = await workspaceConfig.initWorkspaceConfig(initWsFolder);
           if (newConfig) {
-            await createSymlinksCodebaseWide(initWsFolder, newConfig);
+            const mergedConfig = await workspaceConfig.loadWorkspaceConfig(initWsFolder);
+            await createSymlinksCodebaseWide(initWsFolder, mergedConfig);
           }
           settingsPanel?.webview.postMessage({
             type: 'workspaceConfigData',
             config: newConfig,
-            exists: true
+            exists: true,
+            userExists: workspaceConfig.userConfigExists()
           });
         }
         break;
       case 'fetchContextFiles':
-        const contextWsFolder = workspaceConfig.getActiveWorkspaceFolder();
-        if (contextWsFolder) {
-          const contextFiles = await scanMemoryFiles(contextWsFolder.uri.fsPath);
-          settingsPanel?.webview.postMessage({ type: 'contextFilesData', files: contextFiles });
-        } else {
+        try {
+          const contextWsFolder = workspaceConfig.getActiveWorkspaceFolder();
+          if (contextWsFolder) {
+            const contextFiles = await scanMemoryFiles(contextWsFolder.uri.fsPath);
+            settingsPanel?.webview.postMessage({ type: 'contextFilesData', files: contextFiles });
+          } else {
+            settingsPanel?.webview.postMessage({ type: 'contextFilesData', files: [] });
+          }
+        } catch (err) {
+          console.error('[SETTINGS] Error fetching context files:', err);
           settingsPanel?.webview.postMessage({ type: 'contextFilesData', files: [] });
         }
         break;
@@ -505,6 +561,14 @@ export function openPanel(context: vscode.ExtensionContext): void {
           if (ctxWsFolder) {
             const fileUri = vscode.Uri.file(path.join(ctxWsFolder.uri.fsPath, message.path));
             vscode.window.showTextDocument(fileUri, { preview: true });
+          }
+        }
+        break;
+      case 'dismissTask':
+        if (message.taskId) {
+          const currentDismissed = context.globalState.get<string[]>('agents.dismissedTaskIds', []);
+          if (!currentDismissed.includes(message.taskId)) {
+            context.globalState.update('agents.dismissedTaskIds', [...currentDismissed, message.taskId]);
           }
         }
         break;
@@ -626,6 +690,7 @@ function getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri): s
   const cursorIcon = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'cursor.png'));
   const cursorIconLight = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'cursor-light.png'));
   const agentsIcon = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'agents.png'));
+  const githubIcon = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'github.png'));
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -642,7 +707,8 @@ function getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri): s
       opencode: "${opencodeIcon}",
       cursor: { dark: "${cursorIcon}", light: "${cursorIconLight}" },
       shell: "${agentsIcon}",
-      agents: "${agentsIcon}"
+      agents: "${agentsIcon}",
+      github: "${githubIcon}"
     };
   </script>
 </head>

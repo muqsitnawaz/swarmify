@@ -31,12 +31,10 @@ import { useSystemTheme, getVsCodeApi, getIcons, postMessage } from './hooks'
 import { validateAliasName } from './utils'
 
 // Tab components
-import { GuideTab } from './components/tabs/GuideTab'
-import { SessionsTab } from './components/tabs/SessionsTab'
-import { TasksTab } from './components/tabs/TasksTab'
-import { ContextTab } from './components/tabs/ContextTab'
-import { OverviewTab } from './components/tabs/OverviewTab'
+import { DashboardTab } from './components/tabs/DashboardTab'
+import { WorkspaceTab } from './components/tabs/WorkspaceTab'
 import { SettingsTab } from './components/tabs/SettingsTab'
+import { GuideTab } from './components/tabs/GuideTab'
 
 const vscode = getVsCodeApi()
 const icons = getIcons() as IconConfig
@@ -62,10 +60,12 @@ export default function App() {
 
   // Skills and tab state
   const [skillsStatus, setSkillsStatus] = useState<SkillsStatus | null>(null)
-  const [activeTab, setActiveTab] = useState<TabId>('overview')
+  const [activeTab, setActiveTab] = useState<TabId>('dashboard')
+  const [showGuide, setShowGuide] = useState(false)
   const [tasks, setTasks] = useState<TaskSummary[]>([])
   const [tasksLoading, setTasksLoading] = useState(false)
   const [tasksLoaded, setTasksLoaded] = useState(false)
+  const [tasksDisplayCount, setTasksDisplayCount] = useState(10)
   const [swarmInstalling, setSwarmInstalling] = useState(false)
   const [commandPackInstalling, setCommandPackInstalling] = useState(false)
 
@@ -111,12 +111,18 @@ export default function App() {
   const [workspaceConfig, setWorkspaceConfig] = useState<WorkspaceConfig | null>(null)
   const [workspaceConfigExists, setWorkspaceConfigExists] = useState(false)
   const [workspaceConfigLoaded, setWorkspaceConfigLoaded] = useState(false)
+  const [userConfigExists, setUserConfigExists] = useState(false)
 
   // Context files state
   const [contextFiles, setContextFiles] = useState<ContextFile[]>([])
   const [contextLoading, setContextLoading] = useState(false)
   const [contextLoaded, setContextLoaded] = useState(false)
   const [collapsedDirs, setCollapsedDirs] = useState<Set<string>>(new Set())
+
+  // Workspace path, GitHub repo, and dismissed tasks
+  const [workspacePath, setWorkspacePath] = useState<string | null>(null)
+  const [githubRepo, setGithubRepo] = useState<string | null>(null)
+  const [dismissedTaskIds, setDismissedTaskIds] = useState<Set<string>>(new Set())
 
   // Alias editing state
   const [isAddingAlias, setIsAddingAlias] = useState(false)
@@ -138,6 +144,9 @@ export default function App() {
           setRunningCounts(message.runningCounts)
           if (message.swarmStatus) setSwarmStatus(message.swarmStatus)
           if (message.skillsStatus) setSkillsStatus(message.skillsStatus)
+          if (message.workspacePath) setWorkspacePath(message.workspacePath)
+          if (message.githubRepo) setGithubRepo(message.githubRepo)
+          if (message.dismissedTaskIds) setDismissedTaskIds(new Set(message.dismissedTaskIds))
           break
         case 'updateRunningCounts':
           setRunningCounts(message.counts)
@@ -195,6 +204,7 @@ export default function App() {
         case 'workspaceConfigData':
           setWorkspaceConfig(message.config)
           setWorkspaceConfigExists(message.exists)
+          setUserConfigExists(Boolean(message.userExists))
           setWorkspaceConfigLoaded(true)
           break
         case 'contextFilesData':
@@ -229,29 +239,20 @@ export default function App() {
 
   // Tab-specific data loading
   useEffect(() => {
-    if (activeTab === 'overview' && !tasksLoaded && !tasksLoading) {
+    if (activeTab === 'dashboard' && !tasksLoaded && !tasksLoading) {
       fetchTasks()
     }
-    if (activeTab === 'tasks' && !todoLoaded && !todoLoading) {
+    if (activeTab === 'workspace' && !todoLoaded && !todoLoading) {
       fetchTodoFiles()
     }
-    if (activeTab === 'tasks' && !unifiedTasksLoaded && !unifiedTasksLoading) {
+    if (activeTab === 'workspace' && !unifiedTasksLoaded && !unifiedTasksLoading) {
       fetchUnifiedTasks()
       detectTaskSources()
     }
-  }, [activeTab, tasksLoaded, tasksLoading, todoLoaded, todoLoading, unifiedTasksLoaded, unifiedTasksLoading])
-
-  useEffect(() => {
-    if (activeTab === 'sessions' && !sessionsLoaded && !sessionsLoading) {
-      fetchSessions()
-    }
-  }, [activeTab, sessionsLoaded, sessionsLoading])
-
-  useEffect(() => {
-    if (activeTab === 'context' && !contextLoaded && !contextLoading) {
+    if (activeTab === 'workspace' && !contextLoaded && !contextLoading) {
       fetchContextFiles()
     }
-  }, [activeTab, contextLoaded, contextLoading])
+  }, [activeTab, tasksLoaded, tasksLoading, todoLoaded, todoLoading, unifiedTasksLoaded, unifiedTasksLoading, contextLoaded, contextLoading])
 
   useEffect(() => {
     if (!selectedAgentType || agentTerminals.length === 0) return
@@ -266,7 +267,12 @@ export default function App() {
   // Data fetching functions
   const fetchTasks = () => {
     setTasksLoading(true)
+    setTasksDisplayCount(10)
     vscode.postMessage({ type: 'fetchTasks' })
+  }
+
+  const handleLoadMoreTasks = () => {
+    setTasksDisplayCount(prev => prev + 10)
   }
 
   const fetchTodoFiles = () => {
@@ -321,7 +327,7 @@ export default function App() {
   }
 
   const handleSpawnTodo = (item: TodoItem, filePath: string) => {
-    setActiveTab('overview')
+    setActiveTab('dashboard')
     vscode.postMessage({ type: 'spawnSwarmForTodo', item, filePath })
   }
 
@@ -374,6 +380,15 @@ export default function App() {
     }
     saveSettings(newSettings)
     if (updates.linear || updates.github) fetchUnifiedTasks()
+  }
+
+  const handleDismissTask = (taskId: string) => {
+    setDismissedTaskIds(prev => {
+      const next = new Set(prev)
+      next.add(taskId)
+      return next
+    })
+    vscode.postMessage({ type: 'dismissTask', taskId })
   }
 
   // Alias handlers
@@ -441,16 +456,29 @@ export default function App() {
     <div className="space-y-6">
       {/* Header with tabs */}
       <header className="pb-4 border-b border-[var(--border)]">
-        <div className="flex items-center gap-3 mb-4">
-          <img src={icons.agents} alt="Agents" className="w-8 h-8" />
-          <h1 className="text-lg font-semibold tracking-tight">Agents</h1>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <img src={icons.agents} alt="Agents" className="w-8 h-8" />
+            <h1 className="text-lg font-semibold tracking-tight">Agents</h1>
+          </div>
+          <button
+            onClick={() => setShowGuide(!showGuide)}
+            className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${
+              showGuide
+                ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
+                : 'text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:bg-[var(--muted)]'
+            }`}
+            title="Help & Guide"
+          >
+            ?
+          </button>
         </div>
         <div className="flex gap-1">
-          {(['overview', 'tasks', 'sessions', 'context', 'settings', 'guide'] as TabId[]).map(tab => (
+          {(['dashboard', 'workspace', 'settings'] as TabId[]).map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors capitalize ${
+              className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
                 activeTab === tab
                   ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
                   : 'text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:bg-[var(--muted)]'
@@ -462,9 +490,25 @@ export default function App() {
         </div>
       </header>
 
+      {/* Guide panel (shown when ? is clicked) */}
+      {showGuide && (
+        <div className="px-4 py-4 rounded-xl bg-[var(--muted)] border border-[var(--border)]">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold">Quick Guide</h2>
+            <button
+              onClick={() => setShowGuide(false)}
+              className="text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+            >
+              Close
+            </button>
+          </div>
+          <GuideTab />
+        </div>
+      )}
+
       {/* Tab content */}
-      {activeTab === 'overview' && (
-        <OverviewTab
+      {activeTab === 'dashboard' && (
+        <DashboardTab
           showIntegrationCallout={showIntegrationCallout}
           runningCounts={runningCounts}
           builtInAgents={BUILT_IN_AGENTS}
@@ -475,17 +519,19 @@ export default function App() {
           sessionTasksLoading={sessionTasksLoading}
           tasks={tasks}
           tasksLoading={tasksLoading}
+          tasksDisplayCount={tasksDisplayCount}
           icons={icons}
           isLightTheme={isLightTheme}
           onAgentClick={handleAgentClick}
           onCloseAgentTerminals={() => { setSelectedAgentType(null); setAgentTerminals([]) }}
           onNavigateToSettings={() => setActiveTab('settings')}
           onRefreshTasks={fetchTasks}
+          onLoadMoreTasks={handleLoadMoreTasks}
         />
       )}
 
-      {activeTab === 'tasks' && (
-        <TasksTab
+      {activeTab === 'workspace' && (
+        <WorkspaceTab
           todoFiles={todoFiles}
           unifiedTasks={unifiedTasks}
           todoLoading={todoLoading}
@@ -493,34 +539,28 @@ export default function App() {
           expandedSources={expandedSources}
           availableSources={availableSources}
           settings={settings}
-          onToggleSource={toggleSourceExpanded}
-          onSpawnTodo={handleSpawnTodo}
-          onRefresh={() => { fetchTodoFiles(); fetchUnifiedTasks() }}
-          onUpdateTaskSources={handleUpdateTaskSources}
-        />
-      )}
-
-      {activeTab === 'sessions' && (
-        <SessionsTab
-          sessions={recentSessions}
-          loading={sessionsLoading}
-          page={sessionsPage}
-          onPageChange={setSessionsPage}
-          onOpenSession={handleOpenSession}
-          onRefresh={fetchSessions}
-        />
-      )}
-
-      {activeTab === 'context' && (
-        <ContextTab
+          defaultAgent={defaultAgent}
           contextFiles={contextFiles}
-          loading={contextLoading}
+          contextLoading={contextLoading}
           collapsedDirs={collapsedDirs}
+          workspaceConfig={workspaceConfig}
+          workspaceConfigLoaded={workspaceConfigLoaded}
+          workspaceConfigExists={workspaceConfigExists}
+          workspacePath={workspacePath}
+          githubRepo={githubRepo}
+          dismissedTaskIds={dismissedTaskIds}
           icons={icons}
           isLightTheme={isLightTheme}
-          onRefresh={() => { setContextLoaded(false); fetchContextFiles() }}
+          onToggleSource={toggleSourceExpanded}
+          onSpawnTodo={handleSpawnTodo}
+          onRefreshTasks={() => { fetchTodoFiles(); fetchUnifiedTasks() }}
+          onRefreshContext={() => { setContextLoaded(false); fetchContextFiles() }}
+          onUpdateTaskSources={handleUpdateTaskSources}
           onToggleDir={toggleDirExpanded}
           onOpenFile={openContextFile}
+          onInitWorkspaceConfig={handleInitWorkspaceConfig}
+          onSaveWorkspaceConfig={handleSaveWorkspaceConfig}
+          onDismissTask={handleDismissTask}
         />
       )}
 
@@ -542,6 +582,8 @@ export default function App() {
           workspaceConfig={workspaceConfig}
           workspaceConfigLoaded={workspaceConfigLoaded}
           workspaceConfigExists={workspaceConfigExists}
+          userConfigExists={userConfigExists}
+          availableSources={availableSources}
           isAddingAlias={isAddingAlias}
           newAliasName={newAliasName}
           newAliasAgent={newAliasAgent}
@@ -552,6 +594,7 @@ export default function App() {
           onInstallCommandPack={handleInstallCommandPack}
           onSetDefaultAgent={handleSetDefaultAgent}
           onTogglePrewarm={togglePrewarm}
+          onUpdateTaskSources={handleUpdateTaskSources}
           onAddAliasClick={handleAddAliasClick}
           onCancelAddAlias={handleCancelAddAlias}
           onSaveAlias={handleSaveAlias}
@@ -563,8 +606,6 @@ export default function App() {
           onSaveWorkspaceConfig={handleSaveWorkspaceConfig}
         />
       )}
-
-      {activeTab === 'guide' && <GuideTab />}
 
       {/* Footer */}
       <footer className="pt-6 mt-8 border-t border-[var(--border)]">
@@ -580,7 +621,7 @@ export default function App() {
               GitHub
             </a>
             <button
-              onClick={() => setActiveTab('guide')}
+              onClick={() => setShowGuide(true)}
               className="hover:text-[var(--foreground)] transition-colors"
             >
               Docs

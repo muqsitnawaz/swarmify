@@ -906,7 +906,7 @@ export async function fetchTasksBySession(sessionId: string): Promise<TaskSummar
 }
 
 // Fetch all tasks from the agent-swarm directory
-export async function fetchTasks(limit?: number): Promise<TaskSummary[]> {
+export async function fetchTasks(limit?: number, filterCwd?: string): Promise<TaskSummary[]> {
   if (!fs.existsSync(AGENT_SWARM_DIR)) {
     return [];
   }
@@ -925,6 +925,9 @@ export async function fetchTasks(limit?: number): Promise<TaskSummary[]> {
     try {
       const metaContent = fs.readFileSync(metaPath, 'utf-8');
       const meta: AgentMeta = JSON.parse(metaContent);
+
+      // Filter by workspace cwd if specified
+      if (filterCwd && meta.cwd !== filterCwd) continue;
 
       const startedAt = new Date(meta.started_at);
       const completedAt = meta.completed_at ? new Date(meta.completed_at) : null;

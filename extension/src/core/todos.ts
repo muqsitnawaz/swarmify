@@ -3,6 +3,7 @@ export interface TodoItem {
   description?: string;
   completed: boolean;
   line: number;
+  planFile?: string;
 }
 
 export interface TodoFile {
@@ -14,6 +15,8 @@ const CHECKBOX_REGEX = /^\s*(?:[-*+]|\d+\.)\s+\[([ xX])\]\s*(.*)$/;
 const H2_REGEX = /^\s*##\s+(.*)$/;
 const H3_REGEX = /^\s*###\s+(.*)$/;
 const DIVIDER_REGEX = /^\s*-{3,}\s*$/;
+// Match "Plan: ./path" or "Plan: /abs/path" or "plan: path" (case insensitive)
+const PLAN_FILE_REGEX = /^plan:\s*(.+)$/i;
 
 export function parseTodoMd(content: string): TodoItem[] {
   const lines = content.split(/\r?\n/);
@@ -23,7 +26,17 @@ export function parseTodoMd(content: string): TodoItem[] {
 
   const flush = () => {
     if (!current) return;
-    const description = descriptionLines.join('\n').trim();
+    // Extract plan file from description lines
+    const filteredLines: string[] = [];
+    for (const descLine of descriptionLines) {
+      const planMatch = descLine.match(PLAN_FILE_REGEX);
+      if (planMatch) {
+        current.planFile = planMatch[1].trim();
+      } else {
+        filteredLines.push(descLine);
+      }
+    }
+    const description = filteredLines.join('\n').trim();
     if (description) current.description = description;
     items.push(current);
     current = null;

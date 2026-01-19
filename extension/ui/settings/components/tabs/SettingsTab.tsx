@@ -1,5 +1,5 @@
-import React from 'react'
-import { RefreshCw, Download, ExternalLink, Check } from 'lucide-react'
+import React, { useState } from 'react'
+import { RefreshCw, Check, ChevronDown, ChevronRight } from 'lucide-react'
 import { Button } from '../ui/button'
 import { Checkbox } from '../ui/checkbox'
 import { Input } from '../ui/input'
@@ -47,6 +47,8 @@ interface SettingsTabProps {
   workspaceConfig: WorkspaceConfig | null
   workspaceConfigLoaded: boolean
   workspaceConfigExists: boolean
+  userConfigExists: boolean
+  availableSources: { markdown: boolean; linear: boolean; github: boolean }
   // Alias state
   isAddingAlias: boolean
   newAliasName: string
@@ -59,6 +61,7 @@ interface SettingsTabProps {
   onInstallCommandPack: () => void
   onSetDefaultAgent: (agentTitle: string) => void
   onTogglePrewarm: () => void
+  onUpdateTaskSources: (sources: Partial<AgentSettings['taskSources']>) => void
   // Alias handlers
   onAddAliasClick: () => void
   onCancelAddAlias: () => void
@@ -89,6 +92,8 @@ export function SettingsTab({
   workspaceConfig,
   workspaceConfigLoaded,
   workspaceConfigExists,
+  userConfigExists,
+  availableSources,
   isAddingAlias,
   newAliasName,
   newAliasAgent,
@@ -99,6 +104,7 @@ export function SettingsTab({
   onInstallCommandPack,
   onSetDefaultAgent,
   onTogglePrewarm,
+  onUpdateTaskSources,
   onAddAliasClick,
   onCancelAddAlias,
   onSaveAlias,
@@ -127,6 +133,11 @@ export function SettingsTab({
 
   const isAgentInstalled = (agentKey: string): boolean => installedAgents[agentKey] ?? true
   const getInstallInfo = (agentKey: string) => AGENT_INSTALL_INFO[agentKey]
+  const display = settings.display
+  const showFullAgentNames = display?.showFullAgentNames ?? true
+  const showLabelsInTitles = display?.showLabelsInTitles ?? true
+  const showSessionIdInTitles = display?.showSessionIdInTitles ?? true
+  const labelReplacesTitle = display?.labelReplacesTitle ?? false
 
   const updateBuiltIn = (key: keyof AgentSettings['builtIn'], field: 'login' | 'instances', value: boolean | number) => {
     onSaveSettings({
@@ -180,66 +191,197 @@ export function SettingsTab({
 
   const markdownViewerEnabled = settings.editor?.markdownViewerEnabled ?? DEFAULT_EDITOR_PREFERENCES.markdownViewerEnabled
 
+  // Expanded agents state
+  const [expandedAgents, setExpandedAgents] = useState<Set<string>>(new Set())
+
+  const toggleAgentExpanded = (agent: string) => {
+    setExpandedAgents(prev => {
+      const next = new Set(prev)
+      if (next.has(agent)) next.delete(agent)
+      else next.add(agent)
+      return next
+    })
+  }
+
+  // Determine overall agent status
+  const getAgentStatus = (agent: SwarmAgentType) => {
+    const status = swarmStatus.agents[agent]
+    const skillSummary = getSkillSummary(agent)
+
+    if (!status.cliAvailable) {
+      return { status: 'not_installed', label: 'Not Installed', canSetup: true }
+    }
+    if (!status.mcpEnabled || !status.commandInstalled) {
+      return { status: 'setup_required', label: 'Setup Required', canSetup: true }
+    }
+    if (skillSummary && skillSummary.installed < skillSummary.total) {
+      return { status: 'ready', label: 'Ready', canSetup: false }
+    }
+    return { status: 'ready', label: 'Ready', canSetup: false }
+  }
+
   return (
     <div className="space-y-8">
-      {/* Swarm Integration */}
+      {/* Agent Setup */}
       <section>
-        <SectionHeader>Swarm Integration</SectionHeader>
+        <SectionHeader>Agent Setup</SectionHeader>
         <div className="space-y-2">
           {(['claude', 'codex', 'gemini'] as SwarmAgentType[]).map((agent) => {
-            const status = swarmStatus.agents[agent]
+            const agentStatus = swarmStatus.agents[agent]
             const icon = getIcon(icons[agent], isLightTheme)
             const label = SWARM_AGENT_LABELS[agent]
-            const showInstall = status.cliAvailable && !(status.mcpEnabled && status.commandInstalled)
-            const statusBadge = status.cliAvailable
-              ? status.installed
-                ? { text: 'Installed', tone: 'bg-green-500/10 text-green-600 dark:bg-green-500/20 dark:text-green-400' }
-                : { text: 'Not installed', tone: 'bg-[var(--secondary)] text-[var(--muted-foreground)]' }
-              : { text: 'CLI not found', tone: 'bg-[var(--secondary)] text-[var(--muted-foreground)]' }
+            const { status, label: statusLabel, canSetup } = getAgentStatus(agent)
+            const isExpanded = expandedAgents.has(agent)
             const skillSummary = getSkillSummary(agent)
-            const skillBadge = !skillSummary
-              ? { text: 'Skills status unknown', tone: 'bg-[var(--secondary)] text-[var(--muted-foreground)]' }
-              : skillSummary.total === 0
-                ? { text: 'No skills', tone: 'bg-[var(--secondary)] text-[var(--muted-foreground)]' }
-                : skillSummary.installed === skillSummary.total
-                  ? { text: 'Skills Installed', tone: 'bg-green-500/10 text-green-600 dark:bg-green-500/15 dark:text-green-300' }
-                  : { text: `Skills ${skillSummary.installed}/${skillSummary.total}`, tone: 'bg-[var(--secondary)] text-[var(--muted-foreground)]' }
+            const config = settings.builtIn[agent as keyof AgentSettings['builtIn']]
+            const modelOptions = AGENT_MODELS[agent] || []
 
             return (
-              <div key={agent} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)]">
-                <img src={icon} alt={label} className="w-5 h-5" />
-                <span className="text-sm font-medium w-20">{label}</span>
-                <div className="flex items-center gap-2 text-xs">
-                  <span className={`px-2 py-0.5 rounded ${statusBadge.tone}`}>{statusBadge.text}</span>
-                  {status.cliAvailable && (
-                    <>
-                      <span className={`px-2 py-0.5 rounded ${status.mcpEnabled ? 'bg-green-500/10 text-green-600 dark:bg-green-500/15 dark:text-green-300' : 'bg-[var(--secondary)] text-[var(--muted-foreground)]'}`}>
-                        MCP {status.mcpEnabled ? 'Enabled' : 'Missing'}
-                      </span>
-                      <span className={`px-2 py-0.5 rounded ${status.commandInstalled ? 'bg-green-500/10 text-green-600 dark:bg-green-500/15 dark:text-green-300' : 'bg-[var(--secondary)] text-[var(--muted-foreground)]'}`}>
-                        Command {status.commandInstalled ? 'Installed' : 'Missing'}
-                      </span>
-                    </>
+              <div key={agent} className="rounded-xl bg-[var(--muted)] overflow-hidden">
+                {/* Collapsed header */}
+                <button
+                  onClick={() => toggleAgentExpanded(agent)}
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[var(--background)]/50 transition-colors"
+                >
+                  <img src={icon} alt={label} className="w-5 h-5" />
+                  <span className="text-sm font-medium">{label}</span>
+                  <div className="flex-1" />
+                  {status === 'ready' ? (
+                    <span className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400">
+                      <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                      {statusLabel}
+                    </span>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (agentStatus.cliAvailable) {
+                          onInstallSwarmAgent(agent)
+                        } else {
+                          toggleAgentExpanded(agent)
+                        }
+                      }}
+                      disabled={swarmInstalling}
+                    >
+                      {swarmInstalling ? (
+                        <RefreshCw className="w-3 h-3 animate-spin" />
+                      ) : (
+                        statusLabel
+                      )}
+                    </Button>
                   )}
-                  <span className={`px-2 py-0.5 rounded ${skillBadge.tone}`}>{skillBadge.text}</span>
-                </div>
-                <div className="flex-1" />
-                {showInstall && (
-                  <Button
-                    size="sm"
-                    onClick={() => onInstallSwarmAgent(agent)}
-                    disabled={swarmInstalling}
-                    title="Installs Swarm and the full command pack"
-                  >
-                    {swarmInstalling ? (
-                      <span className="flex items-center gap-1.5">
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                        Installing...
-                      </span>
-                    ) : (
-                      'Install pack'
-                    )}
-                  </Button>
+                  {isExpanded ? (
+                    <ChevronDown className="w-4 h-4 text-[var(--muted-foreground)]" />
+                  ) : (
+                    <ChevronRight className="w-4 h-4 text-[var(--muted-foreground)]" />
+                  )}
+                </button>
+
+                {/* Expanded details */}
+                {isExpanded && (
+                  <div className="px-4 pb-4 pt-0 border-t border-[var(--border)]">
+                    <div className="pt-3 space-y-3">
+                      {/* Status details */}
+                      <div className="grid grid-cols-3 gap-2 text-xs">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-1.5 h-1.5 rounded-full ${agentStatus.cliAvailable ? 'bg-green-500' : 'bg-[var(--muted-foreground)]'}`} />
+                          <span className="text-[var(--muted-foreground)]">CLI</span>
+                          <span>{agentStatus.cliAvailable ? 'Installed' : 'Missing'}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`w-1.5 h-1.5 rounded-full ${agentStatus.mcpEnabled ? 'bg-green-500' : 'bg-[var(--muted-foreground)]'}`} />
+                          <span className="text-[var(--muted-foreground)]">MCP</span>
+                          <span>{agentStatus.mcpEnabled ? 'Connected' : 'Missing'}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`w-1.5 h-1.5 rounded-full ${skillSummary && skillSummary.installed === skillSummary.total ? 'bg-green-500' : 'bg-[var(--muted-foreground)]'}`} />
+                          <span className="text-[var(--muted-foreground)]">Skills</span>
+                          <span>{skillSummary ? `${skillSummary.installed}/${skillSummary.total}` : '?'}</span>
+                        </div>
+                      </div>
+
+                      {/* Install button if not ready */}
+                      {canSetup && agentStatus.cliAvailable && (
+                        <Button
+                          size="sm"
+                          onClick={() => onInstallSwarmAgent(agent)}
+                          disabled={swarmInstalling}
+                          className="w-full"
+                        >
+                          {swarmInstalling ? (
+                            <span className="flex items-center gap-1.5">
+                              <RefreshCw className="w-3 h-3 animate-spin" />
+                              Installing...
+                            </span>
+                          ) : (
+                            'Install Swarm Integration'
+                          )}
+                        </Button>
+                      )}
+
+                      {/* Install CLI hint if not available */}
+                      {!agentStatus.cliAvailable && (
+                        <div className="text-xs text-[var(--muted-foreground)]">
+                          {AGENT_INSTALL_INFO[agent]?.command && (
+                            <div className="flex items-center gap-2">
+                              <code className="px-2 py-1 rounded bg-[var(--background)] flex-1 truncate">
+                                {AGENT_INSTALL_INFO[agent].command}
+                              </code>
+                              <button
+                                onClick={() => navigator.clipboard.writeText(AGENT_INSTALL_INFO[agent].command!)}
+                                className="px-2 py-1 text-[var(--primary)] hover:underline"
+                              >
+                                Copy
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Config options when ready */}
+                      {status === 'ready' && config && (
+                        <div className="flex items-center gap-4 pt-2 border-t border-[var(--border)]">
+                          <label className="flex items-center gap-2 text-sm">
+                            <Checkbox
+                              checked={config.login}
+                              onCheckedChange={(checked) => updateBuiltIn(agent as keyof AgentSettings['builtIn'], 'login', !!checked)}
+                            />
+                            Open on launch
+                          </label>
+                          {config.login && (
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-[var(--muted-foreground)]">Instances:</span>
+                              <Input
+                                type="number"
+                                min={1}
+                                max={10}
+                                value={config.instances}
+                                onChange={(e) => updateBuiltIn(agent as keyof AgentSettings['builtIn'], 'instances', Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
+                                className="w-14 text-center h-8"
+                              />
+                            </div>
+                          )}
+                          {modelOptions.length > 0 && (
+                            <div className="flex items-center gap-2 ml-auto">
+                              <span className="text-xs text-[var(--muted-foreground)]">Model:</span>
+                              <select
+                                value={config.defaultModel || ''}
+                                onChange={(e) => updateBuiltInModel(agent as keyof AgentSettings['builtIn'], e.target.value)}
+                                className="h-8 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-xs"
+                              >
+                                <option value="">Auto</option>
+                                {modelOptions.map(model => (
+                                  <option key={model} value={model}>{model}</option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 )}
               </div>
             )
@@ -247,36 +389,6 @@ export function SettingsTab({
         </div>
       </section>
 
-      {/* Command Pack */}
-      <section>
-        <div className="flex items-center justify-between mb-3">
-          <SectionHeader className="mb-0">Command Pack</SectionHeader>
-          <Button size="sm" onClick={onInstallCommandPack} disabled={commandPackInstalling}>
-            {commandPackInstalling ? (
-              <span className="flex items-center gap-1.5">
-                <RefreshCw className="w-4 h-4 animate-spin" />
-                Installing...
-              </span>
-            ) : (
-              'Install'
-            )}
-          </Button>
-        </div>
-        <div className="px-4 py-3 rounded-xl bg-[var(--muted)] space-y-3">
-          <div className="flex flex-wrap gap-2 text-xs">
-            {commandPackNames.map((name) => (
-              <span key={name} className="px-2 py-0.5 rounded bg-[var(--background)] border border-[var(--border)]">
-                {name}
-              </span>
-            ))}
-          </div>
-          {!skillsStatus && (
-            <div className="text-xs text-[var(--muted-foreground)]">
-              Skills status unavailable. Install to refresh.
-            </div>
-          )}
-        </div>
-      </section>
 
       {/* Default Agent */}
       <section>
@@ -346,104 +458,6 @@ export function SettingsTab({
               ))}
             </div>
           )}
-        </div>
-      </section>
-
-      {/* Built-in Agents */}
-      <section>
-        <SectionHeader>Built-in Agents</SectionHeader>
-        <div className="space-y-2">
-          {builtInAgents.filter(a => a.key !== 'shell').map(agent => {
-            const config = settings.builtIn[agent.key as keyof AgentSettings['builtIn']]
-            const installed = isAgentInstalled(agent.key)
-            const installInfo = getInstallInfo(agent.key)
-            const isSwarmAgent = ALL_SWARM_AGENTS.includes(agent.key as SwarmAgentType)
-            const modelOptions = AGENT_MODELS[agent.key] || []
-            const modelDisabled = modelOptions.length === 0
-
-            return (
-              <div
-                key={agent.key}
-                className={`flex items-center gap-4 px-4 py-3 rounded-xl bg-[var(--muted)] ${!installed ? 'opacity-60' : ''}`}
-              >
-                <img src={getIcon(agent.icon, isLightTheme)} alt={agent.name} className="w-5 h-5" />
-                <span className="text-sm font-medium w-20">{agent.name}</span>
-
-                {installed ? (
-                  <>
-                    {isSwarmAgent && (
-                      <div className="flex items-center gap-2">
-                        <Checkbox
-                          checked={isSwarmAgentEnabled(agent.key as SwarmAgentType)}
-                          onCheckedChange={(checked) => toggleSwarmAgent(agent.key as SwarmAgentType, !!checked)}
-                        />
-                        <label className="text-sm text-[var(--muted-foreground)]">Swarm</label>
-                      </div>
-                    )}
-                    <div className="flex items-center gap-2">
-                      <Checkbox
-                        checked={config.login}
-                        onCheckedChange={(checked) => updateBuiltIn(agent.key as keyof AgentSettings['builtIn'], 'login', !!checked)}
-                      />
-                      <label className="text-sm text-[var(--muted-foreground)]">Startup</label>
-                    </div>
-                    {config.login && (
-                      <div className="flex items-center gap-2 ml-2">
-                        <Input
-                          type="number"
-                          min={1}
-                          max={10}
-                          value={config.instances}
-                          onChange={(e) => updateBuiltIn(agent.key as keyof AgentSettings['builtIn'], 'instances', Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
-                          className="w-14 text-center"
-                        />
-                      </div>
-                    )}
-                    <div className="flex items-center gap-2 ml-2">
-                      <label className="text-sm text-[var(--muted-foreground)]">Model</label>
-                      <select
-                        value={config.defaultModel || ''}
-                        onChange={(e) => updateBuiltInModel(agent.key as keyof AgentSettings['builtIn'], e.target.value)}
-                        className="h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-sm"
-                        disabled={modelDisabled}
-                      >
-                        <option value="">{modelDisabled ? 'No models available' : 'Auto'}</option>
-                        {modelOptions.map(model => (
-                          <option key={model} value={model}>{model}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <span className="text-xs text-[var(--muted-foreground)]">Not installed</span>
-                    <div className="flex-1" />
-                    {installInfo?.command && (
-                      <button
-                        onClick={() => navigator.clipboard.writeText(installInfo.command!)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-[var(--primary)] text-[var(--primary-foreground)] rounded-lg hover:opacity-90 transition-opacity"
-                        title={`Copy: ${installInfo.command}`}
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                        Copy Install
-                      </button>
-                    )}
-                    {installInfo?.url && (
-                      <a
-                        href={installInfo.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-[var(--secondary)] text-[var(--foreground)] rounded-lg hover:opacity-90 transition-opacity"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                        Install
-                      </a>
-                    )}
-                  </>
-                )}
-              </div>
-            )
-          })}
         </div>
       </section>
 
@@ -529,35 +543,59 @@ export function SettingsTab({
       <section>
         <SectionHeader>Display</SectionHeader>
         <div className="flex flex-col gap-2">
-          <label className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)] cursor-pointer">
-            <Checkbox
-              checked={settings.display?.showFullAgentNames}
-              onCheckedChange={(checked) => updateDisplay('showFullAgentNames', !!checked)}
-            />
+          <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-xl bg-[var(--muted)]">
             <span className="text-sm">Show full agent names in tabs</span>
-          </label>
-          <label className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)] cursor-pointer">
-            <Checkbox
-              checked={!settings.display?.showLabelsInTitles}
-              onCheckedChange={(checked) => updateDisplay('showLabelsInTitles', !checked)}
-            />
+            <button
+              className="toggle-switch"
+              data-state={showFullAgentNames ? 'on' : 'off'}
+              role="switch"
+              aria-checked={showFullAgentNames}
+              onClick={() => updateDisplay('showFullAgentNames', !showFullAgentNames)}
+            >
+              <span className="toggle-knob" />
+            </button>
+          </div>
+          <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-xl bg-[var(--muted)]">
             <span className="text-sm">Hide labels in tab titles</span>
-          </label>
-          <label className={`flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)] cursor-pointer ${!settings.display?.showLabelsInTitles ? 'opacity-50' : ''}`}>
-            <Checkbox
-              checked={settings.display?.labelReplacesTitle ?? false}
-              onCheckedChange={(checked) => updateDisplay('labelReplacesTitle', !!checked)}
-              disabled={!settings.display?.showLabelsInTitles}
-            />
+            <button
+              className="toggle-switch"
+              data-state={showLabelsInTitles ? 'off' : 'on'}
+              role="switch"
+              aria-checked={!showLabelsInTitles}
+              onClick={() => updateDisplay('showLabelsInTitles', !showLabelsInTitles)}
+            >
+              <span className="toggle-knob" />
+            </button>
+          </div>
+          <div
+            className={`flex items-center justify-between gap-4 px-4 py-3 rounded-xl bg-[var(--muted)] ${
+              !showLabelsInTitles ? 'opacity-50' : ''
+            }`}
+          >
             <span className="text-sm">Labels replace tab title</span>
-          </label>
-          <label className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)] cursor-pointer">
-            <Checkbox
-              checked={settings.display?.showSessionIdInTitles}
-              onCheckedChange={(checked) => updateDisplay('showSessionIdInTitles', !!checked)}
-            />
+            <button
+              className="toggle-switch disabled:cursor-not-allowed disabled:opacity-40"
+              data-state={labelReplacesTitle ? 'on' : 'off'}
+              role="switch"
+              aria-checked={labelReplacesTitle}
+              disabled={!showLabelsInTitles}
+              onClick={() => updateDisplay('labelReplacesTitle', !labelReplacesTitle)}
+            >
+              <span className="toggle-knob" />
+            </button>
+          </div>
+          <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-xl bg-[var(--muted)]">
             <span className="text-sm">Show session IDs in tab titles</span>
-          </label>
+            <button
+              className="toggle-switch"
+              data-state={showSessionIdInTitles ? 'on' : 'off'}
+              role="switch"
+              aria-checked={showSessionIdInTitles}
+              onClick={() => updateDisplay('showSessionIdInTitles', !showSessionIdInTitles)}
+            >
+              <span className="toggle-knob" />
+            </button>
+          </div>
         </div>
       </section>
 
@@ -613,6 +651,38 @@ export function SettingsTab({
         </div>
       </section>
 
+      {/* Task Sources */}
+      <section>
+        <SectionHeader>Task Sources</SectionHeader>
+        <div className="px-4 py-3 rounded-xl bg-[var(--muted)]">
+          <div className="flex flex-wrap gap-4">
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <Checkbox
+                checked={settings.taskSources?.markdown ?? true}
+                onCheckedChange={(checked) => onUpdateTaskSources({ markdown: Boolean(checked) })}
+              />
+              Markdown
+            </label>
+            <label className={`flex items-center gap-2 text-sm ${!availableSources.linear ? 'opacity-50' : 'cursor-pointer'}`}>
+              <Checkbox
+                checked={settings.taskSources?.linear ?? false}
+                disabled={!availableSources.linear}
+                onCheckedChange={(checked) => onUpdateTaskSources({ linear: Boolean(checked) })}
+              />
+              Linear {!availableSources.linear && <span className="text-xs text-[var(--muted-foreground)]">(MCP not configured)</span>}
+            </label>
+            <label className={`flex items-center gap-2 text-sm ${!availableSources.github ? 'opacity-50' : 'cursor-pointer'}`}>
+              <Checkbox
+                checked={settings.taskSources?.github ?? false}
+                disabled={!availableSources.github}
+                onCheckedChange={(checked) => onUpdateTaskSources({ github: Boolean(checked) })}
+              />
+              GitHub {!availableSources.github && <span className="text-xs text-[var(--muted-foreground)]">(MCP not configured)</span>}
+            </label>
+          </div>
+        </div>
+      </section>
+
       {/* Context File Symlinking */}
       <section>
         <SectionHeader>Context File Symlinking</SectionHeader>
@@ -620,8 +690,15 @@ export function SettingsTab({
           {workspaceConfigLoaded && !workspaceConfigExists ? (
             <div className="p-4">
               <p className="text-sm text-[var(--muted-foreground)] mb-3">
-                No .agents config found. Initialize to configure context file symlinks.
+                {userConfigExists
+                  ? 'No workspace .agents config found. Using ~/.agents defaults.'
+                  : 'No .agents config found. Initialize to configure context file symlinks.'}
               </p>
+              {userConfigExists && (
+                <p className="text-xs text-[var(--muted-foreground)] mb-3">
+                  Initialize a workspace config to override user defaults here.
+                </p>
+              )}
               <Button size="sm" onClick={onInitWorkspaceConfig}>
                 Initialize Config
               </Button>

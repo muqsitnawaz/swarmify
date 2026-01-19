@@ -88,3 +88,31 @@ Optional tmux integration for per-tab pane splits. Enable via `Agents: Enable Tm
 ## Swarm Integration
 
 MCP server for multi-agent orchestration. Configure per agent (Claude, Codex, Gemini) in Dashboard > Swarm. Tasks fetched from `swarm.vscode.ts`.
+
+## Session Activity Parsing
+
+Live activity extraction from agent session files. Shows what the agent is currently doing in Dashboard terminal cards (e.g., "Reading auth.ts", "Running npm test").
+
+**Architecture** (`src/core/session.activity.ts`):
+- Reads tail of session JSONL files (last 32-64KB)
+- Parses from end to find most recent tool activity
+- Agent-specific parsers handle different event formats
+
+**Activity types**: `reading`, `editing`, `running`, `thinking`, `waiting`, `completed`
+
+**Agent formats** (critical - each agent logs differently):
+
+| Agent | Tool Call Event | Tool Name Field | Args Field |
+|-------|-----------------|-----------------|------------|
+| Claude | `type: "assistant"` with `message.content[].type: "tool_use"` | `name` (Read, Edit, Bash, etc.) | `input` object |
+| Codex | `type: "response_item"` with `payload.type: "function_call"` | `payload.name` (shell_command, etc.) | `payload.arguments` (JSON string!) |
+| Gemini | `type: "tool_call"` | `tool_name` | `parameters` object |
+
+**Codex gotcha**: Arguments are a JSON STRING, not an object. Must `JSON.parse(payload.arguments)` to extract command/path.
+
+**Session file locations**:
+- Claude: `~/.claude/projects/{workspace}/*.jsonl`
+- Codex: `~/.codex/sessions/{year}/{month}/{day}/*.jsonl`
+- Gemini: `~/.gemini/sessions/*.jsonl`
+
+**Testing**: E2E tests in `tests/sessions.activity.test.ts` use real session files. Filter by 5KB minimum size and sort by mtime to find substantial recent sessions.

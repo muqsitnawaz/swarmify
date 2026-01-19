@@ -6,6 +6,45 @@ import { randomUUID } from 'crypto';
 import { resolveAgentsDir, type ModelOverrides } from './persistence.js';
 import { normalizeEvents, AgentType } from './parsers.js';
 
+/**
+ * Compute the Lowest Common Ancestor (LCA) of multiple file paths.
+ * Returns the deepest common directory shared by all paths.
+ * Returns null if paths is empty or paths have no common ancestor (different roots).
+ */
+export function computePathLCA(paths: string[]): string | null {
+  const validPaths = paths.filter(p => p && p.trim());
+  if (validPaths.length === 0) return null;
+  if (validPaths.length === 1) return validPaths[0];
+
+  // Normalize and split all paths into segments
+  const splitPaths = validPaths.map(p => {
+    const normalized = path.resolve(p);
+    // Split by path separator, filter empty segments
+    return normalized.split(path.sep).filter(seg => seg);
+  });
+
+  // Find minimum length
+  const minLen = Math.min(...splitPaths.map(p => p.length));
+
+  // Find common prefix
+  const commonSegments: string[] = [];
+  for (let i = 0; i < minLen; i++) {
+    const segment = splitPaths[0][i];
+    const allMatch = splitPaths.every(p => p[i] === segment);
+    if (allMatch) {
+      commonSegments.push(segment);
+    } else {
+      break;
+    }
+  }
+
+  if (commonSegments.length === 0) return null;
+
+  // Reconstruct path (add leading separator for absolute paths)
+  const lca = path.sep + commonSegments.join(path.sep);
+  return lca;
+}
+
 export enum AgentStatus {
   RUNNING = 'running',
   COMPLETED = 'completed',
@@ -230,6 +269,7 @@ export class AgentProcess {
   agentType: AgentType;
   prompt: string;
   cwd: string | null;
+  workspaceDir: string | null;
   mode: Mode = 'plan';
   pid: number | null = null;
   status: AgentStatus = AgentStatus.RUNNING;
@@ -252,13 +292,15 @@ export class AgentProcess {
     startedAt: Date = new Date(),
     completedAt: Date | null = null,
     baseDir: string | null = null,
-    parentSessionId: string | null = null
+    parentSessionId: string | null = null,
+    workspaceDir: string | null = null
   ) {
     this.agentId = agentId;
     this.taskName = taskName;
     this.agentType = agentType;
     this.prompt = prompt;
     this.cwd = cwd;
+    this.workspaceDir = workspaceDir;
     this.mode = mode;
     this.pid = pid;
     this.status = status;
@@ -297,6 +339,7 @@ export class AgentProcess {
       duration: this.duration(),
       mode: this.mode,
       parent_session_id: this.parentSessionId,
+      workspace_dir: this.workspaceDir,
     };
   }
 
@@ -402,6 +445,7 @@ export class AgentProcess {
       agent_type: this.agentType,
       prompt: this.prompt,
       cwd: this.cwd,
+      workspace_dir: this.workspaceDir,
       mode: this.mode,
       pid: this.pid,
       status: this.status,
@@ -440,7 +484,8 @@ export class AgentProcess {
         new Date(meta.started_at),
         meta.completed_at ? new Date(meta.completed_at) : null,
         baseDir,
-        meta.parent_session_id || null
+        meta.parent_session_id || null,
+        meta.workspace_dir || null
       );
       return agent;
     } catch {
@@ -612,7 +657,8 @@ export class AgentManager {
     cwd: string | null = null,
     mode: Mode | null = null,
     effort: EffortLevel = 'default',
-    parentSessionId: string | null = null
+    parentSessionId: string | null = null,
+    workspaceDir: string | null = null
   ): Promise<AgentProcess> {
     await this.initialize();
     const resolvedMode = resolveMode(mode, this.defaultMode);
@@ -660,7 +706,8 @@ export class AgentManager {
       new Date(),
       null,
       this.agentsDir,
-      parentSessionId
+      parentSessionId,
+      workspaceDir
     );
 
     const agentDir = await agent.getAgentDir();

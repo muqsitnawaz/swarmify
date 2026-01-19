@@ -111,6 +111,7 @@ describe('buildAgentTerminalEnv', () => {
     const env = buildAgentTerminalEnv('CC-123', 'session-abc');
     expect(env.AGENT_TERMINAL_ID).toBe('CC-123');
     expect(env.AGENT_SESSION_ID).toBe('session-abc');
+    expect(env.AGENT_WORKSPACE_DIR).toBe('');
     expect(env.DISABLE_AUTO_TITLE).toBe('true');
     expect(env.PROMPT_COMMAND).toBe('');
   });
@@ -119,5 +120,18 @@ describe('buildAgentTerminalEnv', () => {
     const env = buildAgentTerminalEnv('CC-123', null);
     expect(env.AGENT_TERMINAL_ID).toBe('CC-123');
     expect(env.AGENT_SESSION_ID).toBe('');
+    expect(env.AGENT_WORKSPACE_DIR).toBe('');
+  });
+
+  test('includes AGENT_WORKSPACE_DIR when provided', () => {
+    const env = buildAgentTerminalEnv('CC-123', 'session-abc', '/path/to/workspace');
+    expect(env.AGENT_TERMINAL_ID).toBe('CC-123');
+    expect(env.AGENT_SESSION_ID).toBe('session-abc');
+    expect(env.AGENT_WORKSPACE_DIR).toBe('/path/to/workspace');
+  });
+
+  test('uses empty AGENT_WORKSPACE_DIR when null', () => {
+    const env = buildAgentTerminalEnv('CC-123', null, null);
+    expect(env.AGENT_WORKSPACE_DIR).toBe('');
   });
 });

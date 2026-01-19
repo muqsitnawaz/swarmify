@@ -10,7 +10,7 @@ import {
   isSymlinkingEnabled,
 } from '../core/agentlinks';
 import { AgentsConfig } from '../core/swarmifyConfig';
-import { loadWorkspaceConfig, configExists } from './swarmifyConfig.vscode';
+import { loadWorkspaceConfig, hasEffectiveConfig } from './swarmifyConfig.vscode';
 
 const PROMPT_ACTION_CREATE = 'Create symlinks';
 const PROMPT_ACTION_NOT_NOW = 'Not now';
@@ -36,8 +36,8 @@ export async function maybePromptForAgentSymlinks(
   const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
   if (!workspaceFolder) return;
 
-  // If .agents exists, use config-driven symlinks instead
-  if (configExists(workspaceFolder)) {
+  // If any config exists, use config-driven symlinks instead
+  if (hasEffectiveConfig(workspaceFolder)) {
     return;
   }
 
@@ -176,7 +176,7 @@ export async function createSymlinksCodebaseWide(
 export async function ensureSymlinksOnWorkspaceOpen(
   workspaceFolder: vscode.WorkspaceFolder
 ): Promise<void> {
-  if (!configExists(workspaceFolder)) {
+  if (!hasEffectiveConfig(workspaceFolder)) {
     return;
   }
 

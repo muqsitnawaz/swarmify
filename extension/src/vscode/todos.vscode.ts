@@ -7,6 +7,9 @@ import * as settings from './settings.vscode';
 import type { AgentSettings } from '../core/settings';
 import * as terminals from './terminals.vscode';
 import { buildAgentTerminalEnv } from '../core/terminals';
+import * as prewarm from './prewarm.vscode';
+import { supportsPrewarming, buildResumeCommand } from '../core/prewarm';
+import { needsPrewarming, generateClaudeSessionId, buildClaudeOpenCommand } from '../core/prewarm.simple';
 
 const TODO_GLOB = '**/TODO.md';
 const TODO_EXCLUDE = '**/{node_modules,.git}/**';
@@ -74,9 +77,8 @@ export async function spawnSwarmForTodo(
     return;
   }
 
-  const prompt = swarmDef.key === 'codex'
-    ? `/prompts:swarm ${task}`
-    : `/swarm ${task}`;
+  // Format prompt without /swarm prefix, with planning context
+  const prompt = `Let's make a clear plan to tackle this Todo item: ${task}`;
 
   const agentConfig = getBuiltInByTitle(context.extensionPath, swarmDef.title);
   if (!agentConfig) {
@@ -84,8 +86,33 @@ export async function spawnSwarmForTodo(
     return;
   }
 
-  const defaultModel = settings.getDefaultModel(context, swarmDef.key as keyof AgentSettings['builtIn']);
-  const command = defaultModel ? `${agentConfig.command} --model ${defaultModel}` : agentConfig.command;
+  const agentKey = swarmDef.key as keyof AgentSettings['builtIn'];
+  const defaultModel = settings.getDefaultModel(context, agentKey);
+  const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
+
+  // Handle session ID for supported agent types (prewarming)
+  let sessionId: string | null = null;
+  let command = agentConfig.command || '';
+
+  if (supportsPrewarming(agentKey)) {
+    if (agentKey === 'claude') {
+      // Claude: Generate session ID at open time, no prewarming needed
+      sessionId = generateClaudeSessionId();
+      command = buildClaudeOpenCommand(sessionId);
+    } else if (needsPrewarming(agentKey)) {
+      // Codex/Gemini: Use prewarmed session from pool
+      const prewarmedSession = prewarm.acquireSession(context, agentKey, cwd);
+      if (prewarmedSession) {
+        sessionId = prewarmedSession.sessionId;
+        command = buildResumeCommand(prewarmedSession);
+      }
+    }
+  }
+
+  // Add default model if not already in command
+  if (defaultModel && command && !command.includes('--model')) {
+    command = `${command} --model ${defaultModel}`;
+  }
 
   const editorLocation: vscode.TerminalEditorLocationOptions = {
     viewColumn: vscode.ViewColumn.Active,
@@ -97,12 +124,19 @@ export async function spawnSwarmForTodo(
     iconPath: agentConfig.iconPath,
     location: editorLocation,
     name: agentConfig.title,
-    env: buildAgentTerminalEnv(terminalId, null),
+    env: buildAgentTerminalEnv(terminalId, sessionId, cwd),
     isTransient: true
   });
 
   const pid = await terminal.processId;
   terminals.register(terminal, terminalId, agentConfig, pid, context);
+
+  // Track session ID for prewarmed sessions
+  if (sessionId && supportsPrewarming(agentKey)) {
+    terminals.setSessionId(terminal, sessionId);
+    terminals.setAgentType(terminal, agentKey as terminals.SessionAgentType);
+    await prewarm.recordTerminalSession(context, terminalId, sessionId, agentKey, cwd);
+  }
 
   terminals.queueMessage(terminal, prompt);
   if (command) {

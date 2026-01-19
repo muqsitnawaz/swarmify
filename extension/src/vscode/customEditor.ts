@@ -134,12 +134,13 @@ The user selected the above text from a markdown file. Help them with whatever t
         preserveFocus: false
       };
 
+      const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
       const terminalId = terminals.nextId(agentConfig.prefix);
       const terminal = vscode.window.createTerminal({
         iconPath: agentConfig.iconPath,
         location: editorLocation,
         name: agentConfig.title,
-        env: buildAgentTerminalEnv(terminalId, null),
+        env: buildAgentTerminalEnv(terminalId, null, workspacePath),
         isTransient: true
       });
 
@@ -496,12 +497,13 @@ async function sendSwarmCommand(content: string, context: vscode.ExtensionContex
     preserveFocus: false
   };
 
+  const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   const terminalId = terminals.nextId(agentConfig.prefix);
   const terminal = vscode.window.createTerminal({
     iconPath: agentConfig.iconPath,
     location: editorLocation,
     name: agentConfig.title,
-    env: buildAgentTerminalEnv(terminalId, null),
+    env: buildAgentTerminalEnv(terminalId, null, workspacePath),
     isTransient: true
   });
 

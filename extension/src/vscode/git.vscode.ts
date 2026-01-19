@@ -1,19 +1,14 @@
 // Git commit generation - VS Code dependent functions
 
 import * as vscode from 'vscode';
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import {
   buildCommitPrompt,
   buildSystemPrompt,
   formatChangeStatus,
-  getApiEndpoint,
   parseIgnorePatterns,
   prepareCommitContext,
   shouldIgnoreFile
 } from '../core/git';
-
-const execAsync = promisify(exec);
 
 export async function generateCommitMessage(sourceControl?: { rootUri?: vscode.Uri }): Promise<void> {
   const gitExtension = vscode.extensions.getExtension('vscode.git')?.exports;
@@ -150,23 +145,62 @@ export async function generateCommitMessage(sourceControl?: { rootUri?: vscode.U
 
       const directoryMove = commitContext.moveInfo;
 
-      // Build prompt for claude -p with git diff stat, first ~50 lines of diff, and examples
+      // Build prompt for OpenAI with git diff stat, first ~50 lines of diff, and examples
       const diffLines = allDiffChanges?.split('\n') || [];
       const truncatedDiff = diffLines.slice(0, 50).join('\n');
       const diffSummary = diffLines.length > 50 ? `${truncatedDiff}\n\n... (${diffLines.length - 50} more lines)` : truncatedDiff;
 
       const promptText = buildCommitPrompt(allStatusChanges, diffSummary, commitMessageExamples);
 
-      // Escape single quotes in prompt for shell execution
-      const escapedPrompt = promptText.replace(/'/g, "'\\''");
+      // Get OpenAI API key from settings
+      const apiKey = config.get<string>('openaiApiKey', '');
+      if (!apiKey) {
+        throw new Error('OpenAI API key not configured. Set agents.openaiApiKey in VS Code settings.');
+      }
 
       let commitMessage: string;
       try {
-        // Allow read-only git commands to override user-level bans (add/commit/push done via VS Code Git API)
-        const { stdout } = await execAsync(`claude -p '${escapedPrompt}' --allowedTools 'Bash(git status:*),Bash(git diff:*),Bash(git log:*)'`);
-        commitMessage = stdout.trim();
+        const response = await fetch('https://api.openai.com/v1/responses', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            input: [
+              { role: 'developer', content: buildSystemPrompt(commitMessageExamples) },
+              { role: 'user', content: promptText }
+            ]
+          })
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`OpenAI API error (${response.status}): ${errorText}`);
+        }
+
+        interface OpenAIResponseContent {
+          type: string;
+          text?: string;
+        }
+        interface OpenAIResponseOutput {
+          content?: OpenAIResponseContent[];
+        }
+        const data = await response.json() as {
+          output?: OpenAIResponseOutput[];
+        };
+
+        // Responses API: output[0].content[] - find the output_text content item
+        const outputContent = data.output?.[0]?.content;
+        const textContent = outputContent?.find((c: OpenAIResponseContent) => c.type === 'output_text');
+        commitMessage = textContent?.text?.trim() || '';
+
+        if (!commitMessage) {
+          throw new Error('Empty response from OpenAI API');
+        }
       } catch (error) {
-        throw new Error(`Failed to generate commit message with claude: ${error instanceof Error ? error.message : String(error)}`);
+        throw new Error(`Failed to generate commit message: ${error instanceof Error ? error.message : String(error)}`);
       }
 
       repo.inputBox.value = commitMessage;
