@@ -377,6 +377,7 @@ export async function getSessionPathBySessionId(
 // --- Session preview info (last user message + message count) ---
 
 export interface SessionPreviewInfo {
+  firstUserMessage?: string;
   lastUserMessage?: string;
   messageCount: number;
 }
@@ -437,14 +438,17 @@ async function countNonEmptyLines(filePath: string): Promise<number> {
 }
 
 export async function getSessionPreviewInfo(filePath: string): Promise<SessionPreviewInfo> {
-  const [tail, messageCount] = await Promise.all([
+  const [head, tail, messageCount] = await Promise.all([
+    readFileHead(filePath, MAX_PREVIEW_BYTES),
     readFileTail(filePath, MAX_PREVIEW_BYTES),
     countNonEmptyLines(filePath)
   ]);
 
+  const firstUserMessage = extractPreviewLines(head);
   const lastUserMessage = extractLastUserMessage(tail);
 
   return {
+    firstUserMessage,
     lastUserMessage,
     messageCount
   };

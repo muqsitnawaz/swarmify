@@ -63,6 +63,22 @@ export interface StopResult {
   not_found: string[];
 }
 
+export interface TaskInfo {
+  task_name: string;
+  agent_count: number;
+  running: number;
+  completed: number;
+  failed: number;
+  stopped: number;
+  workspace_dir: string | null;
+  created_at: string;   // Earliest agent start time
+  modified_at: string;  // Latest agent activity (completion or current time if running)
+}
+
+export interface TasksResult {
+  tasks: TaskInfo[];
+}
+
 export async function handleSpawn(
   manager: AgentManager,
   taskName: string,
@@ -71,7 +87,8 @@ export async function handleSpawn(
   cwd: string | null,
   mode: string | null,
   effort: 'fast' | 'default' | 'detailed' | null = 'default',
-  parentSessionId: string | null = null
+  parentSessionId: string | null = null,
+  workspaceDir: string | null = null
 ): Promise<SpawnResult> {
   const defaultMode = manager.getDefaultMode();
   const resolvedMode = resolveMode(mode, defaultMode);
@@ -118,7 +135,8 @@ export async function handleSpawn(
       cwd,
       resolvedMode,
       resolvedEffort,
-      parentSessionId
+      parentSessionId,
+      workspaceDir
     );
 
     console.error(`[ralph] Spawned ${agentType} agent ${agent.agentId} for autonomous execution`);
@@ -141,7 +159,8 @@ export async function handleSpawn(
     cwd,
     resolvedMode,
     resolvedEffort,
-    parentSessionId
+    parentSessionId,
+    workspaceDir
   );
 
   console.error(`[spawn] Spawned ${agentType} agent ${agent.agentId} for task "${taskName}"`);
@@ -245,6 +264,81 @@ export async function handleStatus(
     summary: counts,
     cursor: maxTimestamp,  // Max timestamp across all agents
   };
+}
+
+export async function handleTasks(
+  manager: AgentManager,
+  limit: number = 10
+): Promise<TasksResult> {
+  console.error(`[tasks] Listing tasks (limit=${limit})...`);
+
+  const allAgents = await manager.listAll();
+
+  // Group agents by taskName
+  const taskMap = new Map<string, typeof allAgents>();
+  for (const agent of allAgents) {
+    const existing = taskMap.get(agent.taskName) || [];
+    existing.push(agent);
+    taskMap.set(agent.taskName, existing);
+  }
+
+  const tasks: TaskInfo[] = [];
+
+  for (const [taskName, agents] of taskMap) {
+    let running = 0, completed = 0, failed = 0, stopped = 0;
+    let earliestStart: Date | null = null;
+    let latestActivity: Date | null = null;
+    let workspaceDir: string | null = null;
+
+    for (const agent of agents) {
+      // Count by status
+      if (agent.status === AgentStatus.RUNNING) running++;
+      else if (agent.status === AgentStatus.COMPLETED) completed++;
+      else if (agent.status === AgentStatus.FAILED) failed++;
+      else if (agent.status === AgentStatus.STOPPED) stopped++;
+
+      // Track earliest start (created_at)
+      if (!earliestStart || agent.startedAt < earliestStart) {
+        earliestStart = agent.startedAt;
+      }
+
+      // Track latest activity (modified_at)
+      // For running agents, use current time; for others use completedAt or startedAt
+      const activityTime = agent.status === AgentStatus.RUNNING
+        ? new Date()
+        : (agent.completedAt || agent.startedAt);
+      if (!latestActivity || activityTime > latestActivity) {
+        latestActivity = activityTime;
+      }
+
+      // Use first non-null workspaceDir found
+      if (!workspaceDir && agent.workspaceDir) {
+        workspaceDir = agent.workspaceDir;
+      }
+    }
+
+    tasks.push({
+      task_name: taskName,
+      agent_count: agents.length,
+      running,
+      completed,
+      failed,
+      stopped,
+      workspace_dir: workspaceDir,
+      created_at: earliestStart?.toISOString() || new Date().toISOString(),
+      modified_at: latestActivity?.toISOString() || new Date().toISOString(),
+    });
+  }
+
+  // Sort by modified_at descending (most recent first)
+  tasks.sort((a, b) => new Date(b.modified_at).getTime() - new Date(a.modified_at).getTime());
+
+  // Apply limit
+  const limitedTasks = tasks.slice(0, limit);
+
+  console.error(`[tasks] Returning ${limitedTasks.length}/${tasks.length} tasks`);
+
+  return { tasks: limitedTasks };
 }
 
 export async function handleStop(

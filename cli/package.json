@@ -1,10 +1,11 @@
 {
   "name": "@swarmify/cli",
   "version": "0.1.0",
-  "description": "CLI tool for syncing skills across AI coding agents (Claude, Codex, Gemini, Cursor)",
+  "description": "ag: package manager for AI coding agent skills (Claude, Codex, Gemini, Cursor)",
   "main": "dist/index.js",
   "bin": {
-    "swarm-cli": "dist/index.js"
+    "agents": "dist/index.js",
+    "ag": "dist/index.js"
   },
   "type": "module",
   "scripts": {
@@ -15,6 +16,10 @@
     "test:watch": "vitest"
   },
   "keywords": [
+    "ag",
+    "agents",
+    "package-manager",
+    "mcp",
     "claude",
     "codex",
     "gemini",

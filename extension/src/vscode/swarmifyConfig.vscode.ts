@@ -1,6 +1,7 @@
 // VS Code integration for .agents config
 
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import {
@@ -8,6 +9,8 @@ import {
   AgentsConfig,
   getDefaultConfig,
   parseAgentsConfig,
+  parseAgentsConfigOverrides,
+  mergeAgentsConfig,
   serializeAgentsConfig,
   // Legacy exports for backward compat
   SwarmifyConfig,
@@ -25,6 +28,10 @@ export function getConfigPath(workspaceFolder: vscode.WorkspaceFolder): string {
   return path.join(workspaceFolder.uri.fsPath, AGENTS_CONFIG_FILENAME);
 }
 
+export function getUserConfigPath(): string {
+  return path.join(os.homedir(), AGENTS_CONFIG_FILENAME);
+}
+
 export function configExists(workspaceFolder: vscode.WorkspaceFolder): boolean {
   const configPath = getConfigPath(workspaceFolder);
   try {
@@ -32,6 +39,30 @@ export function configExists(workspaceFolder: vscode.WorkspaceFolder): boolean {
     return true;
   } catch {
     return false;
+  }
+}
+
+export function userConfigExists(): boolean {
+  const configPath = getUserConfigPath();
+  try {
+    fs.accessSync(configPath, fs.constants.R_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function hasEffectiveConfig(workspaceFolder: vscode.WorkspaceFolder): boolean {
+  return configExists(workspaceFolder) || userConfigExists();
+}
+
+export function loadUserConfig(): AgentsConfig {
+  const configPath = getUserConfigPath();
+  try {
+    const content = fs.readFileSync(configPath, 'utf-8');
+    return parseAgentsConfig(content);
+  } catch {
+    return getDefaultConfig();
   }
 }
 
@@ -46,17 +77,21 @@ export async function loadWorkspaceConfig(
     return cached;
   }
 
+  const userConfig = loadUserConfig();
   const configPath = getConfigPath(workspaceFolder);
 
   try {
     const content = fs.readFileSync(configPath, 'utf-8');
-    const config = parseAgentsConfig(content);
+    const overrides = parseAgentsConfigOverrides(content);
+    const config = overrides
+      ? mergeAgentsConfig(userConfig, overrides, { contextMerge: 'union' })
+      : userConfig;
     configCache.set(cacheKey, config);
     return config;
   } catch {
-    // File doesn't exist or is unreadable, return defaults
-    const defaults = getDefaultConfig();
-    return defaults;
+    // File doesn't exist or is unreadable, return user config
+    configCache.set(cacheKey, userConfig);
+    return userConfig;
   }
 }
 
@@ -118,6 +153,26 @@ export function watchConfigFile(
   });
 
   context.subscriptions.push(watcher);
+}
+
+export function watchUserConfig(
+  context: vscode.ExtensionContext,
+  onConfigChange: () => void
+): void {
+  const homeDir = os.homedir();
+
+  try {
+    const watcher = fs.watch(homeDir, (eventType, filename) => {
+      if (filename === AGENTS_CONFIG_FILENAME) {
+        clearConfigCache();
+        onConfigChange();
+      }
+    });
+
+    context.subscriptions.push({ dispose: () => watcher.close() });
+  } catch (error) {
+    console.error('[agents] Failed to watch user config:', error);
+  }
 }
 
 export async function initWorkspaceConfig(

@@ -8,7 +8,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { tmpdir } from 'os';
 import { AgentManager, AgentProcess, AgentStatus, checkCliAvailable } from '../src/agents.js';
-import { handleSpawn, handleStatus, handleStop } from '../src/api.js';
+import { handleSpawn, handleStatus, handleStop, handleTasks } from '../src/api.js';
 
 describe('API Integration Tests', () => {
   let manager: AgentManager;
@@ -501,6 +501,174 @@ describe('API Integration Tests', () => {
       console.log(`  - Cursor: ${cursorTaskDir}`);
       console.log(`  - Claude: ${claudeTaskDir}`);
     }, 600000);
+  });
+
+  describe('handleTasks', () => {
+    test('should return empty list when no tasks exist', async () => {
+      console.log('\n--- TEST: tasks with no agents ---');
+
+      const result = await handleTasks(manager);
+
+      console.log('Result:', JSON.stringify(result, null, 2));
+
+      expect(result.tasks).toBeDefined();
+      expect(result.tasks.length).toBe(0);
+    });
+
+    test('should return tasks grouped by task name', async () => {
+      console.log('\n--- TEST: tasks grouped by name ---');
+
+      // Add agents to different tasks
+      const agent1 = new AgentProcess('task-agent-1', 'feature-a', 'codex', 'Work', '/a/b/c', 'plan', null, AgentStatus.RUNNING, new Date('2025-01-01T10:00:00Z'));
+      const agent2 = new AgentProcess('task-agent-2', 'feature-a', 'cursor', 'Work', '/a/b/d', 'plan', null, AgentStatus.COMPLETED, new Date('2025-01-01T10:05:00Z'), new Date('2025-01-01T10:10:00Z'));
+      const agent3 = new AgentProcess('task-agent-3', 'feature-b', 'gemini', 'Work', '/x/y/z', 'plan', null, AgentStatus.RUNNING, new Date('2025-01-01T11:00:00Z'));
+      manager['agents'].set('task-agent-1', agent1);
+      manager['agents'].set('task-agent-2', agent2);
+      manager['agents'].set('task-agent-3', agent3);
+
+      const result = await handleTasks(manager);
+
+      console.log('Result:', JSON.stringify(result, null, 2));
+
+      expect(result.tasks.length).toBe(2);
+
+      // Find the tasks
+      const featureA = result.tasks.find(t => t.task_name === 'feature-a');
+      const featureB = result.tasks.find(t => t.task_name === 'feature-b');
+
+      expect(featureA).toBeDefined();
+      expect(featureA!.agent_count).toBe(2);
+      expect(featureA!.running).toBe(1);
+      expect(featureA!.completed).toBe(1);
+
+      expect(featureB).toBeDefined();
+      expect(featureB!.agent_count).toBe(1);
+      expect(featureB!.running).toBe(1);
+    });
+
+    test('should compute created_at as earliest agent start', async () => {
+      console.log('\n--- TEST: tasks created_at timestamp ---');
+
+      const agent1 = new AgentProcess('time-1', 'time-task', 'codex', 'Work', null, 'plan', null, AgentStatus.COMPLETED, new Date('2025-01-01T10:00:00Z'), new Date('2025-01-01T10:05:00Z'));
+      const agent2 = new AgentProcess('time-2', 'time-task', 'cursor', 'Work', null, 'plan', null, AgentStatus.RUNNING, new Date('2025-01-01T09:00:00Z')); // Earlier start
+      manager['agents'].set('time-1', agent1);
+      manager['agents'].set('time-2', agent2);
+
+      const result = await handleTasks(manager);
+
+      console.log('Result:', JSON.stringify(result, null, 2));
+
+      const task = result.tasks.find(t => t.task_name === 'time-task');
+      expect(task).toBeDefined();
+      // created_at should be the earlier time
+      expect(task!.created_at).toBe('2025-01-01T09:00:00.000Z');
+    });
+
+    test('should compute modified_at as latest activity', async () => {
+      console.log('\n--- TEST: tasks modified_at timestamp ---');
+
+      const agent1 = new AgentProcess('mod-1', 'mod-task', 'codex', 'Work', null, 'plan', null, AgentStatus.COMPLETED, new Date('2025-01-01T10:00:00Z'), new Date('2025-01-01T10:30:00Z'));
+      const agent2 = new AgentProcess('mod-2', 'mod-task', 'cursor', 'Work', null, 'plan', null, AgentStatus.COMPLETED, new Date('2025-01-01T10:05:00Z'), new Date('2025-01-01T10:15:00Z'));
+      manager['agents'].set('mod-1', agent1);
+      manager['agents'].set('mod-2', agent2);
+
+      const result = await handleTasks(manager);
+
+      console.log('Result:', JSON.stringify(result, null, 2));
+
+      const task = result.tasks.find(t => t.task_name === 'mod-task');
+      expect(task).toBeDefined();
+      // modified_at should be the later completion time
+      expect(task!.modified_at).toBe('2025-01-01T10:30:00.000Z');
+    });
+
+    test('should use current time for modified_at when agents are running', async () => {
+      console.log('\n--- TEST: tasks modified_at for running agents ---');
+
+      const pastTime = new Date('2025-01-01T10:00:00Z');
+      const agent = new AgentProcess('running-mod', 'running-mod-task', 'codex', 'Work', null, 'plan', null, AgentStatus.RUNNING, pastTime);
+      manager['agents'].set('running-mod', agent);
+
+      const beforeCall = new Date();
+      const result = await handleTasks(manager);
+      const afterCall = new Date();
+
+      console.log('Result:', JSON.stringify(result, null, 2));
+
+      const task = result.tasks.find(t => t.task_name === 'running-mod-task');
+      expect(task).toBeDefined();
+
+      const modifiedAt = new Date(task!.modified_at);
+      // modified_at should be approximately now (within the call window)
+      expect(modifiedAt.getTime()).toBeGreaterThanOrEqual(beforeCall.getTime());
+      expect(modifiedAt.getTime()).toBeLessThanOrEqual(afterCall.getTime());
+    });
+
+    test('should include workspace_dir from agents', async () => {
+      console.log('\n--- TEST: tasks workspace_dir ---');
+
+      const agent = new AgentProcess(
+        'ws-agent',
+        'ws-task',
+        'codex',
+        'Work',
+        '/Users/test/monorepo/packages/a',
+        'plan',
+        null,
+        AgentStatus.RUNNING,
+        new Date(),
+        null,
+        null,
+        null,
+        '/Users/test/monorepo'
+      );
+      manager['agents'].set('ws-agent', agent);
+
+      const result = await handleTasks(manager);
+
+      console.log('Result:', JSON.stringify(result, null, 2));
+
+      const task = result.tasks.find(t => t.task_name === 'ws-task');
+      expect(task).toBeDefined();
+      expect(task!.workspace_dir).toBe('/Users/test/monorepo');
+    });
+
+    test('should sort tasks by modified_at descending', async () => {
+      console.log('\n--- TEST: tasks sorted by modified_at ---');
+
+      const agent1 = new AgentProcess('sort-1', 'old-task', 'codex', 'Work', null, 'plan', null, AgentStatus.COMPLETED, new Date('2025-01-01T08:00:00Z'), new Date('2025-01-01T08:30:00Z'));
+      const agent2 = new AgentProcess('sort-2', 'new-task', 'cursor', 'Work', null, 'plan', null, AgentStatus.COMPLETED, new Date('2025-01-01T10:00:00Z'), new Date('2025-01-01T10:30:00Z'));
+      const agent3 = new AgentProcess('sort-3', 'mid-task', 'gemini', 'Work', null, 'plan', null, AgentStatus.COMPLETED, new Date('2025-01-01T09:00:00Z'), new Date('2025-01-01T09:30:00Z'));
+      manager['agents'].set('sort-1', agent1);
+      manager['agents'].set('sort-2', agent2);
+      manager['agents'].set('sort-3', agent3);
+
+      const result = await handleTasks(manager);
+
+      console.log('Result:', JSON.stringify(result, null, 2));
+
+      expect(result.tasks.length).toBe(3);
+      // Should be sorted: new-task (10:30), mid-task (9:30), old-task (8:30)
+      expect(result.tasks[0].task_name).toBe('new-task');
+      expect(result.tasks[1].task_name).toBe('mid-task');
+      expect(result.tasks[2].task_name).toBe('old-task');
+    });
+
+    test('should respect limit parameter', async () => {
+      console.log('\n--- TEST: tasks with limit ---');
+
+      // Add 5 tasks
+      for (let i = 0; i < 5; i++) {
+        const agent = new AgentProcess(`limit-${i}`, `limit-task-${i}`, 'codex', 'Work', null, 'plan', null, AgentStatus.COMPLETED, new Date(`2025-01-0${i + 1}T10:00:00Z`), new Date(`2025-01-0${i + 1}T10:30:00Z`));
+        manager['agents'].set(`limit-${i}`, agent);
+      }
+
+      const result = await handleTasks(manager, 3);
+
+      console.log('Result:', JSON.stringify(result, null, 2));
+
+      expect(result.tasks.length).toBe(3);
+    });
   });
 
   describe('Ralph Mode Spawn', () => {

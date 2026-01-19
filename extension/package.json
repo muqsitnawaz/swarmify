@@ -3,7 +3,7 @@
   "displayName": "Agents",
   "publisher": "swarmify",
   "description": "Manage multiple Claude Code, Codex, Gemini, and Cursor terminal agents in the editor",
-  "version": "0.9.160",
+  "version": "0.9.168",
   "license": "MIT",
   "author": "Muqsit Nawaz <dev@muqsitnawaz.com>",
   "icon": "assets/agents.png",
@@ -251,6 +251,11 @@
           "type": "boolean",
           "default": false,
           "description": "Disable auto-commit. When enabled, Autogit will only stage changes and generate a commit message, but not commit or push."
+        },
+        "agents.openaiApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "OpenAI API key for commit message generation (uses gpt-4o-mini)"
         }
       }
     },

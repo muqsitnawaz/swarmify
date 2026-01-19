@@ -135,8 +135,8 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 .toggle-switch {
-  width: 51px;
-  height: 27px;
+  width: 44px;
+  height: 22px;
   padding: 2px;
   border-radius: 999px;
   border: 1px solid var(--border);
@@ -162,8 +162,8 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 .toggle-knob {
-  width: 23px;
-  height: 23px;
+  width: 18px;
+  height: 18px;
   border-radius: 999px;
   background: #ffffff;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
@@ -172,7 +172,7 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 .toggle-switch[data-state="on"] .toggle-knob {
-  transform: translateX(24px);
+  transform: translateX(22px);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -190,5 +190,82 @@ input[type="number"]::-webkit-inner-spin-button {
 
   .toggle-knob {
     background: #f6f7fb;
+  }
+}
+
+/* Responsive layout for narrow sidebars */
+@media (max-width: 350px) {
+  body {
+    padding: 16px 12px;
+  }
+
+  #root {
+    max-width: 100%;
+  }
+
+  /* Compact tab bar */
+  .tab-bar {
+    gap: 2px;
+  }
+
+  .tab-bar button {
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+
+  /* Dense agent pills */
+  .agent-pill {
+    padding: 6px 10px;
+    gap: 6px;
+  }
+
+  .agent-pill img {
+    width: 16px;
+    height: 16px;
+  }
+
+  .agent-pill span {
+    font-size: 12px;
+  }
+
+  /* Compact terminal cards */
+  .terminal-card {
+    padding: 10px 12px;
+  }
+
+  .terminal-card .header {
+    font-size: 12px;
+  }
+
+  .terminal-card .activity {
+    font-size: 11px;
+  }
+
+  /* Compact task rows */
+  .task-row {
+    padding: 8px 10px;
+    gap: 8px;
+  }
+
+  .task-row .badge {
+    font-size: 9px;
+    padding: 2px 6px;
+  }
+
+  /* Hide non-essential elements in narrow mode */
+  .hide-narrow {
+    display: none;
+  }
+
+  /* Stack settings sections */
+  .settings-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .settings-row > select,
+  .settings-row > input {
+    width: 100%;
   }
 }

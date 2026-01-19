@@ -1,6 +1,9 @@
 # @swarmify/cli
 
-CLI tool for syncing skills across AI coding agents (Claude, Codex, Gemini, Cursor).
+Primary binary: `ag` (alias: `agents`)
+
+Package manager for AI coding agent skills and MCP servers
+(Claude, Codex, Gemini, Cursor).
 
 ## Problem
 
@@ -32,7 +35,8 @@ npx @swarmify/cli status
 ### Initialize skills directory
 
 ```bash
-swarm-cli init
+ag init
+agents init
 ```
 
 Creates `~/.swarmify/skills/` with templates for all available skills.
@@ -40,7 +44,8 @@ Creates `~/.swarmify/skills/` with templates for all available skills.
 ### Check status
 
 ```bash
-swarm-cli status
+ag status
+agents status
 ```
 
 Shows which skills are installed for each agent:
@@ -58,7 +63,8 @@ plan          builtin     installed   installed   -           yes
 ### Sync skills to all agents
 
 ```bash
-swarm-cli sync
+ag sync
+agents sync
 ```
 
 Copies skills from `~/.swarmify/skills/` to each agent's directory.
@@ -71,13 +77,15 @@ Options:
 ### List available skills
 
 ```bash
-swarm-cli list
+ag list
+agents list
 ```
 
 ### Show agent CLI status
 
 ```bash
-swarm-cli agents
+ag agents
+agents agents
 ```
 
 Shows which agent CLIs are installed and configured.
@@ -85,10 +93,43 @@ Shows which agent CLIs are installed and configured.
 ### Show paths
 
 ```bash
-swarm-cli paths
+ag paths
+agents paths
 ```
 
 Shows all relevant directory paths.
+
+### MCP install
+
+Register Swarm MCP with installed agent CLIs:
+
+```bash
+ag mcp add
+```
+
+Target a specific agent:
+
+```bash
+ag mcp add --agent claude
+```
+
+Change Claude MCP scope (default is user):
+
+```bash
+ag mcp add --agent claude --scope project
+```
+
+Check MCP status:
+
+```bash
+ag mcp status
+```
+
+List MCP servers:
+
+```bash
+ag mcp list
+```
 
 ## Skill Format
 
@@ -110,7 +151,7 @@ The CLI automatically converts to TOML format for Gemini.
 
 1. Create a new `.md` file in `~/.swarmify/skills/`
 2. Add the skill definition to `src/skills.ts` (for agent support matrix)
-3. Run `swarm-cli sync`
+3. Run `ag sync`
 
 ## Development
 

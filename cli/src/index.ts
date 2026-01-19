@@ -1,19 +1,23 @@
 #!/usr/bin/env node
 
 /**
- * Swarm CLI - Sync skills across AI coding agents
+ * ag - Package manager for AI coding agent skills and MCP servers
  *
  * Usage:
- *   swarm-cli status              Show status of all skills across agents
- *   swarm-cli sync [--skill X]    Sync skills to all agents
- *   swarm-cli init                Initialize canonical skills directory
- *   swarm-cli agents              Show agent detection status
+ *   ag status              Show status of all skills across agents
+ *   ag sync [--skill X]    Sync skills to all agents
+ *   ag init                Initialize canonical skills directory
+ *   ag agents              Show agent detection status
+ *   ag mcp add             Register Swarm MCP with installed agent CLIs
+ *   ag mcp status          Show MCP registration status
+ *   ag mcp list            List MCP servers per agent
  */
 
 import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
 import * as fs from 'fs';
+import { execSync } from 'child_process';
 
 import {
   ALL_AGENTS,
@@ -40,10 +44,13 @@ import {
 } from './skills.js';
 
 const program = new Command();
+const SWARM_MCP_NAME = 'Swarm';
+const SWARM_MCP_CMD = 'npx -y @swarmify/agents-mcp';
+const MCP_AGENTS: AgentCli[] = ['claude', 'codex', 'gemini'];
 
 program
-  .name('swarm-cli')
-  .description('Sync skills across AI coding agents (Claude, Codex, Gemini, Cursor)')
+  .name('ag')
+  .description('Manage skills and MCP servers across AI coding agents')
   .version('0.1.0');
 
 // ============================================================================
@@ -156,6 +163,119 @@ program
     console.log(`    Skills dir: ${cursorSkillsDirExists ? chalk.green(cursorSkillsDir) : chalk.gray('not created')}`);
     console.log();
   });
+
+// ============================================================================
+// MCP COMMANDS
+// ============================================================================
+
+const mcpCommand = program
+  .command('mcp')
+  .description('Manage MCP servers for agent CLIs');
+
+mcpCommand.addCommand(
+  new Command('add')
+    .argument('[name]', 'MCP server name', SWARM_MCP_NAME)
+    .description('Register an MCP server with installed agent CLIs')
+    .option('-a, --agent <name>', 'Target agent (claude, codex, gemini, all)', 'all')
+    .option('--scope <scope>', 'Claude MCP scope (user or project)', 'user')
+    .option('--cmd <command>', 'Command to register', SWARM_MCP_CMD)
+    .action((name, options) => {
+      const agentOpt = String(options.agent || 'all').toLowerCase();
+      const targetAgents = agentOpt === 'all'
+        ? MCP_AGENTS.filter(isCliAvailable)
+        : MCP_AGENTS.filter(a => a === agentOpt);
+
+      if (agentOpt !== 'all' && targetAgents.length === 0) {
+        console.log(chalk.red(`Unknown or unsupported agent: ${agentOpt}`));
+        process.exitCode = 1;
+        return;
+      }
+
+      if (targetAgents.length === 0) {
+        console.log(chalk.yellow('No supported agent CLIs detected.'));
+        console.log('Install a CLI first: claude, codex, or gemini.');
+        return;
+      }
+
+      const results: string[] = [];
+      for (const agent of targetAgents) {
+        if (!isCliAvailable(agent)) {
+          results.push(chalk.gray(`  ${agent}: CLI not found (skipped)`));
+          continue;
+        }
+
+        try {
+          if (agent === 'claude') {
+            execSync(`claude mcp add --scope ${options.scope} ${name} ${options.cmd}`, {
+              stdio: 'pipe'
+            });
+          } else if (agent === 'codex') {
+            execSync(`codex mcp add ${name} ${options.cmd}`, { stdio: 'pipe' });
+          } else if (agent === 'gemini') {
+            execSync(`gemini mcp add ${name} ${options.cmd}`, { stdio: 'pipe' });
+          }
+
+          results.push(chalk.green(`  ${agent}: MCP registered`));
+        } catch (error) {
+          const err = error as Error;
+          results.push(chalk.red(`  ${agent}: failed (${err.message})`));
+        }
+      }
+
+      console.log(chalk.bold('\nMCP Registration\n'));
+      for (const line of results) {
+        console.log(line);
+      }
+      console.log();
+    })
+);
+
+mcpCommand.addCommand(
+  new Command('status')
+    .description('Show MCP registration status for installed agent CLIs')
+    .action(() => {
+      console.log(chalk.bold('\nMCP Status\n'));
+
+      for (const agent of MCP_AGENTS) {
+        const available = isCliAvailable(agent);
+        const registered = available ? isMcpRegistered(agent) : false;
+
+        console.log(chalk.bold(`  ${agent}`));
+        console.log(`    CLI:  ${available ? chalk.green('installed') : chalk.red('not found')}`);
+        console.log(`    MCP:  ${registered ? chalk.green('registered') : chalk.yellow('not registered')}`);
+        console.log();
+      }
+    })
+);
+
+mcpCommand.addCommand(
+  new Command('list')
+    .description('List MCP servers for installed agent CLIs')
+    .action(() => {
+      console.log(chalk.bold('\nMCP Servers\n'));
+
+      for (const agent of MCP_AGENTS) {
+        if (!isCliAvailable(agent)) {
+          console.log(chalk.bold(`  ${agent}`));
+          console.log(`    ${chalk.red('CLI not found')}`);
+          console.log();
+          continue;
+        }
+
+        try {
+          const output = execSync(`${agent} mcp list`, { stdio: 'pipe', encoding: 'utf-8' });
+          console.log(chalk.bold(`  ${agent}`));
+          console.log(output.trim() ? output.trim() : chalk.gray('  (no MCP servers)'));
+          console.log();
+        } catch (error) {
+          const err = error as Error;
+          console.log(chalk.bold(`  ${agent}`));
+          console.log(chalk.red(`    Failed to list MCP servers (${err.message})`));
+          console.log();
+        }
+      }
+    })
+);
 
 // ============================================================================
 // SYNC COMMAND
@@ -623,7 +743,7 @@ This skill is for generating prompts for visual assets like icons, illustrations
     console.log();
     console.log(`  ${chalk.green(created.toString())} files created, ${chalk.gray(skipped.toString())} skipped`);
     console.log();
-    console.log('  Run `swarm-cli sync` to install these skills to your agents.');
+    console.log('  Run `agents sync` to install these skills to your agents.');
     console.log();
   });
 

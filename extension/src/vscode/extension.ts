@@ -22,6 +22,7 @@ import {
   getActiveWorkspaceFolder,
   loadWorkspaceConfig,
   watchConfigFile,
+  watchUserConfig,
 } from './swarmifyConfig.vscode';
 import {
   CLAUDE_TITLE,
@@ -36,6 +37,8 @@ import {
   sanitizeLabel,
   formatTerminalTitle,
   getSessionChunk,
+  formatRelativeTime,
+  truncateText,
   TerminalIdentificationOptions
 } from '../core/utils';
 import * as path from 'path';
@@ -73,11 +76,6 @@ function savePrompts(prompts: PromptEntry[]): void {
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-}
-
-function truncateText(text: string, maxLen: number): string {
-  if (text.length <= maxLen) return text;
-  return text.substring(0, maxLen - 3) + '...';
 }
 
 function getDisplayPrefs(context: vscode.ExtensionContext) {
@@ -461,6 +459,15 @@ export async function activate(context: vscode.ExtensionContext) {
     ensureSymlinksOnWorkspaceOpen(workspaceFolder).catch(err => {
       console.error('[agents] Error ensuring symlinks on config change:', err);
     });
+  });
+
+  // Watch for user-level .agents config changes
+  watchUserConfig(context, () => {
+    for (const folder of vscode.workspace.workspaceFolders || []) {
+      ensureSymlinksOnWorkspaceOpen(folder).catch(err => {
+        console.error('[agents] Error ensuring symlinks on user config change:', err);
+      });
+    }
   });
 
   // Register URI handler for notification callbacks
@@ -1021,7 +1028,7 @@ async function openSingleAgent(
       command,
       {
         iconPath: agentConfig.iconPath as vscode.Uri,
-        env: buildAgentTerminalEnv(terminalId, sessionId),
+        env: buildAgentTerminalEnv(terminalId, sessionId, cwd),
         viewColumn: vscode.ViewColumn.Active
       }
     );
@@ -1052,7 +1059,7 @@ async function openSingleAgent(
     iconPath: agentConfig.iconPath,
     location: editorLocation,
     name: title,
-    env: buildAgentTerminalEnv(terminalId, sessionId),
+    env: buildAgentTerminalEnv(terminalId, sessionId, cwd),
     isTransient: true
   });
 
@@ -1112,19 +1119,21 @@ async function goToTerminal(context: vscode.ExtensionContext) {
 
   // Filter to agent terminals and build quick pick items
   const items: TerminalQuickPickItem[] = [];
-  const previewPromises: Array<{ itemIndex: number; promise: Promise<{ lastUserMessage?: string; messageCount: number } | null> }> = [];
+  const previewPromises: Array<{ itemIndex: number; promise: Promise<{ firstUserMessage?: string; lastUserMessage?: string; messageCount: number } | null> }> = [];
 
   for (const entry of allEntries) {
     // Skip non-agent terminals
     if (!entry.agentConfig) continue;
 
     const expandedName = getExpandedAgentName(entry.agentConfig.prefix);
-    const label = entry.label || entry.autoLabel;
+    const sessionChunk = entry.sessionId ? `[${entry.sessionId.slice(0, 8)}]` : '';
+    const timeAgo = formatRelativeTime(entry.createdAt);
+    const labelParts = [expandedName, sessionChunk, timeAgo].filter(Boolean);
     const itemIndex = items.length;
 
     items.push({
-      label: expandedName,
-      description: label || '',
+      label: labelParts.join(' '),
+      description: '',
       terminal: entry.terminal
     });
 
@@ -1154,10 +1163,9 @@ async function goToTerminal(context: vscode.ExtensionContext) {
     if (info) {
       const idx = previewPromises[i].itemIndex;
       const parts: string[] = [];
-      if (items[idx].description) parts.push(items[idx].description!);
-      if (info.lastUserMessage) parts.push(info.lastUserMessage);
+      if (info.firstUserMessage) parts.push(truncateText(info.firstUserMessage, 40));
       if (info.messageCount > 0) parts.push(`(${info.messageCount})`);
-      items[idx].description = parts.join(' - ');
+      items[idx].description = parts.join(' ');
     }
   }
 
@@ -1181,13 +1189,14 @@ async function openSingleAgentWithQueue(
     preserveFocus: false
   };
 
+  const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   const terminalId = terminals.nextId(agentConfig.prefix);
   const title = buildTerminalTitle(agentConfig.title, undefined, context, null);
   const terminal = vscode.window.createTerminal({
     iconPath: agentConfig.iconPath,
     location: editorLocation,
     name: title,
-    env: buildAgentTerminalEnv(terminalId, null),
+    env: buildAgentTerminalEnv(terminalId, null, workspacePath),
     isTransient: true
   });
 
@@ -1264,7 +1273,7 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
         iconPath: agent.iconPath,
         location: editorLocation,
         name: title,
-        env: buildAgentTerminalEnv(terminalId, sessionId),
+        env: buildAgentTerminalEnv(terminalId, sessionId, cwd),
         isTransient: true
       });
 
@@ -1593,7 +1602,7 @@ async function restoreAgentTerminals(context: vscode.ExtensionContext): Promise<
       iconPath: agentConfig.iconPath,
       location: { viewColumn: vscode.ViewColumn.Active },
       name: title,
-      env: buildAgentTerminalEnv(session.terminalId, session.sessionId || null),
+      env: buildAgentTerminalEnv(session.terminalId, session.sessionId || null, workspacePath),
       isTransient: true
     });
 

@@ -16,18 +16,19 @@ export function escapeHtml(value: string): string {
 }
 
 // Create custom renderer for todo markdown
+// Note: marked v5+ passes token objects to renderer methods, not separate params
 const todoMarkdownRenderer = new marked.Renderer()
 
-todoMarkdownRenderer.link = (href, title, text) => {
+todoMarkdownRenderer.link = ({ href, title, text }) => {
   const safeHref = href || '#'
   const safeTitle = title ? ` title="${title}"` : ''
   return `<a href="${safeHref}"${safeTitle} target="_blank" rel="noreferrer">${text}</a>`
 }
 
-todoMarkdownRenderer.code = (code, infostring) => {
-  const lang = (infostring || '').trim()
-  const className = lang ? ` class="todo-md-code language-${lang}"` : ' class="todo-md-code"'
-  return `<pre class="todo-md-pre"><code${className}>${escapeHtml(code)}</code></pre>`
+todoMarkdownRenderer.code = ({ text, lang }) => {
+  const language = (lang || '').trim()
+  const className = language ? ` class="todo-md-code language-${language}"` : ' class="todo-md-code"'
+  return `<pre class="todo-md-pre"><code${className}>${escapeHtml(text)}</code></pre>`
 }
 
 // Configure marked options

@@ -23,6 +23,12 @@ export interface AgentsConfig {
   tasks: TasksConfig;
 }
 
+export interface AgentsConfigOverrides {
+  context?: ContextMapping[];
+  agents?: AgentId[];
+  tasks?: Partial<TasksConfig>;
+}
+
 const VALID_AGENT_IDS: AgentId[] = ['claude', 'codex', 'gemini', 'cursor', 'opencode'];
 
 export function getDefaultConfig(): AgentsConfig {
@@ -45,21 +51,21 @@ export function isValidAgentId(value: string): value is AgentId {
   return VALID_AGENT_IDS.includes(value as AgentId);
 }
 
-export function parseAgentsConfig(yamlContent: string): AgentsConfig {
-  const defaults = getDefaultConfig();
+export type ContextMergeStrategy = 'replace' | 'union';
 
+export function parseAgentsConfigOverrides(yamlContent: string): AgentsConfigOverrides | null {
   if (!yamlContent.trim()) {
-    return defaults;
+    return null;
   }
 
   const parsed = YAML.parse(yamlContent) as Record<string, unknown>;
   if (!parsed || typeof parsed !== 'object') {
-    return defaults;
+    return null;
   }
 
-  const config: AgentsConfig = { ...defaults };
+  const overrides: AgentsConfigOverrides = {};
 
-  // Parse context config
+  // Parse context overrides
   if (Array.isArray(parsed.context)) {
     const validContext: ContextMapping[] = [];
     for (const item of parsed.context) {
@@ -78,33 +84,85 @@ export function parseAgentsConfig(yamlContent: string): AgentsConfig {
         }
       }
     }
-    config.context = validContext.length > 0 ? validContext : defaults.context;
+    if (validContext.length > 0) {
+      overrides.context = validContext;
+    }
   }
 
-  // Parse agents
+  // Parse agents overrides
   if (Array.isArray(parsed.agents)) {
     const validAgents = parsed.agents.filter(
       (a): a is AgentId => typeof a === 'string' && isValidAgentId(a)
     );
     if (validAgents.length > 0) {
-      config.agents = validAgents;
+      overrides.agents = validAgents;
     }
   }
 
-  // Parse tasks config
+  // Parse tasks overrides
   if (parsed.tasks && typeof parsed.tasks === 'object') {
     const tasks = parsed.tasks as Record<string, unknown>;
+    const taskOverrides: Partial<TasksConfig> = {};
 
     if (typeof tasks.ralph === 'string' && tasks.ralph.trim()) {
-      config.tasks.ralph = tasks.ralph.trim();
+      taskOverrides.ralph = tasks.ralph.trim();
     }
 
     if (typeof tasks.todo === 'string' && tasks.todo.trim()) {
-      config.tasks.todo = tasks.todo.trim();
+      taskOverrides.todo = tasks.todo.trim();
+    }
+
+    if (Object.keys(taskOverrides).length > 0) {
+      overrides.tasks = taskOverrides;
     }
   }
 
-  return config;
+  return overrides;
+}
+
+export function mergeAgentsConfig(
+  base: AgentsConfig,
+  overrides: AgentsConfigOverrides,
+  options: { contextMerge?: ContextMergeStrategy } = {}
+): AgentsConfig {
+  const contextMerge = options.contextMerge ?? 'replace';
+  let context = base.context;
+
+  if (overrides.context && overrides.context.length > 0) {
+    if (contextMerge === 'replace') {
+      context = overrides.context;
+    } else {
+      const overrideSources = new Set(overrides.context.map(m => m.source));
+      const merged: ContextMapping[] = [...overrides.context];
+      for (const mapping of base.context) {
+        if (!overrideSources.has(mapping.source)) {
+          merged.push(mapping);
+        }
+      }
+      context = merged;
+    }
+  }
+
+  const agents = overrides.agents && overrides.agents.length > 0
+    ? overrides.agents
+    : base.agents;
+
+  const tasks: TasksConfig = {
+    ralph: overrides.tasks?.ralph ?? base.tasks.ralph,
+    todo: overrides.tasks?.todo ?? base.tasks.todo,
+  };
+
+  return { context, agents, tasks };
+}
+
+export function parseAgentsConfig(yamlContent: string): AgentsConfig {
+  const defaults = getDefaultConfig();
+  const overrides = parseAgentsConfigOverrides(yamlContent);
+  if (!overrides) {
+    return defaults;
+  }
+
+  return mergeAgentsConfig(defaults, overrides, { contextMerge: 'replace' });
 }
 
 export function serializeAgentsConfig(config: AgentsConfig): string {

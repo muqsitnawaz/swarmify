@@ -1,0 +1,392 @@
+/**
+ * Session Activity Extraction
+ *
+ * Extracts the current/last activity from agent session files.
+ * Parses JSONL session logs to determine what the agent is doing.
+ */
+
+export type ActivityType =
+  | 'reading'     // file_read, Read, Glob, Grep
+  | 'editing'     // file_write, Edit, Write
+  | 'running'     // bash command
+  | 'thinking'    // reasoning, no tool call
+  | 'waiting'     // permission requested (not yet implemented)
+  | 'completed';  // session ended
+
+export interface CurrentActivity {
+  type: ActivityType;
+  summary: string;        // e.g., "src/auth.ts", "npm test"
+  timestamp: Date;
+}
+
+type AgentType = 'claude' | 'codex' | 'gemini';
+
+// Track Claude tool_use calls to match with tool_result
+const claudeToolUseMap = new Map<string, { tool: string; command?: string; path?: string }>();
+
+/**
+ * Extract current activity from session content (tail of file).
+ * Processes lines from end to find most recent tool activity.
+ */
+export function extractCurrentActivity(
+  sessionContent: string,
+  agentType: AgentType
+): CurrentActivity | null {
+  const lines = sessionContent.split(/\r?\n/).filter(l => l.trim());
+  if (lines.length === 0) return null;
+
+  // Process from end to find most recent activity
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i];
+    const activity = parseLineForActivity(line, agentType);
+    if (activity) return activity;
+  }
+
+  return null;
+}
+
+/**
+ * Parse a single JSONL line and extract activity if present.
+ */
+function parseLineForActivity(line: string, agentType: AgentType): CurrentActivity | null {
+  try {
+    const raw = JSON.parse(line);
+    switch (agentType) {
+      case 'claude':
+        return parseClaudeActivity(raw);
+      case 'codex':
+        return parseCodexActivity(raw);
+      case 'gemini':
+        return parseGeminiActivity(raw);
+      default:
+        return null;
+    }
+  } catch {
+    return null;
+  }
+}
+
+// --- Claude parsing ---
+
+function parseClaudeActivity(raw: any): CurrentActivity | null {
+  const eventType = raw?.type;
+  const timestamp = raw?.timestamp ? new Date(raw.timestamp) : new Date();
+
+  if (eventType === 'assistant') {
+    const message = raw.message || {};
+    const contentBlocks = message.content || [];
+
+    for (const block of contentBlocks) {
+      if (block.type === 'tool_use') {
+        const toolName = block.name || '';
+        const toolInput = block.input || {};
+        const toolId = block.id;
+
+        // Store for later matching with tool_result
+        if (toolId) {
+          if (toolName === 'Bash' && toolInput.command) {
+            claudeToolUseMap.set(toolId, { tool: toolName, command: toolInput.command });
+          } else if ((toolName === 'Edit' || toolName === 'Write') && toolInput.file_path) {
+            claudeToolUseMap.set(toolId, { tool: toolName, path: toolInput.file_path });
+          } else if (toolName === 'Read' && toolInput.file_path) {
+            claudeToolUseMap.set(toolId, { tool: toolName, path: toolInput.file_path });
+          }
+        }
+
+        // Return activity based on tool
+        if (toolName === 'Read' || toolName === 'Glob' || toolName === 'Grep') {
+          const path = toolInput.file_path || toolInput.path || toolInput.pattern || '';
+          return {
+            type: 'reading',
+            summary: truncatePath(path),
+            timestamp,
+          };
+        } else if (toolName === 'Edit' || toolName === 'Write') {
+          const path = toolInput.file_path || '';
+          return {
+            type: 'editing',
+            summary: truncatePath(path),
+            timestamp,
+          };
+        } else if (toolName === 'Bash') {
+          const command = toolInput.command || '';
+          return {
+            type: 'running',
+            summary: truncateCommand(command),
+            timestamp,
+          };
+        } else if (toolName === 'Task') {
+          return {
+            type: 'running',
+            summary: 'Spawning subagent...',
+            timestamp,
+          };
+        }
+
+        // Generic tool use - treat as thinking
+        return {
+          type: 'thinking',
+          summary: `Using ${toolName}`,
+          timestamp,
+        };
+      }
+    }
+
+    // Assistant message with text but no tool - thinking
+    const hasText = contentBlocks.some((b: any) => b.type === 'text' && b.text?.trim());
+    if (hasText) {
+      return {
+        type: 'thinking',
+        summary: '',
+        timestamp,
+      };
+    }
+  }
+
+  // Check for completed/result
+  if (eventType === 'result') {
+    return {
+      type: 'completed',
+      summary: raw.subtype || 'done',
+      timestamp,
+    };
+  }
+
+  return null;
+}
+
+// --- Codex parsing ---
+// Real Codex format:
+// - type: "response_item" with payload.type: "function_call", payload.name, payload.arguments (JSON string)
+// - type: "event_msg" with payload.type: "agent_reasoning" for thinking
+// - type: "response_item" with payload.type: "reasoning" for thinking summaries
+
+function parseCodexActivity(raw: any): CurrentActivity | null {
+  const eventType = raw?.type;
+  const timestamp = raw?.timestamp ? new Date(raw.timestamp) : new Date();
+
+  // Function calls (tool use)
+  if (eventType === 'response_item') {
+    const payload = raw?.payload || {};
+    const payloadType = payload?.type;
+
+    if (payloadType === 'function_call') {
+      const toolName = payload?.name || '';
+      let toolArgs: any = {};
+
+      // Arguments is a JSON string in Codex
+      if (typeof payload?.arguments === 'string') {
+        try {
+          toolArgs = JSON.parse(payload.arguments);
+        } catch {
+          toolArgs = {};
+        }
+      } else if (typeof payload?.arguments === 'object') {
+        toolArgs = payload.arguments || {};
+      }
+
+      // Shell commands
+      if (toolName === 'shell_command' || toolName === 'shell' || toolName === 'bash') {
+        const command = toolArgs?.command || '';
+        if (command.trim()) {
+          return {
+            type: 'running',
+            summary: truncateCommand(command),
+            timestamp,
+          };
+        }
+      }
+
+      // File operations
+      if (['create_file', 'write_file', 'edit_file', 'apply_diff'].includes(toolName)) {
+        const path = toolArgs?.path || toolArgs?.file_path || toolArgs?.target_file || '';
+        return {
+          type: 'editing',
+          summary: truncatePath(path),
+          timestamp,
+        };
+      }
+
+      if (['read_file', 'view_file'].includes(toolName)) {
+        const path = toolArgs?.path || toolArgs?.file_path || '';
+        return {
+          type: 'reading',
+          summary: truncatePath(path),
+          timestamp,
+        };
+      }
+
+      // Generic function call
+      return {
+        type: 'thinking',
+        summary: `Using ${toolName}`,
+        timestamp,
+      };
+    }
+
+    // Reasoning summaries
+    if (payloadType === 'reasoning') {
+      return {
+        type: 'thinking',
+        summary: '',
+        timestamp,
+      };
+    }
+
+    // Message from assistant
+    if (payloadType === 'message' && payload?.role === 'assistant') {
+      return {
+        type: 'thinking',
+        summary: '',
+        timestamp,
+      };
+    }
+  }
+
+  // Agent reasoning events
+  if (eventType === 'event_msg') {
+    const payload = raw?.payload || {};
+    const payloadType = payload?.type;
+
+    if (payloadType === 'agent_reasoning') {
+      return {
+        type: 'thinking',
+        summary: '',
+        timestamp,
+      };
+    }
+
+    if (payloadType === 'agent_message') {
+      return {
+        type: 'thinking',
+        summary: '',
+        timestamp,
+      };
+    }
+  }
+
+  // Turn completed
+  if (eventType === 'turn.completed' || eventType === 'turn_completed') {
+    return {
+      type: 'completed',
+      summary: 'done',
+      timestamp,
+    };
+  }
+
+  return null;
+}
+
+// --- Gemini parsing ---
+
+function parseGeminiActivity(raw: any): CurrentActivity | null {
+  const eventType = raw?.type;
+  const timestamp = raw?.timestamp ? new Date(raw.timestamp) : new Date();
+
+  if (eventType === 'tool_call' || eventType === 'tool_use') {
+    const toolName = String(raw?.tool_name || raw?.name || '').toLowerCase();
+    const toolArgs = raw?.parameters || raw?.args || {};
+
+    const filePath = toolArgs?.file_path || toolArgs?.path || '';
+    const command = toolArgs?.command || '';
+
+    // File write tools
+    const writeTools = ['replace', 'edit', 'patch', 'write_file', 'edit_file', 'update_file'];
+    if (writeTools.includes(toolName) || toolName.includes('write')) {
+      return {
+        type: 'editing',
+        summary: truncatePath(filePath),
+        timestamp,
+      };
+    }
+
+    // File read tools
+    const readTools = ['read_file', 'view_file', 'cat_file', 'get_file'];
+    if (readTools.includes(toolName) || toolName.includes('read')) {
+      return {
+        type: 'reading',
+        summary: truncatePath(filePath),
+        timestamp,
+      };
+    }
+
+    // Shell tools
+    if (['shell', 'bash', 'execute', 'run_command', 'run_shell_command'].includes(toolName)) {
+      return {
+        type: 'running',
+        summary: truncateCommand(command),
+        timestamp,
+      };
+    }
+
+    return {
+      type: 'thinking',
+      summary: `Using ${toolName}`,
+      timestamp,
+    };
+  }
+
+  if (eventType === 'message') {
+    const role = raw?.role || 'assistant';
+    if (role === 'assistant') {
+      return {
+        type: 'thinking',
+        summary: '',
+        timestamp,
+      };
+    }
+  }
+
+  if (eventType === 'result') {
+    return {
+      type: 'completed',
+      summary: raw?.status || 'done',
+      timestamp,
+    };
+  }
+
+  return null;
+}
+
+// --- Helpers ---
+
+function truncatePath(path: string, maxLen: number = 40): string {
+  if (!path) return '';
+  // Extract filename from full path
+  const parts = path.split('/');
+  const filename = parts[parts.length - 1] || path;
+  if (filename.length <= maxLen) return filename;
+  return filename.slice(0, maxLen - 3) + '...';
+}
+
+function truncateCommand(command: string, maxLen: number = 50): string {
+  if (!command) return '';
+  const trimmed = command.trim();
+  if (trimmed.length <= maxLen) return trimmed;
+  return trimmed.slice(0, maxLen - 3) + '...';
+}
+
+/**
+ * Format activity for display in terminal card.
+ * Returns a string like "> Reading src/auth.ts" or "> Running npm test"
+ */
+export function formatActivity(activity: CurrentActivity | null): string {
+  if (!activity) return 'Thinking...';
+
+  switch (activity.type) {
+    case 'reading':
+      return activity.summary ? `Reading ${activity.summary}` : 'Reading...';
+    case 'editing':
+      return activity.summary ? `Editing ${activity.summary}` : 'Editing...';
+    case 'running':
+      return activity.summary ? `Running: ${activity.summary}` : 'Running...';
+    case 'thinking':
+      return activity.summary || 'Thinking...';
+    case 'waiting':
+      return 'Waiting for approval';
+    case 'completed':
+      return activity.summary === 'done' ? 'Completed' : `Completed (${activity.summary})`;
+    default:
+      return 'Thinking...';
+  }
+}

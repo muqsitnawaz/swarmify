@@ -1,7 +1,7 @@
 import { pathToFileURL } from 'url';
 
 export function printHelloWorld(): void {
-  console.log('Hello world');
+  console.log('hello world');
 }
 
 const invokedPath = process.argv[1];
