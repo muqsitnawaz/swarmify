@@ -51,12 +51,9 @@ export const SWARM_AGENT_LABELS: Record<SwarmAgentType, string> = {
 
 // Tab display labels
 export const TAB_LABELS: Record<TabId, string> = {
-  overview: 'Overview',
-  tasks: 'Tasks',
-  sessions: 'Sessions',
-  context: 'Context',
-  settings: 'Settings',
-  guide: 'Guide'
+  dashboard: 'Dashboard',
+  workspace: 'Workspace',
+  settings: 'Settings'
 }
 
 // Install commands/links for each agent

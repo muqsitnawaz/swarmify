@@ -3,10 +3,12 @@
 
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs/promises';
 import { AgentConfig } from './agents.vscode';
 import { generateTerminalId, RunningCounts } from '../core/terminals';
 import * as sessionsPersist from '../core/sessions.persist';
 import { getSessionPathBySessionId, getSessionPreviewInfo, SessionPreviewInfo } from './sessions.vscode';
+import { extractCurrentActivity, formatActivity } from '../core/session.activity';
 import {
   CLAUDE_TITLE,
   CODEX_TITLE,
@@ -453,6 +455,7 @@ export interface TerminalDetail {
   sessionId: string | null; // CLI session ID
   lastUserMessage?: string; // Last user message from session
   messageCount?: number; // Total message count in session
+  currentActivity?: string; // Live activity (e.g., "Reading src/auth.ts", "Running npm test")
 }
 
 // Map from lowercase key (used in UI) to prefix (used in terminal names)
@@ -477,6 +480,21 @@ function prefixToAgentType(prefix: string | null): SessionAgentType | null {
   }
 }
 
+// Helper to read tail of session file for activity extraction
+async function readSessionTail(filePath: string, maxBytes: number = 32 * 1024): Promise<string> {
+  try {
+    const stats = await fs.stat(filePath);
+    const start = Math.max(0, stats.size - maxBytes);
+    const handle = await fs.open(filePath, 'r');
+    const buffer = Buffer.alloc(Math.min(maxBytes, stats.size));
+    await handle.read(buffer, 0, buffer.length, start);
+    await handle.close();
+    return buffer.toString('utf-8');
+  } catch {
+    return '';
+  }
+}
+
 // Get terminals filtered by agent type with display details
 // Scans VS Code terminals directly to handle restored/unregistered terminals
 export async function getTerminalsByAgentType(
@@ -485,7 +503,11 @@ export async function getTerminalsByAgentType(
 ): Promise<TerminalDetail[]> {
   const expectedPrefix = AGENT_KEY_TO_PREFIX[agentType];
   const results: TerminalDetail[] = [];
-  const previewPromises: Array<{ index: number; promise: Promise<SessionPreviewInfo | null> }> = [];
+  const sessionPromises: Array<{
+    index: number;
+    sessionPath: Promise<string | undefined>;
+    agentType: 'claude' | 'codex' | 'gemini';
+  }> = [];
   let index = 0;
 
   for (const terminal of vscode.window.terminals) {
@@ -519,28 +541,49 @@ export async function getTerminalsByAgentType(
       sessionId: entry?.sessionId || null
     });
 
-    // Queue preview info fetch if session exists
+    // Queue session path lookup if session exists
     if (entry?.sessionId && entry?.agentType) {
       const sessionAgentType = entry.agentType as 'claude' | 'codex' | 'gemini';
-      previewPromises.push({
+      sessionPromises.push({
         index: resultIndex,
-        promise: (async () => {
-          const sessionPath = await getSessionPathBySessionId(entry.sessionId!, sessionAgentType, workspacePath);
-          if (!sessionPath) return null;
-          return await getSessionPreviewInfo(sessionPath);
-        })()
+        sessionPath: getSessionPathBySessionId(entry.sessionId!, sessionAgentType, workspacePath),
+        agentType: sessionAgentType
       });
     }
   }
 
-  // Resolve all preview info in parallel
-  const previewResults = await Promise.all(previewPromises.map(p => p.promise));
-  for (let i = 0; i < previewPromises.length; i++) {
-    const previewInfo = previewResults[i];
-    if (previewInfo) {
-      const targetIndex = previewPromises[i].index;
-      results[targetIndex].lastUserMessage = previewInfo.lastUserMessage;
-      results[targetIndex].messageCount = previewInfo.messageCount;
+  // Resolve all session paths first
+  const sessionPaths = await Promise.all(sessionPromises.map(p => p.sessionPath));
+
+  // Now fetch preview info and activity in parallel for each session
+  const dataPromises = sessionPromises.map(async (p, i) => {
+    const sessionPath = sessionPaths[i];
+    if (!sessionPath) return { index: p.index, preview: null, activity: null };
+
+    const [preview, tail] = await Promise.all([
+      getSessionPreviewInfo(sessionPath),
+      readSessionTail(sessionPath, 64 * 1024) // Read last 64KB for activity
+    ]);
+
+    const activity = tail ? extractCurrentActivity(tail, p.agentType) : null;
+
+    return {
+      index: p.index,
+      preview,
+      activity: activity ? formatActivity(activity) : null
+    };
+  });
+
+  const dataResults = await Promise.all(dataPromises);
+
+  // Populate results with fetched data
+  for (const data of dataResults) {
+    if (data.preview) {
+      results[data.index].lastUserMessage = data.preview.lastUserMessage;
+      results[data.index].messageCount = data.preview.messageCount;
+    }
+    if (data.activity) {
+      results[data.index].currentActivity = data.activity;
     }
   }
 

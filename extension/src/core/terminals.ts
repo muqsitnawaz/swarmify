@@ -71,13 +71,22 @@ export function generateTerminalId(prefix: string, counter: number): string {
   return `${prefix}-${Date.now()}-${counter}`;
 }
 
+/**
+ * Build environment variables for agent terminals.
+ *
+ * @param terminalId - Internal tracking ID for this terminal
+ * @param sessionId - CLI session UUID (for resume/history)
+ * @param workspacePath - Workspace root path (for MCP server to identify project)
+ */
 export function buildAgentTerminalEnv(
   terminalId: string,
-  sessionId: string | null | undefined
+  sessionId: string | null | undefined,
+  workspacePath: string | null | undefined = undefined
 ): Record<string, string> {
   return {
     AGENT_TERMINAL_ID: terminalId,
     AGENT_SESSION_ID: sessionId ?? '',
+    AGENT_WORKSPACE_DIR: workspacePath ?? '',
     DISABLE_AUTO_TITLE: 'true',
     PROMPT_COMMAND: ''
   };

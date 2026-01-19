@@ -4,6 +4,8 @@ import {
   AgentsConfig,
   getDefaultConfig,
   parseAgentsConfig,
+  parseAgentsConfigOverrides,
+  mergeAgentsConfig,
   serializeAgentsConfig,
   isValidAgentId,
   getContextMappings,
@@ -163,6 +165,64 @@ context:
       const config = parseAgentsConfig(yaml);
       expect(config.context[0].source).toBe('AGENTS.md');
       expect(config.context[0].aliases).toEqual(['CLAUDE.md']);
+    });
+  });
+
+  describe('parseAgentsConfigOverrides', () => {
+    test('returns null for empty string', () => {
+      const overrides = parseAgentsConfigOverrides('');
+      expect(overrides).toBeNull();
+    });
+
+    test('returns overrides for valid fields only', () => {
+      const yaml = `
+context:
+  - source: AGENTS.md
+    aliases:
+      - CLAUDE.md
+agents:
+  - claude
+  - invalid
+tasks:
+  ralph: TASKS.md
+  todo: "   "
+`;
+      const overrides = parseAgentsConfigOverrides(yaml);
+      expect(overrides?.context).toEqual([
+        { source: 'AGENTS.md', aliases: ['CLAUDE.md'] },
+      ]);
+      expect(overrides?.agents).toEqual(['claude']);
+      expect(overrides?.tasks).toEqual({ ralph: 'TASKS.md' });
+    });
+  });
+
+  describe('mergeAgentsConfig', () => {
+    test('unions context mappings with workspace overrides', () => {
+      const base: AgentsConfig = {
+        context: [
+          { source: 'AGENTS.md', aliases: ['CLAUDE.md'] },
+          { source: 'TASKS.md', aliases: ['TASKS_CLAUDE.md'] },
+        ],
+        agents: ['claude'],
+        tasks: { ralph: 'RALPH.md', todo: 'TODO.md' },
+      };
+
+      const overrides = {
+        context: [
+          { source: 'AGENTS.md', aliases: ['GEMINI.md'] },
+        ],
+        agents: ['codex'],
+        tasks: { todo: 'TODOS.md' },
+      };
+
+      const merged = mergeAgentsConfig(base, overrides, { contextMerge: 'union' });
+
+      expect(merged.context).toEqual([
+        { source: 'AGENTS.md', aliases: ['GEMINI.md'] },
+        { source: 'TASKS.md', aliases: ['TASKS_CLAUDE.md'] },
+      ]);
+      expect(merged.agents).toEqual(['codex']);
+      expect(merged.tasks).toEqual({ ralph: 'RALPH.md', todo: 'TODOS.md' });
     });
   });
 

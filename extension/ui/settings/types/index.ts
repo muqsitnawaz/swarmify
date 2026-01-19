@@ -80,6 +80,7 @@ export interface TodoItem {
   description?: string
   completed: boolean
   line: number
+  planFile?: string
 }
 
 export interface TodoFile {
@@ -208,6 +209,7 @@ export interface TerminalDetail {
   sessionId: string | null
   lastUserMessage?: string
   messageCount?: number
+  currentActivity?: string
 }
 
 // Session types
@@ -232,7 +234,7 @@ export interface ContextFile {
 }
 
 // UI types
-export type TabId = 'overview' | 'tasks' | 'sessions' | 'settings' | 'context' | 'guide'
+export type TabId = 'dashboard' | 'workspace' | 'settings'
 
 export type ThemedIcon = { dark: string; light: string }
 
@@ -252,6 +254,7 @@ export interface IconConfig {
   cursor: ThemedIcon
   agents: string
   shell: string
+  github: string
 }
 
 // Built-in agent config

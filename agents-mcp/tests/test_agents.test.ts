@@ -10,10 +10,71 @@ import {
   EFFORT_MODEL_MAP,
   resolveEffortModelMap,
   resolveMode,
+  computePathLCA,
 } from '../src/agents.js';
 import type { EffortLevel } from '../src/agents.js';
 
 const TESTDATA_DIR = path.join(__dirname, 'testdata');
+
+describe('computePathLCA', () => {
+  test('returns null for empty array', () => {
+    expect(computePathLCA([])).toBeNull();
+  });
+
+  test('returns the path itself for single path', () => {
+    expect(computePathLCA(['/Users/test/project'])).toBe('/Users/test/project');
+  });
+
+  test('finds LCA for paths with common ancestor', () => {
+    const paths = [
+      '/Users/test/monorepo/packages/a',
+      '/Users/test/monorepo/packages/b',
+      '/Users/test/monorepo/packages/c',
+    ];
+    expect(computePathLCA(paths)).toBe('/Users/test/monorepo/packages');
+  });
+
+  test('finds LCA at root level for divergent paths', () => {
+    const paths = [
+      '/Users/test/project-a/src',
+      '/Users/test/project-b/src',
+    ];
+    expect(computePathLCA(paths)).toBe('/Users/test');
+  });
+
+  test('returns null for paths with no common segments', () => {
+    const paths = [
+      '/home/user/project',
+      '/var/log/app',
+    ];
+    // These paths have no common directory segments (home vs var)
+    const lca = computePathLCA(paths);
+    expect(lca).toBeNull();
+  });
+
+  test('handles nested paths correctly', () => {
+    const paths = [
+      '/a/b/c/d/e',
+      '/a/b/c/d',
+      '/a/b/c',
+    ];
+    expect(computePathLCA(paths)).toBe('/a/b/c');
+  });
+
+  test('filters out empty paths', () => {
+    const paths = [
+      '/Users/test/project',
+      '',
+      '  ',
+      '/Users/test/project/src',
+    ];
+    expect(computePathLCA(paths)).toBe('/Users/test/project');
+  });
+
+  test('returns null when all paths are empty', () => {
+    expect(computePathLCA(['', '  ', ''])).toBeNull();
+  });
+});
 
 describe('Mode Resolution', () => {
   test('should use default mode when no flags provided', () => {
@@ -240,6 +301,84 @@ describe('AgentProcess', () => {
     } finally {
       await fs.rm(baseDir, { recursive: true, force: true });
     }
+  });
+
+  test('persists workspace_dir in metadata', async () => {
+    const baseDir = path.join(TESTDATA_DIR, `agent_workspace_${Date.now()}`);
+    const agent = new AgentProcess(
+      'workspace-1',
+      'workspace-task',
+      'codex',
+      'Test prompt',
+      '/Users/test/monorepo/packages/a',
+      'plan',
+      123,
+      AgentStatus.RUNNING,
+      new Date('2024-01-01T00:00:00Z'),
+      null,
+      baseDir,
+      null,
+      '/Users/test/monorepo'
+    );
+
+    try {
+      await agent.saveMeta();
+      const metaPath = await agent.getMetaPath();
+      const metaRaw = await fs.readFile(metaPath, 'utf-8');
+      const meta = JSON.parse(metaRaw);
+      expect(meta.workspace_dir).toBe('/Users/test/monorepo');
+    } finally {
+      await fs.rm(baseDir, { recursive: true, force: true });
+    }
+  });
+
+  test('loads workspace_dir from disk', async () => {
+    const baseDir = path.join(TESTDATA_DIR, `agent_workspace_load_${Date.now()}`);
+    const agent = new AgentProcess(
+      'workspace-2',
+      'workspace-task',
+      'codex',
+      'Test prompt',
+      '/Users/test/project/src',
+      'plan',
+      123,
+      AgentStatus.RUNNING,
+      new Date('2024-01-01T00:00:00Z'),
+      null,
+      baseDir,
+      null,
+      '/Users/test/project'
+    );
+
+    try {
+      await agent.saveMeta();
+      const loaded = await AgentProcess.loadFromDisk(agent.agentId, baseDir);
+      expect(loaded).not.toBeNull();
+      expect(loaded?.workspaceDir).toBe('/Users/test/project');
+    } finally {
+      await fs.rm(baseDir, { recursive: true, force: true });
+    }
+  });
+
+  test('includes workspace_dir in toDict output', () => {
+    const agent = new AgentProcess(
+      'dict-test',
+      'dict-task',
+      'codex',
+      'Test prompt',
+      '/Users/test/project/src',
+      'plan',
+      null,
+      AgentStatus.RUNNING,
+      new Date('2024-01-01T00:00:00Z'),
+      null,
+      null,
+      null,
+      '/Users/test/project'
+    );
+
+    const result = agent.toDict();
+    expect(result.workspace_dir).toBe('/Users/test/project');
   });
 });
 

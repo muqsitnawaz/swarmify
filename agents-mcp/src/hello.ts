@@ -1,6 +1,6 @@
 import { pathToFileURL } from 'url';
 
-export const HELLO_MESSAGE = 'Hello world';
+export const HELLO_MESSAGE = 'hello world';
 
 export function printHelloWorld(): void {
   console.log(HELLO_MESSAGE);
