@@ -60,6 +60,7 @@ export const AGENT_COMMANDS: Record<AgentType, string[]> = {
   cursor: ['cursor-agent', '-p', '--output-format', 'stream-json', '{prompt}'],
   gemini: ['gemini', '{prompt}', '--output-format', 'stream-json'],
   claude: ['claude', '-p', '--verbose', '{prompt}', '--output-format', 'stream-json', '--permission-mode', 'plan'],
+  trae: ['trae-cli', 'run', '{prompt}'],
 };
 
 // Effort level type
@@ -76,18 +77,21 @@ export const EFFORT_MODEL_MAP: EffortModelMap = {
     gemini: 'gemini-3-flash-preview',
     claude: 'claude-haiku-4-5-20251001',
     cursor: 'composer-1',
+    trae: 'gpt-4o-mini',
   },
   default: {
     codex: 'gpt-5.2-codex',
     gemini: 'gemini-3-flash-preview',
     claude: 'claude-sonnet-4-5',
     cursor: 'composer-1',
+    trae: 'gpt-4o',
   },
   detailed: {
     codex: 'gpt-5.1-codex-max',
     gemini: 'gemini-3-pro-preview',
     claude: 'claude-opus-4-5',
     cursor: 'composer-1',
+    trae: 'claude-sonnet-4-20250514',
   },
 };
 
@@ -105,7 +109,7 @@ export function resolveEffortModelMap(
 
   for (const [agentType, effortOverrides] of Object.entries(overrides)) {
     if (!effortOverrides) continue;
-    if (!['codex', 'gemini', 'cursor', 'claude'].includes(agentType)) continue;
+    if (!['codex', 'gemini', 'cursor', 'claude', 'trae'].includes(agentType)) continue;
     const typedAgent = agentType as AgentType;
     for (const level of ['fast', 'default', 'detailed'] as const) {
       const model = effortOverrides[level];

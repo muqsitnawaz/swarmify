@@ -49,6 +49,7 @@ const agentDescriptions: Record<AgentType, string> = {
   codex: 'Fast, cheap. Self-contained features, clean implementations.',
   claude: 'Maximum capability, research, exploration.',
   gemini: 'Complex multi-system features, architectural changes.',
+  trae: 'ByteDance agent. Multi-model support, trajectory logging.',
 };
 
 function withVersionNotice(description: string): string {
