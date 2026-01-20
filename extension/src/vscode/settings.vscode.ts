@@ -575,29 +575,29 @@ export function openPanel(context: vscode.ExtensionContext): void {
     }
   }, undefined, context.subscriptions);
 
-  // Update running counts when terminals change
-  const terminalListener = vscode.window.onDidOpenTerminal(() => {
-    if (settingsPanel) {
-      settingsPanel.webview.postMessage({
-        type: 'updateRunningCounts',
-        counts: terminals.countRunning()
-      });
-    }
-  });
+  // Debounce terminal updates to avoid excessive webview messages
+  let terminalUpdateTimeout: ReturnType<typeof setTimeout> | undefined;
+  const debouncedTerminalUpdate = () => {
+    if (terminalUpdateTimeout) clearTimeout(terminalUpdateTimeout);
+    terminalUpdateTimeout = setTimeout(() => {
+      if (settingsPanel) {
+        settingsPanel.webview.postMessage({
+          type: 'updateRunningCounts',
+          counts: terminals.countRunning()
+        });
+      }
+    }, 500);
+  };
 
-  const terminalCloseListener = vscode.window.onDidCloseTerminal(() => {
-    if (settingsPanel) {
-      settingsPanel.webview.postMessage({
-        type: 'updateRunningCounts',
-        counts: terminals.countRunning()
-      });
-    }
-  });
+  // Update running counts when terminals change (debounced)
+  const terminalListener = vscode.window.onDidOpenTerminal(debouncedTerminalUpdate);
+  const terminalCloseListener = vscode.window.onDidCloseTerminal(debouncedTerminalUpdate);
 
   settingsPanel.onDidDispose(() => {
     settingsPanel = undefined;
     terminalListener.dispose();
     terminalCloseListener.dispose();
+    if (terminalUpdateTimeout) clearTimeout(terminalUpdateTimeout);
   }, undefined, context.subscriptions);
 }
 

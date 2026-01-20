@@ -5,10 +5,11 @@ export const CODEX_TITLE = 'CX';
 export const GEMINI_TITLE = 'GX';
 export const OPENCODE_TITLE = 'OC';
 export const CURSOR_TITLE = 'CR';
+export const TRAE_TITLE = 'TR';
 export const SHELL_TITLE = 'SH';
 export const LABEL_MAX_WORDS = 5;
 
-export const KNOWN_PREFIXES = [CLAUDE_TITLE, CODEX_TITLE, GEMINI_TITLE, OPENCODE_TITLE, CURSOR_TITLE, SHELL_TITLE];
+export const KNOWN_PREFIXES = [CLAUDE_TITLE, CODEX_TITLE, GEMINI_TITLE, OPENCODE_TITLE, CURSOR_TITLE, TRAE_TITLE, SHELL_TITLE];
 
 // Mapping of acceptable terminal base names to canonical prefixes
 const NAME_TO_PREFIX: Record<string, string> = {
@@ -32,6 +33,10 @@ const NAME_TO_PREFIX: Record<string, string> = {
   'CURSOR': CURSOR_TITLE,
   'Cursor': CURSOR_TITLE,
   'cursor': CURSOR_TITLE,
+  [TRAE_TITLE]: TRAE_TITLE,
+  'TRAE': TRAE_TITLE,
+  'Trae': TRAE_TITLE,
+  'trae': TRAE_TITLE,
   [SHELL_TITLE]: SHELL_TITLE,
   'SHELL': SHELL_TITLE,
   'Shell': SHELL_TITLE,
@@ -117,6 +122,7 @@ export function getExpandedAgentName(prefix: string): string {
     [GEMINI_TITLE]: 'Gemini',
     [OPENCODE_TITLE]: 'OpenCode',
     [CURSOR_TITLE]: 'Cursor',
+    [TRAE_TITLE]: 'Trae',
     [SHELL_TITLE]: 'Shell',
     // Also map lowercase prefixes from agents.ts
     'cc': 'Claude',
@@ -124,6 +130,7 @@ export function getExpandedAgentName(prefix: string): string {
     'gm': 'Gemini',
     'oc': 'OpenCode',
     'cr': 'Cursor',
+    'tr': 'Trae',
     'sh': 'Shell',
     // Allow already-expanded names to pass through
     'claude': 'Claude',
@@ -131,6 +138,7 @@ export function getExpandedAgentName(prefix: string): string {
     'gemini': 'Gemini',
     'opencode': 'OpenCode',
     'cursor': 'Cursor',
+    'trae': 'Trae',
     'shell': 'Shell'
   };
   return expandedNames[prefix] || prefix;
@@ -152,6 +160,7 @@ const ICON_TO_PREFIX: Record<string, string> = {
   'gemini.png': GEMINI_TITLE,
   'opencode.png': OPENCODE_TITLE,
   'cursor.png': CURSOR_TITLE,
+  'trae.png': TRAE_TITLE,
   'agents.png': SHELL_TITLE
 };
 
@@ -161,6 +170,7 @@ const PREFIX_TO_ICON: Record<string, string> = {
   [GEMINI_TITLE]: 'gemini.png',
   [OPENCODE_TITLE]: 'opencode.png',
   [CURSOR_TITLE]: 'cursor.png',
+  [TRAE_TITLE]: 'trae.png',
   [SHELL_TITLE]: 'agents.png'
 };
 
