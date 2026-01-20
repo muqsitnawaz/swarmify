@@ -159,19 +159,32 @@ export function watchUserConfig(
   context: vscode.ExtensionContext,
   onConfigChange: () => void
 ): void {
-  const homeDir = os.homedir();
+  const configPath = path.join(os.homedir(), AGENTS_CONFIG_FILENAME);
 
   try {
-    const watcher = fs.watch(homeDir, (eventType, filename) => {
-      if (filename === AGENTS_CONFIG_FILENAME) {
-        clearConfigCache();
-        onConfigChange();
-      }
+    // Watch the specific .agents file instead of entire home directory
+    // This is much more efficient on macOS (FSEvents overhead)
+    const watcher = fs.watch(configPath, () => {
+      clearConfigCache();
+      onConfigChange();
     });
 
     context.subscriptions.push({ dispose: () => watcher.close() });
   } catch (error) {
-    console.error('[agents] Failed to watch user config:', error);
+    // File may not exist yet - fall back to watching home directory
+    // but only trigger on .agents filename
+    try {
+      const homeDir = os.homedir();
+      const fallbackWatcher = fs.watch(homeDir, (eventType, filename) => {
+        if (filename === AGENTS_CONFIG_FILENAME) {
+          clearConfigCache();
+          onConfigChange();
+        }
+      });
+      context.subscriptions.push({ dispose: () => fallbackWatcher.close() });
+    } catch (fallbackError) {
+      console.error('[agents] Failed to watch user config:', fallbackError);
+    }
   }
 }
 

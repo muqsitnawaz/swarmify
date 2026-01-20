@@ -429,7 +429,21 @@ function extractLastUserMessage(tail: string): string | undefined {
 }
 
 async function countNonEmptyLines(filePath: string): Promise<number> {
+  const MAX_FULL_READ_BYTES = 512 * 1024; // 512KB - read fully below this
+  const SAMPLE_BYTES = 64 * 1024; // 64KB sample for large files
   try {
+    const stats = await safeStat(filePath);
+    if (!stats) return 0;
+
+    // For large files, sample and extrapolate to avoid loading entire file
+    if (stats.size > MAX_FULL_READ_BYTES) {
+      const sample = await readFileHead(filePath, SAMPLE_BYTES);
+      const sampleLines = sample.split(/\r?\n/).filter(l => l.trim()).length;
+      const ratio = stats.size / SAMPLE_BYTES;
+      return Math.round(sampleLines * ratio);
+    }
+
+    // Small files - read fully
     const content = await fs.readFile(filePath, 'utf-8');
     return content.split(/\r?\n/).filter(line => line.trim()).length;
   } catch {
