@@ -44,6 +44,7 @@ export interface SwarmStatus {
     claude: AgentInstallStatus;
     codex: AgentInstallStatus;
     gemini: AgentInstallStatus;
+    trae: AgentInstallStatus;
   };
 }
 
@@ -167,22 +168,27 @@ export async function getSwarmStatus(): Promise<SwarmStatus> {
   const claudeCliAvailable = await isAgentCliAvailable('claude');
   const codexCliAvailable = await isAgentCliAvailable('codex');
   const geminiCliAvailable = await isAgentCliAvailable('gemini');
+  const traeCliAvailable = await isAgentCliAvailable('trae');
 
   const claudeMcp = claudeCliAvailable ? await isAgentMcpEnabled('claude') : false;
   const codexMcp = codexCliAvailable ? await isAgentMcpEnabled('codex') : false;
   const geminiMcp = geminiCliAvailable ? await isAgentMcpEnabled('gemini') : false;
+  const traeMcp = traeCliAvailable ? await isAgentMcpEnabled('trae') : false;
 
   const claudeCmd = claudeCliAvailable ? isAgentCommandInstalled('claude', 'swarm') : false;
   const codexCmd = codexCliAvailable ? isAgentCommandInstalled('codex', 'swarm') : false;
   const geminiCmd = geminiCliAvailable ? isAgentCommandInstalled('gemini', 'swarm') : false;
+  const traeCmd = traeCliAvailable ? isAgentCommandInstalled('trae', 'swarm') : false;
 
   const mcpEnabled = (!claudeCliAvailable || claudeMcp) &&
     (!codexCliAvailable || codexMcp) &&
-    (!geminiCliAvailable || geminiMcp);
+    (!geminiCliAvailable || geminiMcp) &&
+    (!traeCliAvailable || traeMcp);
 
   const commandInstalled = (!claudeCliAvailable || claudeCmd) &&
     (!codexCliAvailable || codexCmd) &&
-    (!geminiCliAvailable || geminiCmd);
+    (!geminiCliAvailable || geminiCmd) &&
+    (!traeCliAvailable || traeCmd);
 
   return {
     mcpEnabled,
@@ -205,6 +211,12 @@ export async function getSwarmStatus(): Promise<SwarmStatus> {
         cliAvailable: geminiCliAvailable,
         mcpEnabled: geminiMcp,
         commandInstalled: geminiCmd,
+      },
+      trae: {
+        installed: traeMcp && traeCmd && traeCliAvailable,
+        cliAvailable: traeCliAvailable,
+        mcpEnabled: traeMcp,
+        commandInstalled: traeCmd,
       },
     },
   };
@@ -418,11 +430,12 @@ function installSwarmCommandForPromptPackAgent(agent: PromptPackAgent, context: 
 
 const NPX_SWARM_CMD = `npx -y ${SWARM_PACKAGE}@latest`;
 
-// CLI npm packages for each agent
+// CLI npm packages for each agent (trae uses uv/pip, not npm)
 const CLI_PACKAGES: Record<AgentCli, string> = {
   claude: '@anthropic-ai/claude-code',
   codex: '@openai/codex',
-  gemini: '@google/gemini-cli'
+  gemini: '@google/gemini-cli',
+  trae: '', // trae uses git clone + uv, not npm
 };
 
 // Install CLI globally if not present
@@ -513,9 +526,11 @@ async function setupSwarmIntegrationForAgents(
     }
   }
 
-  // Install prompt packs for requested agents
+  // Install prompt packs for requested agents (trae doesn't support prompt packs)
   for (const agent of agents) {
-    await installPromptPacksForAgent(agent, context);
+    if (agent !== 'trae') {
+      await installPromptPacksForAgent(agent, context);
+    }
   }
 
   // Check if already enabled for all requested agents
