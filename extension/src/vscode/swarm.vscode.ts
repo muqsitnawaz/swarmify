@@ -441,7 +441,7 @@ const CLI_PACKAGES: Record<AgentCli, string> = {
 // Install CLI globally if not present
 async function installCliIfMissing(agent: AgentCli): Promise<boolean> {
   // Check if CLI is available
-  const cliCommand = agent; // claude, codex, gemini
+  const cliCommand = agent === 'trae' ? 'trae-cli' : agent;
   try {
     await execAsync(`which ${cliCommand}`);
     return true; // Already installed
@@ -452,6 +452,29 @@ async function installCliIfMissing(agent: AgentCli): Promise<boolean> {
   const pkg = CLI_PACKAGES[agent];
   const agentName = agent.charAt(0).toUpperCase() + agent.slice(1);
 
+  // Trae uses pipx to install from git (not npm)
+  if (agent === 'trae') {
+    try {
+      // First check if pipx is available
+      try {
+        await execAsync('which pipx');
+      } catch {
+        vscode.window.showInformationMessage('Installing pipx...');
+        await execAsync('pip install --user pipx && pipx ensurepath');
+      }
+
+      vscode.window.showInformationMessage(`Installing ${agentName} CLI via pipx...`);
+      await execAsync('pipx install git+https://github.com/bytedance/trae-agent.git');
+      vscode.window.showInformationMessage(`${agentName} CLI installed successfully.`);
+      return true;
+    } catch (err) {
+      const error = err as Error & { stderr?: string };
+      vscode.window.showErrorMessage(`Failed to install ${agentName} CLI: ${error.stderr || error.message}`);
+      return false;
+    }
+  }
+
+  // Other agents use npm
   try {
     vscode.window.showInformationMessage(`Installing ${agentName} CLI...`);
     await execAsync(`npm install -g ${pkg}`);
@@ -478,6 +501,11 @@ async function registerMcpForAgent(agent: AgentCli): Promise<boolean> {
       await execAsync(`gemini mcp add Swarm ${NPX_SWARM_CMD}`);
       return true;
     }
+    if (agent === 'trae') {
+      // Trae may not support MCP yet - skip for now
+      // When supported: await execAsync(`trae-cli mcp add Swarm ${NPX_SWARM_CMD}`);
+      return true;
+    }
   } catch {
     // fallthrough
   }
@@ -488,7 +516,7 @@ export async function setupSwarmIntegration(
   context: vscode.ExtensionContext,
   onUpdate?: (status: SwarmStatus) => void
 ): Promise<void> {
-  await setupSwarmIntegrationForAgents(['claude', 'codex', 'gemini'], context, onUpdate);
+  await setupSwarmIntegrationForAgents(['claude', 'codex', 'gemini', 'trae'], context, onUpdate);
 }
 
 export async function setupSwarmIntegrationForAgent(
