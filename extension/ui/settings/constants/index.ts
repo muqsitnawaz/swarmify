@@ -63,7 +63,7 @@ export const AGENT_INSTALL_INFO: Record<string, { command?: string; url?: string
   claude: { command: 'npm install -g @anthropic-ai/claude-code' },
   codex: { command: 'npm install -g @openai/codex' },
   gemini: { command: 'npm install -g @anthropic-ai/claude-code', url: 'https://github.com/google-gemini/gemini-cli' },
-  trae: { command: 'git clone https://github.com/bytedance/trae-agent && cd trae-agent && uv sync --all-extras', url: 'https://github.com/bytedance/trae-agent' },
+  trae: { command: 'pipx install git+https://github.com/bytedance/trae-agent.git', url: 'https://github.com/bytedance/trae-agent' },
   opencode: { url: 'https://github.com/opencode-ai/opencode' },
   cursor: { url: 'https://cursor.com' },
 }

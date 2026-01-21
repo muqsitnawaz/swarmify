@@ -574,9 +574,9 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand('agents.newSecondaryAgent', async () => {
       const targetTitle = secondaryAgentTitle || defaultAgentTitle;
-      let agentConfig = getBuiltInByTitle(context.extensionPath, targetTitle);
+      let agentConfig: Omit<AgentConfig, 'count'> | null = getBuiltInByTitle(context.extensionPath, targetTitle);
       if (agentConfig?.command && !(await commandExists(agentConfig.command))) {
-        agentConfig = undefined;
+        agentConfig = null;
       }
       if (!agentConfig) {
         agentConfig = getBuiltInByTitle(context.extensionPath, defaultAgentTitle);
@@ -669,6 +669,10 @@ export async function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('agents.setupGemini', () => swarm.setupSwarmIntegrationForAgent('gemini', context))
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('agents.setupTrae', () => swarm.setupSwarmIntegrationForAgent('trae', context))
   );
 
   context.subscriptions.push(
