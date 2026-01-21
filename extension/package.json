@@ -153,6 +153,10 @@
         "title": "Agents: Setup Gemini"
       },
       {
+        "command": "agents.setupTrae",
+        "title": "Agents: Setup Trae"
+      },
+      {
         "command": "agents.enableNotifications",
         "title": "Agents: Enable Notifications"
       },
