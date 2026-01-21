@@ -62,6 +62,7 @@ import { getSessionPathBySessionId, getSessionPreviewInfo } from './sessions.vsc
 
 let agentStatusBarItem: vscode.StatusBarItem | undefined;
 let defaultAgentTitle: string = CLAUDE_TITLE;
+let secondaryAgentTitle: string = CODEX_TITLE;
 
 // BUILT_IN_AGENTS is now imported from ./agents
 
@@ -510,10 +511,17 @@ export async function activate(context: vscode.ExtensionContext) {
     console.error('Failed to apply markdown editor association:', error);
   }
 
-  // Load cached default agent if set
+  // Load cached default agents if set
   const storedDefault = context.globalState.get<string>('agents.defaultAgentTitle');
   if (storedDefault) {
     defaultAgentTitle = storedDefault;
+  }
+  const storedSecondary = context.globalState.get<string>('agents.secondaryAgentTitle');
+  if (storedSecondary) {
+    secondaryAgentTitle = storedSecondary;
+  } else {
+    secondaryAgentTitle = CODEX_TITLE;
+    context.globalState.update('agents.secondaryAgentTitle', CODEX_TITLE);
   }
 
   // Set initial context keys and subscribe to config changes
@@ -557,6 +565,22 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('agents.newAgent', () => {
       // Default is always Claude
       const agentConfig = getBuiltInByTitle(context.extensionPath, defaultAgentTitle);
+      if (agentConfig) {
+        openSingleAgent(context, agentConfig);
+      }
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('agents.newSecondaryAgent', async () => {
+      const targetTitle = secondaryAgentTitle || defaultAgentTitle;
+      let agentConfig = getBuiltInByTitle(context.extensionPath, targetTitle);
+      if (agentConfig?.command && !(await commandExists(agentConfig.command))) {
+        agentConfig = undefined;
+      }
+      if (!agentConfig) {
+        agentConfig = getBuiltInByTitle(context.extensionPath, defaultAgentTitle);
+      }
       if (agentConfig) {
         openSingleAgent(context, agentConfig);
       }
@@ -690,6 +714,13 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('agents.setDefaultAgentTitle', (title: string) => {
       defaultAgentTitle = title;
       context.globalState.update('agents.defaultAgentTitle', title);
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('agents.setSecondaryAgentTitle', (title: string) => {
+      secondaryAgentTitle = title;
+      context.globalState.update('agents.secondaryAgentTitle', title);
     })
   );
 
@@ -1523,17 +1554,22 @@ async function maybeRunFirstSetup(context: vscode.ExtensionContext, force = fals
     if (stored) {
       defaultAgentTitle = stored;
     }
+    const storedSecondary = context.globalState.get<string>('agents.secondaryAgentTitle');
+    if (storedSecondary) {
+      secondaryAgentTitle = storedSecondary;
+    }
     return;
   }
 
-  // Detect default agent automatically
-  const detected = await detectDefaultAgentTitle();
-  defaultAgentTitle = detected;
-  await context.globalState.update('agents.defaultAgentTitle', detected);
+  // Set default agents on first setup
+  defaultAgentTitle = CLAUDE_TITLE;
+  secondaryAgentTitle = CODEX_TITLE;
+  await context.globalState.update('agents.defaultAgentTitle', CLAUDE_TITLE);
+  await context.globalState.update('agents.secondaryAgentTitle', CODEX_TITLE);
 
   // Ensure swarm MCP + command is enabled for the detected default agent only
   try {
-    const def = getBuiltInDefByTitle(detected);
+    const def = getBuiltInDefByTitle(defaultAgentTitle);
     const cliAgent = def && ['claude', 'codex', 'gemini'].includes(def.key) ? def.key as swarm.AgentCli : undefined;
     if (cliAgent) {
       const status = await swarm.getSwarmStatus();
@@ -1547,7 +1583,7 @@ async function maybeRunFirstSetup(context: vscode.ExtensionContext, force = fals
   }
 
   await context.globalState.update('agents.setupComplete', true);
-  vscode.window.showInformationMessage(`Agents setup completed. Default agent: ${detected}.`);
+  vscode.window.showInformationMessage(`Agents setup completed. Default agent: ${defaultAgentTitle}.`);
 }
 
 // Git functions are now in ./git.vscode

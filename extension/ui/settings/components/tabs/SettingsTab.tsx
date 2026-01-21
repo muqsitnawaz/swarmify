@@ -36,6 +36,7 @@ interface SettingsTabProps {
   skillsStatus: SkillsStatus | null
   builtInAgents: BuiltInAgentConfig[]
   defaultAgent: string
+  secondaryAgent: string
   installedAgents: Record<string, boolean>
   icons: IconConfig
   isLightTheme: boolean
@@ -60,6 +61,7 @@ interface SettingsTabProps {
   onInstallSwarmAgent: (agent: SwarmAgentType) => void
   onInstallCommandPack: () => void
   onSetDefaultAgent: (agentTitle: string) => void
+  onSetSecondaryAgent: (agentTitle: string) => void
   onTogglePrewarm: () => void
   onUpdateTaskSources: (sources: Partial<AgentSettings['taskSources']>) => void
   // Alias handlers
@@ -81,6 +83,7 @@ export function SettingsTab({
   skillsStatus,
   builtInAgents,
   defaultAgent,
+  secondaryAgent,
   installedAgents,
   icons,
   isLightTheme,
@@ -103,6 +106,7 @@ export function SettingsTab({
   onInstallSwarmAgent,
   onInstallCommandPack,
   onSetDefaultAgent,
+  onSetSecondaryAgent,
   onTogglePrewarm,
   onUpdateTaskSources,
   onAddAliasClick,
@@ -413,6 +417,44 @@ export function SettingsTab({
                           ? 'border-[var(--primary)] bg-[var(--background)]'
                           : 'border-[var(--border)] bg-[var(--background)] hover:border-[var(--primary)]/60'
                       }`}
+                    >
+                      <img src={getIcon(agent.icon, isLightTheme)} alt={agent.name} className="w-5 h-5" />
+                      <span className="text-sm font-medium">{agent.name}</span>
+                      {isSelected && <Check className="w-4 h-4 ml-auto text-[var(--primary)]" />}
+                    </button>
+                  )
+                })}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Secondary Default Agent */}
+      <section>
+        <SectionHeader>Secondary Default Agent</SectionHeader>
+        <div className="rounded-xl bg-[var(--muted)]">
+          {builtInAgents.filter(a => a.key !== 'shell' && isAgentInstalled(a.key)).length === 0 ? (
+            <div className="text-sm text-[var(--muted-foreground)] p-4">
+              Install an agent to set a secondary default.
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 p-4">
+              {builtInAgents
+                .filter(a => a.key !== 'shell' && isAgentInstalled(a.key))
+                .map(agent => {
+                  const primaryKey = (AGENT_TITLE_TO_KEY[defaultAgent] || 'claude')
+                  const isPrimary = primaryKey === agent.key
+                  const isSelected = (AGENT_TITLE_TO_KEY[secondaryAgent] || 'codex') === agent.key
+                  return (
+                    <button
+                      key={agent.key}
+                      onClick={() => onSetSecondaryAgent(AGENT_KEY_TO_TITLE[agent.key] || 'CX')}
+                      disabled={isPrimary}
+                      className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors ${
+                        isSelected
+                          ? 'border-[var(--primary)] bg-[var(--background)]'
+                          : 'border-[var(--border)] bg-[var(--background)] hover:border-[var(--primary)]/60'
+                      } ${isPrimary ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                       <img src={getIcon(agent.icon, isLightTheme)} alt={agent.name} className="w-5 h-5" />
                       <span className="text-sm font-medium">{agent.name}</span>
