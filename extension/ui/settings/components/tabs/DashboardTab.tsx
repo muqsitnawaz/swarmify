@@ -36,6 +36,7 @@ interface DashboardTabProps {
 
 const SHORTCUTS = [
   ['Cmd+Shift+A', 'New agent'],
+  ['Cmd+Shift+B', 'New secondary agent'],
   ['Cmd+Shift+L', 'Label agent'],
   ['Cmd+Shift+G', 'Commit & push'],
   ['Cmd+Shift+C', 'Clear & restart'],

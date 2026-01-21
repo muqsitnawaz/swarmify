@@ -98,6 +98,7 @@ export default function App() {
 
   // Default agent and installed agents
   const [defaultAgent, setDefaultAgent] = useState<string>('CC')
+  const [secondaryAgent, setSecondaryAgent] = useState<string>('CX')
   const [installedAgents, setInstalledAgents] = useState<Record<string, boolean>>({
     claude: true, codex: true, gemini: true, opencode: true, cursor: true, shell: true
   })
@@ -178,6 +179,9 @@ export default function App() {
         case 'defaultAgentData':
           setDefaultAgent(message.defaultAgent)
           break
+        case 'secondaryAgentData':
+          setSecondaryAgent(message.secondaryAgent)
+          break
         case 'swarmStatus':
           if (message.swarmStatus) setSwarmStatus(message.swarmStatus)
           break
@@ -231,6 +235,7 @@ export default function App() {
     vscode.postMessage({ type: 'ready' })
     vscode.postMessage({ type: 'checkInstalledAgents' })
     vscode.postMessage({ type: 'getDefaultAgent' })
+    vscode.postMessage({ type: 'getSecondaryAgent' })
     vscode.postMessage({ type: 'getPrewarmStatus' })
     vscode.postMessage({ type: 'getWorkspaceConfig' })
 
@@ -353,6 +358,11 @@ export default function App() {
   const handleSetDefaultAgent = (agentTitle: string) => {
     setDefaultAgent(agentTitle)
     vscode.postMessage({ type: 'setDefaultAgent', agentTitle })
+  }
+
+  const handleSetSecondaryAgent = (agentTitle: string) => {
+    setSecondaryAgent(agentTitle)
+    vscode.postMessage({ type: 'setSecondaryAgent', agentTitle })
   }
 
   const togglePrewarm = () => {
@@ -571,6 +581,7 @@ export default function App() {
           skillsStatus={skillsStatus}
           builtInAgents={BUILT_IN_AGENTS}
           defaultAgent={defaultAgent}
+          secondaryAgent={secondaryAgent}
           installedAgents={installedAgents}
           icons={icons}
           isLightTheme={isLightTheme}
@@ -593,6 +604,7 @@ export default function App() {
           onInstallSwarmAgent={handleInstallSwarmAgent}
           onInstallCommandPack={handleInstallCommandPack}
           onSetDefaultAgent={handleSetDefaultAgent}
+          onSetSecondaryAgent={handleSetSecondaryAgent}
           onTogglePrewarm={togglePrewarm}
           onUpdateTaskSources={handleUpdateTaskSources}
           onAddAliasClick={handleAddAliasClick}

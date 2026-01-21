@@ -4,6 +4,7 @@ import { SectionHeader } from '../common'
 
 const QUICK_START_STEPS = [
   'Cmd+Shift+A to spawn an agent',
+  'Cmd+Shift+B to spawn the secondary agent',
   'Type your request in the terminal',
   'Cmd+R / Cmd+E to switch agents',
   '/swarm in Claude for parallel agents',
