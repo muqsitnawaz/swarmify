@@ -410,9 +410,20 @@ export function openPanel(context: vscode.ExtensionContext): void {
           defaultAgent
         });
         break;
+      case 'getSecondaryAgent':
+        const secondaryAgent = context.globalState.get<string>('agents.secondaryAgentTitle', 'CX');
+        settingsPanel?.webview.postMessage({
+          type: 'secondaryAgentData',
+          secondaryAgent
+        });
+        break;
       case 'setDefaultAgent':
         // Update via command which also updates the module-level variable
         await vscode.commands.executeCommand('agents.setDefaultAgentTitle', message.agentTitle);
+        break;
+      case 'setSecondaryAgent':
+        // Update via command which also updates the module-level variable
+        await vscode.commands.executeCommand('agents.setSecondaryAgentTitle', message.agentTitle);
         break;
       case 'spawnAgent':
         // Spawn a new agent of the given type
