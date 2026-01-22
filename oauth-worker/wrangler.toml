@@ -1,0 +1,11 @@
+name = "swarmify-oauth"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+[vars]
+GITHUB_CLIENT_ID = "Ov23liMkJxOlqmJmDrjE"
+LINEAR_CLIENT_ID = "2e9e7d9e5c0f"
+
+# Secrets (set via: wrangler secret put GITHUB_CLIENT_SECRET)
+# GITHUB_CLIENT_SECRET
+# LINEAR_CLIENT_SECRET
