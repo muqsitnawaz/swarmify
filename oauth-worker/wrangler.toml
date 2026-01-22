@@ -3,7 +3,7 @@ main = "src/index.ts"
 compatibility_date = "2024-01-01"
 
 [vars]
-GITHUB_CLIENT_ID = "Ov23liMkJxOlqmJmDrjE"
+GITHUB_CLIENT_ID = "Ov23liKYaRnJ5DqzmPYO"
 LINEAR_CLIENT_ID = "2e9e7d9e5c0f"
 
 # Secrets (set via: wrangler secret put GITHUB_CLIENT_SECRET)
