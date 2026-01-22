@@ -1198,45 +1198,53 @@ async function newTaskWithContext(context: vscode.ExtensionContext) {
   const agentSettings = settings.getSettings(context);
   const tasks = await tasksImport.fetchAllTasks(context, agentSettings.taskSources);
 
+  let message: string;
+
   if (tasks.length === 0) {
-    vscode.window.showInformationMessage('No tasks found. Add tasks to TODO.md, RALPH.md, or enable Linear/GitHub sources.');
-    return;
-  }
+    const userPrompt = await vscode.window.showInputBox({
+      prompt: 'Enter task for the agent',
+      placeHolder: 'What should the agent do?'
+    });
 
-  interface TaskQuickPickItem extends vscode.QuickPickItem {
-    task: typeof tasks[0];
-  }
+    if (userPrompt === undefined) return;
 
-  const items: TaskQuickPickItem[] = tasks.map(task => {
-    const badge = SOURCE_BADGES[task.source];
-    const identifier = task.metadata.identifier;
-    const description = identifier ? `${badge.label} ${identifier}` : badge.label;
+    message = userPrompt;
+  } else {
+    interface TaskQuickPickItem extends vscode.QuickPickItem {
+      task: typeof tasks[0];
+    }
 
-    return {
-      label: task.title,
-      description,
-      detail: task.description ? task.description.slice(0, 100) + (task.description.length > 100 ? '...' : '') : undefined,
-      task
-    };
-  });
+    const items: TaskQuickPickItem[] = tasks.map(task => {
+      const badge = SOURCE_BADGES[task.source];
+      const identifier = task.metadata.identifier;
+      const description = identifier ? `${badge.label} ${identifier}` : badge.label;
 
-  const selected = await vscode.window.showQuickPick(items, {
-    placeHolder: 'Select a task to work on',
-    matchOnDescription: true,
-    matchOnDetail: true
-  });
+      return {
+        label: task.title,
+        description,
+        detail: task.description ? task.description.slice(0, 100) + (task.description.length > 100 ? '...' : '') : undefined,
+        task
+      };
+    });
 
-  if (!selected) return;
+    const selected = await vscode.window.showQuickPick(items, {
+      placeHolder: 'Select a task to work on',
+      matchOnDescription: true,
+      matchOnDetail: true
+    });
 
-  const task = selected.task;
-  let message = task.title;
+    if (!selected) return;
 
-  if (task.description) {
-    message += `\n\n${task.description}`;
-  }
+    const task = selected.task;
+    message = task.title;
 
-  if (task.metadata.url) {
-    message += `\n\nReference: ${task.metadata.url}`;
+    if (task.description) {
+      message += `\n\n${task.description}`;
+    }
+
+    if (task.metadata.url) {
+      message += `\n\nReference: ${task.metadata.url}`;
+    }
   }
 
   const clipboardText = await vscode.env.clipboard.readText();
