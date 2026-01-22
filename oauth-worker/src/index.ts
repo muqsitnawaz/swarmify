@@ -1,6 +1,7 @@
 interface Env {
-  GITHUB_CLIENT_ID: string;
-  GITHUB_CLIENT_SECRET: string;
+  // GitHub OAuth secrets per IDE (client_id -> secret mapping)
+  GITHUB_SECRET_Ov23liKYaRnJ5DqzmPYO: string;  // VS Code
+  GITHUB_SECRET_Ov23libl1NZ18xfKlvhi: string;  // Cursor
   LINEAR_CLIENT_ID: string;
   LINEAR_CLIENT_SECRET: string;
 }
@@ -21,13 +22,25 @@ export default {
 
     if (url.pathname === '/oauth/exchange' && request.method === 'POST') {
       try {
-        const { code, provider } = await request.json() as { code: string; provider: string };
+        const { code, provider, client_id } = await request.json() as { code: string; provider: string; client_id?: string };
 
         if (!code || !provider) {
           return Response.json({ error: 'Missing code or provider' }, { status: 400, headers: CORS_HEADERS });
         }
 
         if (provider === 'github') {
+          if (!client_id) {
+            return Response.json({ error: 'Missing client_id' }, { status: 400, headers: CORS_HEADERS });
+          }
+
+          // Look up secret by client_id
+          const secretKey = `GITHUB_SECRET_${client_id}` as keyof Env;
+          const clientSecret = env[secretKey];
+
+          if (!clientSecret) {
+            return Response.json({ error: 'Unknown client_id' }, { status: 400, headers: CORS_HEADERS });
+          }
+
           const response = await fetch('https://github.com/login/oauth/access_token', {
             method: 'POST',
             headers: {
@@ -35,8 +48,8 @@ export default {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              client_id: env.GITHUB_CLIENT_ID,
-              client_secret: env.GITHUB_CLIENT_SECRET,
+              client_id,
+              client_secret: clientSecret,
               code,
             }),
           });
