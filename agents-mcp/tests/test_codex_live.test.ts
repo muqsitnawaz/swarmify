@@ -52,7 +52,7 @@ describe('Codex Live E2E', () => {
 
     console.log('Running codex with prompt:', prompt);
 
-    const spawnResult = await handleSpawn(manager, 'test-codex', 'codex', prompt, null, null, null);
+    const spawnResult = await handleSpawn(manager, 'test-codex', 'codex', prompt, null, 'edit', null);
     console.log('Spawned agent:', spawnResult.agent_id);
     
     const statusResult = await pollUntilComplete(manager, 'test-codex', spawnResult.agent_id, 90, 2000);
@@ -126,7 +126,7 @@ describe('Codex Live E2E', () => {
 
       console.log('Running comprehensive test with prompt:', prompt);
       
-      const spawnResult = await handleSpawn(manager, 'test-codex', 'codex', prompt, testDataPath, null, null);
+      const spawnResult = await handleSpawn(manager, 'test-codex', 'codex', prompt, testDataPath, 'edit', null);
       console.log('Spawned agent:', spawnResult.agent_id);
       
       const statusResult = await pollUntilComplete(manager, 'test-codex', spawnResult.agent_id, 180, 2000);
