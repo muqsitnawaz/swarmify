@@ -17,6 +17,7 @@ import {
   IconConfig,
   WorkspaceConfig,
   PrewarmPool,
+  QuickLaunchSlot,
 } from '../../types'
 import {
   ALL_SWARM_AGENTS,
@@ -471,6 +472,79 @@ export function SettingsTab({
                 })}
             </div>
           )}
+        </div>
+      </section>
+
+      {/* Quick Launch */}
+      <section>
+        <SectionHeader>Quick Launch</SectionHeader>
+        <div className="text-xs text-[var(--muted-foreground)] mb-2">
+          Configure keyboard shortcuts for quick agent launch with specific models
+        </div>
+        <div className="space-y-2">
+          {([
+            { key: 'slot1', shortcut: 'Cmd+Shift+1' },
+            { key: 'slot2', shortcut: 'Cmd+Shift+2' },
+            { key: 'slot3', shortcut: 'Cmd+Shift+3' },
+          ] as const).map(({ key, shortcut }) => {
+            const slot = settings.quickLaunch?.[key]
+            const agentInfo = slot ? builtInAgents.find(a => a.key === slot.agent) : null
+            const modelOptions = slot?.agent ? (AGENT_MODELS[slot.agent] || []) : []
+
+            return (
+              <div key={key} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)]">
+                <code className="text-xs bg-[var(--background)] px-2 py-1 rounded font-mono min-w-[100px]">
+                  {shortcut}
+                </code>
+                <select
+                  value={slot?.agent || ''}
+                  onChange={(e) => {
+                    const agent = e.target.value
+                    const newSlot: QuickLaunchSlot | undefined = agent
+                      ? { agent, model: undefined, label: undefined }
+                      : undefined
+                    onSaveSettings({
+                      ...settings,
+                      quickLaunch: {
+                        ...settings.quickLaunch,
+                        [key]: newSlot,
+                      },
+                    })
+                  }}
+                  className="h-8 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-sm min-w-[100px]"
+                >
+                  <option value="">None</option>
+                  {builtInAgents.filter(a => a.key !== 'shell').map(agent => (
+                    <option key={agent.key} value={agent.key}>{agent.name}</option>
+                  ))}
+                </select>
+                {slot?.agent && modelOptions.length > 0 && (
+                  <select
+                    value={slot.model || ''}
+                    onChange={(e) => {
+                      const model = e.target.value || undefined
+                      onSaveSettings({
+                        ...settings,
+                        quickLaunch: {
+                          ...settings.quickLaunch,
+                          [key]: { ...slot, model },
+                        },
+                      })
+                    }}
+                    className="h-8 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-sm flex-1"
+                  >
+                    <option value="">Default model</option>
+                    {modelOptions.map(model => (
+                      <option key={model} value={model}>{model}</option>
+                    ))}
+                  </select>
+                )}
+                {slot && agentInfo && (
+                  <img src={getIcon(agentInfo.icon, isLightTheme)} alt={agentInfo.name} className="w-5 h-5 ml-auto" />
+                )}
+              </div>
+            )
+          })}
         </div>
       </section>
 

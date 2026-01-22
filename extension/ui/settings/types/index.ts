@@ -18,6 +18,19 @@ export interface CommandAlias {
   flags: string
 }
 
+// Quick launch slot for keyboard shortcuts (Cmd+Shift+1/2/3)
+export interface QuickLaunchSlot {
+  agent: string
+  model?: string
+  label?: string
+}
+
+export interface QuickLaunchConfig {
+  slot1?: QuickLaunchSlot
+  slot2?: QuickLaunchSlot
+  slot3?: QuickLaunchSlot
+}
+
 export type SwarmAgentType = 'claude' | 'codex' | 'gemini' | 'trae'
 export type PromptPackAgentType = 'claude' | 'codex' | 'gemini' | 'cursor' | 'trae'
 
@@ -137,6 +150,7 @@ export interface AgentSettings {
   }
   custom: CustomAgentSettings[]
   aliases: CommandAlias[]
+  quickLaunch?: QuickLaunchConfig
   swarmEnabledAgents: SwarmAgentType[]
   prompts: PromptEntry[]
   editor: EditorPreferences
