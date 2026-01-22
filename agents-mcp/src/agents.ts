@@ -588,19 +588,8 @@ export class AgentProcess {
   private filterByCwd: string | null;
   private cleanupAgeDays: number;
   private defaultMode: Mode;
-  private effortModelMap: EffortModelMap = {
-    fast: { codex: 'gpt-5.2-codex', gemini: 'gemini-3-flash-preview', claude: 'claude-haiku-4-5-20251001', cursor: 'composer-1', trae: 'gpt-4o-mini', opencode: 'zai-coding-plan/glm-4.7-flash' },
-    default: { codex: 'gpt-5.2-codex', gemini: 'gemini-3-flash-preview', claude: 'claude-sonnet-4-5', cursor: 'composer-1', trae: 'gpt-4o', opencode: 'zai-coding-plan/glm-4.7' },
-    detailed: { codex: 'gpt-5.1-codex-max', gemini: 'gemini-3-pro-preview', claude: 'claude-opus-4-5', cursor: 'composer-1', trae: 'claude-sonnet-4-20250514', opencode: 'zai-coding-plan/glm-4.7' },
-  };
-  private agentConfigs: Record<AgentType, AgentConfig> = {
-    codex: { swarm: false },
-    gemini: { swarm: false },
-    cursor: { swarm: false },
-    claude: { swarm: false },
-    trae: { swarm: false },
-    opencode: { swarm: false },
-  };
+  private effortModelMap: EffortModelMap;
+  private agentConfigs: Record<AgentType, AgentConfig>;
   private constructorAgentConfigs: Record<AgentType, AgentConfig> | null = null;
 
   private constructorAgentsDir: string | null = null;
@@ -633,11 +622,10 @@ export class AgentProcess {
     this.agentsDir = this.constructorAgentsDir || await getAgentsDir();
     await fs.mkdir(this.agentsDir, { recursive: true });
 
-    // Load config if not provided
+    // Set defaults if no config provided
     if (!this.constructorAgentConfigs) {
-      const configs = await loadDefaultAgentConfigs();
-      this.agentConfigs = configs;
-      this.effortModelMap = resolveEffortModelMap(configs);
+      this.agentConfigs = loadDefaultAgentConfigs();
+      this.effortModelMap = resolveEffortModelMap(this.agentConfigs);
     } else {
       this.effortModelMap = resolveEffortModelMap(this.constructorAgentConfigs);
     }
