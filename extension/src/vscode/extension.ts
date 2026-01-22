@@ -56,6 +56,8 @@ import * as prewarm from './prewarm.vscode';
 import { supportsPrewarming, buildResumeCommand, PREWARM_CONFIGS } from '../core/prewarm';
 import { needsPrewarming, generateClaudeSessionId, buildClaudeOpenCommand } from '../core/prewarm.simple';
 import { getSessionPathBySessionId, getSessionPreviewInfo } from './sessions.vscode';
+import * as tasksImport from './tasks.vscode';
+import { SOURCE_BADGES } from '../core/tasks';
 
 // Settings types are now imported from ./settings
 // Settings functions are in ./settings.vscode
@@ -1193,29 +1195,55 @@ async function openSingleAgent(
 }
 
 async function newTaskWithContext(context: vscode.ExtensionContext) {
-  // 1. Copy selection to clipboard (if any)
-  await vscode.commands.executeCommand('workbench.action.terminal.copySelection');
+  const agentSettings = settings.getSettings(context);
+  const tasks = await tasksImport.fetchAllTasks(context, agentSettings.taskSources);
 
-  // 2. Read clipboard
-  const clipboardText = await vscode.env.clipboard.readText();
-
-  // 3. Get user prompt
-  const userPrompt = await vscode.window.showInputBox({
-    prompt: 'Enter task for the agent',
-    placeHolder: 'What should the agent do?'
-  });
-
-  if (userPrompt === undefined) return; // User cancelled
-
-  // 4. Format message
-  let message: string;
-  if (clipboardText && clipboardText.trim()) {
-    message = `<context>\n${clipboardText.trim()}\n</context>\n\n${userPrompt}`;
-  } else {
-    message = userPrompt;
+  if (tasks.length === 0) {
+    vscode.window.showInformationMessage('No tasks found. Add tasks to TODO.md, RALPH.md, or enable Linear/GitHub sources.');
+    return;
   }
 
-  // 5. Open new Claude agent with queued message
+  interface TaskQuickPickItem extends vscode.QuickPickItem {
+    task: typeof tasks[0];
+  }
+
+  const items: TaskQuickPickItem[] = tasks.map(task => {
+    const badge = SOURCE_BADGES[task.source];
+    const identifier = task.metadata.identifier;
+    const description = identifier ? `${badge.label} ${identifier}` : badge.label;
+
+    return {
+      label: task.title,
+      description,
+      detail: task.description ? task.description.slice(0, 100) + (task.description.length > 100 ? '...' : '') : undefined,
+      task
+    };
+  });
+
+  const selected = await vscode.window.showQuickPick(items, {
+    placeHolder: 'Select a task to work on',
+    matchOnDescription: true,
+    matchOnDetail: true
+  });
+
+  if (!selected) return;
+
+  const task = selected.task;
+  let message = task.title;
+
+  if (task.description) {
+    message += `\n\n${task.description}`;
+  }
+
+  if (task.metadata.url) {
+    message += `\n\nReference: ${task.metadata.url}`;
+  }
+
+  const clipboardText = await vscode.env.clipboard.readText();
+  if (clipboardText && clipboardText.trim()) {
+    message = `<context>\n${clipboardText.trim()}\n</context>\n\n${message}`;
+  }
+
   const agentConfig = getBuiltInByTitle(context.extensionPath, defaultAgentTitle);
   if (agentConfig) {
     await openSingleAgentWithQueue(context, agentConfig, [message]);
