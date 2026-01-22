@@ -1,25 +1,18 @@
 # @swarmify/agents-mcp
 
-Run Subagents, Swarm or Ralph Wiggums from any MCP client.
-
-Spawn CLI agents in parallel so your main agent stays focused. Each subagent runs in its own context and can be polled for progress.
+Turn any agent into a tech lead. Spawn sub-agents from Claude, Codex, Gemini, or any MCP client.
 
 Homepage: https://swarmify.co
 NPM: https://www.npmjs.com/package/@swarmify/agents-mcp
-VS Code Extension: https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext
+VS Code Extension: [Agents](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext) - full-screen agent terminals in your editor
 
-## Why This Exists
+## What you get
 
-MCP adoption is accelerating and the ecosystem is organizing around registries, gateways, and enterprise governance. At the same time, teams are pushing toward multi-agent workflows and running into orchestration reliability, tool overload, and security concerns. This server gives you a focused, practical building block for real-world swarm work.
+A single agent handles one thing at a time - like a junior developer. Add this MCP server, and your agent becomes a tech lead: it can spawn sub-agents, assign them specific files, give them project context, and synthesize their results.
 
-The API surface is intentionally small, closer to iconic commands like `cd`, `ls`, and `git` than a framework. Fewer knobs means less room for an orchestrator to make mistakes.
-
-## What You Get
-
-- A dead simple MCP server with `Spawn`, `Status`, `Stop`, and `Tasks` tools
-- The `/swarm` command to teach an orchestrator how to distribute work
-- Plan vs edit modes that control file access per agent
-- Local logs and durable processes that survive IDE restarts
+**4 tools:** `Spawn`, `Status`, `Stop`, `Tasks`
+**3 modes:** `plan` (read-only), `edit` (can write), `ralph` (autonomous)
+**Background processes:** Sub-agents run headless, survive IDE restarts
 
 ## Quick Start
 
@@ -33,107 +26,20 @@ codex mcp add swarm -- npx -y @swarmify/agents-mcp@latest
 # Gemini CLI
 gemini mcp add Swarm -- npx -y @swarmify/agents-mcp
 
-# OpenCode (interactive)
+# OpenCode
 opencode mcp add
-# Name: swarmify-agents
-# Type: Local
-# Command: npx -y @swarmify/agents-mcp
+# Name: Swarm, Command: npx -y @swarmify/agents-mcp
 ```
 
 The server auto-discovers which agent CLIs you have installed.
 
-## Where It Fits
+## What it costs
 
-- Parallelize tasks across Claude, Codex, Gemini, and Cursor
-- Keep long-running loops responsive by offloading work to subagents
-- Integrate with MCP registries and gateways without changing your workflow
-- Run Ralph Wiggum loops inside spawned Claude Code agents when the plugin is installed
+This server is free and open source.
 
-## What This Server Does
-
-**Agent Lifecycle Management**
-- Spawns agent CLIs as detached background processes (survive IDE restarts)
-- Stops agents by task or individually (SIGTERM/SIGKILL with process groups)
-- Cleans up old agents from disk (7-day retention)
-
-**Agent Orchestration & Delegation**
-- Groups agents by task name (`task_name`) for organized coordination
-- Tracks each agent's UUID, type, mode, and parent session
-- Returns `agent_id` immediately for non-blocking spawn-then-poll patterns
-
-**Permission & Mode Management**
-- `plan` - Read-only, research, code review
-- `edit` - Read + write for implementation
-- `ralph` - Autonomous iteration through RALPH.md tasks
-
-**Output Stream Processing**
-- Normalizes 6 agent formats (Claude, Codex, Gemini, Cursor, Trae, OpenCode) into unified events
-- Compresses events: deduplicated files, truncated bash commands, last 5 messages
-- Delta polling via `since` timestamp (cursor-based, no redundant data)
-
-**Configuration & Model Selection**
-- Effort levels (`fast`, `default`, `detailed`) map to agent-specific models
-- Config at `~/.agents/config.json` for per-agent overrides
-
-## What This Server Does NOT Do
-
-| Not This | That's The Orchestrator's Job |
-|----------|-------------------------------|
-| Scheduling | Decides when to spawn which agents |
-| Task assignment | Writes prompts, defines what to do |
-| Conflict resolution | Assigns non-overlapping files to agents |
-| Intelligence | Pure infrastructure - no decision-making |
-
-## How This Differs from Agent Skills
-
-| | Agent Skills | agents-mcp |
-|---|---|---|
-| **Type** | Static knowledge packages | Agent orchestration server |
-| **Adds** | Domain expertise (rules, scripts) | Multi-agent coordination |
-| **Runtime** | None (markdown + bash) | Node.js process |
-
-Agent skills define *what* an agent knows (deploy to Vercel, optimize React).
-agents-mcp defines *how* agents work together (orchestrator spawns Codex to implement, Cursor to debug).
-
-They're complementary—sub-agents can use skills.
-
-## Under the Hood
-
-Headless CLI agents run as background processes. Output streams to `~/.agents/agents/{id}/stdout.log`.
-
-Plan mode is read-only:
-
-- Claude: `--permission-mode plan`
-- Codex: sandboxed (no `--full-auto`)
-- Gemini and Cursor: no auto-approve flags
-
-Edit mode unlocks writes:
-
-- Codex: `--full-auto`
-- Claude: `acceptEdits`
-- Gemini: `--yolo`
-- Cursor: `-f`
-
-Agents are detached from the MCP server process. Close your IDE and reopen it, then reconnect with `Status` and `Tasks`.
-
-## Common Questions
-
-**"Isn't this overkill for simple tasks?**"Yes. For typo fixes or small changes, one agent is fine. But for implementing a complex feature across 20 files, a single agent drowning in context is slower than a focused swarm working in parallel.
-
-**"What if agents conflict?**"They don't. The orchestrator (via `/swarm` command) assigns each agent specific files—no overlap. For shared files, it runs agents in sequential waves so there's no collision.
-
-**"How do I monitor what's happening?**"Use the Swarm `Status` tool to see what each agent is doing: files changed, commands run, last messages. No black box—full visibility into the swarm.
+Each sub-agent uses your own API keys. Spawning 3 Claude agents means 3x your normal Claude API cost. No hidden fees.
 
 ## API Reference
-
-### Tools
-
-| Tool | Description |
-| --- | --- |
-| `Spawn` | Start an agent on a task. Returns immediately with agent ID. |
-| `Status` | Get agent progress: files changed, commands run, last messages. |
-| `Stop` | Stop one agent or all agents in a task. |
-| `Tasks` | List all tasks with their agents and activity. |
 
 ### Spawn
 
@@ -141,27 +47,30 @@ Agents are detached from the MCP server process. Close your IDE and reopen it, t
 Spawn(task_name, agent_type, prompt, mode?, cwd?, effort?)
 ```
 
+Start an agent on a task. Returns immediately with agent ID.
+
 | Parameter | Required | Description |
 | --- | --- | --- |
 | `task_name` | Yes | Groups related agents (e.g., "auth-feature") |
 | `agent_type` | Yes | `claude`, `codex`, `gemini`, or `cursor` |
 | `prompt` | Yes | The task for the agent |
-| `mode` | No | `plan` (read-only, default), `edit` (can write files), or `ralph` (autonomous through RALPH.md) |
-| `cwd` | No | Working directory for the agent |
-| `effort` | No | `fast`, `default` (implicit), or `detailed` for max-capability models |
+| `mode` | No | `plan` (default), `edit`, or `ralph` |
+| `cwd` | No | Working directory |
+| `effort` | No | `fast`, `default`, or `detailed` |
 
 ### Status
 
 ```
-Status(task_name, filter?)
+Status(task_name, filter?, since?)
 ```
+
+Get agent progress: files changed, commands run, last messages.
 
 | Parameter | Required | Description |
 | --- | --- | --- |
 | `task_name` | Yes | Task to check |
-| `filter` | No | `running` (default), `completed`, `failed`, `stopped`, or `all` |
-
-Returns files created/modified/read/deleted, bash commands executed, and last messages.
+| `filter` | No | `running` (default), `completed`, `failed`, `stopped`, `all` |
+| `since` | No | ISO timestamp for delta updates |
 
 ### Stop
 
@@ -177,156 +86,97 @@ Stop all agents in a task, or a specific agent by ID.
 Tasks(limit?)
 ```
 
-List all tasks sorted by most recent activity. Defaults to 10 tasks when limit is omitted.
-
-## Token Optimization
-
-This server is designed to minimize token usage for the calling agent:
-
-| Optimization | Benefit |
-| --- | --- |
-| Status defaults to `filter='running'` | Only shows active agents, not completed history |
-| Bash commands truncated to 120 chars | Heredocs collapsed to `cat <<EOF > path` |
-| Last 5 messages only | Not full conversation history |
-| File operations deduplicated | Sets of created/modified/read/deleted paths |
-| Spawn returns immediately | No blocking, poll with Status later |
-
-## Supported Agents
-
-The server auto-discovers installed CLIs at startup:
-
-| Agent | CLI | Best For |
-| --- | --- | --- |
-| Claude | `claude` | Best for complex research and open-ended exploration |
-| Codex | `codex` | Fast, cheap. Self-contained features |
-| Gemini | `gemini` | Complex multi-system features, architectural changes |
-| Cursor | `cursor-agent` | Debugging, bug fixes, tracing through codebases |
+List all tasks sorted by most recent activity. Defaults to 10.
 
 ## Modes
 
-| Mode | File Access | Auto-loops? | Use Case |
+| Mode | File Access | Auto-loop? | Use Case |
 | --- | --- | --- | --- |
-| `plan` | Read-only | No | Research, exploration, code review |
-| `edit` | Read + Write | No | Implementation, refactoring, fixes |
-| `ralph` | Full yolo | Yes | Autonomous iteration through RALPH.md tasks |
+| `plan` | Read-only | No | Research, code review |
+| `edit` | Read + Write | No | Implementation, fixes |
+| `ralph` | Full | Yes | Autonomous via RALPH.md |
 
 Default is `plan` for safety. Pass `mode='edit'` when agents need to modify files.
 
 ### Ralph Mode
 
-Ralph mode spawns ONE agent with full permissions and instructions to autonomously work through all tasks in a `RALPH.md` file.
-
-**RALPH.md format:**
+Ralph mode spawns one agent with full permissions to autonomously work through tasks in a `RALPH.md` file. The agent reads the file, picks tasks logically, marks them complete, and continues until done.
 
 ```markdown
 ## [ ] Implement user authentication
 
-Add JWT-based auth to the backend API.
+Add JWT-based auth to the backend.
 
 ### Updates
 
 ---
 
-## [x] Add rate limiting middleware
+## [x] Add rate limiting
 
-Protect API endpoints from abuse.
-
-### Updates
-- Added middleware with sliding window counter
-- Completed: All endpoints protected
-
----
-
-## [ ] Write integration tests
-
-Cover auth endpoints.
+Protect API endpoints.
 
 ### Updates
+- Added sliding window counter
 ```
 
-**How it works:**
-
-1. Create a `RALPH.md` file in your project directory with tasks
-2. Call `Spawn(mode='ralph', cwd='./my-project', prompt='Build the auth system')`
-3. MCP spawns ONE agent with full permissions
-4. Agent reads RALPH.md, understands the system, picks tasks logically
-5. For each task: completes work, marks checkbox `## [x]`, adds update
-6. Continues until all tasks checked (or you stop it with `Stop` tool)
-
-**Multiple ralph agents:** You can spawn multiple ralph agents in parallel for different directories or different RALPH.md files. The orchestrator controls this.
-
-**Safety:**
-
-- Scoped by `cwd` - orchestrator controls blast radius
-- RALPH.md must exist before spawn
-- Warns if used in home/system directories
-- Agent logs stored in `~/.agents/agents/{id}/stdout.log` like regular agents
-
-## Effort Levels
-
-| Level | Models Used |
-| --- | --- |
-| `fast` | codex: gpt-5.2-codex, claude: claude-haiku-4-5, gemini: gemini-3-flash, cursor: composer-1 |
-| `default` | codex: gpt-5.2-codex, claude: claude-sonnet-4-5, gemini: gemini-3-flash, cursor: composer-1 |
-| `detailed` | codex: gpt-5.1-codex-max, claude: claude-opus-4-5, gemini: gemini-3-pro, cursor: composer-1 |
-
-## Config
-
-Config lives at `~/.agents/config.json`.
-
-Example with per-agent swarm selection and effort model overrides:
-
-```json
-{
-  "agents": {
-    "claude": {
-      "swarm": true,
-      "effort": {
-        "models": {
-          "fast": "claude-haiku-4-5-20251001",
-          "default": "claude-sonnet-4-5",
-          "detailed": "claude-opus-4-5"
-        }
-      }
-    },
-    "codex": { "swarm": true },
-    "gemini": { "swarm": true },
-    "cursor": { "swarm": false }
-  }
-}
+```
+Spawn(mode='ralph', cwd='./my-project', prompt='Build the auth system')
 ```
 
-Shorthand for a single effort level override:
+## What This Server Does NOT Do
 
-```json
-{
-  "agents": {
-    "claude": {
-      "swarm": true,
-      "effort": {
-        "level": "fast",
-        "model": "claude-haiku-4-5-20251001"
-      }
-    }
-  }
-}
-```
+| Not This | That's The Orchestrator's Job |
+|----------|-------------------------------|
+| Scheduling | Decides when to spawn which agents |
+| Task assignment | Writes prompts, defines what to do |
+| Conflict resolution | Assigns non-overlapping files to agents |
+| Intelligence | Pure infrastructure - no decision-making |
+
+The server is a tool. Your orchestrating agent (Claude, etc.) decides how to use it.
+
+## Supported Agents
+
+| Agent | CLI | Best For |
+| --- | --- | --- |
+| Claude | `claude` | Complex research, orchestration |
+| Codex | `codex` | Fast implementation |
+| Gemini | `gemini` | Multi-system changes |
+| Cursor | `cursor-agent` | Debugging, tracing |
+
+## Under the Hood
+
+Sub-agents run as detached background processes. Output streams to `~/.agents/agents/{id}/stdout.log`.
+
+**Plan mode** is read-only:
+- Claude: `--permission-mode plan`
+- Codex: sandboxed
+- Gemini/Cursor: no auto-approve
+
+**Edit mode** unlocks writes:
+- Claude: `acceptEdits`
+- Codex: `--full-auto`
+- Gemini: `--yolo`
+- Cursor: `-f`
+
+## Configuration
+
+Config lives at `~/.agents/config.json`. See [AGENTS.md](./AGENTS.md) for full config reference.
 
 ## Environment Variables
 
 | Variable | Description |
 | --- | --- |
-| `AGENTS_MCP_DEFAULT_MODE` | Set default mode (`plan` or `edit`) |
-| `AGENTS_MCP_RALPH_FILE` | Task file name for ralph mode (default: `RALPH.md`) |
-| `AGENTS_MCP_DISABLE_RALPH` | Set to `true` or `1` to disable ralph mode |
+| `AGENTS_MCP_DEFAULT_MODE` | Default mode (`plan` or `edit`) |
+| `AGENTS_MCP_RALPH_FILE` | Task file name (default: `RALPH.md`) |
+| `AGENTS_MCP_DISABLE_RALPH` | Set `true` to disable ralph mode |
+
+## Works great with the extension
+
+This MCP server works standalone with any MCP client. For the best experience - full-screen agent terminals, session persistence, fast navigation - install the [Agents extension](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext) for VS Code/Cursor.
 
 ## Storage
 
-Data and config are stored under `~/.agents/`. Requires Node.js >= 18.17.
-
-## Changelog
-
-See `CHANGELOG.txt` for notable updates.
+Data at `~/.agents/`. Requires Node.js >= 18.17.
 
 ## License
 
