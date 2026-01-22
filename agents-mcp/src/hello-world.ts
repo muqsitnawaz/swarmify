@@ -1,1 +1,3 @@
-console.log('hello world');
+import { printHelloWorld } from './hello.js';
+
+printHelloWorld();

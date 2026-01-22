@@ -1,17 +1,5 @@
-import { pathToFileURL } from 'url';
-
-export const HELLO_MESSAGE = 'hello world';
-
 export function printHelloWorld(): void {
-  console.log(HELLO_MESSAGE);
+  console.log('hello world');
 }
 
-const invokedPath = process.argv[1];
-
-if (invokedPath) {
-  const invokedFileUrl = pathToFileURL(invokedPath).href;
-
-  if (import.meta.url === invokedFileUrl) {
-    printHelloWorld();
-  }
-}
+printHelloWorld();
