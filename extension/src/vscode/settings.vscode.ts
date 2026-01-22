@@ -527,7 +527,7 @@ export function openPanel(context: vscode.ExtensionContext): void {
           // GitHub Device Flow - no client secret needed on client side
           // Client ID is public (not secret)
           const clientId = 'Ov23liKYaRnJ5DqzmPYO';
-          const redirectUri = encodeURIComponent('vscode://swarm-ext/oauth/callback');
+          const redirectUri = encodeURIComponent(`${vscode.env.uriScheme}://swarm-ext/oauth/callback`);
           const state = 'github';
           const scope = 'repo,read:user';
 
@@ -537,7 +537,7 @@ export function openPanel(context: vscode.ExtensionContext): void {
         } else if (oauthProvider === 'linear') {
           // Linear OAuth
           const clientId = '2e9e7d9e5c0f';
-          const redirectUri = encodeURIComponent('vscode://swarm-ext/oauth/callback');
+          const redirectUri = encodeURIComponent(`${vscode.env.uriScheme}://swarm-ext/oauth/callback`);
           const state = 'linear';
 
           const oauthUrl = `https://linear.app/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=read&state=${state}`;

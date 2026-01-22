@@ -249,7 +249,7 @@ export async function handleStatus(
       files_modified: delta.new_files_modified,
       files_read: delta.new_files_read,
       files_deleted: delta.new_files_deleted,
-      bash_commands: delta.new_bash_commands.map(truncateBashCommand),
+      bash_commands: delta.new_bash_commands.map(cmd => truncateBashCommand(cmd)),
       last_messages: delta.new_messages,
       tool_count: delta.new_tool_count,
       has_errors: delta.new_errors.length > 0,
