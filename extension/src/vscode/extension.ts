@@ -520,13 +520,14 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   });
 
-  // Register URI handler for notification callbacks
+  // Register URI handler for notification callbacks and OAuth
   context.subscriptions.push(
     vscode.window.registerUriHandler({
-      handleUri(uri: vscode.Uri) {
+      async handleUri(uri: vscode.Uri) {
+        const params = new URLSearchParams(uri.query);
+
         if (uri.path === '/focus') {
           // Parse terminalId from query string
-          const params = new URLSearchParams(uri.query);
           const terminalId = params.get('terminalId');
 
           const entry = terminalId ? terminals.getById(terminalId) : undefined;
@@ -535,6 +536,37 @@ export async function activate(context: vscode.ExtensionContext) {
             console.log(`Focused terminal: ${terminalId}`);
           } else {
             console.warn(`Terminal not found for ID: ${terminalId}`);
+          }
+        } else if (uri.path === '/oauth/callback') {
+          // OAuth callback from GitHub/Linear
+          const code = params.get('code');
+          const state = params.get('state');
+
+          if (code && state) {
+            console.log(`[OAUTH] Received callback for ${state}`);
+
+            // Exchange code for token via backend
+            try {
+              const response = await fetch('https://api.prix.dev/oauth/exchange', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code, provider: state })
+              });
+
+              if (response.ok) {
+                const data = await response.json() as { access_token: string };
+                await context.globalState.update(`${state}_mcp_token`, data.access_token);
+                vscode.window.showInformationMessage(`${state === 'github' ? 'GitHub' : 'Linear'} connected successfully!`);
+
+                // Notify settings panel if open
+                settings.notifyOAuthComplete(state, data.access_token);
+              } else {
+                throw new Error(`Token exchange failed: ${response.status}`);
+              }
+            } catch (err) {
+              console.error(`[OAUTH] Token exchange error:`, err);
+              vscode.window.showErrorMessage(`Failed to connect ${state}. Please try again.`);
+            }
           }
         }
       }
@@ -611,11 +643,11 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('agents.newAgent', () => {
+    vscode.commands.registerCommand('agents.newAgent', async () => {
       // Default is always Claude
       const agentConfig = getBuiltInByTitle(context.extensionPath, defaultAgentTitle);
       if (agentConfig) {
-        openSingleAgent(context, agentConfig);
+        await openSingleAgent(context, agentConfig);
       }
     })
   );

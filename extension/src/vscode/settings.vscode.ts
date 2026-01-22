@@ -75,6 +75,11 @@ export async function checkInstalledAgents(): Promise<Record<string, boolean>> {
 // Module state
 let settingsPanel: vscode.WebviewPanel | undefined;
 
+// Notify settings panel when OAuth completes (called from extension.ts URI handler)
+export function notifyOAuthComplete(provider: string, token: string): void {
+  settingsPanel?.webview.postMessage({ type: 'oauthToken', provider, token });
+}
+
 // Data directory: ~/.agents/
 const AGENTS_CONFIG_DIR = path.join(homedir(), '.agents');
 const AGENTS_CONFIG_PATH = path.join(AGENTS_CONFIG_DIR, 'config.json');
@@ -515,9 +520,34 @@ export function openPanel(context: vscode.ExtensionContext): void {
           settingsPanel?.webview.postMessage({ type: 'unifiedTasksData', tasks: [] });
         }
         break;
-      case 'startOAuth':
-        vscode.env.openExternal(vscode.Uri.parse(message.oauthUrl));
+      case 'startOAuth': {
+        const { provider: oauthProvider } = message;
+
+        if (oauthProvider === 'github') {
+          // GitHub Device Flow - no client secret needed on client side
+          // Client ID is public (not secret)
+          const clientId = 'Ov23liMkJxOlqmJmDrjE';
+          const redirectUri = encodeURIComponent('vscode://swarm-ext/oauth/callback');
+          const state = 'github';
+          const scope = 'repo,read:user';
+
+          const oauthUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scope}&state=${state}`;
+          vscode.env.openExternal(vscode.Uri.parse(oauthUrl));
+          settingsPanel?.webview.postMessage({ type: 'oauthStarted', provider: oauthProvider });
+        } else if (oauthProvider === 'linear') {
+          // Linear OAuth
+          const clientId = '2e9e7d9e5c0f';
+          const redirectUri = encodeURIComponent('vscode://swarm-ext/oauth/callback');
+          const state = 'linear';
+
+          const oauthUrl = `https://linear.app/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=read&state=${state}`;
+          vscode.env.openExternal(vscode.Uri.parse(oauthUrl));
+          settingsPanel?.webview.postMessage({ type: 'oauthStarted', provider: oauthProvider });
+        } else {
+          console.error(`[OAUTH] Unknown provider: ${oauthProvider}`);
+        }
         break;
+      }
 
       case 'checkOAuthStatus':
         const token = context.globalState.get<string>(`${message.provider}_mcp_token`);
