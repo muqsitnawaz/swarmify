@@ -568,6 +568,71 @@ describe('formatTerminalTitle', () => {
       sessionChunk: 'a1b2c3d4'
     })).toBe('CC a1b2c3d4 - my-label');
   });
+
+  test('hides label when isFocused=false and showLabelOnlyOnFocus is true', () => {
+    expect(formatTerminalTitle('CC', {
+      label: 'auth-feature',
+      display: { showFullAgentNames: true, showLabelsInTitles: true, showSessionIdInTitles: false, labelReplacesTitle: false, showLabelOnlyOnFocus: true },
+      isFocused: false
+    })).toBe('Claude');
+  });
+
+  test('shows label when isFocused=true and showLabelOnlyOnFocus is true', () => {
+    expect(formatTerminalTitle('CC', {
+      label: 'auth-feature',
+      display: { showFullAgentNames: true, showLabelsInTitles: true, showSessionIdInTitles: false, labelReplacesTitle: false, showLabelOnlyOnFocus: true },
+      isFocused: true
+    })).toBe('Claude - auth-feature');
+  });
+
+  test('shows label when isFocused is undefined (legacy behavior)', () => {
+    expect(formatTerminalTitle('CC', {
+      label: 'auth-feature',
+      display: { showFullAgentNames: true, showLabelsInTitles: true, showSessionIdInTitles: false, labelReplacesTitle: false, showLabelOnlyOnFocus: true }
+    })).toBe('Claude - auth-feature');
+  });
+
+  test('hides label when isFocused=false with session chunk and showLabelOnlyOnFocus enabled', () => {
+    expect(formatTerminalTitle('CC', {
+      label: 'auth-feature',
+      display: { showFullAgentNames: false, showLabelsInTitles: true, showSessionIdInTitles: true, labelReplacesTitle: false, showLabelOnlyOnFocus: true },
+      sessionChunk: 'a1b2c3d4',
+      isFocused: false
+    })).toBe('CC a1b2c3d4');
+  });
+
+  test('shows label when isFocused=true with session chunk and showLabelOnlyOnFocus enabled', () => {
+    expect(formatTerminalTitle('CC', {
+      label: 'auth-feature',
+      display: { showFullAgentNames: false, showLabelsInTitles: true, showSessionIdInTitles: true, labelReplacesTitle: false, showLabelOnlyOnFocus: true },
+      sessionChunk: 'a1b2c3d4',
+      isFocused: true
+    })).toBe('CC a1b2c3d4 - auth-feature');
+  });
+
+  test('ignores isFocused when showLabelOnlyOnFocus is false', () => {
+    expect(formatTerminalTitle('CC', {
+      label: 'auth-feature',
+      display: { showFullAgentNames: true, showLabelsInTitles: true, showSessionIdInTitles: false, labelReplacesTitle: false, showLabelOnlyOnFocus: false },
+      isFocused: false
+    })).toBe('Claude - auth-feature');
+  });
+
+  test('respects labelReplacesTitle when focused with showLabelOnlyOnFocus', () => {
+    expect(formatTerminalTitle('CC', {
+      label: 'auth-feature',
+      display: { showFullAgentNames: true, showLabelsInTitles: true, showSessionIdInTitles: false, labelReplacesTitle: true, showLabelOnlyOnFocus: true },
+      isFocused: true
+    })).toBe('auth-feature');
+  });
+
+  test('shows base name when not focused with labelReplacesTitle and showLabelOnlyOnFocus', () => {
+    expect(formatTerminalTitle('CC', {
+      label: 'auth-feature',
+      display: { showFullAgentNames: true, showLabelsInTitles: true, showSessionIdInTitles: false, labelReplacesTitle: true, showLabelOnlyOnFocus: true },
+      isFocused: false
+    })).toBe('Claude');
+  });
 });
 
 describe('prompt utilities', () => {

@@ -452,19 +452,41 @@ async function installCliIfMissing(agent: AgentCli): Promise<boolean> {
   const pkg = CLI_PACKAGES[agent];
   const agentName = agent.charAt(0).toUpperCase() + agent.slice(1);
 
-  // Trae uses pipx to install from git (not npm)
+  // Trae uses pipx to install from git (not npm), requires Python 3.12+
   if (agent === 'trae') {
     try {
       // First check if pipx is available
       try {
-        await execAsync('which pipx');
+        await execAsync('python3 -m pipx --version');
       } catch {
         vscode.window.showInformationMessage('Installing pipx...');
-        await execAsync('pip install --user pipx && pipx ensurepath');
+        await execAsync('pip install --user pipx && python3 -m pipx ensurepath');
       }
 
-      vscode.window.showInformationMessage(`Installing ${agentName} CLI via pipx...`);
-      await execAsync('pipx install git+https://github.com/bytedance/trae-agent.git');
+      // Check for Python 3.12+
+      let python312Path = '';
+      try {
+        // Try common Python 3.12 locations
+        const { stdout } = await execAsync('python3.12 --version 2>/dev/null && which python3.12 || pyenv versions --bare | grep "^3\\.12" | head -1 | xargs -I{} echo "$HOME/.pyenv/versions/{}/bin/python"');
+        python312Path = stdout.trim().split('\n').pop() || '';
+      } catch {
+        // Fallback: check if default python3 is 3.12+
+        try {
+          const { stdout } = await execAsync('python3 -c "import sys; print(sys.version_info >= (3, 12))"');
+          if (stdout.trim() === 'True') {
+            python312Path = 'python3';
+          }
+        } catch { /* ignore */ }
+      }
+
+      if (!python312Path) {
+        vscode.window.showErrorMessage('Trae requires Python 3.12+. Please install Python 3.12 or later.');
+        return false;
+      }
+
+      vscode.window.showInformationMessage(`Installing ${agentName} CLI via pipx (requires Python 3.12+)...`);
+      const pythonFlag = python312Path !== 'python3' ? `--python ${python312Path}` : '';
+      await execAsync(`python3 -m pipx install ${pythonFlag} "trae-agent[evaluation] @ git+https://github.com/bytedance/trae-agent.git"`);
       vscode.window.showInformationMessage(`${agentName} CLI installed successfully.`);
       return true;
     } catch (err) {
