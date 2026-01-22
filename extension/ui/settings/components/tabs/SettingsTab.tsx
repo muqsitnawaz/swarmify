@@ -474,42 +474,6 @@ export function SettingsTab({
         </div>
       </section>
 
-      {/* Session Warming */}
-      <section>
-        <SectionHeader>Session Warming</SectionHeader>
-        <div className="px-4 py-3 rounded-xl bg-[var(--muted)]">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium">Pre-warm sessions</span>
-            <button
-              className="toggle-switch"
-              data-state={prewarmEnabled ? 'on' : 'off'}
-              role="switch"
-              aria-checked={prewarmEnabled}
-              onClick={onTogglePrewarm}
-            >
-              <span className="toggle-knob" />
-            </button>
-          </div>
-          {prewarmEnabled && prewarmLoaded && prewarmPools.length > 0 && (
-            <div className="mt-3 pt-3 border-t border-[var(--border)] space-y-2">
-              {prewarmPools.map(pool => (
-                <div key={pool.agentType} className="flex items-center gap-3 text-sm">
-                  <img
-                    src={getIcon(icons[pool.agentType as keyof typeof icons], isLightTheme)}
-                    alt={pool.agentType}
-                    className="w-4 h-4"
-                  />
-                  <span className="capitalize w-16">{pool.agentType}</span>
-                  <span className="text-xs text-[var(--muted-foreground)]">
-                    {pool.available} ready{pool.pending > 0 ? `, ${pool.pending} warming` : ''}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </section>
-
       {/* Command Aliases */}
       <section>
         <div className="flex items-center justify-between mb-4">
@@ -814,6 +778,42 @@ export function SettingsTab({
           ) : (
             <div className="p-4 text-sm text-[var(--muted-foreground)]">
               Loading workspace config...
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Session Warming */}
+      <section>
+        <SectionHeader>Session Warming</SectionHeader>
+        <div className="px-4 py-3 rounded-xl bg-[var(--muted)]">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">Pre-warm sessions</span>
+            <button
+              className="toggle-switch"
+              data-state={prewarmEnabled ? 'on' : 'off'}
+              role="switch"
+              aria-checked={prewarmEnabled}
+              onClick={onTogglePrewarm}
+            >
+              <span className="toggle-knob" />
+            </button>
+          </div>
+          {prewarmEnabled && prewarmLoaded && prewarmPools.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-[var(--border)] space-y-2">
+              {prewarmPools.map(pool => (
+                <div key={pool.agentType} className="flex items-center gap-3 text-sm">
+                  <img
+                    src={getIcon(icons[pool.agentType as keyof typeof icons], isLightTheme)}
+                    alt={pool.agentType}
+                    className="w-4 h-4"
+                  />
+                  <span className="capitalize w-16">{pool.agentType}</span>
+                  <span className="text-xs text-[var(--muted-foreground)]">
+                    {pool.available} ready{pool.pending > 0 ? `, ${pool.pending} warming` : ''}
+                  </span>
+                </div>
+              ))}
             </div>
           )}
         </div>

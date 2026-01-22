@@ -3,7 +3,7 @@
   "displayName": "Agents",
   "publisher": "swarmify",
   "description": "Manage multiple Claude Code, Codex, Gemini, and Cursor terminal agents in the editor",
-  "version": "0.9.173",
+  "version": "0.9.174",
   "license": "MIT",
   "author": "Muqsit Nawaz <dev@muqsitnawaz.com>",
   "icon": "assets/agents.png",
@@ -74,7 +74,7 @@
       },
       {
         "command": "agents.newClaude",
-        "title": "Agents: New Claude",
+        "title": "Agents: New Claude (CC)",
         "icon": {
           "light": "assets/claude.png",
           "dark": "assets/claude.png"
@@ -82,7 +82,7 @@
       },
       {
         "command": "agents.newCodex",
-        "title": "Agents: New Codex",
+        "title": "Agents: New Codex (CX)",
         "icon": {
           "light": "assets/chatgpt-light.png",
           "dark": "assets/chatgpt.png"
@@ -90,7 +90,7 @@
       },
       {
         "command": "agents.newGemini",
-        "title": "Agents: New Gemini",
+        "title": "Agents: New Gemini (GX)",
         "icon": {
           "light": "assets/gemini.png",
           "dark": "assets/gemini.png"
@@ -98,7 +98,7 @@
       },
       {
         "command": "agents.newOpenCode",
-        "title": "Agents: New OpenCode",
+        "title": "Agents: New OpenCode (OC)",
         "icon": {
           "light": "assets/opencode.png",
           "dark": "assets/opencode.png"
@@ -106,7 +106,7 @@
       },
       {
         "command": "agents.newCursor",
-        "title": "Agents: New Cursor",
+        "title": "Agents: New Cursor (CR)",
         "icon": {
           "light": "assets/cursor-light.png",
           "dark": "assets/cursor.png"
@@ -114,7 +114,7 @@
       },
       {
         "command": "agents.newTrae",
-        "title": "Agents: New Trae",
+        "title": "Agents: New Trae (TR)",
         "icon": {
           "light": "assets/trae.png",
           "dark": "assets/trae.png"
@@ -174,7 +174,7 @@
       },
       {
         "command": "agents.newShell",
-        "title": "Agents: New Shell",
+        "title": "Agents: New Shell (SH)",
         "icon": {
           "light": "assets/agents.png",
           "dark": "assets/agents.png"
