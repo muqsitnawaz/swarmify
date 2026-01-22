@@ -1,6 +1,6 @@
 import { MCPClientManager } from './client';
-import { githubToUnifiedTask } from '../core/tasks';
-import { UnifiedTask } from '../core/tasks';
+import { githubToUnifiedTask } from '../tasks';
+import { UnifiedTask } from '../tasks';
 
 interface GitHubIssue {
   id: string;
@@ -25,7 +25,7 @@ export class GitHubMCPClient {
       const result = await this.manager.callGitHubTool('list_issues', {
         state: 'open',
         assignee: '@me'
-      });
+      }) as any;
 
       const issues = result?.issues || result?.items || [];
       return this.parseGitHubIssues(issues);
@@ -42,7 +42,8 @@ export class GitHubMCPClient {
       title: issue.title,
       body: issue.body,
       state: issue.state,
-      url: issue.html_url,
+      html_url: issue.html_url || issue.url || '',
+      url: issue.url || issue.html_url || '',
       labels: issue.labels?.map((l: any) => l.name) || [],
       assignee: issue.assignee?.login
     }));
