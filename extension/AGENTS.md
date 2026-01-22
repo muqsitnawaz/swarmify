@@ -274,24 +274,22 @@ MCP server integration for multi-agent orchestration. Connects to `@swarmify/age
 - Fetches tasks from agents-mcp server
 - Displays task status in Dashboard
 
-## Tmux Mode
+## Testing
 
-Optional tmux integration for per-tab pane splits. Enable via `Agents: Enable Tmux` command.
+```bash
+bun run compile    # Build everything
+bun test           # Run all tests
+```
 
-| Shortcut | Action |
-|----------|--------|
-| Cmd+Shift+H | Horizontal split (new pane below) |
-| Cmd+Shift+V | Vertical split (new pane right) |
+**Test files** (no mocks, real services only):
+- `tests/agents.test.ts` - Agent configuration and spawning
+- `tests/git.test.ts` - Git integration and commit generation
+- `tests/sessions.activity.test.ts` - Session file parsing
+- `tests/terminals.test.ts` - Terminal tracking and management
+- `tests/prewarm.test.ts` - Session pre-warming
+- `tests/settings.test.ts` - Settings storage and retrieval
 
-**Implementation** (`tmux.ts`):
-- Each terminal gets a unique tmux socket: `/tmp/agents-tmux-{timestamp}.sock`
-- Initial session created via `terminal.sendText()` with chained commands
-- Splits use `execAsync()` to run `tmux -S {socket} split-window` directly (bypasses terminal input)
-- Cleanup removes socket file on terminal close
-
-## Swarm Integration
-
-MCP server for multi-agent orchestration. Configure per agent (Claude, Codex, Gemini) in Dashboard > Swarm. Tasks fetched from `swarm.vscode.ts`.
+**Test fixtures:** `src/core/testdata/` directory
 
 ## Session Activity Parsing
 
