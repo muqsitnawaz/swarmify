@@ -165,16 +165,24 @@ const SKILL_DEFS: SkillDefinition[] = [
 
 // Get full swarm integration status (per-agent, not globally shared)
 export async function getSwarmStatus(): Promise<SwarmStatus> {
-  const claudeCliAvailable = await isAgentCliAvailable('claude');
-  const codexCliAvailable = await isAgentCliAvailable('codex');
-  const geminiCliAvailable = await isAgentCliAvailable('gemini');
-  const traeCliAvailable = await isAgentCliAvailable('trae');
+  // Run ALL CLI availability checks in parallel
+  const [claudeCliAvailable, codexCliAvailable, geminiCliAvailable, traeCliAvailable] =
+    await Promise.all([
+      isAgentCliAvailable('claude'),
+      isAgentCliAvailable('codex'),
+      isAgentCliAvailable('gemini'),
+      isAgentCliAvailable('trae'),
+    ]);
 
-  const claudeMcp = claudeCliAvailable ? await isAgentMcpEnabled('claude') : false;
-  const codexMcp = codexCliAvailable ? await isAgentMcpEnabled('codex') : false;
-  const geminiMcp = geminiCliAvailable ? await isAgentMcpEnabled('gemini') : false;
-  const traeMcp = traeCliAvailable ? await isAgentMcpEnabled('trae') : false;
+  // Run MCP checks in parallel (only for available CLIs)
+  const [claudeMcp, codexMcp, geminiMcp, traeMcp] = await Promise.all([
+    claudeCliAvailable ? isAgentMcpEnabled('claude') : Promise.resolve(false),
+    codexCliAvailable ? isAgentMcpEnabled('codex') : Promise.resolve(false),
+    geminiCliAvailable ? isAgentMcpEnabled('gemini') : Promise.resolve(false),
+    traeCliAvailable ? isAgentMcpEnabled('trae') : Promise.resolve(false),
+  ]);
 
+  // Command checks are sync (fs.existsSync) - no need to parallelize
   const claudeCmd = claudeCliAvailable ? isAgentCommandInstalled('claude', 'swarm') : false;
   const codexCmd = codexCliAvailable ? isAgentCommandInstalled('codex', 'swarm') : false;
   const geminiCmd = geminiCliAvailable ? isAgentCommandInstalled('gemini', 'swarm') : false;
@@ -231,12 +239,14 @@ export async function isSwarmEnabled(): Promise<boolean> {
 export async function getSkillsStatus(): Promise<SkillsStatus> {
   const results: SkillsStatus['commands'] = [];
 
-  const availability = {
-    claude: await isPromptPackTargetAvailable('claude'),
-    codex: await isPromptPackTargetAvailable('codex'),
-    gemini: await isPromptPackTargetAvailable('gemini'),
-    cursor: await isPromptPackTargetAvailable('cursor'),
-  };
+  // Run ALL availability checks in parallel
+  const [claude, codex, gemini, cursor] = await Promise.all([
+    isPromptPackTargetAvailable('claude'),
+    isPromptPackTargetAvailable('codex'),
+    isPromptPackTargetAvailable('gemini'),
+    isPromptPackTargetAvailable('cursor'),
+  ]);
+  const availability = { claude, codex, gemini, cursor };
 
   for (const skill of SKILL_DEFS) {
     const claudeAsset = skill.assets.claude;

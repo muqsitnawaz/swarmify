@@ -3,7 +3,7 @@
   "displayName": "Agents",
   "publisher": "swarmify",
   "description": "Manage multiple Claude Code, Codex, Gemini, and Cursor terminal agents in the editor",
-  "version": "0.9.171",
+  "version": "0.9.173",
   "license": "MIT",
   "author": "Muqsit Nawaz <dev@muqsitnawaz.com>",
   "icon": "assets/agents.png",
@@ -427,11 +427,16 @@
     "typescript": "^5.3.3"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.25.3",
     "@vscode/webview-ui-toolkit": "^1.4.0",
     "node-pty": "^1.0.0",
     "yaml": "^2.8.2"
   },
   "bundledDependencies": [
+    "node-pty",
+    "yaml"
+  ],
+  "bundleDependencies": [
     "node-pty",
     "yaml"
   ]
