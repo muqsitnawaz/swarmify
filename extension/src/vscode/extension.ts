@@ -547,10 +547,19 @@ export async function activate(context: vscode.ExtensionContext) {
 
             // Exchange code for token via backend
             try {
+              // Determine client_id based on current IDE
+              const uriScheme = vscode.env.uriScheme;
+              const githubClientIds: Record<string, string> = {
+                'vscode': 'Ov23liKYaRnJ5DqzmPYO',
+                'cursor': 'Ov23libl1NZ18xfKlvhi',
+                'vscode-insiders': 'Ov23liKYaRnJ5DqzmPYO',
+              };
+              const client_id = state === 'github' ? (githubClientIds[uriScheme] || githubClientIds['vscode']) : undefined;
+
               const response = await fetch('https://swarmify-oauth.muqsitnawaz.workers.dev/oauth/exchange', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ code, provider: state })
+                body: JSON.stringify({ code, provider: state, client_id })
               });
 
               if (response.ok) {
