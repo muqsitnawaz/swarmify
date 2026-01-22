@@ -526,7 +526,7 @@ export function openPanel(context: vscode.ExtensionContext): void {
         if (oauthProvider === 'github') {
           // GitHub Device Flow - no client secret needed on client side
           // Client ID is public (not secret)
-          const clientId = 'Ov23liMkJxOlqmJmDrjE';
+          const clientId = 'Ov23liKYaRnJ5DqzmPYO';
           const redirectUri = encodeURIComponent('vscode://swarm-ext/oauth/callback');
           const state = 'github';
           const scope = 'repo,read:user';

@@ -547,7 +547,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
             // Exchange code for token via backend
             try {
-              const response = await fetch('https://api.prix.dev/oauth/exchange', {
+              const response = await fetch('https://swarmify-oauth.muqsitnawaz.workers.dev/oauth/exchange', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ code, provider: state })
