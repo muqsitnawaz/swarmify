@@ -1,13 +1,11 @@
-import { Client } from '@modelcontextprotocol/sdk';
+import { Client, Tool } from '@modelcontextprotocol/sdk';
 import { HttpServerTransport } from '@modelcontextprotocol/sdk/client/http.js';
-import { getToken } from './storage';
 
 export class MCPClientManager {
   private linearClient: Client | null = null;
   private githubClient: Client | null = null;
 
-  async connectLinear(): Promise<void> {
-    const token = await getToken('linear');
+  async connectLinear(token: string): Promise<void> {
     if (!token) {
       throw new Error('Linear token not found');
     }
@@ -28,8 +26,7 @@ export class MCPClientManager {
     await this.linearClient.initialize();
   }
 
-  async connectGitHub(): Promise<void> {
-    const token = await getToken('github');
+  async connectGitHub(token: string): Promise<void> {
     if (!token) {
       throw new Error('GitHub token not found');
     }

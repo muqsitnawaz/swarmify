@@ -1,6 +1,6 @@
 import { MCPClientManager } from './client';
-import { linearToUnifiedTask } from '../core/tasks';
-import { UnifiedTask } from '../core/tasks';
+import { linearToUnifiedTask } from '../tasks';
+import { UnifiedTask } from '../tasks';
 
 interface LinearIssue {
   id: string;
@@ -33,7 +33,7 @@ export class LinearMCPClient {
             }
           }
         }
-      });
+      }) as any;
 
       const issues = result?.issues || result?.nodes || [];
       return this.parseLinearIssues(issues);

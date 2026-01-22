@@ -1,37 +1,5 @@
-import * as vscode from 'vscode';
-
-export const OAUTH_CALLBACK_SCHEME = 'swarmify';
-
-export function setupOAuthCallbackHandler(context: vscode.ExtensionContext): void {
-  const handle = vscode.window.registerUriHandler({
-    scheme: OAUTH_CALLBACK_SCHEME,
-    authority: 'swarmify.swarm-ext'
-  });
-
-  context.subscriptions.push(handle);
-
-  handle.event(async (uri: vscode.Uri) => {
-    const query = new URLSearchParams(uri.query);
-    const code = query.get('code');
-    const state = query.get('state');
-    const provider = query.get('provider');
-
-    const token = await exchangeCodeForToken(provider, code);
-
-    await vscode.env.set(`${provider}_mcp_token`, token);
-
-    vscode.window.showInformationMessage(`Connected to ${provider}!`);
-  });
-}
-
-export async function exchangeCodeForToken(provider: string, code: string): Promise<string> {
-  const token = await vscode.postMessage({
-    type: 'exchangeCodeForToken',
-    provider,
-    code
-  });
-  return token;
-}
+export const LINEAR_CLIENT_ID = process.env.LINEAR_CLIENT_ID || '';
+export const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID || '';
 
 export function generateLinearOAuthURL(redirectUri: string): string {
   const oauthUrl = new URL('https://linear.app/oauth/authorize');
