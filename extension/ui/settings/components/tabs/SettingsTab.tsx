@@ -397,7 +397,10 @@ export function SettingsTab({
 
       {/* Default Agent */}
       <section>
-        <SectionHeader>Default Agent</SectionHeader>
+        <SectionHeader>Primary Agent</SectionHeader>
+        <div className="text-xs text-[var(--muted-foreground)] mb-2">
+          Use Cmd+Shift+A to start {builtInAgents.find(a => a.key === (AGENT_TITLE_TO_KEY[defaultAgent] || 'claude'))?.name || 'Claude'}
+        </div>
         <div className="rounded-xl bg-[var(--muted)]">
           {builtInAgents.filter(a => a.key !== 'shell' && isAgentInstalled(a.key)).length === 0 ? (
             <div className="text-sm text-[var(--muted-foreground)] p-4">
