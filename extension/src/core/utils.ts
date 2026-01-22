@@ -48,6 +48,7 @@ export interface DisplayPreferences {
   showLabelsInTitles: boolean;
   showSessionIdInTitles: boolean;
   labelReplacesTitle: boolean;
+  showLabelOnlyOnFocus: boolean;
 }
 
 export interface ParsedTerminalName {
@@ -193,14 +194,22 @@ export interface TerminalTitleOptions {
   display?: DisplayPreferences;
   label?: string | null;
   sessionChunk?: string | null;
+  isFocused?: boolean;  // When false and showLabelOnlyOnFocus=true, hide label
 }
 
 /**
  * Build the terminal tab title based on display preferences.
  * Canonical prefix should be one of the KNOWN_PREFIXES.
+ * When isFocused=false and showLabelOnlyOnFocus=true, label is hidden.
  */
 export function formatTerminalTitle(prefix: string, options?: TerminalTitleOptions): string {
-  const display = options?.display;
+  let display = options?.display;
+
+  // If terminal is not focused and showLabelOnlyOnFocus is enabled, hide the label
+  if (options?.isFocused === false && display?.showLabelOnlyOnFocus) {
+    display = { ...display, showLabelsInTitles: false };
+  }
+
   const base = display?.showFullAgentNames ? getExpandedAgentName(prefix) : prefix;
   const sessionChunk = display?.showSessionIdInTitles ? options?.sessionChunk?.trim() : null;
 
