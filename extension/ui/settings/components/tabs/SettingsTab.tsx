@@ -435,7 +435,10 @@ export function SettingsTab({
 
       {/* Secondary Default Agent */}
       <section>
-        <SectionHeader>Secondary Default Agent</SectionHeader>
+        <SectionHeader>Secondary Agent</SectionHeader>
+        <div className="text-xs text-[var(--muted-foreground)] mb-2">
+          Use Cmd+Shift+B to start {builtInAgents.find(a => a.key === (AGENT_TITLE_TO_KEY[secondaryAgent] || 'codex'))?.name || 'Codex'}
+        </div>
         <div className="rounded-xl bg-[var(--muted)]">
           {builtInAgents.filter(a => a.key !== 'shell' && isAgentInstalled(a.key)).length === 0 ? (
             <div className="text-sm text-[var(--muted-foreground)] p-4">
