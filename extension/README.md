@@ -1,146 +1,88 @@
 # Agents
 
-True multi-agent coding in your favorite editor.
+Full-screen agent terminals in your editor. Manage multiple tech leads from one IDE.
 
-Homepage: https://swarmify.co  
+Homepage: https://swarmify.co
 Marketplace: https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext
 
 ## Why
 
-CLI-based AI agents like Claude Code, Codex, and Gemini are powerful - but running them in separate terminal windows means constantly switching contexts. You lose sight of your code while talking to agents.
+CLI agents like Claude Code, Codex, and Gemini are powerful - but running them in separate terminal windows or the bottom panel means constantly switching contexts. You lose sight of your code while talking to agents. Fonts get tiny. Sessions disappear when things crash.
 
-This extension brings those agents into Cursor as editor tabs. Run multiple agents side-by-side with your code. Browse files while agents work. See what they're developing without leaving your IDE.
+This extension gives you:
 
-All the power of CLI agents. All the context of your editor.
+- **Full-screen terminals** - Agents run as editor tabs, not buried panels. See your code and agent side-by-side.
+- **Session persistence** - Close VS Code, reopen it, your agent tabs come back exactly where you left off.
+- **Fast navigation** - Keyboard shortcuts to jump between agents, label them by task, restart stuck ones. Like Vim for agent sessions.
+
+## The manager's cockpit
+
+With Swarm MCP enabled, each agent in a tab becomes a tech lead that can spawn its own sub-agents. You become an engineering manager overseeing multiple tech leads - each running their own team in the background.
+
+The extension is optimized for this workflow: quick navigation between agents, labels to track who's working on what, dashboard to see all activity.
 
 ## Features
 
-### Instant Agent Creation
+### Agent Terminals
 
-Spawn any agent instantly as an editor tab - not buried in the bottom panel. Each agent has its own icon for quick identification.
+Spawn any agent as a full-screen editor tab with `Cmd+Shift+A`. Built-in support for Claude Code, Codex, Gemini, OpenCode, and Cursor. Add custom agents through settings.
 
-### Any Agent Supported
-
-Built-in support for Claude Code, Codex, Gemini, OpenCode, and Cursor. Add custom agents through the settings panel with a 2-letter code and shell command.
-
-### Agent Safety Modes
-
-When using Swarm to spawn agents, you can choose between `safe` and `yolo` modes:
-
-- **safe**: Agents prompt for confirmation before executing commands
-- **yolo**: Agents auto-approve all tool calls (faster, less secure)
-
-**Gemini CLI specifics**: When running in `yolo` mode, Gemini automatically enables sandbox mode which restricts writes to the project directory. Read access is more permissive, but file modifications are confined to the working directory. This provides a balance between speed and safety.
-
-For more granular control, Gemini also supports `--allowed-tools` to whitelist specific tools (e.g., `run_shell_command,read_file,write_file`) instead of using full `yolo` mode.
-
-### Easy Reload & Restart
-
-One command clears and restarts a stuck agent. No more killing terminals and retyping commands.
-
-### Auto-Start Configuration
-
-Configure which agents launch automatically when Cursor opens. Set instance counts (1-10 per agent type) and toggle auto-start per agent through the visual settings panel.
-
-### Swarm: Multi-Agent Coordination
-
-Swarm MCP is always available; configure it per agent (Claude, Codex, Gemini) in the dashboard. Agents can spawn sub-agents for parallel work and second opinions.
-
-> The value propositions in this README were researched by spawning Codex and Cursor agents via Swarm to analyze the codebase from different perspectives.
-
-### Task Organization
-
-Label agents by task. The status bar shows the active agent and its label, so you always know which agent you're talking to.
-
-### TODO.md Parsing
-
-Automatically discovers TODO.md files in your workspace and displays tasks in the dashboard. Spawn a Swarm directly from any open task item.
-
-### Session History
-
-Browse recent Claude, Codex, Gemini, and Cursor sessions from your filesystem. Resume any previous session or review conversation history.
-
-### Default Models
-
-Set default models per agent in settings. When you spawn a new agent, it uses your preferred model automatically.
-
-### Session Pre-warming
-
-Enable session warming to reduce agent startup time. Each agent type handles sessions differently:
-
-| Agent | Prewarm | Open Command |
-|-------|---------|--------------|
-| Claude | None needed | `claude --session-id <uuid>` |
-| Codex | `codex exec ''` | `codex resume <session-id>` |
-| Gemini | `gemini -p " " -o json` | `gemini --resume <session-id>` |
-| Cursor | `cursor-agent -p "..." --output-format json` | `cursor-agent --resume=<session-id>` |
-
-**Claude**: Session IDs are generated on-demand when opening a terminal. No background prewarming required - Claude accepts custom session IDs via `--session-id`.
-
-**Codex**: Sessions are prewarmed by spawning `codex exec ''`, extracting the session ID from the banner, and killing immediately. Resume loads the prewarmed session.
-
-**Gemini**: Sessions are prewarmed by running `gemini -p " " -o json` to completion, then resolving the session ID via `gemini --list-sessions`. Note: Gemini's `/stats` may show a different "interaction ID" - this is expected; the conversation context is preserved.
-
-**Cursor**: Sessions are prewarmed by running `cursor-agent -p "Hello! Be right back." --output-format json` to completion, then extracting `session_id` from the JSON response.
-
-### Session Persistence
-
-Every open agent terminal is fully restorable. Terminal state is saved to disk in real-time, so if VS Code crashes or restarts, all your agent tabs come back exactly as they were:
-
-- **Session ID**: Resume the exact conversation where you left off
-- **Icon**: CL, CX, GX, OC, CR icons restored for quick identification
-- **Label**: Custom labels you set are preserved
-
-No more losing agent context to crashes. Close VS Code, reopen it, and pick up right where you left off.
-
-### Context-Aware Task Creation
-
-Select text in any terminal, hit a shortcut, and spawn a new agent with that context pre-loaded. The selected text becomes context for your task prompt - no copy-paste needed.
-
-### AI Git Commits
-
-Generate commit messages from your staged changes. Learns from your commit style examples, then stages, commits, and pushes in one action.
-
-### Shell Terminals
-
-Spawn plain shell terminals alongside your agents. Same keyboard-driven workflow, same editor tab placement - just without an AI agent attached. Useful for running builds, tests, or other commands while agents work.
-
-### Markdown Editor
-
-Custom editor for `.md` files with image paste support. Drag and drop or paste images directly - they're saved to a configurable assets folder and linked automatically.
-
-### Notifications
-
-Native macOS notifications when agents need attention. Configure per-agent notification settings in the dashboard.
-
-## Quick Start
-
-1. Install the extension
-2. Spawn your first agent via command palette or shortcut
-3. Open settings (`Agents`) to configure auto-start and add custom agents
-
-## Keyboard Shortcuts
+### Navigation
 
 | Shortcut | Action |
 | --- | --- |
 | `Cmd+Shift+A` | Spawn new agent |
-| `Cmd+Shift+N` | New task with context |
+| `Cmd+Shift+L` | Label agent by task |
 | `Cmd+Shift+C` | Clear and restart agent |
-| `Cmd+Shift+L` | Label agent |
-| `Cmd+Shift+G` | Generate commit |
-| `Cmd+Shift+X` | Spawn Codex |
-| `Cmd+Shift+M` | Spawn Gemini |
-| `Cmd+Shift+U` | Spawn Cursor |
 | `Cmd+Shift+D` | Open Dashboard |
-| `Cmd+Shift+S` | New Shell |
-| `Cmd+Shift+I` | Open Agent |
-| `Cmd+Shift+H` | Horizontal split |
-| `Cmd+Shift+V` | Vertical split |
-| `Cmd+Shift+'` | Prompts |
+| `Cmd+Shift+I` | Focus agent (quick picker) |
+| `Cmd+Shift+H` | Horizontal split (tmux-style) |
+| `Cmd+Shift+V` | Vertical split (tmux-style) |
+
+### Session Persistence
+
+Every open agent terminal is fully restorable. Session ID, icon, and custom labels are saved to disk in real-time. VS Code crashes? Restart? All your agent tabs come back exactly as they were.
+
+### Swarm Integration
+
+Swarm MCP is available per-agent (Claude, Codex, Gemini) via the dashboard. When enabled, your agents can spawn sub-agents for parallel work. The orchestrating agent manages them - you just see results.
+
+### Task Management
+
+- **Labels** - Tag agents by task (`Cmd+Shift+L`). Status bar shows active agent and label.
+- **TODO.md parsing** - Discovers TODO.md files in your workspace. Spawn agents directly from task items.
+- **Session history** - Browse recent sessions from the dashboard. Resume any previous conversation.
+
+### AI Git Commits
+
+Generate commit messages from staged changes with `Cmd+Shift+G`. Learns from your commit style, then stages, commits, and pushes in one action.
+
+### Agent Safety Modes
+
+When spawning sub-agents via Swarm:
+
+- **safe** - Agents prompt for confirmation before executing commands
+- **yolo** - Agents auto-approve all tool calls (faster, less secure)
+
+### Additional Features
+
+- **Auto-start** - Configure which agents launch when VS Code opens
+- **Default models** - Set preferred model per agent type
+- **Shell terminals** - Spawn plain shells alongside agents (`Cmd+Shift+S`)
+- **Markdown editor** - Custom `.md` editor with image paste support
+- **Notifications** - Native macOS notifications when agents need attention
+- **Context tasks** - Select text, hit shortcut, spawn agent with that context pre-loaded
+
+## Quick Start
+
+1. Install the extension from VS Code Marketplace
+2. Press `Cmd+Shift+A` to spawn your first agent
+3. Open Dashboard (`Cmd+Shift+D`) to configure auto-start and Swarm
 
 ## Requirements
 
-- Cursor (or any VS Code-based editor)
+- VS Code or Cursor
+- Agent CLIs installed (`claude`, `codex`, `gemini`, `cursor-agent`)
 - OpenAI API key (optional, only for commit generation)
 
 ## License
