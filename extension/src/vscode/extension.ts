@@ -551,7 +551,7 @@ export async function activate(context: vscode.ExtensionContext) {
               const uriScheme = vscode.env.uriScheme;
               const githubClientIds: Record<string, string> = {
                 'vscode': 'Ov23liKYaRnJ5DqzmPYO',
-                'cursor': 'Ov23libl1NZ18xfKlvhi',
+                'cursor': 'Ov23lil7uKgqBdj9OhX4',
                 'vscode-insiders': 'Ov23liKYaRnJ5DqzmPYO',
               };
               const client_id = state === 'github' ? (githubClientIds[uriScheme] || githubClientIds['vscode']) : undefined;

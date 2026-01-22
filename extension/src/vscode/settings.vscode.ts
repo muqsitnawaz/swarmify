@@ -528,7 +528,7 @@ export function openPanel(context: vscode.ExtensionContext): void {
           const uriScheme = vscode.env.uriScheme;
           const githubClientIds: Record<string, string> = {
             'vscode': 'Ov23liKYaRnJ5DqzmPYO',
-            'cursor': 'Ov23libl1NZ18xfKlvhi',
+            'cursor': 'Ov23lil7uKgqBdj9OhX4',
             'vscode-insiders': 'Ov23liKYaRnJ5DqzmPYO',
           };
           const clientId = githubClientIds[uriScheme] || githubClientIds['vscode'];

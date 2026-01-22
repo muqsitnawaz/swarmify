@@ -93,8 +93,8 @@ describe('Version Module', () => {
 
     test('should return the version from package.json', () => {
       const version = getCurrentVersion();
-      // Current version is 0.2.6 based on package.json
-      expect(version).toBe('0.2.6');
+      // Current version is 0.2.7 based on package.json
+      expect(version).toBe('0.2.7');
     });
   });
 

@@ -7,5 +7,5 @@ LINEAR_CLIENT_ID = "2e9e7d9e5c0f"
 
 # Secrets (set via wrangler secret put):
 # GITHUB_SECRET_Ov23liKYaRnJ5DqzmPYO  (VS Code)
-# GITHUB_SECRET_Ov23libl1NZ18xfKlvhi  (Cursor)
+# GITHUB_SECRET_Ov23lil7uKgqBdj9OhX4  (Cursor)
 # LINEAR_CLIENT_SECRET
