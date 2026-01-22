@@ -8,7 +8,7 @@ import {
 import { AgentManager, checkAllClis } from './agents.js';
 import { AgentType } from './parsers.js';
 import { handleSpawn, handleStatus, handleStop, handleTasks } from './api.js';
-import { readConfig } from './persistence.js';
+import { readConfig, type AgentConfig } from './persistence.js';
 import {
   buildVersionNotice,
   detectClientFromName,
@@ -17,7 +17,8 @@ import {
   setDetectedClient,
 } from './version.js';
 
-const manager = new AgentManager(50, 10, null, null, null, 7, null);
+let agentConfigs: Record<AgentType, AgentConfig> | null = null;
+const manager = new AgentManager(50, 10, null, null, null, 7, agentConfigs);
 
 const TOOL_NAMES = {
   spawn: 'Spawn',
@@ -322,7 +323,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 export async function runServer(): Promise<void> {
   // Load config
   const config = await readConfig();
-  manager.setModelOverrides(config.agentConfigs);
+  agentConfigs = config.agentConfigs;
+  manager.setModelOverrides(agentConfigs);
   const cliHealth = checkAllClis();
   const installedAgents = Object.entries(cliHealth)
     .filter(([, status]) => status.installed)

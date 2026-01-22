@@ -87,6 +87,73 @@ export function resolveEffortModelMap(
   return resolved;
 }
 
+// Load default agent configs from persistence
+function loadDefaultAgentConfigs(): Record<AgentType, AgentConfig> {
+  // Use hardcoded defaults for backward compatibility with synchronous initialization
+  return {
+    claude: {
+      command: 'claude -p \'{prompt}\' --output-format stream-json --json',
+      enabled: true,
+      models: {
+        fast: 'claude-haiku-4-5-20251001',
+        default: 'claude-sonnet-4-5',
+        detailed: 'claude-opus-4-5'
+      },
+      provider: 'anthropic'
+    },
+    codex: {
+      command: 'codex exec --sandbox workspace-write \'{prompt}\' --json',
+      enabled: true,
+      models: {
+        fast: 'gpt-4o-mini',
+        default: 'gpt-5.2-codex',
+        detailed: 'gpt-5.1-codex-max'
+      },
+      provider: 'openai'
+    },
+    gemini: {
+      command: 'gemini \'{prompt}\' --output-format stream-json',
+      enabled: true,
+      models: {
+        fast: 'gemini-3-flash-preview',
+        default: 'gemini-3-flash-preview',
+        detailed: 'gemini-3-pro-preview'
+      },
+      provider: 'google'
+    },
+    cursor: {
+      command: 'cursor-agent -p --output-format stream-json \'{prompt}\'',
+      enabled: false,
+      models: {
+        fast: 'composer-1',
+        default: 'composer-1',
+        detailed: 'composer-1'
+      },
+      provider: 'custom'
+    },
+    opencode: {
+      command: 'opencode run --format json \'{prompt}\'',
+      enabled: false,
+      models: {
+        fast: 'zai-coding-plan/glm-4.7-flash',
+        default: 'zai-coding-plan/glm-4.7',
+        detailed: 'zai-coding-plan/glm-4.7'
+      },
+      provider: 'custom'
+    },
+    trae: {
+      command: 'trae-cli run \'{prompt}\'',
+      enabled: false,
+      models: {
+        fast: 'gpt-4o-mini',
+        default: 'gpt-4o',
+        detailed: 'claude-sonnet-4-20250514'
+      },
+      provider: 'custom'
+    }
+  };
+}
+
 
 // Suffix appended to all prompts to ensure agents provide a summary
 const PROMPT_SUFFIX = `
@@ -521,8 +588,20 @@ export class AgentProcess {
   private filterByCwd: string | null;
   private cleanupAgeDays: number;
   private defaultMode: Mode;
-  private effortModelMap: EffortModelMap;
-  private agentConfigs: Record<AgentType, AgentConfig>;
+  private effortModelMap: EffortModelMap = {
+    fast: { codex: 'gpt-5.2-codex', gemini: 'gemini-3-flash-preview', claude: 'claude-haiku-4-5-20251001', cursor: 'composer-1', trae: 'gpt-4o-mini', opencode: 'zai-coding-plan/glm-4.7-flash' },
+    default: { codex: 'gpt-5.2-codex', gemini: 'gemini-3-flash-preview', claude: 'claude-sonnet-4-5', cursor: 'composer-1', trae: 'gpt-4o', opencode: 'zai-coding-plan/glm-4.7' },
+    detailed: { codex: 'gpt-5.1-codex-max', gemini: 'gemini-3-pro-preview', claude: 'claude-opus-4-5', cursor: 'composer-1', trae: 'claude-sonnet-4-20250514', opencode: 'zai-coding-plan/glm-4.7' },
+  };
+  private agentConfigs: Record<AgentType, AgentConfig> = {
+    codex: { swarm: false },
+    gemini: { swarm: false },
+    cursor: { swarm: false },
+    claude: { swarm: false },
+    trae: { swarm: false },
+    opencode: { swarm: false },
+  };
+  private constructorAgentConfigs: Record<AgentType, AgentConfig> | null = null;
 
   private constructorAgentsDir: string | null = null;
 
@@ -545,12 +624,7 @@ export class AgentProcess {
       throw new Error(`Invalid default_mode '${defaultMode}'. Use 'plan' or 'edit'.`);
     }
     this.defaultMode = resolvedDefaultMode;
-
-    if (!agentConfigs) {
-      throw new Error('Agent configurations are required');
-    }
-    this.agentConfigs = agentConfigs;
-    this.effortModelMap = resolveEffortModelMap(agentConfigs);
+    this.constructorAgentConfigs = agentConfigs;
 
     this.initialize();
   }
@@ -558,6 +632,16 @@ export class AgentProcess {
   private async initialize(): Promise<void> {
     this.agentsDir = this.constructorAgentsDir || await getAgentsDir();
     await fs.mkdir(this.agentsDir, { recursive: true });
+
+    // Load config if not provided
+    if (!this.constructorAgentConfigs) {
+      const configs = await loadDefaultAgentConfigs();
+      this.agentConfigs = configs;
+      this.effortModelMap = resolveEffortModelMap(configs);
+    } else {
+      this.effortModelMap = resolveEffortModelMap(this.constructorAgentConfigs);
+    }
+
     await this.loadExistingAgents();
   }
 
