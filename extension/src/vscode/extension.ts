@@ -1222,7 +1222,7 @@ async function newTaskWithContext(context: vscode.ExtensionContext) {
       return {
         label: task.title,
         description,
-        detail: task.description ? task.description.slice(0, 100) + (task.description.length > 100 ? '...' : '') : undefined,
+        detail: task.description ? `${task.description.slice(0, 100)}${task.description.length > 100 ? '...' : ''}` : undefined,
         task
       };
     });
