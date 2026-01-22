@@ -46,7 +46,7 @@ import {
 const program = new Command();
 const SWARM_MCP_NAME = 'Swarm';
 const SWARM_MCP_CMD = 'npx -y @swarmify/agents-mcp';
-const MCP_AGENTS: AgentCli[] = ['claude', 'codex', 'gemini'];
+const MCP_AGENTS: AgentCli[] = ['claude', 'codex', 'gemini', 'opencode'];
 
 program
   .name('ag')
@@ -65,7 +65,7 @@ program
     console.log(chalk.bold('\nSkills Status\n'));
 
     const statuses = getSkillsStatus();
-    const agents: PromptPackAgent[] = ['claude', 'codex', 'gemini', 'cursor'];
+    const agents: PromptPackAgent[] = ['claude', 'codex', 'gemini', 'cursor', 'opencode'];
 
     // Header
     const header = [
@@ -132,7 +132,7 @@ program
   .action(() => {
     console.log(chalk.bold('\nAgent CLI Status\n'));
 
-    const cliAgents: AgentCli[] = ['claude', 'codex', 'gemini'];
+    const cliAgents: AgentCli[] = ['claude', 'codex', 'gemini', 'opencode'];
 
     for (const agent of cliAgents) {
       const available = isCliAvailable(agent);
@@ -213,6 +213,8 @@ mcpCommand.addCommand(
             execSync(`codex mcp add ${name} ${options.cmd}`, { stdio: 'pipe' });
           } else if (agent === 'gemini') {
             execSync(`gemini mcp add ${name} ${options.cmd}`, { stdio: 'pipe' });
+          } else if (agent === 'opencode') {
+            execSync(`opencode mcp add ${name} ${options.cmd}`, { stdio: 'pipe' });
           }
 
           results.push(chalk.green(`  ${agent}: MCP registered`));
