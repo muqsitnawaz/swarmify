@@ -508,7 +508,7 @@ export function openPanel(context: vscode.ExtensionContext): void {
         try {
           // Fetch tasks from all enabled sources (markdown, linear, github)
           const currentSettings = getSettings(context);
-          const unifiedTasks = await fetchAllTasks(currentSettings.taskSources);
+          const unifiedTasks = await fetchAllTasks(context, currentSettings.taskSources);
           settingsPanel?.webview.postMessage({ type: 'unifiedTasksData', tasks: unifiedTasks });
         } catch (err) {
           console.error('[SETTINGS] Error fetching unified tasks:', err);
@@ -516,25 +516,19 @@ export function openPanel(context: vscode.ExtensionContext): void {
         }
         break;
       case 'startOAuth':
-        vscode.env.openExternal(uri.vscode.Uri.parse(message.oauthUrl));
+        vscode.env.openExternal(vscode.Uri.parse(message.oauthUrl));
         break;
 
       case 'checkOAuthStatus':
-        const token = await vscode.postMessage({
-          type: 'exchangeCodeForToken',
-          provider: message.provider
-        });
-        if (token) {
-          return { type: 'oauthToken', provider: message.provider, token };
-        }
-        return { type: 'oauthToken', provider: message.provider, token: null };
+        const token = context.globalState.get<string>(`${message.provider}_mcp_token`);
+        settingsPanel?.webview.postMessage({ type: 'oauthToken', provider: message.provider, token: token || null });
         break;
 
 
       case 'detectTaskSources':
         try {
           // Detect which task sources are available
-          const availableSources = await detectAvailableSources();
+          const availableSources = await detectAvailableSources(context);
           settingsPanel?.webview.postMessage({ type: 'taskSourcesData', sources: availableSources });
         } catch (err) {
           console.error('[SETTINGS] Error detecting task sources:', err);
@@ -558,15 +552,16 @@ export function openPanel(context: vscode.ExtensionContext): void {
         break;
       case 'exchangeCodeForToken':
         const { provider, code } = message;
-        
+
         // Exchange authorization code for access token
         // For MVP: simulate token exchange (in production, this would make actual API calls)
         const mockToken = `${provider}_mock_token_${Date.now()}`;
-        
-        await vscode.env.set(`${provider}_mcp_token`, mockToken);
+
+        await context.globalState.update(`${provider}_mcp_token`, mockToken);
         console.log(`[OAUTH] Stored token for ${provider}`);
-        
-        return { type: 'oauthToken', provider, token: mockToken };
+
+        settingsPanel?.webview.postMessage({ type: 'oauthToken', provider, token: mockToken });
+        break;
 
 
       case 'getPrewarmStatus':

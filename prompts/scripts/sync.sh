@@ -19,14 +19,16 @@ CURSOR_SYSTEM="$HOME/.cursor/commands"
 CURSOR_REPO="$REPO_DIR/cursor/commands"
 GEMINI_SYSTEM="$HOME/.gemini/commands"
 GEMINI_REPO="$REPO_DIR/gemini/commands"
+OPENCODE_SYSTEM="$HOME/.opencode/commands"
+OPENCODE_REPO="$REPO_DIR/opencode/commands"
 
 usage() {
     echo "Usage: $0 <command> [--confirm]"
     echo ""
     echo "Commands:"
     echo "  status    Show sync status and diffs between repo and system"
-    echo "  pull      Pull prompts from system (~/.claude, ~/.codex, ~/.cursor, ~/.gemini) to repo"
-    echo "  push      Push prompts from repo to system (~/.claude, ~/.codex, ~/.cursor, ~/.gemini)"
+    echo "  pull      Pull prompts from system to repo"
+    echo "  push      Push prompts from repo to system"
     echo ""
     echo "Options:"
     echo "  --confirm  Actually execute the sync (default is dry-run)"
@@ -124,6 +126,7 @@ cmd_status() {
     status_section "$CODEX_SYSTEM" "$CODEX_REPO" "Codex Prompts" "md"
     status_section "$CURSOR_SYSTEM" "$CURSOR_REPO" "Cursor Commands" "md"
     status_section "$GEMINI_SYSTEM" "$GEMINI_REPO" "Gemini Commands" "toml"
+    status_section "$OPENCODE_SYSTEM" "$OPENCODE_REPO" "OpenCode Commands" "md"
     echo ""
 }
 
@@ -186,6 +189,9 @@ cmd_pull() {
     echo -e "\n${BLUE}Gemini Commands${NC}"
     sync_files "$GEMINI_SYSTEM" "$GEMINI_REPO" "toml" "$dry_run" "pull"
 
+    echo -e "\n${BLUE}OpenCode Commands${NC}"
+    sync_files "$OPENCODE_SYSTEM" "$OPENCODE_REPO" "md" "$dry_run" "pull"
+
     if [[ "$dry_run" == "true" ]]; then
         echo -e "\n${YELLOW}Run with --confirm to apply changes${NC}"
     else
@@ -213,6 +219,9 @@ cmd_push() {
 
     echo -e "\n${BLUE}Gemini Commands${NC}"
     sync_files "$GEMINI_REPO" "$GEMINI_SYSTEM" "toml" "$dry_run" "push"
+
+    echo -e "\n${BLUE}OpenCode Commands${NC}"
+    sync_files "$OPENCODE_REPO" "$OPENCODE_SYSTEM" "md" "$dry_run" "push"
 
     if [[ "$dry_run" == "true" ]]; then
         echo -e "\n${YELLOW}Run with --confirm to apply changes${NC}"

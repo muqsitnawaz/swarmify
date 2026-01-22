@@ -9,14 +9,14 @@ import { fetchLinearTasks, isLinearAvailable } from './linear.vscode';
 import { fetchGitHubTasks, isGitHubAvailable } from './github.vscode';
 
 // Detect which task sources are available based on MCP configuration
-export async function detectAvailableSources(): Promise<{
+export async function detectAvailableSources(context: vscode.ExtensionContext): Promise<{
   markdown: boolean;
   linear: boolean;
   github: boolean;
 }> {
   const [linear, github] = await Promise.all([
-    isLinearAvailable(),
-    isGitHubAvailable()
+    isLinearAvailable(context),
+    isGitHubAvailable(context)
   ]);
 
   return {
@@ -28,6 +28,7 @@ export async function detectAvailableSources(): Promise<{
 
 // Fetch tasks from all enabled sources
 export async function fetchAllTasks(
+  context: vscode.ExtensionContext,
   enabledSources: TaskSourceSettings
 ): Promise<UnifiedTask[]> {
   const tasks: UnifiedTask[] = [];
@@ -47,7 +48,7 @@ export async function fetchAllTasks(
   // Fetch Linear tasks
   if (enabledSources.linear) {
     fetchPromises.push(
-      fetchLinearTasks().then(linearTasks => {
+      fetchLinearTasks(context).then(linearTasks => {
         tasks.push(...linearTasks);
       }).catch(err => {
         console.error('[TASKS] Error fetching Linear tasks:', err);
@@ -58,7 +59,7 @@ export async function fetchAllTasks(
   // Fetch GitHub tasks
   if (enabledSources.github) {
     fetchPromises.push(
-      fetchGitHubTasks().then(ghTasks => {
+      fetchGitHubTasks(context).then(ghTasks => {
         tasks.push(...ghTasks);
       }).catch(err => {
         console.error('[TASKS] Error fetching GitHub tasks:', err);
@@ -87,17 +88,19 @@ async function fetchMarkdownTasks(): Promise<UnifiedTask[]> {
 
 // Get tasks grouped by source for UI display
 export async function fetchTasksGrouped(
+  context: vscode.ExtensionContext,
   enabledSources: TaskSourceSettings
 ): Promise<Map<TaskSource, UnifiedTask[]>> {
-  const tasks = await fetchAllTasks(enabledSources);
+  const tasks = await fetchAllTasks(context, enabledSources);
   return groupTasksBySource(tasks);
 }
 
 // Auto-enable sources that are available but not yet configured
 export async function autoEnableSources(
+  context: vscode.ExtensionContext,
   currentSettings: TaskSourceSettings
 ): Promise<TaskSourceSettings> {
-  const available = await detectAvailableSources();
+  const available = await detectAvailableSources(context);
   const updated = { ...currentSettings };
 
   // Auto-enable Linear if available and not explicitly disabled
