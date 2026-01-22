@@ -4,6 +4,7 @@ Full-screen agent terminals in your editor. Manage multiple tech leads from one 
 
 Homepage: https://swarmify.co
 Marketplace: https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext
+MCP Server: [@swarmify/agents-mcp](https://www.npmjs.com/package/@swarmify/agents-mcp) - enables sub-agent spawning
 
 ## Why
 
@@ -78,6 +79,10 @@ When spawning sub-agents via Swarm:
 1. Install the extension from VS Code Marketplace
 2. Press `Cmd+Shift+A` to spawn your first agent
 3. Open Dashboard (`Cmd+Shift+D`) to configure auto-start and Swarm
+
+## Works great with agents-mcp
+
+This extension works standalone for full-screen agent terminals. For sub-agent spawning (turning agents into tech leads), add [@swarmify/agents-mcp](https://www.npmjs.com/package/@swarmify/agents-mcp) to your agent's MCP configuration.
 
 ## Requirements
 
