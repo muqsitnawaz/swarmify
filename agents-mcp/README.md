@@ -142,6 +142,7 @@ The server is a tool. Your orchestrating agent (Claude, etc.) decides how to use
 | Codex | `codex` | Fast implementation |
 | Gemini | `gemini` | Multi-system changes |
 | Cursor | `cursor-agent` | Debugging, tracing |
+| OpenCode | `opencode` | Provider-agnostic, open source |
 
 ## Under the Hood
 
