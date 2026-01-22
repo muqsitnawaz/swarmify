@@ -299,6 +299,7 @@ Live activity extraction from agent session files. Shows what the agent is curre
 - Reads tail of session JSONL files (last 32-64KB)
 - Parses from end to find most recent tool activity
 - Agent-specific parsers handle different event formats
+- Maps raw events to unified activity types
 
 **Activity types**: `reading`, `editing`, `running`, `thinking`, `waiting`, `completed`
 
@@ -309,6 +310,7 @@ Live activity extraction from agent session files. Shows what the agent is curre
 | Claude | `type: "assistant"` with `message.content[].type: "tool_use"` | `name` (Read, Edit, Bash, etc.) | `input` object |
 | Codex | `type: "response_item"` with `payload.type: "function_call"` | `payload.name` (shell_command, etc.) | `payload.arguments` (JSON string!) |
 | Gemini | `type: "tool_call"` | `tool_name` | `parameters` object |
+| Cursor | Similar to Gemini, uses stream-json format | `tool_name` | `parameters` object |
 
 **Codex gotcha**: Arguments are a JSON STRING, not an object. Must `JSON.parse(payload.arguments)` to extract command/path.
 
@@ -316,5 +318,11 @@ Live activity extraction from agent session files. Shows what the agent is curre
 - Claude: `~/.claude/projects/{workspace}/*.jsonl`
 - Codex: `~/.codex/sessions/{year}/{month}/{day}/*.jsonl`
 - Gemini: `~/.gemini/sessions/*.jsonl`
+
+**Implementation details**:
+- `getSessionPreviewInfo()`: Reads tail of session file and parses for recent activity
+- `getSessionPathBySessionId()`: Locates session file by searching known directories
+- File size filtering (minimum 5KB) to skip empty sessions
+- Sort by modification time to find most recent
 
 **Testing**: E2E tests in `tests/sessions.activity.test.ts` use real session files. Filter by 5KB minimum size and sort by mtime to find substantial recent sessions.

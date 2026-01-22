@@ -443,7 +443,7 @@ export default function App() {
 
   const handleLinearAuthComplete = () => {
     setShowLinearAuth(false)
-    onUpdateTaskSources({ linear: true })
+    handleUpdateTaskSources({ linear: true })
     fetchUnifiedTasks()
   }
 
@@ -453,7 +453,7 @@ export default function App() {
 
   const handleGitHubAuthComplete = () => {
     setShowGitHubAuth(false)
-    onUpdateTaskSources({ github: true })
+    handleUpdateTaskSources({ github: true })
     fetchUnifiedTasks()
   }
 
