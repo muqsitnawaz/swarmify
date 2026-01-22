@@ -36,16 +36,16 @@ let versionStatus: VersionStatus | null = null;
 let detectedClient: ClientType = 'unknown';
 
 // Get current version from package.json
-export function getCurrentVersion(): string {
-  try {
-    const __dirname = dirname(fileURLToPath(import.meta.url));
-    const pkgPath = join(__dirname, '..', 'package.json');
-    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as { version?: string };
-    return pkg.version || '0.0.0';
-  } catch {
-    return '0.0.0';
+  export function getCurrentVersion(): string {
+    try {
+      const __dirname = dirname(fileURLToPath(import.meta.url));
+      const pkgPath = join(__dirname, '..', 'package.json');
+      const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as { version?: string };
+      return pkg.version || '0.2.6';
+    } catch {
+      return '0.2.6';
+    }
   }
-}
 
 // Load cache from disk
 // Exported for testing

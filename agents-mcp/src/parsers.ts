@@ -979,10 +979,11 @@ function normalizeOpencode(raw: any): any[] {
 
   if (eventType === 'step_finish' || eventType === 'step-finish') {
     const reason = part?.reason || 'unknown';
+    const status = reason === 'stop' ? 'success' : (reason === 'error' ? 'error' : 'success');
     return [{
       type: 'result',
       agent: 'opencode',
-      status: reason === 'stop' ? 'success' : reason,
+      status: status,
       cost: part?.cost || 0,
       tokens: part?.tokens || {},
       timestamp: timestamp,

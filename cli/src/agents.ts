@@ -8,10 +8,10 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { execSync } from 'child_process';
 
-export type AgentCli = 'claude' | 'codex' | 'gemini';
+export type AgentCli = 'claude' | 'codex' | 'gemini' | 'opencode';
 export type PromptPackAgent = AgentCli | 'cursor';
 
-export const ALL_AGENTS: PromptPackAgent[] = ['claude', 'codex', 'gemini', 'cursor'];
+export const ALL_AGENTS: PromptPackAgent[] = ['claude', 'codex', 'gemini', 'cursor', 'opencode'];
 
 /**
  * Agent configuration directories
@@ -21,6 +21,7 @@ export const AGENT_CONFIG_DIRS: Record<PromptPackAgent, string> = {
   codex: path.join(os.homedir(), '.codex'),
   gemini: path.join(os.homedir(), '.gemini'),
   cursor: path.join(os.homedir(), '.cursor'),
+  opencode: path.join(os.homedir(), '.opencode'),
 };
 
 /**
@@ -31,6 +32,7 @@ export const AGENT_SKILL_DIRS: Record<PromptPackAgent, string> = {
   codex: 'prompts',
   gemini: 'commands',
   cursor: 'commands',
+  opencode: 'commands',
 };
 
 /**
@@ -41,6 +43,7 @@ export const AGENT_SKILL_EXT: Record<PromptPackAgent, string> = {
   codex: 'md',
   gemini: 'toml',
   cursor: 'md',
+  opencode: 'md',
 };
 
 /**

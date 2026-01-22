@@ -45,72 +45,72 @@ export const SKILL_DEFINITIONS: SkillDefinition[] = [
   {
     name: 'swarm',
     description: 'Master orchestration command for multi-agent workflows',
-    agents: { claude: 'supported', codex: 'supported', gemini: 'supported', cursor: 'supported' },
+    agents: { claude: 'supported', codex: 'supported', gemini: 'supported', cursor: 'supported', opencode: 'supported' },
   },
   {
     name: 'plan',
     description: 'Create a concise implementation plan',
-    agents: { claude: 'builtin', codex: 'supported', gemini: 'supported' },
+    agents: { claude: 'builtin', codex: 'supported', gemini: 'supported', opencode: 'supported' },
   },
   {
     name: 'splan',
     description: 'Sprint-sized plan with parallel steps',
-    agents: { claude: 'supported', codex: 'supported', cursor: 'supported', gemini: 'supported' },
+    agents: { claude: 'supported', codex: 'supported', cursor: 'supported', gemini: 'supported', opencode: 'supported' },
   },
   {
     name: 'debug',
     description: 'Diagnose the root cause before fixing',
-    agents: { claude: 'supported', codex: 'supported', cursor: 'supported', gemini: 'supported' },
+    agents: { claude: 'supported', codex: 'supported', cursor: 'supported', gemini: 'supported', opencode: 'supported' },
   },
   {
     name: 'sdebug',
     description: 'Parallelize the debugging investigation',
-    agents: { claude: 'supported', codex: 'supported', cursor: 'supported', gemini: 'supported' },
+    agents: { claude: 'supported', codex: 'supported', cursor: 'supported', gemini: 'supported', opencode: 'supported' },
   },
   {
     name: 'sconfirm',
     description: 'Confirm with parallel checks',
-    agents: { claude: 'supported', codex: 'supported', cursor: 'supported', gemini: 'supported' },
+    agents: { claude: 'supported', codex: 'supported', cursor: 'supported', gemini: 'supported', opencode: 'supported' },
   },
   {
     name: 'clean',
     description: 'Refactor safely for clarity',
-    agents: { claude: 'supported', codex: 'supported', cursor: 'supported', gemini: 'supported' },
+    agents: { claude: 'supported', codex: 'supported', cursor: 'supported', gemini: 'supported', opencode: 'supported' },
   },
   {
     name: 'sclean',
     description: 'Parallel refactor plan',
-    agents: { claude: 'supported', codex: 'supported', cursor: 'supported', gemini: 'supported' },
+    agents: { claude: 'supported', codex: 'supported', cursor: 'supported', gemini: 'supported', opencode: 'supported' },
   },
   {
     name: 'test',
     description: 'Design a lean test plan',
-    agents: { claude: 'supported', codex: 'supported', cursor: 'supported', gemini: 'supported' },
+    agents: { claude: 'supported', codex: 'supported', cursor: 'supported', gemini: 'supported', opencode: 'supported' },
   },
   {
     name: 'stest',
     description: 'Parallelize test creation',
-    agents: { claude: 'supported', codex: 'supported', cursor: 'supported', gemini: 'supported' },
+    agents: { claude: 'supported', codex: 'supported', cursor: 'supported', gemini: 'supported', opencode: 'supported' },
   },
   {
     name: 'ship',
     description: 'Pre-launch verification',
-    agents: { claude: 'supported', codex: 'supported', cursor: 'supported', gemini: 'supported' },
+    agents: { claude: 'supported', codex: 'supported', cursor: 'supported', gemini: 'supported', opencode: 'supported' },
   },
   {
     name: 'sship',
     description: 'Ship with independent assessment',
-    agents: { claude: 'supported', codex: 'supported', cursor: 'supported', gemini: 'supported' },
+    agents: { claude: 'supported', codex: 'supported', cursor: 'supported', gemini: 'supported', opencode: 'supported' },
   },
   {
     name: 'recap',
     description: 'Facts + grounded hypotheses for handoff',
-    agents: { claude: 'supported', codex: 'supported', cursor: 'supported', gemini: 'supported' },
+    agents: { claude: 'supported', codex: 'supported', cursor: 'supported', gemini: 'supported', opencode: 'supported' },
   },
   {
     name: 'srecap',
     description: 'Agents investigate gaps before handoff',
-    agents: { claude: 'supported', codex: 'supported', cursor: 'supported', gemini: 'supported' },
+    agents: { claude: 'supported', codex: 'supported', cursor: 'supported', gemini: 'supported', opencode: 'supported' },
   },
   {
     name: 'simagine',
@@ -305,6 +305,7 @@ export function getSkillsStatus(): SkillStatus[] {
         codex: { supported: false, builtin: false, installed: false },
         gemini: { supported: false, builtin: false, installed: false },
         cursor: { supported: false, builtin: false, installed: false },
+        opencode: { supported: false, builtin: false, installed: false },
       },
     };
 
