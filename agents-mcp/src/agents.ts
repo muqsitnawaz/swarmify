@@ -588,8 +588,8 @@ export class AgentProcess {
   private filterByCwd: string | null;
   private cleanupAgeDays: number;
   private defaultMode: Mode;
-  private effortModelMap: EffortModelMap;
-  private agentConfigs: Record<AgentType, AgentConfig>;
+  private effortModelMap!: EffortModelMap;
+  private agentConfigs!: Record<AgentType, AgentConfig>;
   private constructorAgentConfigs: Record<AgentType, AgentConfig> | null = null;
 
   private constructorAgentsDir: string | null = null;
