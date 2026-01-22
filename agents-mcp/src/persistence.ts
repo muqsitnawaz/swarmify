@@ -11,9 +11,9 @@ const ALL_AGENTS: AgentType[] = ['claude', 'codex', 'gemini', 'cursor', 'trae', 
 const AGENTS_CONFIG_DIR = path.join(homedir(), '.agents');
 
 // Preferred and legacy data roots (for agent data, not config)
-const PRIMARY_BASE_DIR = path.join(homedir(), '.swarmify');
-const LEGACY_BASE_DIR = path.join(homedir(), '.agent-swarm');
-const TMP_FALLBACK_DIR = path.join(tmpdir(), 'swarmify');
+const PRIMARY_BASE_DIR = path.join(homedir(), '.agents');
+const LEGACY_BASE_DIR = path.join(homedir(), '.swarmify');
+const TMP_FALLBACK_DIR = path.join(tmpdir(), 'agents');
 
 let RESOLVED_BASE_DIR: string | null = null;
 
@@ -48,18 +48,18 @@ export async function resolveBaseDir(): Promise<string> {
   // Legacy support if the old dir already exists or is the only writable spot
   if ((await pathExists(LEGACY_BASE_DIR)) && await ensureWritableDir(LEGACY_BASE_DIR)) {
     RESOLVED_BASE_DIR = LEGACY_BASE_DIR;
-    console.warn(`[swarmify] Using legacy data dir at ${LEGACY_BASE_DIR}`);
+    console.warn(`[agents-mcp] Migrating from legacy data dir at ${LEGACY_BASE_DIR} - data will be read from there`);
     return RESOLVED_BASE_DIR;
   }
 
   // Writable tmp fallback
   if (await ensureWritableDir(TMP_FALLBACK_DIR)) {
     RESOLVED_BASE_DIR = TMP_FALLBACK_DIR;
-    console.warn(`[swarmify] Falling back to temp data dir at ${TMP_FALLBACK_DIR}`);
+    console.warn(`[agents-mcp] Falling back to temp data dir at ${TMP_FALLBACK_DIR}`);
     return RESOLVED_BASE_DIR;
   }
 
-  throw new Error('Unable to determine writable data directory for swarmify agents');
+  throw new Error('Unable to determine writable data directory for agents');
 }
 
 async function resolveAgentsPath(): Promise<string> {
@@ -252,7 +252,7 @@ async function migrateLegacyConfig(): Promise<SwarmConfig | null> {
     const newConfigPath = await ensureConfigPath();
     await fs.writeFile(newConfigPath, JSON.stringify(defaultConfig, null, 2));
 
-    console.warn(`[swarmify] Migrated config from ${legacyConfigPath} to ${newConfigPath}`);
+    console.warn(`[agents-mcp] Migrated config from ${legacyConfigPath} to ${newConfigPath}`);
 
     return defaultConfig;
   } catch {

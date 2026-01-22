@@ -5,24 +5,24 @@ import { UnifiedTask } from '../core/tasks';
 
 let linearClient: LinearMCPClient | null = null;
 
-export async function isLinearAvailable(): Promise<boolean> {
-  const token = await vscode.env.get('linear_mcp_token');
+export async function isLinearAvailable(context: vscode.ExtensionContext): Promise<boolean> {
+  const token = context.globalState.get<string>('linear_mcp_token');
   return !!token;
 }
 
-export async function fetchLinearTasks(): Promise<UnifiedTask[]> {
-  const mcpManager = await getMCPManager();
+export async function fetchLinearTasks(context: vscode.ExtensionContext): Promise<UnifiedTask[]> {
+  const mcpManager = await getMCPManager(context);
   if (!linearClient) {
     linearClient = new LinearMCPClient(mcpManager);
   }
-  
+
   const issues = await linearClient.fetchAssignedIssues();
   return issues.map(linearToUnifiedTask);
 }
 
-async function getMCPManager(): Promise<any> {
-  const mcpManager = await vscode.postMessage({ type: 'getMCPManager' });
-  return mcpManager;
+async function getMCPManager(context: vscode.ExtensionContext): Promise<any> {
+  // TODO: Implement proper MCP manager retrieval
+  return null;
 }
 
 export function clearLinearCache(): void {

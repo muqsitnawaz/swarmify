@@ -25,7 +25,7 @@ interface VersionStatus {
 type ClientType = 'claude' | 'codex' | 'gemini' | 'unknown';
 
 // Constants (exported for testing)
-export const CACHE_DIR = join(homedir(), '.swarmify');
+export const CACHE_DIR = join(homedir(), '.agents');
 export const CACHE_FILE = join(CACHE_DIR, 'cache.json');
 export const CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
 const NPM_REGISTRY_URL = 'https://registry.npmjs.org/@swarmify/agents-mcp/latest';
