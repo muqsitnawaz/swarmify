@@ -188,6 +188,12 @@ export default function App() {
         case 'skillsStatus':
           if (message.skillsStatus) setSkillsStatus(message.skillsStatus)
           break
+        case 'statusUpdate':
+          // Phase 2 of two-phase loading - heavy status data arrived
+          if (message.swarmStatus) setSwarmStatus(message.swarmStatus)
+          if (message.skillsStatus) setSkillsStatus(message.skillsStatus)
+          if (message.githubRepo) setGithubRepo(message.githubRepo)
+          break
         case 'swarmInstallStart':
           setSwarmInstalling(true)
           break

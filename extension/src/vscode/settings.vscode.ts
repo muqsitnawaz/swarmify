@@ -75,18 +75,35 @@ export async function checkInstalledAgents(): Promise<Record<string, boolean>> {
 // Module state
 let settingsPanel: vscode.WebviewPanel | undefined;
 
-// Data directory: ~/.swarmify/agents/
-const SWARMIFY_DIR = path.join(homedir(), '.swarmify');
-const AGENTS_DATA_DIR = path.join(SWARMIFY_DIR, 'agents');
-const SWARM_CONFIG_PATH = path.join(AGENTS_DATA_DIR, 'config.json');
-const PROMPTS_PATH = path.join(AGENTS_DATA_DIR, 'prompts.json');
+// Data directory: ~/.agents/
+const AGENTS_CONFIG_DIR = path.join(homedir(), '.agents');
+const AGENTS_CONFIG_PATH = path.join(AGENTS_CONFIG_DIR, 'config.json');
+const PROMPTS_PATH = path.join(AGENTS_CONFIG_DIR, 'prompts.json');
 
 // Write swarm config file with enabled agents
 export function writeSwarmConfig(enabledAgents: SwarmAgentType[]): void {
   try {
-    fs.mkdirSync(AGENTS_DATA_DIR, { recursive: true });
-    const config = { enabledAgents };
-    fs.writeFileSync(SWARM_CONFIG_PATH, JSON.stringify(config, null, 2));
+    fs.mkdirSync(AGENTS_CONFIG_DIR, { recursive: true });
+
+    // Read existing config to preserve agent settings
+    let existingConfig: any = { agents: {}, providers: {} };
+    if (fs.existsSync(AGENTS_CONFIG_PATH)) {
+      try {
+        existingConfig = JSON.parse(fs.readFileSync(AGENTS_CONFIG_PATH, 'utf-8'));
+      } catch {
+        // If file is invalid, use empty config
+      }
+    }
+
+    // Update enabled status for all agent types
+    for (const agentType of ALL_SWARM_AGENTS) {
+      if (!existingConfig.agents[agentType]) {
+        existingConfig.agents[agentType] = { enabled: false, models: {}, provider: '' };
+      }
+      existingConfig.agents[agentType].enabled = enabledAgents.includes(agentType);
+    }
+
+    fs.writeFileSync(AGENTS_CONFIG_PATH, JSON.stringify(existingConfig, null, 2));
   } catch (err) {
     console.error('Failed to write swarm config:', err);
   }
@@ -248,6 +265,29 @@ export async function setDefaultModel(
 ): Promise<void> {
   const settings = getSettings(context);
   const current = settings.builtIn[agentType];
+
+  // Update new config format
+  const configPath = AGENTS_CONFIG_PATH;
+  let config: any = { agents: {}, providers: {} };
+  if (fs.existsSync(configPath)) {
+    try {
+      config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    } catch {
+      // If file is invalid, use empty config
+    }
+  }
+
+  const agentKey = agentType.toString();
+  if (!config.agents[agentKey]) {
+    config.agents[agentKey] = { enabled: false, models: {}, provider: '' };
+  }
+
+  // Update model in the appropriate effort level (default by convention)
+  config.agents[agentKey].models.default = model;
+
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+
+  // Also update VS Code settings for backward compatibility
   const nextSettings: AgentSettings = {
     ...settings,
     builtIn: {
@@ -307,23 +347,36 @@ export function openPanel(context: vscode.ExtensionContext): void {
 
   const updateWebview = async () => {
     if (!settingsPanel) return;
-    const settings = getSettings(context);
-    const runningCounts = terminals.countRunning();
-    const swarmStatus = await swarm.getSwarmStatus();
-    const skillsStatus = await swarm.getSkillsStatus();
+
     const wsFolder = workspaceConfig.getActiveWorkspaceFolder();
     const workspacePath = wsFolder?.uri.fsPath || null;
-    const githubRepo = workspacePath ? await getGitHubRepo(workspacePath) : null;
-    const dismissedTaskIds = context.globalState.get<string[]>('agents.dismissedTaskIds', []);
+
+    // PHASE 1: Send instant data immediately - UI renders right away
     settingsPanel.webview.postMessage({
       type: 'init',
-      settings,
-      runningCounts,
+      settings: getSettings(context),
+      runningCounts: terminals.countRunning(),
+      workspacePath,
+      dismissedTaskIds: context.globalState.get<string[]>('agents.dismissedTaskIds', []),
+      // Status will be sent in phase 2
+      swarmStatus: null,
+      skillsStatus: null,
+      githubRepo: null,
+    });
+
+    // PHASE 2: Fetch heavy data in parallel, send when ready
+    const [swarmStatus, skillsStatus, githubRepo] = await Promise.all([
+      swarm.getSwarmStatus(),
+      swarm.getSkillsStatus(),
+      workspacePath ? getGitHubRepo(workspacePath) : Promise.resolve(null),
+    ]);
+
+    if (!settingsPanel) return; // Panel may have closed during fetch
+    settingsPanel.webview.postMessage({
+      type: 'statusUpdate',
       swarmStatus,
       skillsStatus,
-      workspacePath,
       githubRepo,
-      dismissedTaskIds
     });
   };
 

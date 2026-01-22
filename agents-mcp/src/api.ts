@@ -8,6 +8,7 @@ import * as fs from 'fs/promises';
 import { AgentManager, AgentStatus, resolveMode } from './agents.js';
 import { AgentType } from './parsers.js';
 import { getDelta } from './summarizer.js';
+import { readConfig } from './persistence.js';
 
 /**
  * Truncate a bash command for status output.
