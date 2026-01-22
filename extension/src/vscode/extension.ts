@@ -458,10 +458,7 @@ export async function activate(context: vscode.ExtensionContext) {
       console.error('[EXTENSION] Error scanning/restoring terminals:', err);
     });
 
-  // Register terminals that appear after activation (e.g., restored sessions)  // Register OAuth handler for Linear and GitHub authentication
-  const { setupOAuthCallbackHandler } = require('../mcp/auth');
-  setupOAuthCallbackHandler(context);
-
+  // Register terminals that appear after activation (e.g., restored sessions)
   context.subscriptions.push(
     vscode.window.onDidOpenTerminal(async (terminal) => {
       // Already tracked?

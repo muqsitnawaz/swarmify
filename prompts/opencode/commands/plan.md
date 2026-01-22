@@ -206,3 +206,8 @@ Examples: cosmic-discovering-pine, abstract-painting-wombat, bright-exploring-li
 Then save your complete plan (all sections above) to: ~/.opencode/plans/{generated-name}.md
 
 Use your creativity. Make it memorable and whimsical.
+
+## Read Back Your Plan
+
+After saving, read the plan file back to the terminal so the user can see it without
+opening the file. Display the full plan contents using the Read tool.
