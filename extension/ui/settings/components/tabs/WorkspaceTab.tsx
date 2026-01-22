@@ -107,6 +107,12 @@ export function WorkspaceTab(props: WorkspaceTabProps) {
     onInitWorkspaceConfig,
     onSaveWorkspaceConfig,
     onDismissTask,
+    onConnectLinear,
+    onConnectGitHub,
+    onLinearAuthComplete,
+    onLinearAuthCancel,
+    onGitHubAuthComplete,
+    onGitHubAuthCancel,
   } = props
 
   const flatTasks = useMemo<WorkspaceTask[]>(() => {
