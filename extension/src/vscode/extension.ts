@@ -949,6 +949,32 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   }
 
+  // Register quick launch commands (Cmd+Shift+1/2/3)
+  const quickLaunch = customAgentSettings.quickLaunch;
+  const quickLaunchSlots = [
+    { command: 'agents.quickLaunch1', slot: quickLaunch?.slot1 },
+    { command: 'agents.quickLaunch2', slot: quickLaunch?.slot2 },
+    { command: 'agents.quickLaunch3', slot: quickLaunch?.slot3 },
+  ];
+
+  for (const { command, slot } of quickLaunchSlots) {
+    context.subscriptions.push(
+      vscode.commands.registerCommand(command, () => {
+        if (!slot) return; // Unconfigured = do nothing (silent)
+
+        const builtInDef = getBuiltInByKey(slot.agent);
+        if (!builtInDef) return;
+
+        const agentConfig = getBuiltInByTitle(context.extensionPath, builtInDef.title);
+        if (agentConfig) {
+          // Build flags with model if specified
+          const flags = slot.model ? `--model ${slot.model}` : undefined;
+          openSingleAgent(context, agentConfig, flags);
+        }
+      })
+    );
+  }
+
   // Listen for terminal closures to update our tracking
   context.subscriptions.push(
     vscode.window.onDidCloseTerminal((terminal) => {

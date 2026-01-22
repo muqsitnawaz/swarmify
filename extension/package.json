@@ -3,7 +3,7 @@
   "displayName": "Agents",
   "publisher": "swarmify",
   "description": "Manage multiple Claude Code, Codex, Gemini, and Cursor terminal agents in the editor",
-  "version": "0.9.176",
+  "version": "0.9.177",
   "license": "MIT",
   "author": "Muqsit Nawaz <dev@muqsitnawaz.com>",
   "icon": "assets/agents.png",
@@ -123,6 +123,18 @@
       {
         "command": "agents.newAlias",
         "title": "Agents: New (Alias)"
+      },
+      {
+        "command": "agents.quickLaunch1",
+        "title": "Agents: Quick Launch 1"
+      },
+      {
+        "command": "agents.quickLaunch2",
+        "title": "Agents: Quick Launch 2"
+      },
+      {
+        "command": "agents.quickLaunch3",
+        "title": "Agents: Quick Launch 3"
       },
       {
         "command": "agents.setTitle",
@@ -408,6 +420,21 @@
         "command": "agents.configure",
         "key": "ctrl+shift+d",
         "mac": "cmd+shift+d"
+      },
+      {
+        "command": "agents.quickLaunch1",
+        "key": "ctrl+shift+1",
+        "mac": "cmd+shift+1"
+      },
+      {
+        "command": "agents.quickLaunch2",
+        "key": "ctrl+shift+2",
+        "mac": "cmd+shift+2"
+      },
+      {
+        "command": "agents.quickLaunch3",
+        "key": "ctrl+shift+3",
+        "mac": "cmd+shift+3"
       }
     ]
   },
