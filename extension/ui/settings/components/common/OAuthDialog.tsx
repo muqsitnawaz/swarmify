@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { postMessage } from '../../hooks';
 
 interface OauthDialogProps {
   provider: 'linear' | 'github';
@@ -8,47 +9,48 @@ interface OauthDialogProps {
 
 export function OauthDialog({ provider, onAuthComplete, onClose }: OauthDialogProps) {
   const [status, setStatus] = useState<'idle' | 'waiting' | 'success' | 'error'>('idle');
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const handleOAuthStart = async () => {
-    setStatus('waiting');
-    try {
-      const result = await vscode.postMessage({
-        type: 'startOAuth',
-        provider
-      });
-      
-      if (result.error) {
-        setStatus('error');
-        return;
-      }
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      const message = event.data;
+      if (message.type === 'oauthStarted' && message.provider === provider) {
+        // OAuth URL opened successfully, start polling
+        pollIntervalRef.current = setInterval(() => {
+          postMessage({ type: 'checkOAuthStatus', provider });
+        }, 1000);
 
-      const pollInterval = setInterval(async () => {
-        try {
-          const checkResult = await vscode.postMessage({
-            type: 'checkOAuthStatus',
-            provider
-          });
-          
-          if (checkResult.token) {
-            clearInterval(pollInterval);
-            setStatus('success');
-            onAuthComplete();
+        // Timeout after 120 seconds
+        setTimeout(() => {
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
           }
-        } catch (err) {
-          console.error('[OAUTH] Polling error:', err);
+        }, 120000);
+      } else if (message.type === 'oauthToken' && message.provider === provider) {
+        if (message.token) {
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+          }
+          setStatus('success');
+          onAuthComplete();
         }
-      }, 1000);
+      }
+    };
 
-      setTimeout(() => {
-        clearInterval(pollInterval);
-        if (status !== 'success') {
-          setStatus('idle');
-        }
-      }, 120000);
-    } catch (err) {
-      console.error('[OAUTH] Start error:', err);
-      setStatus('error');
-    }
+    window.addEventListener('message', handleMessage);
+    return () => {
+      window.removeEventListener('message', handleMessage);
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+    };
+  }, [provider, onAuthComplete]);
+
+  const handleOAuthStart = () => {
+    setStatus('waiting');
+    postMessage({ type: 'startOAuth', provider });
   };
 
   return (
