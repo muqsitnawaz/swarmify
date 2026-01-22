@@ -154,6 +154,10 @@ Unified task management from multiple sources. Aggregates tasks into single inte
 
 **Command:** `agents.newTask` (Ctrl+Shift+N / Cmd+Shift+N)
 
+Opens a task picker to select a task from TODO.md, RALPH.md, Linear, or GitHub sources. When a task is selected, opens a new default agent with the task details. Clipboard content (if any) is automatically added as context to the selected task.
+
+If no tasks are found, falls back to a free-form input prompt (original behavior).
+
 **Sources:**
 - **Markdown**: Tasks from .md files (checkboxes, TODO comments)
 - **Linear**: Issues fetched via MCP client
