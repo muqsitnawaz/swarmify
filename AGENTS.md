@@ -29,7 +29,7 @@ True multi-agent coding in your IDE. Run Claude, Codex, Gemini, and Cursor agent
 | `agents-mcp/` | @swarmify/agents-mcp | MCP server for spawning agents |
 | `extension/` | swarm-ext | VS Code/Cursor extension |
 | `prompts/` | - | Slash commands for all agents |
-| `src/mcp/` | - | MCP client implementations (GitHub, Linear, auth, storage) |
+| `extension/src/core/mcp/` | - | MCP client implementations (GitHub, Linear, auth, storage) |
 
 ## Core Concepts
 
@@ -192,7 +192,7 @@ Extracts both env vars from VS Code terminals at startup:
   - Tmux mode for per-tab splits (Cmd+Shift+H/V)
   - Autogit for automated commits (Ctrl+Shift+G)
 
-### src/mcp/
+### extension/src/core/mcp/
 MCP client implementations for:
 - GitHub (`github-client.ts`)
 - Linear (`linear-client.ts`)
