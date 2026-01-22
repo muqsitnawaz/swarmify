@@ -219,6 +219,7 @@ describe('Codex Live E2E', () => {
       task_name: 'test-codex-mcp',
       agent_type: 'codex',
       prompt: prompt,
+      mode: 'edit',
     });
     
     expect(spawnResult.agent_id).toBeDefined();
