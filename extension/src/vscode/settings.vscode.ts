@@ -6,7 +6,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { homedir } from 'os';
 import { exec } from 'child_process';
-import { AgentSettings, getDefaultSettings, CustomAgentConfig, SwarmAgentType, ALL_SWARM_AGENTS, PromptEntry, DEFAULT_DISPLAY_PREFERENCES, DEFAULT_NOTIFICATION_SETTINGS, DEFAULT_TASK_SOURCE_SETTINGS } from '../core/settings';
+import { AgentSettings, getDefaultSettings, CustomAgentConfig, SwarmAgentType, ALL_SWARM_AGENTS, PromptEntry, DEFAULT_DISPLAY_PREFERENCES, DEFAULT_NOTIFICATION_SETTINGS, DEFAULT_TASK_SOURCE_SETTINGS, DEFAULT_QUICK_LAUNCH } from '../core/settings';
 import { readPromptsFromPath, writePromptsToPath, DEFAULT_PROMPTS } from '../core/prompts';
 import * as terminals from './terminals.vscode';
 import * as swarm from './swarm.vscode';
@@ -212,6 +212,11 @@ export function getSettings(context: vscode.ExtensionContext): AgentSettings {
     // Migrate: add task sources if missing
     if (!stored.taskSources) {
       stored.taskSources = { ...DEFAULT_TASK_SOURCE_SETTINGS };
+      context.globalState.update('agentSettings', stored);
+    }
+    // Migrate: add quick launch if missing
+    if (!stored.quickLaunch) {
+      stored.quickLaunch = { ...DEFAULT_QUICK_LAUNCH };
       context.globalState.update('agentSettings', stored);
     }
     return stored;
