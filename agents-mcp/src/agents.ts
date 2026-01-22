@@ -70,21 +70,53 @@ export type EffortModelMap = Record<EffortLevel, Record<AgentType, string>>;
 
 // Build effort model map from agent configs
 export function resolveEffortModelMap(
-  agentConfigs: Record<AgentType, AgentConfig>
+  baseOrAgentConfigs: EffortModelMap | Record<AgentType, AgentConfig>,
+  overrides?: Partial<Record<AgentType, Partial<Record<EffortLevel, string>>>>
 ): EffortModelMap {
-  const resolved: EffortModelMap = {
-    fast: {} as Record<AgentType, string>,
-    default: {} as Record<AgentType, string>,
-    detailed: {} as Record<AgentType, string>
-  };
+  // Check if first arg is base EffortModelMap (old API) or agent configs (new API)
+  const hasBaseOverrides = arguments.length > 1;
 
-  for (const [agentType, agentConfig] of Object.entries(agentConfigs)) {
-    resolved.fast[agentType as AgentType] = agentConfig.models.fast;
-    resolved.default[agentType as AgentType] = agentConfig.models.default;
-    resolved.detailed[agentType as AgentType] = agentConfig.models.detailed;
+  if (hasBaseOverrides && overrides) {
+    // Old API: resolveEffortModelMap(base, overrides)
+    const base = baseOrAgentConfigs as EffortModelMap;
+    const resolved: EffortModelMap = {
+      fast: { ...base.fast },
+      default: { ...base.default },
+      detailed: { ...base.detailed }
+    };
+
+    for (const [agentType, effortOverrides] of Object.entries(overrides)) {
+      if (!effortOverrides) continue;
+      const typedAgent = agentType as AgentType;
+      for (const level of ['fast', 'default', 'detailed'] as const) {
+        const model = effortOverrides[level];
+        if (typeof model === 'string') {
+          const trimmed = model.trim();
+          if (trimmed) {
+            resolved[level][typedAgent] = trimmed;
+          }
+        }
+      }
+    }
+
+    return resolved;
+  } else {
+    // New API: resolveEffortModelMap(agentConfigs)
+    const agentConfigs = baseOrAgentConfigs as Record<AgentType, AgentConfig>;
+    const resolved: EffortModelMap = {
+      fast: {} as Record<AgentType, string>,
+      default: {} as Record<AgentType, string>,
+      detailed: {} as Record<AgentType, string>
+    };
+
+    for (const [agentType, agentConfig] of Object.entries(agentConfigs)) {
+      resolved.fast[agentType as AgentType] = agentConfig.models.fast;
+      resolved.default[agentType as AgentType] = agentConfig.models.default;
+      resolved.detailed[agentType as AgentType] = agentConfig.models.detailed;
+    }
+
+    return resolved;
   }
-
-  return resolved;
 }
 
 // Load default agent configs from persistence
@@ -154,6 +186,9 @@ function loadDefaultAgentConfigs(): Record<AgentType, AgentConfig> {
   };
 }
 
+
+// Default effort model map (for backward compatibility with tests)
+export const EFFORT_MODEL_MAP: EffortModelMap = resolveEffortModelMap(loadDefaultAgentConfigs());
 
 // Suffix appended to all prompts to ensure agents provide a summary
 const PROMPT_SUFFIX = `

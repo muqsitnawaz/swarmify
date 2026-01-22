@@ -120,10 +120,10 @@ export const SKILL_DEFINITIONS: SkillDefinition[] = [
 ];
 
 /**
- * Get the canonical skills directory (single source of truth)
+ * Get the canonical commands directory (single source of truth)
  */
 export function getCanonicalSkillsDir(): string {
-  return path.join(os.homedir(), '.swarmify', 'skills');
+  return path.join(os.homedir(), '.agents', 'commands');
 }
 
 /**
