@@ -1,7 +1,7 @@
 interface Env {
   // GitHub OAuth secrets per IDE (client_id -> secret mapping)
   GITHUB_SECRET_Ov23liKYaRnJ5DqzmPYO: string;  // VS Code
-  GITHUB_SECRET_Ov23libl1NZ18xfKlvhi: string;  // Cursor
+  GITHUB_SECRET_Ov23lil7uKgqBdj9OhX4: string;  // Cursor
   LINEAR_CLIENT_ID: string;
   LINEAR_CLIENT_SECRET: string;
 }
