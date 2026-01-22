@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 
 /**
- * ag - Package manager for AI coding agent skills and MCP servers
+ * ag - Package manager for AI coding agent commands and MCP servers
  *
  * Usage:
- *   ag status              Show status of all skills across agents
- *   ag sync [--skill X]    Sync skills to all agents
- *   ag init                Initialize canonical skills directory
+ *   ag status              Show status of all commands across agents
+ *   ag sync [--skill X]    Sync commands to all agents
+ *   ag init                Initialize canonical commands directory
  *   ag agents              Show agent detection status
  *   ag mcp add             Register Swarm MCP with installed agent CLIs
  *   ag mcp status          Show MCP registration status
@@ -50,7 +50,7 @@ const MCP_AGENTS: AgentCli[] = ['claude', 'codex', 'gemini', 'opencode'];
 
 program
   .name('ag')
-  .description('Manage skills and MCP servers across AI coding agents')
+  .description('Manage commands and MCP servers across AI coding agents')
   .version('0.1.0');
 
 // ============================================================================
@@ -59,10 +59,10 @@ program
 
 program
   .command('status')
-  .description('Show status of all skills across agents')
+  .description('Show status of all commands across agents')
   .option('-v, --verbose', 'Show detailed information')
   .action((options) => {
-    console.log(chalk.bold('\nSkills Status\n'));
+    console.log(chalk.bold('\nCommands Status\n'));
 
     const statuses = getSkillsStatus();
     const agents: PromptPackAgent[] = ['claude', 'codex', 'gemini', 'cursor', 'opencode'];
@@ -113,11 +113,11 @@ program
       const installed = statuses.filter(s => s.agents[agent].installed).length;
       const pct = supported > 0 ? Math.round((installed / supported) * 100) : 0;
       const color = pct === 100 ? chalk.green : pct > 50 ? chalk.yellow : chalk.red;
-      console.log(`  ${agent.padEnd(8)} ${color(`${installed}/${supported}`)} skills installed (${pct}%)`);
+      console.log(`  ${agent.padEnd(8)} ${color(`${installed}/${supported}`)} commands installed (${pct}%)`);
     }
 
     console.log();
-    console.log(`  Canonical source: ${withSource}/${totalSkills} skills have source files`);
+    console.log(`  Canonical source: ${withSource}/${totalSkills} commands have source files`);
     console.log(`  Location: ${getCanonicalSkillsDir()}`);
     console.log();
   });
@@ -285,12 +285,12 @@ mcpCommand.addCommand(
 
 program
   .command('sync')
-  .description('Sync skills from canonical source to agents')
-  .option('-s, --skill <name>', 'Sync a specific skill only')
-  .option('-a, --agent <name>', 'Sync to a specific agent only (claude, codex, gemini, cursor)')
+  .description('Sync commands from canonical source to agents')
+  .option('-s, --skill <name>', 'Sync a specific command only')
+  .option('-a, --agent <name>', 'Sync to a specific agent only (claude, codex, gemini, cursor, opencode)')
   .option('--dry-run', 'Show what would be synced without making changes')
   .action((options) => {
-    const spinner = options.dryRun ? null : ora('Syncing skills...').start();
+    const spinner = options.dryRun ? null : ora('Syncing commands...').start();
 
     const targetSkills: SkillName[] = options.skill
       ? [options.skill as SkillName]
@@ -372,19 +372,19 @@ program
 
 program
   .command('init')
-  .description('Initialize canonical skills directory with sample templates')
-  .option('--force', 'Overwrite existing skill files')
+  .description('Initialize canonical commands directory with sample templates')
+  .option('--force', 'Overwrite existing command files')
   .action((options) => {
     const skillsDir = getCanonicalSkillsDir();
-    console.log(chalk.bold('\nInitializing skills directory\n'));
+    console.log(chalk.bold('\nInitializing commands directory\n'));
     console.log(`  Location: ${skillsDir}\n`);
 
     // Create directory
     if (!fs.existsSync(skillsDir)) {
       fs.mkdirSync(skillsDir, { recursive: true });
-      console.log(chalk.green('  Created skills directory'));
+      console.log(chalk.green('  Created commands directory'));
     } else {
-      console.log(chalk.gray('  Skills directory already exists'));
+      console.log(chalk.gray('  Commands directory already exists'));
     }
 
     // Create sample skill templates
@@ -745,7 +745,7 @@ This skill is for generating prompts for visual assets like icons, illustrations
     console.log();
     console.log(`  ${chalk.green(created.toString())} files created, ${chalk.gray(skipped.toString())} skipped`);
     console.log();
-    console.log('  Run `agents sync` to install these skills to your agents.');
+    console.log('  Run `ag sync` to install these commands to your agents.');
     console.log();
   });
 
@@ -755,9 +755,9 @@ This skill is for generating prompts for visual assets like icons, illustrations
 
 program
   .command('list')
-  .description('List all available skills')
+  .description('List all available commands')
   .action(() => {
-    console.log(chalk.bold('\nAvailable Skills\n'));
+    console.log(chalk.bold('\nAvailable Commands\n'));
 
     for (const skill of SKILL_DEFINITIONS) {
       const hasSource = hasCanonicalSkill(skill.name);
@@ -779,9 +779,9 @@ program
 
 program
   .command('paths')
-  .description('Show all relevant paths for skills and configs')
+  .description('Show all relevant paths for commands and configs')
   .action(() => {
-    console.log(chalk.bold('\nSkill Paths\n'));
+    console.log(chalk.bold('\nCommand Paths\n'));
 
     console.log(chalk.bold('  Canonical source:'));
     console.log(`    ${getCanonicalSkillsDir()}\n`);

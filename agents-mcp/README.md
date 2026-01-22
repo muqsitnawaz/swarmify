@@ -49,9 +49,57 @@ The server auto-discovers which agent CLIs you have installed.
 - Integrate with MCP registries and gateways without changing your workflow
 - Run Ralph Wiggum loops inside spawned Claude Code agents when the plugin is installed
 
+## What This Server Does
+
+**Agent Lifecycle Management**
+- Spawns agent CLIs as detached background processes (survive IDE restarts)
+- Stops agents by task or individually (SIGTERM/SIGKILL with process groups)
+- Cleans up old agents from disk (7-day retention)
+
+**Agent Orchestration & Delegation**
+- Groups agents by task name (`task_name`) for organized coordination
+- Tracks each agent's UUID, type, mode, and parent session
+- Returns `agent_id` immediately for non-blocking spawn-then-poll patterns
+
+**Permission & Mode Management**
+- `plan` - Read-only, research, code review
+- `edit` - Read + write for implementation
+- `ralph` - Autonomous iteration through RALPH.md tasks
+
+**Output Stream Processing**
+- Normalizes 6 agent formats (Claude, Codex, Gemini, Cursor, Trae, OpenCode) into unified events
+- Compresses events: deduplicated files, truncated bash commands, last 5 messages
+- Delta polling via `since` timestamp (cursor-based, no redundant data)
+
+**Configuration & Model Selection**
+- Effort levels (`fast`, `default`, `detailed`) map to agent-specific models
+- Config at `~/.agents/config.json` for per-agent overrides
+
+## What This Server Does NOT Do
+
+| Not This | That's The Orchestrator's Job |
+|----------|-------------------------------|
+| Scheduling | Decides when to spawn which agents |
+| Task assignment | Writes prompts, defines what to do |
+| Conflict resolution | Assigns non-overlapping files to agents |
+| Intelligence | Pure infrastructure - no decision-making |
+
+## How This Differs from Agent Skills
+
+| | Agent Skills | agents-mcp |
+|---|---|---|
+| **Type** | Static knowledge packages | Agent orchestration server |
+| **Adds** | Domain expertise (rules, scripts) | Multi-agent coordination |
+| **Runtime** | None (markdown + bash) | Node.js process |
+
+Agent skills define *what* an agent knows (deploy to Vercel, optimize React).
+agents-mcp defines *how* agents work together (orchestrator spawns Codex to implement, Cursor to debug).
+
+They're complementary—sub-agents can use skills.
+
 ## Under the Hood
 
-Headless CLI agents run as background processes. Output streams to `~/.swarmify/agents/{id}/stdout.log`.
+Headless CLI agents run as background processes. Output streams to `~/.agents/agents/{id}/stdout.log`.
 
 Plan mode is read-only:
 
@@ -212,7 +260,7 @@ Cover auth endpoints.
 - Scoped by `cwd` - orchestrator controls blast radius
 - RALPH.md must exist before spawn
 - Warns if used in home/system directories
-- Agent logs stored in `~/.swarmify/agents/{id}/stdout.log` like regular agents
+- Agent logs stored in `~/.agents/agents/{id}/stdout.log` like regular agents
 
 ## Effort Levels
 
@@ -224,7 +272,7 @@ Cover auth endpoints.
 
 ## Config
 
-Config lives at `~/.swarmify/config.json`.
+Config lives at `~/.agents/config.json`.
 
 Example with per-agent swarm selection and effort model overrides:
 
@@ -274,7 +322,7 @@ Shorthand for a single effort level override:
 
 ## Storage
 
-Data and config are stored under `~/.swarmify/`. Requires Node.js >= 18.17.
+Data and config are stored under `~/.agents/`. Requires Node.js >= 18.17.
 
 ## Changelog
 

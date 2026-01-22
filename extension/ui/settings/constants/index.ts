@@ -41,7 +41,7 @@ export const SOURCE_BADGES: Record<TaskSource, { label: string; color: string }>
 }
 
 // Reserved agent name prefixes (cannot be used for custom agents)
-export const RESERVED_NAMES = ['CC', 'CX', 'GX', 'OC', 'CR', 'TR', 'SH']
+export const RESERVED_NAMES = ['CL', 'CX', 'GX', 'OC', 'CR', 'TR', 'SH']
 
 // Swarm agent display labels
 export const SWARM_AGENT_LABELS: Record<SwarmAgentType, string> = {
@@ -68,9 +68,9 @@ export const AGENT_INSTALL_INFO: Record<string, { command?: string; url?: string
   cursor: { url: 'https://cursor.com' },
 }
 
-// Map from agent title (CC, CX, etc.) to key (claude, codex, etc.)
+// Map from agent title (CL, CX, etc.) to key (claude, codex, etc.)
 export const AGENT_TITLE_TO_KEY: Record<string, string> = {
-  'CC': 'claude',
+  'CL': 'claude',
   'CX': 'codex',
   'GX': 'gemini',
   'OC': 'opencode',
@@ -88,7 +88,7 @@ export const AGENT_TITLE_TO_KEY: Record<string, string> = {
 
 // Map from key to title (for dropdown)
 export const AGENT_KEY_TO_TITLE: Record<string, string> = {
-  'claude': 'CC',
+  'claude': 'CL',
   'codex': 'CX',
   'gemini': 'GX',
   'opencode': 'OC',

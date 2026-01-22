@@ -415,7 +415,7 @@ export function SettingsTab({
                   return (
                     <button
                       key={agent.key}
-                      onClick={() => onSetDefaultAgent(AGENT_KEY_TO_TITLE[agent.key] || 'CC')}
+                      onClick={() => onSetDefaultAgent(AGENT_KEY_TO_TITLE[agent.key] || 'CL')}
                       className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors ${
                         isSelected
                           ? 'border-[var(--primary)] bg-[var(--background)]'
