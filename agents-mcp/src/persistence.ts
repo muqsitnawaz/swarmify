@@ -5,9 +5,12 @@ import { constants as fsConstants } from 'fs';
 import { AgentType } from './parsers.js';
 
 // All supported swarm agent types
-const ALL_AGENTS: AgentType[] = ['claude', 'codex', 'gemini', 'cursor'];
+const ALL_AGENTS: AgentType[] = ['claude', 'codex', 'gemini', 'cursor', 'trae', 'opencode'];
 
-// Preferred and legacy data roots
+// Config directory
+const AGENTS_CONFIG_DIR = path.join(homedir(), '.agents');
+
+// Preferred and legacy data roots (for agent data, not config)
 const PRIMARY_BASE_DIR = path.join(homedir(), '.swarmify');
 const LEGACY_BASE_DIR = path.join(homedir(), '.agent-swarm');
 const TMP_FALLBACK_DIR = path.join(tmpdir(), 'swarmify');
@@ -65,23 +68,46 @@ async function resolveAgentsPath(): Promise<string> {
 }
 
 async function resolveConfigPath(): Promise<string> {
+  await fs.mkdir(AGENTS_CONFIG_DIR, { recursive: true });
+  return path.join(AGENTS_CONFIG_DIR, 'config.json');
+}
+
+async function resolveLegacyConfigPath(): Promise<string> {
   const base = await resolveBaseDir();
-  return path.join(base, 'config.json');
+  return path.join(base, 'agents', 'config.json');
 }
 
 export type EffortLevel = 'fast' | 'default' | 'detailed';
 
 export type ModelOverrides = Partial<Record<AgentType, Partial<Record<EffortLevel, string>>>>;
 
-interface SwarmConfig {
-  agents?: Record<string, unknown>;
-  defaults?: Record<string, unknown>;
+export interface ProviderConfig {
+  apiEndpoint: string | null;
+}
+
+export interface AgentModelConfig {
+  fast: string;
+  default: string;
+  detailed: string;
+}
+
+export interface AgentConfig {
+  command: string;
+  enabled: boolean;
+  models: AgentModelConfig;
+  provider: string;
+}
+
+export interface SwarmConfig {
+  agents: Record<AgentType, AgentConfig>;
+  providers: Record<string, ProviderConfig>;
 }
 
 export interface ReadConfigResult {
   hasConfig: boolean;
   enabledAgents: AgentType[];
-  modelOverrides: ModelOverrides;
+  agentConfigs: Record<AgentType, AgentConfig>;
+  providerConfigs: Record<string, ProviderConfig>;
 }
 
 let AGENTS_DIR: string | null = null;
@@ -104,73 +130,229 @@ async function ensureConfigPath(): Promise<string> {
   return CONFIG_PATH;
 }
 
-function normalizeEffortLevel(raw: unknown): EffortLevel | null {
-  if (typeof raw !== 'string') return null;
-  const normalized = raw.trim().toLowerCase();
-  if (normalized === 'fast' || normalized === 'default' || normalized === 'detailed') {
-    return normalized as EffortLevel;
-  }
-  return null;
+// Get default agent configuration
+function getDefaultAgentConfig(agentType: AgentType): AgentConfig {
+  const defaults: Record<AgentType, AgentConfig> = {
+    claude: {
+      command: 'claude -p \'{prompt}\' --output-format stream-json --json',
+      enabled: true,
+      models: {
+        fast: 'claude-haiku-4-5-20251001',
+        default: 'claude-sonnet-4-5',
+        detailed: 'claude-opus-4-5'
+      },
+      provider: 'anthropic'
+    },
+    codex: {
+      command: 'codex exec --sandbox workspace-write \'{prompt}\' --json',
+      enabled: true,
+      models: {
+        fast: 'gpt-4o-mini',
+        default: 'gpt-5.2-codex',
+        detailed: 'gpt-5.1-codex-max'
+      },
+      provider: 'openai'
+    },
+    gemini: {
+      command: 'gemini \'{prompt}\' --output-format stream-json',
+      enabled: true,
+      models: {
+        fast: 'gemini-3-flash-preview',
+        default: 'gemini-3-flash-preview',
+        detailed: 'gemini-3-pro-preview'
+      },
+      provider: 'google'
+    },
+    cursor: {
+      command: 'cursor-agent -p --output-format stream-json \'{prompt}\'',
+      enabled: false,
+      models: {
+        fast: 'composer-1',
+        default: 'composer-1',
+        detailed: 'composer-1'
+      },
+      provider: 'custom'
+    },
+    opencode: {
+      command: 'opencode run --format json \'{prompt}\'',
+      enabled: false,
+      models: {
+        fast: 'zai-coding-plan/glm-4.7-flash',
+        default: 'zai-coding-plan/glm-4.7',
+        detailed: 'zai-coding-plan/glm-4.7'
+      },
+      provider: 'custom'
+    },
+    trae: {
+      command: 'trae-cli run \'{prompt}\'',
+      enabled: false,
+      models: {
+        fast: 'gpt-4o-mini',
+        default: 'gpt-4o',
+        detailed: 'claude-sonnet-4-20250514'
+      },
+      provider: 'custom'
+    }
+  };
+
+  return defaults[agentType];
 }
 
-function normalizeEffortModels(raw: unknown): Partial<Record<EffortLevel, string>> | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const models: Partial<Record<EffortLevel, string>> = {};
+// Get default provider configuration
+function getDefaultProviderConfig(): Record<string, ProviderConfig> {
+  return {
+    anthropic: {
+      apiEndpoint: 'https://api.anthropic.com'
+    },
+    openai: {
+      apiEndpoint: 'https://api.openai.com/v1'
+    },
+    google: {
+      apiEndpoint: 'https://generativelanguage.googleapis.com/v1'
+    },
+    custom: {
+      apiEndpoint: null
+    }
+  };
+}
 
-  const rawModels = (raw as { models?: Record<string, unknown> }).models;
-  if (rawModels && typeof rawModels === 'object') {
-    for (const level of ['fast', 'default', 'detailed'] as const) {
-      const value = rawModels[level];
-      if (typeof value === 'string') {
-        const trimmed = value.trim();
-        if (trimmed) {
-          models[level] = trimmed;
-        }
+// Get default full configuration
+function getDefaultSwarmConfig(): SwarmConfig {
+  const agents: Record<string, AgentConfig> = {};
+  for (const agentType of ALL_AGENTS) {
+    agents[agentType] = getDefaultAgentConfig(agentType);
+  }
+
+  return {
+    agents,
+    providers: getDefaultProviderConfig()
+  };
+}
+
+// Migrate from legacy config format
+async function migrateLegacyConfig(): Promise<SwarmConfig | null> {
+  const legacyConfigPath = await resolveLegacyConfigPath();
+  try {
+    const data = await fs.readFile(legacyConfigPath, 'utf-8');
+    const legacyConfig = JSON.parse(data) as { enabledAgents?: string[] };
+
+    if (!legacyConfig.enabledAgents || legacyConfig.enabledAgents.length === 0) {
+      return null;
+    }
+
+    // Merge legacy enabled agents into default config
+    const defaultConfig = getDefaultSwarmConfig();
+    for (const agentType of legacyConfig.enabledAgents) {
+      if (ALL_AGENTS.includes(agentType as AgentType)) {
+        defaultConfig.agents[agentType as AgentType].enabled = true;
       }
     }
-  }
 
-  const shorthandLevel = normalizeEffortLevel((raw as { level?: unknown }).level);
-  const shorthandModel = typeof (raw as { model?: unknown }).model === 'string'
-    ? (raw as { model?: string }).model?.trim()
-    : '';
-  if (shorthandLevel && shorthandModel) {
-    models[shorthandLevel] = shorthandModel;
-  }
+    // Write migrated config to new location
+    const newConfigPath = await ensureConfigPath();
+    await fs.writeFile(newConfigPath, JSON.stringify(defaultConfig, null, 2));
 
-  return Object.keys(models).length > 0 ? models : null;
+    console.warn(`[swarmify] Migrated config from ${legacyConfigPath} to ${newConfigPath}`);
+
+    return defaultConfig;
+  } catch {
+    // Legacy config doesn't exist or is invalid
+    return null;
+  }
 }
 
-// Read swarm config, returns empty config if file doesn't exist
+// Read swarm config, returns default config if file doesn't exist
 export async function readConfig(): Promise<ReadConfigResult> {
   const configPath = await ensureConfigPath();
+
+  // Try to read new config first
   try {
     const data = await fs.readFile(configPath, 'utf-8');
     const config = JSON.parse(data) as SwarmConfig;
-    const enabledAgents: AgentType[] = [];
-    const modelOverrides: ModelOverrides = {};
 
+    const enabledAgents: AgentType[] = [];
+    const agentConfigs: Record<AgentType, AgentConfig> = {} as Record<AgentType, AgentConfig>;
+    const providerConfigs: Record<string, ProviderConfig> = {};
+
+    // Parse agent configs
     if (config.agents && typeof config.agents === 'object') {
       for (const [agentKey, agentValue] of Object.entries(config.agents)) {
         if (!ALL_AGENTS.includes(agentKey as AgentType)) continue;
         const agentType = agentKey as AgentType;
-        const agentConfig = agentValue && typeof agentValue === 'object' ? agentValue : {};
-        const swarm = (agentConfig as { swarm?: unknown }).swarm;
-        if (swarm === true) {
+
+        // Merge with defaults for missing fields
+        const defaultAgentConfig = getDefaultAgentConfig(agentType);
+        const mergedAgentConfig = {
+          ...defaultAgentConfig,
+          ...(agentValue as Partial<AgentConfig>)
+        };
+
+        if (mergedAgentConfig.enabled) {
           enabledAgents.push(agentType);
         }
-
-        const effortModels = normalizeEffortModels((agentConfig as { effort?: unknown }).effort);
-        if (effortModels) {
-          modelOverrides[agentType] = effortModels;
-        }
+        agentConfigs[agentType] = mergedAgentConfig;
       }
     }
 
-    return { enabledAgents, modelOverrides, hasConfig: true };
+    // Fill in missing agents with defaults
+    for (const agentType of ALL_AGENTS) {
+      if (!agentConfigs[agentType]) {
+        agentConfigs[agentType] = getDefaultAgentConfig(agentType);
+      }
+    }
+
+    // Parse provider configs
+    if (config.providers && typeof config.providers === 'object') {
+      for (const [providerKey, providerValue] of Object.entries(config.providers)) {
+        const providerConfig = providerValue as ProviderConfig;
+        providerConfigs[providerKey] = providerConfig;
+      }
+    }
+
+    // Fill in missing providers with defaults
+    const defaultProviders = getDefaultProviderConfig();
+    for (const [providerKey, providerValue] of Object.entries(defaultProviders)) {
+      if (!providerConfigs[providerKey]) {
+        providerConfigs[providerKey] = providerValue;
+      }
+    }
+
+    return { enabledAgents, agentConfigs, providerConfigs, hasConfig: true };
   } catch {
-    // Config doesn't exist or is invalid, fall back to installed agents
-    return { enabledAgents: [], modelOverrides: {}, hasConfig: false };
+    // Config doesn't exist or is invalid, try migration
+    const migratedConfig = await migrateLegacyConfig();
+    if (migratedConfig) {
+      const enabledAgents: AgentType[] = [];
+      const agentConfigs: Record<AgentType, AgentConfig> = {} as Record<AgentType, AgentConfig>;
+      const providerConfigs = migratedConfig.providers;
+
+      for (const [agentKey, agentValue] of Object.entries(migratedConfig.agents)) {
+        const agentType = agentKey as AgentType;
+        agentConfigs[agentType] = agentValue;
+        if (agentValue.enabled) {
+          enabledAgents.push(agentType);
+        }
+      }
+
+      return { enabledAgents, agentConfigs, providerConfigs, hasConfig: true };
+    }
+
+    // No config and no legacy config, return defaults
+    const defaultConfig = getDefaultSwarmConfig();
+    const enabledAgents: AgentType[] = [];
+    const agentConfigs: Record<AgentType, AgentConfig> = defaultConfig.agents as Record<AgentType, AgentConfig>;
+    const providerConfigs = defaultConfig.providers;
+
+    for (const [agentKey, agentValue] of Object.entries(defaultConfig.agents)) {
+      if (agentValue.enabled) {
+        enabledAgents.push(agentKey as AgentType);
+      }
+    }
+
+    // Write default config to file
+    await fs.writeFile(configPath, JSON.stringify(defaultConfig, null, 2));
+
+    return { enabledAgents, agentConfigs, providerConfigs, hasConfig: false };
   }
 }
 
@@ -178,4 +360,34 @@ export async function readConfig(): Promise<ReadConfigResult> {
 export async function writeConfig(config: SwarmConfig): Promise<void> {
   const configPath = await ensureConfigPath();
   await fs.writeFile(configPath, JSON.stringify(config, null, 2));
+}
+
+// Get model for agent type and effort level
+export function getModelForAgent(
+  agentConfigs: Record<AgentType, AgentConfig>,
+  agentType: AgentType,
+  effort: EffortLevel
+): string {
+  const agentConfig = agentConfigs[agentType];
+  if (!agentConfig) {
+    throw new Error(`Agent config not found for: ${agentType}`);
+  }
+  return agentConfig.models[effort];
+}
+
+// Update agent enabled status
+export async function setAgentEnabled(agentType: AgentType, enabled: boolean): Promise<void> {
+  const { agentConfigs } = await readConfig();
+  agentConfigs[agentType].enabled = enabled;
+
+  const configPath = await ensureConfigPath();
+  const config = await fs.readFile(configPath, 'utf-8');
+  const parsed = JSON.parse(config) as SwarmConfig;
+
+  if (!parsed.agents[agentType]) {
+    parsed.agents[agentType] = getDefaultAgentConfig(agentType);
+  }
+  parsed.agents[agentType].enabled = enabled;
+
+  await fs.writeFile(configPath, JSON.stringify(parsed, null, 2));
 }

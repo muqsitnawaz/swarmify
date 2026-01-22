@@ -1,0 +1,23 @@
+{
+  "name": "@swarmify/agents-mcp-promo",
+  "version": "1.0.0",
+  "description": "Promotional video for agents-mcp",
+  "type": "module",
+  "scripts": {
+    "start": "remotion studio",
+    "build": "remotion render Root out/promo.mp4",
+    "preview": "remotion preview"
+  },
+  "dependencies": {
+    "remotion": "^4.0.0",
+    "@remotion/cli": "^4.0.0",
+    "@remotion/transitions": "^4.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "typescript": "^5.0.0"
+  }
+}

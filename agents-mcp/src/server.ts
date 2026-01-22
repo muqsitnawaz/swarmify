@@ -17,7 +17,7 @@ import {
   setDetectedClient,
 } from './version.js';
 
-const manager = new AgentManager(50, 10, null, null, null, 7);
+const manager = new AgentManager(50, 10, null, null, null, 7, null);
 
 const TOOL_NAMES = {
   spawn: 'Spawn',
@@ -50,6 +50,7 @@ const agentDescriptions: Record<AgentType, string> = {
   claude: 'Maximum capability, research, exploration.',
   gemini: 'Complex multi-system features, architectural changes.',
   trae: 'ByteDance agent. Multi-model support, trajectory logging.',
+  opencode: 'Open source coding agent. Provider-agnostic, TUI-focused.',
 };
 
 function withVersionNotice(description: string): string {
@@ -319,9 +320,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 });
 
 export async function runServer(): Promise<void> {
-  // Load enabled agents from config
+  // Load config
   const config = await readConfig();
-  manager.setModelOverrides(config.modelOverrides);
+  manager.setModelOverrides(config.agentConfigs);
   const cliHealth = checkAllClis();
   const installedAgents = Object.entries(cliHealth)
     .filter(([, status]) => status.installed)
@@ -330,7 +331,7 @@ export async function runServer(): Promise<void> {
   const requestedAgents = config.enabledAgents;
 
   // Prefer explicitly configured agents, filtered by what's installed.
-  // If no config exists, fall back to the installed list.
+  // If no config exists, fall back to installed list.
   enabledAgents = config.hasConfig
     ? requestedAgents.filter(a => cliHealth[a]?.installed)
     : installedAgents;

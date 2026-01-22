@@ -1,6 +1,6 @@
 import { extractFileOpsFromBash } from './file_ops.js';
 
-export type AgentType = 'codex' | 'gemini' | 'cursor' | 'claude' | 'trae';
+export type AgentType = 'codex' | 'gemini' | 'cursor' | 'claude' | 'trae' | 'opencode';
 
 const claudeToolUseMap = new Map<string, { tool: string; command?: string; path?: string }>();
 
@@ -15,6 +15,8 @@ export function normalizeEvents(agentType: AgentType, raw: any): any[] {
     return normalizeClaude(raw);
   } else if (agentType === 'trae') {
     return normalizeTrae(raw);
+  } else if (agentType === 'opencode') {
+    return normalizeOpencode(raw);
   }
 
   const timestamp = new Date().toISOString();
@@ -855,6 +857,141 @@ function normalizeTrae(raw: any): any[] {
   return [{
     type: eventType,
     agent: 'trae',
+    raw: raw,
+    timestamp: timestamp,
+  }];
+}
+
+// --- OpenCode parsing ---
+// OpenCode outputs JSON events with step_start, tool_use, text, step_finish types
+
+function normalizeOpencode(raw: any): any[] {
+  if (!raw || typeof raw !== 'object') {
+    return [{
+      type: 'unknown',
+      agent: 'opencode',
+      raw: raw,
+      timestamp: new Date().toISOString(),
+    }];
+  }
+
+  const eventType = raw?.type || 'unknown';
+  const timestamp = raw?.timestamp ? new Date(raw.timestamp).toISOString() : new Date().toISOString();
+  const part = raw?.part || {};
+
+  if (eventType === 'step_start' || eventType === 'step-start') {
+    return [{
+      type: 'init',
+      agent: 'opencode',
+      session_id: part?.sessionID || null,
+      timestamp: timestamp,
+    }];
+  }
+
+  if (eventType === 'tool_use') {
+    const toolName = part?.tool || 'unknown';
+    const state = part?.state || {};
+    const input = state?.input || {};
+    const status = state?.status || 'unknown';
+
+    const events: any[] = [];
+
+    if (toolName === 'bash' && input?.command) {
+      events.push({
+        type: 'bash',
+        agent: 'opencode',
+        tool: toolName,
+        command: input.command,
+        timestamp: timestamp,
+      });
+
+      const [filesRead, filesWritten, filesDeleted] = extractFileOpsFromBash(input.command);
+      for (const path of filesRead) {
+        events.push({ type: 'file_read', agent: 'opencode', tool: 'bash', path, command: input.command, timestamp });
+      }
+      for (const path of filesWritten) {
+        events.push({ type: 'file_write', agent: 'opencode', tool: 'bash', path, command: input.command, timestamp });
+      }
+      for (const path of filesDeleted) {
+        events.push({ type: 'file_delete', agent: 'opencode', tool: 'bash', path, command: input.command, timestamp });
+      }
+
+      return events;
+    }
+
+    const filePath = input?.path || input?.file_path || '';
+
+    if (toolName === 'edit_file' || toolName === 'write_file' || toolName === 'create_file') {
+      if (filePath.trim()) {
+        return [{
+          type: 'file_write',
+          agent: 'opencode',
+          tool: toolName,
+          path: filePath,
+          timestamp: timestamp,
+        }];
+      }
+    }
+
+    if (toolName === 'read_file' || toolName === 'view_file') {
+      if (filePath.trim()) {
+        return [{
+          type: 'file_read',
+          agent: 'opencode',
+          tool: toolName,
+          path: filePath,
+          timestamp: timestamp,
+        }];
+      }
+    }
+
+    if (toolName === 'delete_file' || toolName === 'remove_file') {
+      if (filePath.trim()) {
+        return [{
+          type: 'file_delete',
+          agent: 'opencode',
+          tool: toolName,
+          path: filePath,
+          timestamp: timestamp,
+        }];
+      }
+    }
+
+    return [{
+      type: 'tool_use',
+      agent: 'opencode',
+      tool: toolName,
+      args: input,
+      timestamp: timestamp,
+    }];
+  }
+
+  if (eventType === 'text') {
+    const text = part?.text || '';
+    return [{
+      type: 'message',
+      agent: 'opencode',
+      content: text,
+      complete: true,
+      timestamp: timestamp,
+    }];
+  }
+
+  if (eventType === 'step_finish' || eventType === 'step-finish') {
+    const reason = part?.reason || 'unknown';
+    return [{
+      type: 'result',
+      agent: 'opencode',
+      status: reason === 'stop' ? 'success' : reason,
+      cost: part?.cost || 0,
+      tokens: part?.tokens || {},
+      timestamp: timestamp,
+    }];
+  }
+
+  return [{
+    type: eventType,
+    agent: 'opencode',
     raw: raw,
     timestamp: timestamp,
   }];
