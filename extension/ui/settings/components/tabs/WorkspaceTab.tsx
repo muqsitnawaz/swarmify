@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, RefreshCw, ExternalLink, X, FileText } from 
 import { Button } from '../ui/button'
 import { Checkbox } from '../ui/checkbox'
 import { SectionHeader } from '../common'
+import { OauthDialog } from '../common/OAuthDialog'
 import { renderTodoDescription } from '../../utils'
 import { getAgentIcon } from '../../utils'
 import { SOURCE_BADGES } from '../../constants'
@@ -37,6 +38,8 @@ interface WorkspaceTabProps {
   dismissedTaskIds: Set<string>
   icons: IconConfig
   isLightTheme: boolean
+  showLinearAuth: boolean
+  showGitHubAuth: boolean
   onToggleSource: (source: TaskSource) => void
   onSpawnTodo: (item: TodoItem, filePath: string) => void
   onRefreshTasks: () => void
@@ -47,6 +50,12 @@ interface WorkspaceTabProps {
   onInitWorkspaceConfig: () => void
   onSaveWorkspaceConfig: (config: WorkspaceConfig) => void
   onDismissTask: (taskId: string) => void
+  onConnectLinear: () => void
+  onConnectGitHub: () => void
+  onLinearAuthComplete: () => void
+  onLinearAuthCancel: () => void
+  onGitHubAuthComplete: () => void
+  onGitHubAuthCancel: () => void
 }
 
 interface WorkspaceTask {
@@ -74,6 +83,8 @@ export function WorkspaceTab(props: WorkspaceTabProps) {
     todoLoading,
     unifiedTasksLoading,
     availableSources,
+    showLinearAuth,
+    showGitHubAuth,
     settings,
     defaultAgent,
     contextFiles,
@@ -372,6 +383,29 @@ export function WorkspaceTab(props: WorkspaceTabProps) {
           </Button>
         </div>
 
+        {(!availableSources.linear || !availableSources.github) && (
+          <div className="flex gap-2 mb-4 px-3">
+            {!availableSources.linear && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onConnectLinear}
+              >
+                Connect Linear
+              </Button>
+            )}
+            {!availableSources.github && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onConnectGitHub}
+              >
+                Connect GitHub
+              </Button>
+            )}
+          </div>
+        )}
+
         {(todoLoading || unifiedTasksLoading) && flatTasks.length === 0 ? (
           <div className="text-center py-8 text-[var(--muted-foreground)]">Loading tasks...</div>
         ) : flatTasks.length === 0 ? (
@@ -588,6 +622,22 @@ export function WorkspaceTab(props: WorkspaceTabProps) {
           )}
         </div>
       </section>
+
+      {showLinearAuth && (
+        <OauthDialog
+          provider="linear"
+          onAuthComplete={onLinearAuthComplete}
+          onClose={onLinearAuthCancel}
+        />
+      )}
+
+      {showGitHubAuth && (
+        <OauthDialog
+          provider="github"
+          onAuthComplete={onGitHubAuthComplete}
+          onClose={onGitHubAuthCancel}
+        />
+      )}
     </div>
   )
 }

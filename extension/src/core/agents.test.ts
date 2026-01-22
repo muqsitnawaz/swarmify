@@ -8,8 +8,8 @@ import {
 import { CLAUDE_TITLE, CODEX_TITLE, GEMINI_TITLE, OPENCODE_TITLE, CURSOR_TITLE, SHELL_TITLE } from './utils';
 
 describe('BUILT_IN_AGENTS', () => {
-  test('has 6 built-in agents', () => {
-    expect(BUILT_IN_AGENTS).toHaveLength(6);
+  test('has 7 built-in agents', () => {
+    expect(BUILT_IN_AGENTS).toHaveLength(7);
   });
 
   test('claude agent has correct properties', () => {
@@ -17,7 +17,7 @@ describe('BUILT_IN_AGENTS', () => {
     expect(claude).toBeDefined();
     expect(claude!.title).toBe(CLAUDE_TITLE);
     expect(claude!.command).toBe('claude');
-    expect(claude!.prefix).toBe('cc');
+    expect(claude!.prefix).toBe('cl');
     expect(claude!.commandId).toBe('agents.newClaude');
   });
 
@@ -82,7 +82,7 @@ describe('getBuiltInByKey', () => {
 
 describe('getBuiltInByPrefix', () => {
   test('returns claude for cc prefix', () => {
-    const agent = getBuiltInByPrefix('cc');
+    const agent = getBuiltInByPrefix('cl');
     expect(agent).toBeDefined();
     expect(agent!.key).toBe('claude');
   });
@@ -118,7 +118,7 @@ describe('getBuiltInByPrefix', () => {
 });
 
 describe('getBuiltInDefByTitle', () => {
-  test('returns claude for CC title', () => {
+  test('returns claude for CL title', () => {
     const agent = getBuiltInDefByTitle(CLAUDE_TITLE);
     expect(agent).toBeDefined();
     expect(agent!.key).toBe('claude');

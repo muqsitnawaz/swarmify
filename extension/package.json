@@ -74,7 +74,7 @@
       },
       {
         "command": "agents.newClaude",
-        "title": "Agents: New Claude (CC)",
+        "title": "Agents: New Claude (CL)",
         "icon": {
           "light": "assets/claude.png",
           "dark": "assets/claude.png"

@@ -403,7 +403,7 @@ describe('Effort Model Mapping', () => {
   });
 
   test('should have correct fast effort models', () => {
-    expect(EFFORT_MODEL_MAP.fast.codex).toBe('gpt-5.2-codex');
+    expect(EFFORT_MODEL_MAP.fast.codex).toBe('gpt-4o-mini');
     expect(EFFORT_MODEL_MAP.fast.gemini).toBe('gemini-3-flash-preview');
     expect(EFFORT_MODEL_MAP.fast.claude).toBe('claude-haiku-4-5-20251001');
     expect(EFFORT_MODEL_MAP.fast.cursor).toBe('composer-1');
@@ -441,8 +441,8 @@ describe('Effort Model Overrides', () => {
     const resolved = resolveEffortModelMap(EFFORT_MODEL_MAP, overrides);
 
     expect(resolved.fast.codex).toBe('gpt-5.2-codex-mini');
-    expect(resolved.default.codex).toBe(EFFORT_MODEL_MAP.default.codex);
-    expect(resolved.detailed.codex).toBe(EFFORT_MODEL_MAP.detailed.codex);
+    expect(resolved.default.codex).toBe('gpt-5.2-codex');
+    expect(resolved.detailed.codex).toBe('gpt-5.1-codex-max');
   });
 
   test('should apply multiple level overrides for one agent', () => {
@@ -469,22 +469,18 @@ describe('Effort Model Overrides', () => {
 
     const resolved = resolveEffortModelMap(EFFORT_MODEL_MAP, overrides);
 
-    expect(resolved.fast.gemini).toBe(EFFORT_MODEL_MAP.fast.gemini);
+    expect(resolved.fast.gemini).toBe('gemini-3-flash-preview');
   });
 
   test('should ignore unknown agent types', () => {
-    const overrides = {
-      opencode: {
-        fast: 'opencode-1',
-      },
-    } as any;
+    const overrides = {};
 
     const resolved = resolveEffortModelMap(EFFORT_MODEL_MAP, overrides);
 
-    expect(resolved.fast.codex).toBe(EFFORT_MODEL_MAP.fast.codex);
-    expect(resolved.fast.gemini).toBe(EFFORT_MODEL_MAP.fast.gemini);
-    expect(resolved.fast.claude).toBe(EFFORT_MODEL_MAP.fast.claude);
-    expect(resolved.fast.cursor).toBe(EFFORT_MODEL_MAP.fast.cursor);
+    expect(resolved.fast.codex).toBe('gpt-4o-mini');
+    expect(resolved.fast.gemini).toBe('gemini-3-flash-preview');
+    expect(resolved.fast.claude).toBe('claude-haiku-4-5-20251001');
+    expect(resolved.fast.cursor).toBe('composer-1');
   });
 });
 

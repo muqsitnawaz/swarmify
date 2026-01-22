@@ -97,7 +97,7 @@ export default function App() {
   const [agentTerminalsLoading, setAgentTerminalsLoading] = useState(false)
 
   // Default agent and installed agents
-  const [defaultAgent, setDefaultAgent] = useState<string>('CC')
+  const [defaultAgent, setDefaultAgent] = useState<string>('CL')
   const [secondaryAgent, setSecondaryAgent] = useState<string>('CX')
   const [installedAgents, setInstalledAgents] = useState<Record<string, boolean>>({
     claude: true, codex: true, gemini: true, opencode: true, cursor: true, shell: true
@@ -124,6 +124,10 @@ export default function App() {
   const [workspacePath, setWorkspacePath] = useState<string | null>(null)
   const [githubRepo, setGithubRepo] = useState<string | null>(null)
   const [dismissedTaskIds, setDismissedTaskIds] = useState<Set<string>>(new Set())
+
+  // OAuth dialog state
+  const [showLinearAuth, setShowLinearAuth] = useState(false)
+  const [showGitHubAuth, setShowGitHubAuth] = useState(false)
 
   // Alias editing state
   const [isAddingAlias, setIsAddingAlias] = useState(false)
@@ -429,6 +433,34 @@ export default function App() {
     setAliasError('')
   }
 
+  const handleConnectLinear = () => {
+    setShowLinearAuth(true)
+  }
+
+  const handleConnectGitHub = () => {
+    setShowGitHubAuth(true)
+  }
+
+  const handleLinearAuthComplete = () => {
+    setShowLinearAuth(false)
+    onUpdateTaskSources({ linear: true })
+    fetchUnifiedTasks()
+  }
+
+  const handleLinearAuthCancel = () => {
+    setShowLinearAuth(false)
+  }
+
+  const handleGitHubAuthComplete = () => {
+    setShowGitHubAuth(false)
+    onUpdateTaskSources({ github: true })
+    fetchUnifiedTasks()
+  }
+
+  const handleGitHubAuthCancel = () => {
+    setShowGitHubAuth(false)
+  }
+
   const handleSaveAlias = () => {
     const error = validateAliasName(newAliasName, settings?.aliases || [])
     if (error) {
@@ -567,6 +599,8 @@ export default function App() {
           dismissedTaskIds={dismissedTaskIds}
           icons={icons}
           isLightTheme={isLightTheme}
+          showLinearAuth={showLinearAuth}
+          showGitHubAuth={showGitHubAuth}
           onToggleSource={toggleSourceExpanded}
           onSpawnTodo={handleSpawnTodo}
           onRefreshTasks={() => { fetchTodoFiles(); fetchUnifiedTasks() }}
@@ -577,6 +611,12 @@ export default function App() {
           onInitWorkspaceConfig={handleInitWorkspaceConfig}
           onSaveWorkspaceConfig={handleSaveWorkspaceConfig}
           onDismissTask={handleDismissTask}
+          onConnectLinear={handleConnectLinear}
+          onConnectGitHub={handleConnectGitHub}
+          onLinearAuthComplete={handleLinearAuthComplete}
+          onLinearAuthCancel={handleLinearAuthCancel}
+          onGitHubAuthComplete={handleGitHubAuthComplete}
+          onGitHubAuthCancel={handleGitHubAuthCancel}
         />
       )}
 

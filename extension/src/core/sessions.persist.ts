@@ -12,8 +12,8 @@ const SESSIONS_PATH = path.join(AGENTS_DATA_DIR, 'sessions.yaml');
 
 // Persisted session data for a single terminal
 export interface PersistedSession {
-  terminalId: string;           // AGENT_TERMINAL_ID (e.g., "CC-1234567890-1")
-  prefix: string;               // Agent prefix (e.g., "CC", "CX", "SH")
+  terminalId: string;           // AGENT_TERMINAL_ID (e.g., "CL-1234567890-1")
+  prefix: string;               // Agent prefix (e.g., "CL", "CX", "SH")
   sessionId?: string;           // CLI session ID for resume (e.g., Claude's session ID)
   label?: string;               // User-set label
   agentType?: string;           // Agent type key (e.g., "claude", "codex")

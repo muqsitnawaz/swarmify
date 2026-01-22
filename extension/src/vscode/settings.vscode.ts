@@ -460,7 +460,7 @@ export function openPanel(context: vscode.ExtensionContext): void {
         });
         break;
       case 'getDefaultAgent':
-        const defaultAgent = context.globalState.get<string>('agents.defaultAgentTitle', 'CC');
+        const defaultAgent = context.globalState.get<string>('agents.defaultAgentTitle', 'CL');
         settingsPanel?.webview.postMessage({
           type: 'defaultAgentData',
           defaultAgent
@@ -515,6 +515,22 @@ export function openPanel(context: vscode.ExtensionContext): void {
           settingsPanel?.webview.postMessage({ type: 'unifiedTasksData', tasks: [] });
         }
         break;
+      case 'startOAuth':
+        vscode.env.openExternal(uri.vscode.Uri.parse(message.oauthUrl));
+        break;
+
+      case 'checkOAuthStatus':
+        const token = await vscode.postMessage({
+          type: 'exchangeCodeForToken',
+          provider: message.provider
+        });
+        if (token) {
+          return { type: 'oauthToken', provider: message.provider, token };
+        }
+        return { type: 'oauthToken', provider: message.provider, token: null };
+        break;
+
+
       case 'detectTaskSources':
         try {
           // Detect which task sources are available
@@ -540,6 +556,19 @@ export function openPanel(context: vscode.ExtensionContext): void {
           vscode.window.showTextDocument(sessionUri, { preview: true });
         }
         break;
+      case 'exchangeCodeForToken':
+        const { provider, code } = message;
+        
+        // Exchange authorization code for access token
+        // For MVP: simulate token exchange (in production, this would make actual API calls)
+        const mockToken = `${provider}_mock_token_${Date.now()}`;
+        
+        await vscode.env.set(`${provider}_mcp_token`, mockToken);
+        console.log(`[OAUTH] Stored token for ${provider}`);
+        
+        return { type: 'oauthToken', provider, token: mockToken };
+
+
       case 'getPrewarmStatus':
         settingsPanel?.webview.postMessage({
           type: 'prewarmStatus',

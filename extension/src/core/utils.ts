@@ -1,6 +1,6 @@
 // Pure utility functions that can be tested without VS Code dependencies
 
-export const CLAUDE_TITLE = 'CC';
+export const CLAUDE_TITLE = 'CL';
 export const CODEX_TITLE = 'CX';
 export const GEMINI_TITLE = 'GX';
 export const OPENCODE_TITLE = 'OC';
@@ -14,6 +14,7 @@ export const KNOWN_PREFIXES = [CLAUDE_TITLE, CODEX_TITLE, GEMINI_TITLE, OPENCODE
 // Mapping of acceptable terminal base names to canonical prefixes
 const NAME_TO_PREFIX: Record<string, string> = {
   [CLAUDE_TITLE]: CLAUDE_TITLE,
+  'CC': CLAUDE_TITLE,
   'CLAUDE': CLAUDE_TITLE,
   'Claude': CLAUDE_TITLE,
   'claude': CLAUDE_TITLE,
@@ -65,7 +66,7 @@ export interface ParsedTerminalName {
 export function parseTerminalName(name: string): ParsedTerminalName {
   const trimmed = name.trim();
 
-  // Support both short codes (CC) and full names (Claude)
+  // Support both short codes (CL) and full names (Claude)
   for (const [candidate, canonicalPrefix] of Object.entries(NAME_TO_PREFIX)) {
     // Exact match
     if (trimmed === candidate) {
@@ -116,7 +117,7 @@ export function sanitizeLabel(raw: string): string {
  * Get the expanded human-readable name for an agent prefix.
  */
 export function getExpandedAgentName(prefix: string): string {
-  // Map both title (CC) and prefix (cc) to expanded names
+  // Map both title (CL) and prefix (cl) to expanded names
   const expandedNames: Record<string, string> = {
     [CLAUDE_TITLE]: 'Claude',
     [CODEX_TITLE]: 'Codex',
@@ -126,7 +127,7 @@ export function getExpandedAgentName(prefix: string): string {
     [TRAE_TITLE]: 'Trae',
     [SHELL_TITLE]: 'Shell',
     // Also map lowercase prefixes from agents.ts
-    'cc': 'Claude',
+    'cl': 'Claude',
     'cx': 'Codex',
     'gm': 'Gemini',
     'oc': 'OpenCode',
@@ -252,7 +253,7 @@ export interface TerminalIdentificationOptions {
   name: string;
   /** Icon filename (e.g., "claude.png") - extracted from terminal.creationOptions.iconPath */
   iconFilename?: string | null;
-  /** Terminal ID from AGENT_TERMINAL_ID env var (e.g., "CC-1735824000000-1") */
+  /** Terminal ID from AGENT_TERMINAL_ID env var (e.g., "CL-1735824000000-1") */
   terminalId?: string | null;
   /** Session ID from AGENT_SESSION_ID env var (UUID) */
   sessionId?: string | null;
@@ -264,7 +265,7 @@ export interface TerminalIdentificationOptions {
  * SINGLE SOURCE OF TRUTH for identifying agent terminals.
  * Uses multiple fallback strategies in priority order:
  *
- * 1. Parse name - handles "CC", "Claude", "CC - label", "Claude - label"
+  * 1. Parse name - handles "CL", "Claude", "CL - label", "Claude - label"
  * 2. Extract prefix from AGENT_TERMINAL_ID env var
  * 3. Reverse-lookup prefix from icon filename
  *
@@ -274,7 +275,7 @@ export interface TerminalIdentificationOptions {
 export function getTerminalDisplayInfo(options: TerminalIdentificationOptions): TerminalDisplayInfo {
   const { name, iconFilename, terminalId } = options;
 
-  // Strategy 1: Parse name (handles "CC", "Claude", "CC - label", etc.)
+  // Strategy 1: Parse name (handles "CL", "Claude", "CL - label", etc.)
   const parsed = parseTerminalName(name);
   if (parsed.isAgent && parsed.prefix) {
     return buildDisplayInfo(parsed.prefix, parsed.label);
@@ -324,10 +325,14 @@ function buildDisplayInfo(prefix: string, label: string | null): TerminalDisplay
 }
 
 /**
- * Extract agent prefix from a terminal ID (e.g., "CC-1735824000000-1" -> "CC")
+ * Extract agent prefix from a terminal ID (e.g., "CL-1735824000000-1" -> "CL")
  */
 export function getPrefixFromTerminalId(terminalId: string): string | null {
   const prefix = terminalId.split('-')[0];
+  // Backward compatibility: map old 'CC' prefix to new 'CL'
+  if (prefix === 'CC') {
+    return 'CL';
+  }
   // We don't strictly check KNOWN_PREFIXES here to allow custom agents 
   // which might use their name as prefix.
   return prefix || null;

@@ -22,7 +22,7 @@ export interface BuiltInAgentDef {
 }
 
 export const BUILT_IN_AGENTS: BuiltInAgentDef[] = [
-  { key: 'claude', title: CLAUDE_TITLE, command: 'claude', icon: 'claude.png', prefix: 'cc', commandId: 'agents.newClaude' },
+  { key: 'claude', title: CLAUDE_TITLE, command: 'claude', icon: 'claude.png', prefix: 'cl', commandId: 'agents.newClaude' },
   { key: 'codex', title: CODEX_TITLE, command: 'codex', icon: 'chatgpt.png', prefix: 'cx', commandId: 'agents.newCodex' },
   { key: 'gemini', title: GEMINI_TITLE, command: 'gemini', icon: 'gemini.png', prefix: 'gm', commandId: 'agents.newGemini' },
   { key: 'opencode', title: OPENCODE_TITLE, command: 'opencode', icon: 'opencode.png', prefix: 'oc', commandId: 'agents.newOpenCode' },
@@ -36,12 +36,12 @@ export function getBuiltInByKey(key: string): BuiltInAgentDef | undefined {
   return BUILT_IN_AGENTS.find(a => a.key === key);
 }
 
-// Lookup built-in agent by prefix (e.g., "cc", "cx")
+// Lookup built-in agent by prefix (e.g., "cl", "cx")
 export function getBuiltInByPrefix(prefix: string): BuiltInAgentDef | undefined {
   return BUILT_IN_AGENTS.find(a => a.prefix === prefix);
 }
 
-// Lookup built-in agent by title (e.g., "CC", "CX")
+// Lookup built-in agent by title (e.g., "CL", "CX")
 export function getBuiltInDefByTitle(title: string): BuiltInAgentDef | undefined {
   return BUILT_IN_AGENTS.find(a => a.title === title);
 }
