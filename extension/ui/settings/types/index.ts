@@ -116,6 +116,7 @@ export interface DisplayPreferences {
   showLabelsInTitles: boolean
   showSessionIdInTitles: boolean
   labelReplacesTitle: boolean
+  showLabelOnlyOnFocus: boolean
 }
 
 export interface NotificationSettings {

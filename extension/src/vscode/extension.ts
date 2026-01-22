@@ -63,6 +63,7 @@ import { getSessionPathBySessionId, getSessionPreviewInfo } from './sessions.vsc
 let agentStatusBarItem: vscode.StatusBarItem | undefined;
 let defaultAgentTitle: string = CLAUDE_TITLE;
 let secondaryAgentTitle: string = CODEX_TITLE;
+let lastFocusedTerminal: vscode.Terminal | null = null;
 
 // BUILT_IN_AGENTS is now imported from ./agents
 
@@ -87,11 +88,57 @@ function buildTerminalTitle(
   prefix: string,
   label: string | undefined | null,
   context: vscode.ExtensionContext,
-  sessionId?: string | null
+  sessionId?: string | null,
+  isFocused?: boolean
 ): string {
   const display = getDisplayPrefs(context);
   const sessionChunk = display.showSessionIdInTitles ? getSessionChunk(sessionId || undefined) : null;
-  return formatTerminalTitle(prefix, { label: label || undefined, display, sessionChunk });
+  return formatTerminalTitle(prefix, { label: label || undefined, display, sessionChunk, isFocused });
+}
+
+async function updateTerminalTitleOnFocus(
+  newTerminal: vscode.Terminal | undefined,
+  context: vscode.ExtensionContext
+): Promise<void> {
+  const display = getDisplayPrefs(context);
+
+  // Only update titles if showLabelOnlyOnFocus is enabled
+  if (!display.showLabelOnlyOnFocus) {
+    return;
+  }
+
+  // Update the newly focused terminal's title (with label)
+  if (newTerminal) {
+    const entry = terminals.getByTerminal(newTerminal);
+    if (entry?.agentConfig) {
+      const newTitle = buildTerminalTitle(
+        entry.agentConfig.prefix,
+        entry.label,
+        context,
+        entry.sessionId,
+        true  // isFocused = true
+      );
+      await terminals.renameTerminal(newTerminal, newTitle);
+    }
+  }
+
+  // Update the previously focused terminal's title (without label)
+  if (lastFocusedTerminal && lastFocusedTerminal !== newTerminal) {
+    const prevEntry = terminals.getByTerminal(lastFocusedTerminal);
+    if (prevEntry?.agentConfig) {
+      const prevTitle = buildTerminalTitle(
+        prevEntry.agentConfig.prefix,
+        prevEntry.label,
+        context,
+        prevEntry.sessionId,
+        false  // isFocused = false
+      );
+      await terminals.renameTerminal(lastFocusedTerminal, prevTitle);
+    }
+  }
+
+  // Update tracking
+  lastFocusedTerminal = newTerminal || null;
 }
 
 interface PromptQuickPickItem extends vscode.QuickPickItem {
@@ -931,6 +978,9 @@ export async function activate(context: vscode.ExtensionContext) {
       }
 
       updateStatusBarForTerminal(terminal, context.extensionPath);
+
+      // Update terminal titles based on focus state (for showLabelOnlyOnFocus feature)
+      updateTerminalTitleOnFocus(terminal, context);
     })
   );
 
@@ -985,6 +1035,9 @@ export async function activate(context: vscode.ExtensionContext) {
         const matchedTerminal = vscode.window.terminals.find(t => t.name === matchedName);
         if (matchedTerminal) {
           updateStatusBarForTerminal(matchedTerminal, context.extensionPath);
+
+          // Update terminal titles based on focus state (for showLabelOnlyOnFocus feature)
+          updateTerminalTitleOnFocus(matchedTerminal, context);
         }
       }
     })

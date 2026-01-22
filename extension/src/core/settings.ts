@@ -69,6 +69,7 @@ export interface DisplayPreferences {
   showLabelsInTitles: boolean;
   showSessionIdInTitles: boolean;
   labelReplacesTitle: boolean;  // true = label replaces title, false = append with dash
+  showLabelOnlyOnFocus: boolean;  // true = hide label when terminal loses focus
 }
 
 export interface NotificationSettings {
@@ -102,7 +103,8 @@ export const DEFAULT_DISPLAY_PREFERENCES: DisplayPreferences = {
   showFullAgentNames: true,
   showLabelsInTitles: true,
   showSessionIdInTitles: true,
-  labelReplacesTitle: false  // Default: append label (e.g., "Claude - label")
+  labelReplacesTitle: false,  // Default: append label (e.g., "Claude - label")
+  showLabelOnlyOnFocus: false  // Default: always show label
 };
 
 export const AGENT_MODELS: Record<string, string[]> = {

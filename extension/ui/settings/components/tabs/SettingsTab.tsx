@@ -142,6 +142,7 @@ export function SettingsTab({
   const showLabelsInTitles = display?.showLabelsInTitles ?? true
   const showSessionIdInTitles = display?.showSessionIdInTitles ?? true
   const labelReplacesTitle = display?.labelReplacesTitle ?? false
+  const showLabelOnlyOnFocus = display?.showLabelOnlyOnFocus ?? false
 
   const updateBuiltIn = (key: keyof AgentSettings['builtIn'], field: 'login' | 'instances', value: boolean | number) => {
     onSaveSettings({
@@ -634,6 +635,23 @@ export function SettingsTab({
               role="switch"
               aria-checked={showSessionIdInTitles}
               onClick={() => updateDisplay('showSessionIdInTitles', !showSessionIdInTitles)}
+            >
+              <span className="toggle-knob" />
+            </button>
+          </div>
+          <div
+            className={`flex items-center justify-between gap-4 px-4 py-3 rounded-xl bg-[var(--muted)] ${
+              !showLabelsInTitles ? 'opacity-50' : ''
+            }`}
+          >
+            <span className="text-sm">Hide labels when terminal is not focused</span>
+            <button
+              className="toggle-switch disabled:cursor-not-allowed disabled:opacity-40"
+              data-state={showLabelOnlyOnFocus ? 'on' : 'off'}
+              role="switch"
+              aria-checked={showLabelOnlyOnFocus}
+              disabled={!showLabelsInTitles}
+              onClick={() => updateDisplay('showLabelOnlyOnFocus', !showLabelOnlyOnFocus)}
             >
               <span className="toggle-knob" />
             </button>

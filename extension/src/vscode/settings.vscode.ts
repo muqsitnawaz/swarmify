@@ -145,6 +145,9 @@ export function getSettings(context: vscode.ExtensionContext): AgentSettings {
       if (stored.display.labelReplacesTitle === undefined) {
         stored.display.labelReplacesTitle = DEFAULT_DISPLAY_PREFERENCES.labelReplacesTitle;
       }
+      if (stored.display.showLabelOnlyOnFocus === undefined) {
+        stored.display.showLabelOnlyOnFocus = DEFAULT_DISPLAY_PREFERENCES.showLabelOnlyOnFocus;
+      }
       context.globalState.update('agentSettings', stored);
     }
     if (!stored.notifications) {
@@ -700,6 +703,7 @@ function getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri): s
   const opencodeIcon = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'opencode.png'));
   const cursorIcon = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'cursor.png'));
   const cursorIconLight = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'cursor-light.png'));
+  const traeIcon = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'trae.png'));
   const agentsIcon = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'agents.png'));
   const githubIcon = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'github.png'));
 
@@ -717,6 +721,7 @@ function getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri): s
       gemini: "${geminiIcon}",
       opencode: "${opencodeIcon}",
       cursor: { dark: "${cursorIcon}", light: "${cursorIconLight}" },
+      trae: "${traeIcon}",
       shell: "${agentsIcon}",
       agents: "${agentsIcon}",
       github: "${githubIcon}"
