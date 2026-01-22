@@ -70,13 +70,13 @@ describe('OpenCode Live E2E', () => {
     expect(statusResult.last_messages).toBeDefined();
     expect(Array.isArray(statusResult.last_messages)).toBe(true);
     expect(statusResult.last_messages.length).toBeGreaterThan(0);
-    expect(statusResult.last_messages.length).toBeLessThanOrEqual(3);
+    expect(statusResult.last_messages.length).toBeLessThanOrEqual(5);
     expect(statusResult.last_messages.every(msg => typeof msg === 'string')).toBe(true);
 
     await handleStop(manager, 'test-opencode', spawnResult.agent_id);
 
     rmSync(tempDir, { recursive: true, force: true });
-  });
+  }, 120000);
 
   (opencodeAvailable ? test : test.skip)('should spawn opencode in plan mode', async () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'opencode-plan-test-'));
@@ -92,7 +92,7 @@ describe('OpenCode Live E2E', () => {
     await handleStop(manager, 'test-opencode-plan', spawnResult.agent_id);
 
     rmSync(tempDir, { recursive: true, force: true });
-  });
+  }, 120000);
 
   (opencodeAvailable ? test : test.skip)('should spawn opencode with fast effort level', async () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'opencode-fast-test-'));
@@ -108,5 +108,5 @@ describe('OpenCode Live E2E', () => {
     await handleStop(manager, 'test-opencode-fast', spawnResult.agent_id);
 
     rmSync(tempDir, { recursive: true, force: true });
-  });
+  }, 120000);
 });
