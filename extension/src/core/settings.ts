@@ -23,6 +23,20 @@ export interface CommandAlias {
   flags: string;          // Additional CLI flags (e.g., "--model claude-haiku-4-5-20251001")
 }
 
+// Quick launch slot for keyboard shortcuts (Cmd+Shift+1/2/3)
+export interface QuickLaunchSlot {
+  agent: string;          // Built-in agent key: "claude" | "codex" | "gemini" | etc.
+  model?: string;         // Model name (e.g., "claude-opus-4-5", "claude-haiku-4-5")
+  label?: string;         // Display label for dashboard
+}
+
+// Quick launch slots configuration
+export interface QuickLaunchConfig {
+  slot1?: QuickLaunchSlot;
+  slot2?: QuickLaunchSlot;
+  slot3?: QuickLaunchSlot;
+}
+
 // Prompt entry for saving reusable prompts
 export interface PromptEntry {
   id: string;
@@ -50,6 +64,7 @@ export interface AgentSettings {
   };
   custom: CustomAgentConfig[];
   aliases: CommandAlias[];
+  quickLaunch?: QuickLaunchConfig;  // Quick launch slots for Cmd+Shift+1/2/3
   swarmEnabledAgents: SwarmAgentType[];
   prompts: PromptEntry[];
   editor: EditorPreferences;
@@ -116,6 +131,12 @@ export const AGENT_MODELS: Record<string, string[]> = {
   shell: []
 };
 
+export const DEFAULT_QUICK_LAUNCH: QuickLaunchConfig = {
+  slot1: { agent: 'claude', model: 'claude-opus-4-5', label: 'Claude Opus' },
+  slot2: { agent: 'claude', model: 'claude-haiku-4-5', label: 'Claude Haiku' },
+  // slot3 intentionally undefined
+};
+
 // Default settings (pure function)
 export function getDefaultSettings(): AgentSettings {
   return {
@@ -129,6 +150,7 @@ export function getDefaultSettings(): AgentSettings {
     },
     custom: [],
     aliases: [],
+    quickLaunch: { ...DEFAULT_QUICK_LAUNCH },
     swarmEnabledAgents: [...ALL_SWARM_AGENTS],
     prompts: [],
     editor: { markdownViewerEnabled: true },
