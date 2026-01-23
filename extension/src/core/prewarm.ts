@@ -73,16 +73,6 @@ export const PREWARM_CONFIGS: Record<PrewarmAgentType, PrewarmConfig> = {
     sessionIdPattern: /Session(?:\s+ID)?:\s*([a-zA-Z0-9_-]+)/i,
     exitSequence: ['\x03', '\x03'],  // Ctrl+C twice
     resumeCommand: (id) => `cursor-agent --resume=${id}`
-  },
-  opencode: {
-    agentType: 'opencode',
-    command: 'opencode',
-    statusCommand: '/status',
-    // OpenCode stores session in opencode.jsonc, not JSONL
-    // Session ID extraction not applicable
-    sessionIdPattern: /None/i,
-    exitSequence: [],
-    resumeCommand: () => 'opencode'
   }
 };
 

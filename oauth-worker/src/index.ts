@@ -51,6 +51,7 @@ export default {
               client_id,
               client_secret: clientSecret,
               code,
+              redirect_uri: 'vscode://swarm-ext/oauth/callback',
             }),
           });
 
@@ -73,7 +74,7 @@ export default {
               client_secret: env.LINEAR_CLIENT_SECRET,
               code,
               grant_type: 'authorization_code',
-              redirect_uri: 'vscode://swarm-ext/oauth/callback',
+              redirect_uri: `${client_id?.startsWith('Ov23lil7uKgqBdj9OhX4') ? 'cursor' : 'vscode'}://swarm-ext/oauth/callback`,
             }),
           });
 
