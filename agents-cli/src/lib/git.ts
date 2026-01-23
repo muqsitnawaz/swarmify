@@ -9,10 +9,42 @@ export interface GitSource {
   ref?: string;
 }
 
+/**
+ * Parse a source string into a GitSource object.
+ *
+ * Supported formats:
+ *   gh:owner/repo                    -> https://github.com/owner/repo.git
+ *   gh:owner/repo@branch             -> https://github.com/owner/repo.git (ref: branch)
+ *   owner/repo                       -> https://github.com/owner/repo.git
+ *   owner/repo@branch                -> https://github.com/owner/repo.git (ref: branch)
+ *   github.com/owner/repo            -> https://github.com/owner/repo.git
+ *   github.com:owner/repo            -> https://github.com/owner/repo.git
+ *   github.com:owner/repo.git        -> https://github.com/owner/repo.git
+ *   git@github.com:owner/repo.git    -> https://github.com/owner/repo.git
+ *   https://github.com/owner/repo    -> https://github.com/owner/repo.git
+ *   https://github.com/owner/repo.git -> https://github.com/owner/repo.git
+ *   /path/to/local                   -> local path
+ *   ./relative/path                  -> local path
+ */
 export function parseSource(source: string): GitSource {
-  if (source.startsWith('gh:')) {
-    const rest = source.slice(3);
-    const [repo, ref] = rest.split('@');
+  // Split off @ref suffix (but not from URLs with @ in them like git@)
+  let ref: string | undefined;
+  let cleanSource = source;
+
+  // Handle @ref suffix (only if it's at the end and not part of git@)
+  const atIndex = source.lastIndexOf('@');
+  if (atIndex > 0 && !source.startsWith('git@') && !source.slice(0, atIndex).includes('://')) {
+    // Check if what's after @ looks like a ref (no slashes, no dots except in branch names)
+    const possibleRef = source.slice(atIndex + 1);
+    if (possibleRef && !possibleRef.includes('/') && !possibleRef.includes(':')) {
+      ref = possibleRef;
+      cleanSource = source.slice(0, atIndex);
+    }
+  }
+
+  // gh:owner/repo shorthand
+  if (cleanSource.startsWith('gh:')) {
+    const repo = cleanSource.slice(3).replace(/\.git$/, '');
     return {
       type: 'github',
       url: `https://github.com/${repo}.git`,
@@ -20,24 +52,77 @@ export function parseSource(source: string): GitSource {
     };
   }
 
-  if (source.startsWith('http://') || source.startsWith('https://')) {
-    const [url, ref] = source.split('@');
+  // git@github.com:owner/repo.git (SSH URL)
+  if (cleanSource.startsWith('git@github.com:')) {
+    const repo = cleanSource.slice(15).replace(/\.git$/, '');
+    return {
+      type: 'github',
+      url: `https://github.com/${repo}.git`,
+      ref: ref || 'main',
+    };
+  }
+
+  // github.com:owner/repo.git (SSH-style without git@)
+  if (cleanSource.startsWith('github.com:')) {
+    const repo = cleanSource.slice(11).replace(/\.git$/, '');
+    return {
+      type: 'github',
+      url: `https://github.com/${repo}.git`,
+      ref: ref || 'main',
+    };
+  }
+
+  // github.com/owner/repo (domain without protocol)
+  if (cleanSource.startsWith('github.com/')) {
+    const repo = cleanSource.slice(11).replace(/\.git$/, '');
+    return {
+      type: 'github',
+      url: `https://github.com/${repo}.git`,
+      ref: ref || 'main',
+    };
+  }
+
+  // https:// or http:// URLs
+  if (cleanSource.startsWith('http://') || cleanSource.startsWith('https://')) {
+    // Check if it's a GitHub URL
+    const githubMatch = cleanSource.match(/^https?:\/\/github\.com\/([^/]+\/[^/]+?)(?:\.git)?$/);
+    if (githubMatch) {
+      return {
+        type: 'github',
+        url: `https://github.com/${githubMatch[1]}.git`,
+        ref: ref || 'main',
+      };
+    }
+
+    // Generic URL
     return {
       type: 'url',
-      url: url.endsWith('.git') ? url : `${url}.git`,
+      url: cleanSource.endsWith('.git') ? cleanSource : `${cleanSource}.git`,
       ref,
     };
   }
 
-  if (fs.existsSync(source)) {
+  // Local path (absolute or relative)
+  if (cleanSource.startsWith('/') || cleanSource.startsWith('./') || cleanSource.startsWith('../')) {
+    if (fs.existsSync(cleanSource)) {
+      return {
+        type: 'local',
+        url: path.resolve(cleanSource),
+      };
+    }
+  }
+
+  // Check if it exists as a local path (could be a directory name without ./)
+  if (fs.existsSync(cleanSource)) {
     return {
       type: 'local',
-      url: path.resolve(source),
+      url: path.resolve(cleanSource),
     };
   }
 
-  if (source.includes('/') && !source.includes(':')) {
-    const [repo, ref] = source.split('@');
+  // Bare owner/repo format (assumes GitHub)
+  if (cleanSource.includes('/') && !cleanSource.includes(':') && !cleanSource.includes('.')) {
+    const repo = cleanSource.replace(/\.git$/, '');
     return {
       type: 'github',
       url: `https://github.com/${repo}.git`,
@@ -45,7 +130,17 @@ export function parseSource(source: string): GitSource {
     };
   }
 
-  throw new Error(`Invalid source: ${source}`);
+  // Last attempt: treat as GitHub if it looks like owner/repo (with possible .git)
+  if (/^[a-zA-Z0-9_-]+\/[a-zA-Z0-9_.-]+$/.test(cleanSource)) {
+    const repo = cleanSource.replace(/\.git$/, '');
+    return {
+      type: 'github',
+      url: `https://github.com/${repo}.git`,
+      ref: ref || 'main',
+    };
+  }
+
+  throw new Error(`Invalid source: ${source}. Supported formats: gh:owner/repo, owner/repo, github.com/owner/repo, https://github.com/owner/repo, or local path`);
 }
 
 export async function cloneOrPull(
