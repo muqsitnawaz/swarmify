@@ -34,6 +34,74 @@ export interface InstalledCommand {
   description?: string;
 }
 
+export function parseCommandMetadata(filePath: string): CommandMetadata | null {
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+
+  try {
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const lines = content.split('\n');
+
+    // Check for YAML frontmatter
+    if (lines[0] === '---') {
+      const endIndex = lines.slice(1).findIndex((l) => l === '---');
+      if (endIndex > 0) {
+        const frontmatter = lines.slice(1, endIndex + 1).join('\n');
+        const parsed = yaml.parse(frontmatter);
+        return {
+          name: parsed.name || '',
+          description: parsed.description || '',
+        };
+      }
+    }
+
+    // Check for TOML format
+    const tomlNameMatch = content.match(/name\s*=\s*"([^"]+)"/);
+    const tomlDescMatch = content.match(/description\s*=\s*"([^"]+)"/);
+    if (tomlNameMatch || tomlDescMatch) {
+      return {
+        name: tomlNameMatch?.[1] || '',
+        description: tomlDescMatch?.[1] || '',
+      };
+    }
+
+    // No valid frontmatter found
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function validateCommandMetadata(
+  metadata: CommandMetadata | null,
+  commandName: string
+): ValidationResult {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  if (!metadata) {
+    errors.push('Missing YAML frontmatter with name and description');
+    return { valid: false, errors, warnings };
+  }
+
+  // name is required
+  if (!metadata.name || metadata.name.trim() === '') {
+    errors.push('Missing required field: name');
+  } else if (metadata.name.length > 64) {
+    warnings.push(`name exceeds 64 characters (${metadata.name.length})`);
+  }
+
+  // description is required
+  if (!metadata.description || metadata.description.trim() === '') {
+    errors.push('Missing required field: description');
+  } else if (metadata.description.length > 1024) {
+    warnings.push(`description exceeds 1024 characters (${metadata.description.length})`);
+  }
+
+  return { valid: errors.length === 0, errors, warnings };
+}
+
 export function discoverCommands(repoPath: string): DiscoveredCommand[] {
   const commands: DiscoveredCommand[] = [];
   const seen = new Set<string>();
@@ -44,13 +112,14 @@ export function discoverCommands(repoPath: string): DiscoveredCommand[] {
       if (file.endsWith('.md')) {
         const name = file.replace('.md', '');
         const sourcePath = path.join(sharedDir, file);
-        const content = fs.readFileSync(sourcePath, 'utf-8');
-        const description = extractDescription(content);
+        const metadata = parseCommandMetadata(sourcePath);
+        const validation = validateCommandMetadata(metadata, name);
         commands.push({
           name,
-          description,
+          description: metadata?.description || extractDescription(fs.readFileSync(sourcePath, 'utf-8')),
           sourcePath,
           isShared: true,
+          validation,
         });
         seen.add(name);
       }
@@ -67,14 +136,15 @@ export function discoverCommands(repoPath: string): DiscoveredCommand[] {
           const name = file.replace(ext, '');
           if (!seen.has(name)) {
             const sourcePath = path.join(agentDir, file);
-            const content = fs.readFileSync(sourcePath, 'utf-8');
-            const description = extractDescription(content);
+            const metadata = parseCommandMetadata(sourcePath);
+            const validation = validateCommandMetadata(metadata, name);
             commands.push({
               name,
-              description,
+              description: metadata?.description || extractDescription(fs.readFileSync(sourcePath, 'utf-8')),
               sourcePath,
               isShared: false,
               agentSpecific: agentId,
+              validation,
             });
             seen.add(name);
           }
@@ -128,7 +198,20 @@ export function installCommand(
   agentId: AgentId,
   commandName: string,
   method: 'symlink' | 'copy' = 'symlink'
-): CommandInstallation {
+): CommandInstallation & { error?: string; warnings?: string[] } {
+  // Validate command metadata before installation
+  const metadata = parseCommandMetadata(sourcePath);
+  const validation = validateCommandMetadata(metadata, commandName);
+
+  if (!validation.valid) {
+    return {
+      path: '',
+      method: 'copy',
+      error: `Invalid command: ${validation.errors.join(', ')}`,
+      warnings: validation.warnings,
+    };
+  }
+
   const agent = AGENTS[agentId];
   ensureCommandsDir(agentId);
 
@@ -146,16 +229,16 @@ export function installCommand(
   if (needsConversion) {
     const tomlContent = markdownToToml(commandName, sourceContent);
     fs.writeFileSync(targetPath, tomlContent, 'utf-8');
-    return { path: targetPath, method: 'copy' };
+    return { path: targetPath, method: 'copy', warnings: validation.warnings };
   }
 
   if (method === 'symlink') {
     fs.symlinkSync(sourcePath, targetPath);
-    return { path: targetPath, method: 'symlink' };
+    return { path: targetPath, method: 'symlink', warnings: validation.warnings };
   }
 
   fs.copyFileSync(sourcePath, targetPath);
-  return { path: targetPath, method: 'copy' };
+  return { path: targetPath, method: 'copy', warnings: validation.warnings };
 }
 
 export function uninstallCommand(agentId: AgentId, commandName: string): boolean {
