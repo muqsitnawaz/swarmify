@@ -52,19 +52,24 @@ const program = new Command();
  * Returns the source string.
  */
 async function ensureSource(): Promise<string> {
-  const state = readState();
-  if (state.source) {
-    return state.source;
+  const meta = readState();
+  if (meta.repo?.source) {
+    return meta.repo.source;
   }
 
   console.log(chalk.gray(`No repo configured. Initializing from ${DEFAULT_AGENTS_REPO}...`));
 
-  const { localPath } = await cloneRepo(DEFAULT_AGENTS_REPO);
+  const parsed = parseSource(DEFAULT_AGENTS_REPO);
+  const { commit } = await cloneRepo(DEFAULT_AGENTS_REPO);
 
   writeState({
-    ...state,
-    source: DEFAULT_AGENTS_REPO,
-    lastSync: new Date().toISOString(),
+    ...meta,
+    repo: {
+      source: DEFAULT_AGENTS_REPO,
+      branch: parsed.ref || 'main',
+      commit,
+      lastSync: new Date().toISOString(),
+    },
   });
 
   return DEFAULT_AGENTS_REPO;
@@ -137,12 +142,11 @@ program
       }
     }
 
-    if (state.source) {
+    if (state.repo) {
       console.log(chalk.bold('\nSync Source\n'));
-      console.log(`  ${state.source}`);
-      if (state.lastSync) {
-        console.log(`  Last sync: ${new Date(state.lastSync).toLocaleString()}`);
-      }
+      console.log(`  ${state.repo.source}`);
+      console.log(`  Branch: ${state.repo.branch}  Commit: ${state.repo.commit}`);
+      console.log(`  Last sync: ${new Date(state.repo.lastSync).toLocaleString()}`);
     }
 
     console.log();
@@ -161,8 +165,8 @@ program
   .option('--skip-clis', 'Skip CLI installation')
   .option('--skip-mcp', 'Skip MCP registration')
   .action(async (source: string | undefined, options) => {
-    const state = readState();
-    const targetSource = source || state.source;
+    const meta = readState();
+    const targetSource = source || meta.repo?.source;
 
     if (!targetSource) {
       console.log(chalk.red('No source specified. Usage: agents pull <source>'));
@@ -170,6 +174,7 @@ program
       process.exit(1);
     }
 
+    const parsed = parseSource(targetSource);
     const spinner = ora('Cloning repository...').start();
 
     try {
@@ -262,9 +267,13 @@ program
       }
 
       writeState({
-        ...state,
-        source: targetSource,
-        lastSync: new Date().toISOString(),
+        ...meta,
+        repo: {
+          source: targetSource,
+          branch: parsed.ref || 'main',
+          commit,
+          lastSync: new Date().toISOString(),
+        },
       });
 
       console.log(chalk.green('\nSync complete.'));
@@ -734,8 +743,8 @@ cliCmd
   .description('Upgrade agent CLI(s) to version in manifest')
   .option('--latest', 'Upgrade to latest version (ignore manifest)')
   .action(async (agent: string | undefined, options) => {
-    const state = readState();
-    const localPath = state.source ? getRepoLocalPath(state.source) : null;
+    const meta = readState();
+    const localPath = meta.repo?.source ? getRepoLocalPath(meta.repo.source) : null;
     const manifest = localPath ? readManifest(localPath) : null;
 
     const agentsToUpgrade: AgentId[] = agent
