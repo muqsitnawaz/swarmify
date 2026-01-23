@@ -9,6 +9,7 @@ import {
   AGENTS,
   ALL_AGENT_IDS,
   MCP_CAPABLE_AGENTS,
+  SKILLS_CAPABLE_AGENTS,
   HOOKS_CAPABLE_AGENTS,
   getAllCliStates,
   isCliInstalled,
@@ -48,6 +49,15 @@ import {
   promoteHookToUser,
   removeHook,
 } from './lib/hooks.js';
+import {
+  discoverSkillsFromRepo,
+  installSkill,
+  uninstallSkill,
+  listInstalledSkillsWithScope,
+  promoteSkillToUser,
+  getSkillInfo,
+  getSkillRules,
+} from './lib/agent-skills.js';
 import type { AgentId, Manifest } from './lib/types.js';
 
 const DEFAULT_AGENTS_REPO = 'gh:muqsitnawaz/.agents';
@@ -124,6 +134,25 @@ program
         }
         if (projectCommands.length > 0) {
           parts.push(`${chalk.yellow(projectCommands.length)} project`);
+        }
+        console.log(`  ${agent.name}: ${parts.join(', ')}`);
+      }
+    }
+
+    console.log(chalk.bold('\nInstalled Skills\n'));
+    for (const agentId of SKILLS_CAPABLE_AGENTS) {
+      const agent = AGENTS[agentId];
+      const skills = listInstalledSkillsWithScope(agentId, cwd);
+      const userSkills = skills.filter((s) => s.scope === 'user');
+      const projectSkills = skills.filter((s) => s.scope === 'project');
+
+      if (skills.length > 0) {
+        const parts: string[] = [];
+        if (userSkills.length > 0) {
+          parts.push(`${chalk.cyan(userSkills.length)} user`);
+        }
+        if (projectSkills.length > 0) {
+          parts.push(`${chalk.yellow(projectSkills.length)} project`);
         }
         console.log(`  ${agent.name}: ${parts.join(', ')}`);
       }
@@ -677,6 +706,208 @@ hooksCmd
     } else {
       console.log(chalk.green(`\nPushed to user scope for ${pushed} agents.`));
     }
+  });
+
+// =============================================================================
+// SKILLS COMMANDS (Agent Skills)
+// =============================================================================
+
+const skillsCmd = program
+  .command('skills')
+  .description('Manage Agent Skills (SKILL.md + rules/)');
+
+skillsCmd
+  .command('list')
+  .description('List installed Agent Skills')
+  .option('-a, --agent <agent>', 'Filter by agent')
+  .option('-s, --scope <scope>', 'Filter by scope: user, project, or all', 'all')
+  .action((options) => {
+    console.log(chalk.bold('\nInstalled Agent Skills\n'));
+    const cwd = process.cwd();
+
+    const agents = options.agent
+      ? [options.agent as AgentId]
+      : SKILLS_CAPABLE_AGENTS;
+
+    for (const agentId of agents) {
+      const agent = AGENTS[agentId];
+      if (!agent.capabilities.skills) {
+        console.log(`  ${chalk.bold(agent.name)}: ${chalk.gray('skills not supported')}`);
+        console.log();
+        continue;
+      }
+
+      let skills = listInstalledSkillsWithScope(agentId, cwd);
+
+      if (options.scope !== 'all') {
+        skills = skills.filter((s) => s.scope === options.scope);
+      }
+
+      if (skills.length === 0) {
+        console.log(`  ${chalk.bold(agent.name)}: ${chalk.gray('none')}`);
+      } else {
+        console.log(`  ${chalk.bold(agent.name)}:`);
+
+        const userSkills = skills.filter((s) => s.scope === 'user');
+        const projectSkills = skills.filter((s) => s.scope === 'project');
+
+        if (userSkills.length > 0 && (options.scope === 'all' || options.scope === 'user')) {
+          console.log(`    ${chalk.gray('User:')}`);
+          for (const skill of userSkills) {
+            const ruleInfo = skill.ruleCount > 0 ? ` (${skill.ruleCount} rules)` : '';
+            console.log(`      ${chalk.cyan(skill.name)}${chalk.gray(ruleInfo)}`);
+          }
+        }
+
+        if (projectSkills.length > 0 && (options.scope === 'all' || options.scope === 'project')) {
+          console.log(`    ${chalk.gray('Project:')}`);
+          for (const skill of projectSkills) {
+            const ruleInfo = skill.ruleCount > 0 ? ` (${skill.ruleCount} rules)` : '';
+            console.log(`      ${chalk.yellow(skill.name)}${chalk.gray(ruleInfo)}`);
+          }
+        }
+      }
+      console.log();
+    }
+  });
+
+skillsCmd
+  .command('add <source>')
+  .description('Add Agent Skills from Git repo or local path')
+  .option('-a, --agents <list>', 'Comma-separated agents to install to')
+  .action(async (source: string, options) => {
+    const spinner = ora('Fetching skills...').start();
+
+    try {
+      const { localPath } = await cloneRepo(source);
+      const skills = discoverSkillsFromRepo(localPath);
+      spinner.succeed(`Found ${skills.length} skills`);
+
+      if (skills.length === 0) {
+        console.log(chalk.yellow('No skills found (looking for SKILL.md files)'));
+        return;
+      }
+
+      for (const skill of skills) {
+        console.log(`\n  ${chalk.cyan(skill.name)}: ${skill.metadata.description || 'no description'}`);
+        if (skill.ruleCount > 0) {
+          console.log(`    ${chalk.gray(`${skill.ruleCount} rules`)}`);
+        }
+      }
+
+      const agents = options.agents
+        ? (options.agents.split(',') as AgentId[])
+        : await checkbox({
+            message: 'Select agents to install skills to:',
+            choices: SKILLS_CAPABLE_AGENTS.filter((id) => isCliInstalled(id) || id === 'cursor').map((id) => ({
+              name: AGENTS[id].name,
+              value: id,
+              checked: ['claude', 'codex', 'gemini'].includes(id),
+            })),
+          });
+
+      if (agents.length === 0) {
+        console.log(chalk.yellow('\nNo agents selected.'));
+        return;
+      }
+
+      const installSpinner = ora('Installing skills...').start();
+      let installed = 0;
+
+      for (const skill of skills) {
+        const result = installSkill(skill.path, skill.name, agents);
+        if (result.success) {
+          installed++;
+        } else {
+          console.log(chalk.red(`\n  Failed to install ${skill.name}: ${result.error}`));
+        }
+      }
+
+      installSpinner.succeed(`Installed ${installed} skills to ${agents.length} agents`);
+      console.log(chalk.green('\nSkills installed.'));
+    } catch (err) {
+      spinner.fail('Failed to add skills');
+      console.error(chalk.red((err as Error).message));
+      process.exit(1);
+    }
+  });
+
+skillsCmd
+  .command('remove <name>')
+  .description('Remove an Agent Skill')
+  .action((name: string) => {
+    const result = uninstallSkill(name);
+    if (result.success) {
+      console.log(chalk.green(`Removed skill '${name}'`));
+    } else {
+      console.log(chalk.red(result.error || 'Failed to remove skill'));
+    }
+  });
+
+skillsCmd
+  .command('push <name>')
+  .description('Save project-scoped skill to user scope')
+  .option('-a, --agents <list>', 'Comma-separated agents to push for')
+  .action((name: string, options) => {
+    const cwd = process.cwd();
+    const agents = options.agents
+      ? (options.agents.split(',') as AgentId[])
+      : SKILLS_CAPABLE_AGENTS;
+
+    let pushed = 0;
+    for (const agentId of agents) {
+      if (!AGENTS[agentId].capabilities.skills) continue;
+
+      const result = promoteSkillToUser(agentId, name, cwd);
+      if (result.success) {
+        console.log(`  ${chalk.green('+')} ${AGENTS[agentId].name}`);
+        pushed++;
+      } else if (result.error && !result.error.includes('not found')) {
+        console.log(`  ${chalk.red('x')} ${AGENTS[agentId].name}: ${result.error}`);
+      }
+    }
+
+    if (pushed === 0) {
+      console.log(chalk.yellow(`Project skill '${name}' not found for any agent`));
+    } else {
+      console.log(chalk.green(`\nPushed to user scope for ${pushed} agents.`));
+    }
+  });
+
+skillsCmd
+  .command('info <name>')
+  .description('Show detailed info about an installed skill')
+  .action((name: string) => {
+    const skill = getSkillInfo(name);
+    if (!skill) {
+      console.log(chalk.yellow(`Skill '${name}' not found`));
+      return;
+    }
+
+    console.log(chalk.bold(`\n${skill.metadata.name}\n`));
+    if (skill.metadata.description) {
+      console.log(`  ${skill.metadata.description}`);
+    }
+    console.log();
+    if (skill.metadata.author) {
+      console.log(`  Author: ${skill.metadata.author}`);
+    }
+    if (skill.metadata.version) {
+      console.log(`  Version: ${skill.metadata.version}`);
+    }
+    if (skill.metadata.license) {
+      console.log(`  License: ${skill.metadata.license}`);
+    }
+    console.log(`  Path: ${skill.path}`);
+
+    const rules = getSkillRules(name);
+    if (rules.length > 0) {
+      console.log(chalk.bold(`\n  Rules (${rules.length}):\n`));
+      for (const rule of rules) {
+        console.log(`    ${chalk.cyan(rule)}`);
+      }
+    }
+    console.log();
   });
 
 // =============================================================================
