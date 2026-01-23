@@ -227,7 +227,6 @@ export function installSkill(
 
   // Update state
   const meta = readMeta();
-  const metadata = parseSkillMetadata(centralPath);
   meta.skills[skillName] = {
     source: sourcePath,
     ruleCount: countSkillRules(centralPath),
