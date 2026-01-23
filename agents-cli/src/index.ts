@@ -1234,7 +1234,7 @@ cliCmd
 cliCmd
   .command('upgrade [agent]')
   .description('Upgrade agent CLI(s) to version in manifest')
-  .option('-s, --scope <scope>', 'Scope to read manifest from', 'user')
+  .option('-s, --scope <scope>', 'Target scope (default: user)', 'user')
   .option('--latest', 'Upgrade to latest version (ignore manifest)')
   .action(async (agent: string | undefined, options) => {
     const scopeName = options.scope as ScopeName;
@@ -1355,7 +1355,8 @@ repoCmd
       });
 
       console.log(chalk.green(`\nAdded scope '${scopeName}' with priority ${priority}`));
-      console.log(chalk.gray(`  Run: agents pull --scope ${scopeName} to sync commands`));
+      const scopeHint = scopeName === 'user' ? '' : ` --scope ${scopeName}`;
+      console.log(chalk.gray(`  Run: agents pull${scopeHint} to sync commands`));
     } catch (err) {
       spinner.fail('Failed to add scope');
       console.error(chalk.red((err as Error).message));
