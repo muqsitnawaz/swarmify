@@ -84,6 +84,9 @@ export interface Meta {
   mcp: Record<string, McpState>;
 }
 
+// Legacy alias
+export type State = Meta;
+
 export interface SyncOptions {
   agents?: AgentId[];
   yes?: boolean;
