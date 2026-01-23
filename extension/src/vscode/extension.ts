@@ -39,6 +39,7 @@ import {
   getSessionChunk,
   formatRelativeTime,
   truncateText,
+  extractFirstNWords,
   TerminalIdentificationOptions
 } from '../core/utils';
 import * as path from 'path';
@@ -1607,6 +1608,38 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
   }
 }
 
+/**
+ * Fetch and set auto-label from first user message in session file.
+ * Only fetches if sessionId exists but autoLabel is not set.
+ */
+async function fetchAndSetAutoLabel(terminal: vscode.Terminal, entry: terminals.EditorTerminal): Promise<string | undefined> {
+  if (!entry.sessionId || entry.autoLabel) return entry.autoLabel;
+
+  const agentType = entry.agentType;
+  if (!agentType || !['claude', 'codex', 'gemini'].includes(agentType)) return undefined;
+
+  try {
+    const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    const sessionPath = await getSessionPathBySessionId(
+      entry.sessionId,
+      agentType as 'claude' | 'codex' | 'gemini',
+      workspacePath
+    );
+    if (!sessionPath) return undefined;
+
+    const previewInfo = await getSessionPreviewInfo(sessionPath);
+    if (!previewInfo.firstUserMessage) return undefined;
+
+    const autoLabel = extractFirstNWords(previewInfo.firstUserMessage, 5);
+    if (autoLabel) {
+      terminals.setAutoLabel(terminal, autoLabel);
+    }
+    return autoLabel ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function updateStatusBarForTerminal(terminal: vscode.Terminal, extensionPath: string) {
   if (!agentStatusBarItem) return;
 
@@ -1617,9 +1650,10 @@ function updateStatusBarForTerminal(terminal: vscode.Terminal, extensionPath: st
   // Format: "Agents: Claude - <Label> (uuid-chunk)"
   if (info.isAgent && info.prefix) {
     const expandedName = getExpandedAgentName(info.prefix);
-    const displayLabel = entry?.label || entry?.autoLabel;
     const sessionChunk = getSessionChunk(entry?.sessionId);
 
+    // Show immediate status bar with current data
+    const displayLabel = entry?.label || entry?.autoLabel;
     let text = `Agents: ${expandedName}`;
     if (displayLabel) {
       text += ` - ${displayLabel}`;
@@ -1628,6 +1662,21 @@ function updateStatusBarForTerminal(terminal: vscode.Terminal, extensionPath: st
       text += ` (${sessionChunk})`;
     }
     agentStatusBarItem.text = text;
+
+    // If no label/autoLabel but we have sessionId, fetch auto-label async
+    if (!displayLabel && entry?.sessionId && entry.agentType) {
+      fetchAndSetAutoLabel(terminal, entry).then(autoLabel => {
+        if (autoLabel && agentStatusBarItem && vscode.window.activeTerminal === terminal) {
+          // Re-render status bar with auto-label
+          let updatedText = `Agents: ${expandedName}`;
+          updatedText += ` - ${autoLabel}`;
+          if (sessionChunk) {
+            updatedText += ` (${sessionChunk})`;
+          }
+          agentStatusBarItem.text = updatedText;
+        }
+      });
+    }
     return;
   }
 
