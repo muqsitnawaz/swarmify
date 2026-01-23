@@ -8,8 +8,21 @@
     "agents": "dist/index.js",
     "ag": "dist/index.js"
   },
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/muqsitnawaz/swarmify.git",
+    "directory": "agents-cli"
+  },
+  "homepage": "https://github.com/muqsitnawaz/swarmify/tree/main/agents-cli",
+  "bugs": {
+    "url": "https://github.com/muqsitnawaz/swarmify/issues"
+  },
   "scripts": {
     "build": "tsc",
+    "prepublishOnly": "tsc",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
     "test": "vitest run",
@@ -26,10 +39,15 @@
     "opencode",
     "mcp",
     "skills",
-    "ai"
+    "ai",
+    "sync",
+    "multi-agent"
   ],
-  "author": "Muqsit Nawaz",
+  "author": "Swarmify <dev@swarmify.co>",
   "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "dependencies": {
     "@inquirer/prompts": "^7.0.0",
     "chalk": "^5.3.0",

@@ -1298,7 +1298,7 @@ async function handoffToAgent(context: vscode.ExtensionContext) {
     }
   }
 
-  if (messages.length === 0 && !planInfo) {
+  if (messages.length === 0 && !planInfo && terminalEntry.agentType !== 'opencode') {
     vscode.window.showInformationMessage('No session history available for handoff');
     return;
   }
