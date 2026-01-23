@@ -47,14 +47,14 @@ export interface CliState {
   path: string | null;
 }
 
-export interface SkillInstallation {
+export interface CommandInstallation {
   path: string;
   method: 'symlink' | 'copy';
 }
 
-export interface SkillState {
+export interface CommandState {
   source: string;
-  installations: Partial<Record<AgentId, SkillInstallation>>;
+  installations: Partial<Record<AgentId, CommandInstallation>>;
 }
 
 export interface McpState {
@@ -74,7 +74,7 @@ export interface State {
   source: string | null;
   clis: Partial<Record<AgentId, CliState>>;
   packages: Record<string, PackageState>;
-  skills: Record<string, SkillState>;
+  commands: Record<string, CommandState>;
   mcp: Record<string, McpState>;
 }
 

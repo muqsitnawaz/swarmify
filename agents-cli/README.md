@@ -45,16 +45,16 @@ agents pull gh:username/.agents
 
 Options: `-y` (skip prompts), `-f` (force), `--dry-run` (preview)
 
-### Skills (Commands/Prompts)
+### Commands (Slash Commands)
 
 | Command | Description |
 |---------|-------------|
-| `agents skills list` | List installed skills with user/project scope |
-| `agents skills list --scope user` | List only user-scoped skills |
-| `agents skills list --scope project` | List only project-scoped skills |
-| `agents skills add <source>` | Install from git repo or local path |
-| `agents skills remove <name>` | Uninstall skill |
-| `agents skills push <name>` | Copy project-scoped skill to user scope |
+| `agents commands list` | List installed commands with user/project scope |
+| `agents commands list --scope user` | List only user-scoped commands |
+| `agents commands list --scope project` | List only project-scoped commands |
+| `agents commands add <source>` | Install from git repo or local path |
+| `agents commands remove <name>` | Uninstall command |
+| `agents commands push <name>` | Copy project-scoped command to user scope |
 
 ### MCP Servers
 
@@ -77,16 +77,16 @@ Options: `-y` (skip prompts), `-f` (force), `--dry-run` (preview)
 
 ## Scopes
 
-Skills and MCP servers can be installed at two scopes:
+Commands and MCP servers can be installed at two scopes:
 
 | Scope | Location | Applies To |
 |-------|----------|------------|
 | User | `~/.{agent}/` | All projects |
 | Project | `./.{agent}/` | Current project only |
 
-When you run `agents status` or `agents skills list` in a directory, it shows both user-scoped and project-scoped items. Project-scoped items are defined in `.claude/commands/`, `.codex/prompts/`, etc. within the current directory.
+When you run `agents status` or `agents commands list` in a directory, it shows both user-scoped and project-scoped items. Project-scoped items are defined in `.claude/commands/`, `.codex/prompts/`, etc. within the current directory.
 
-Use `agents skills push <name>` or `agents mcp push <name>` to copy a project-scoped item to user scope so it's available everywhere.
+Use `agents commands push <name>` or `agents mcp push <name>` to copy a project-scoped item to user scope so it's available everywhere.
 
 ## Supported Agents
 

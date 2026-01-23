@@ -55,7 +55,7 @@ Each agent has different paths and formats. See `AGENTS` object in `lib/agents.t
 
 ### Scope System
 
-Skills and MCPs can exist at two scopes:
+Commands and MCPs can exist at two scopes:
 
 | Scope | Location | Use Case |
 |-------|----------|----------|
@@ -64,22 +64,22 @@ Skills and MCPs can exist at two scopes:
 
 Key functions:
 ```typescript
-// lib/skills.ts
-listInstalledSkillsWithScope(agentId, cwd) -> InstalledSkill[]
-promoteSkillToUser(agentId, name, cwd) -> { success, error? }
+// lib/skills.ts (manages commands/prompts)
+listInstalledCommandsWithScope(agentId, cwd) -> InstalledCommand[]
+promoteCommandToUser(agentId, name, cwd) -> { success, error? }
 
 // lib/agents.ts
 listInstalledMcpsWithScope(agentId, cwd) -> InstalledMcp[]
 promoteMcpToUser(agentId, name, cwd) -> { success, error? }
 ```
 
-### Skill Discovery
+### Command Discovery
 
-Skills are discovered from repo in this order:
+Commands are discovered from repo in this order:
 1. `shared/commands/*.md` - Shared across all agents
 2. `{agent}/{commandsSubdir}/*` - Agent-specific
 
-Agent-specific skills override shared skills with the same name.
+Agent-specific commands override shared commands with the same name.
 
 ### Format Conversion
 
