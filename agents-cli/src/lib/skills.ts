@@ -1,277 +1,399 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { AGENTS, ensureCommandsDir } from './agents.js';
-import { markdownToToml } from './convert.js';
-import type { AgentId, CommandInstallation } from './types.js';
+import * as os from 'os';
+import * as yaml from 'yaml';
+import type { AgentId, SkillMetadata, InstalledSkill, SkillState } from './types.js';
+import { AGENTS, SKILLS_CAPABLE_AGENTS, ensureSkillsDir } from './agents.js';
+import { readMeta, writeMeta, getAgentsDir } from './state.js';
 
-export type CommandScope = 'user' | 'project';
+const HOME = os.homedir();
 
-export interface DiscoveredCommand {
-  name: string;
-  description: string;
-  sourcePath: string;
-  isShared: boolean;
-  agentSpecific?: AgentId;
+export function getSkillsDir(): string {
+  return path.join(getAgentsDir(), 'skills');
 }
 
-export interface InstalledCommand {
-  name: string;
-  scope: CommandScope;
-  path: string;
-  description?: string;
+export function ensureCentralSkillsDir(): void {
+  const dir = getSkillsDir();
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
 }
 
-export function discoverCommands(repoPath: string): DiscoveredCommand[] {
-  const commands: DiscoveredCommand[] = [];
-  const seen = new Set<string>();
+export function getAgentSkillsDir(agentId: AgentId): string {
+  return AGENTS[agentId].skillsDir;
+}
 
-  const sharedDir = path.join(repoPath, 'shared', 'commands');
-  if (fs.existsSync(sharedDir)) {
-    for (const file of fs.readdirSync(sharedDir)) {
-      if (file.endsWith('.md')) {
-        const name = file.replace('.md', '');
-        const sourcePath = path.join(sharedDir, file);
-        const content = fs.readFileSync(sourcePath, 'utf-8');
-        const description = extractDescription(content);
-        commands.push({
-          name,
-          description,
-          sourcePath,
-          isShared: true,
-        });
-        seen.add(name);
-      }
-    }
+export function getProjectSkillsDir(agentId: AgentId, cwd: string = process.cwd()): string {
+  return path.join(cwd, `.${agentId}`, 'skills');
+}
+
+export function parseSkillMetadata(skillDir: string): SkillMetadata | null {
+  const skillMdPath = path.join(skillDir, 'SKILL.md');
+  if (!fs.existsSync(skillMdPath)) {
+    return null;
   }
 
-  for (const agentId of Object.keys(AGENTS) as AgentId[]) {
-    const agent = AGENTS[agentId];
-    const agentDir = path.join(repoPath, agentId, agent.commandsSubdir);
-    if (fs.existsSync(agentDir)) {
-      const ext = agent.format === 'toml' ? '.toml' : '.md';
-      for (const file of fs.readdirSync(agentDir)) {
-        if (file.endsWith(ext)) {
-          const name = file.replace(ext, '');
-          if (!seen.has(name)) {
-            const sourcePath = path.join(agentDir, file);
-            const content = fs.readFileSync(sourcePath, 'utf-8');
-            const description = extractDescription(content);
-            commands.push({
-              name,
-              description,
-              sourcePath,
-              isShared: false,
-              agentSpecific: agentId,
+  try {
+    const content = fs.readFileSync(skillMdPath, 'utf-8');
+    const lines = content.split('\n');
+
+    // Check for YAML frontmatter
+    if (lines[0] === '---') {
+      const endIndex = lines.slice(1).findIndex((l) => l === '---');
+      if (endIndex > 0) {
+        const frontmatter = lines.slice(1, endIndex + 1).join('\n');
+        const parsed = yaml.parse(frontmatter);
+        return {
+          name: parsed.name || path.basename(skillDir),
+          description: parsed.description || '',
+          author: parsed.author,
+          version: parsed.version,
+          license: parsed.license,
+          keywords: parsed.keywords,
+        };
+      }
+    }
+
+    // Fallback: extract from markdown content
+    const name = path.basename(skillDir);
+    const descMatch = content.match(/^#\s+.+\n+(.+)/m);
+    return {
+      name,
+      description: descMatch ? descMatch[1].trim() : '',
+    };
+  } catch {
+    return {
+      name: path.basename(skillDir),
+      description: '',
+    };
+  }
+}
+
+export function countSkillRules(skillDir: string): number {
+  const rulesDir = path.join(skillDir, 'rules');
+  if (!fs.existsSync(rulesDir)) {
+    return 0;
+  }
+
+  try {
+    const files = fs.readdirSync(rulesDir);
+    return files.filter((f) => f.endsWith('.md')).length;
+  } catch {
+    return 0;
+  }
+}
+
+export interface DiscoveredSkill {
+  name: string;
+  path: string;
+  metadata: SkillMetadata;
+  ruleCount: number;
+}
+
+export function discoverSkillsFromRepo(repoPath: string): DiscoveredSkill[] {
+  const skills: DiscoveredSkill[] = [];
+
+  // Look for skills in common locations
+  const searchPaths = [
+    path.join(repoPath, 'skills'),
+    path.join(repoPath, 'agent-skills'),
+    repoPath, // Root level skill directories
+  ];
+
+  for (const searchPath of searchPaths) {
+    if (!fs.existsSync(searchPath)) continue;
+
+    try {
+      const entries = fs.readdirSync(searchPath, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+
+        const skillDir = path.join(searchPath, entry.name);
+        const skillMdPath = path.join(skillDir, 'SKILL.md');
+
+        if (fs.existsSync(skillMdPath)) {
+          const metadata = parseSkillMetadata(skillDir);
+          if (metadata) {
+            skills.push({
+              name: entry.name,
+              path: skillDir,
+              metadata,
+              ruleCount: countSkillRules(skillDir),
             });
-            seen.add(name);
           }
         }
       }
+    } catch {
+      // Skip inaccessible directories
     }
   }
 
-  return commands;
+  return skills;
 }
 
-function extractDescription(content: string): string {
-  const match = content.match(/description:\s*(.+)/i);
-  if (match) return match[1].trim();
-
-  const tomlMatch = content.match(/description\s*=\s*"([^"]+)"/);
-  if (tomlMatch) return tomlMatch[1];
-
-  const firstLine = content.split('\n').find((l) => l.trim() && !l.startsWith('---'));
-  return firstLine?.slice(0, 80) || '';
-}
-
-export function resolveCommandSource(
-  repoPath: string,
-  commandName: string,
-  agentId: AgentId
-): string | null {
-  const agent = AGENTS[agentId];
-  const ext = agent.format === 'toml' ? '.toml' : '.md';
-
-  const agentSpecific = path.join(
-    repoPath,
-    agentId,
-    agent.commandsSubdir,
-    `${commandName}${ext}`
-  );
-  if (fs.existsSync(agentSpecific)) {
-    return agentSpecific;
-  }
-
-  const shared = path.join(repoPath, 'shared', 'commands', `${commandName}.md`);
-  if (fs.existsSync(shared)) {
-    return shared;
-  }
-
-  return null;
-}
-
-export function installCommand(
+export function installSkill(
   sourcePath: string,
-  agentId: AgentId,
-  commandName: string,
+  skillName: string,
+  agents: AgentId[],
   method: 'symlink' | 'copy' = 'symlink'
-): CommandInstallation {
-  const agent = AGENTS[agentId];
-  ensureCommandsDir(agentId);
+): { success: boolean; error?: string } {
+  ensureCentralSkillsDir();
 
-  const ext = agent.format === 'toml' ? '.toml' : '.md';
-  const targetPath = path.join(agent.commandsDir, `${commandName}${ext}`);
+  const centralPath = path.join(getSkillsDir(), skillName);
 
-  if (fs.existsSync(targetPath)) {
-    fs.unlinkSync(targetPath);
+  // Copy to central location if not already there
+  if (!fs.existsSync(centralPath)) {
+    try {
+      fs.cpSync(sourcePath, centralPath, { recursive: true });
+    } catch (err) {
+      return { success: false, error: `Failed to copy skill: ${(err as Error).message}` };
+    }
   }
 
-  const sourceContent = fs.readFileSync(sourcePath, 'utf-8');
-  const sourceIsMarkdown = sourcePath.endsWith('.md');
-  const needsConversion = agent.format === 'toml' && sourceIsMarkdown;
+  // Symlink to each agent
+  for (const agentId of agents) {
+    if (!SKILLS_CAPABLE_AGENTS.includes(agentId)) {
+      continue;
+    }
 
-  if (needsConversion) {
-    const tomlContent = markdownToToml(commandName, sourceContent);
-    fs.writeFileSync(targetPath, tomlContent, 'utf-8');
-    return { path: targetPath, method: 'copy' };
+    ensureSkillsDir(agentId);
+    const agentSkillPath = path.join(getAgentSkillsDir(agentId), skillName);
+
+    // Remove existing if present
+    if (fs.existsSync(agentSkillPath)) {
+      try {
+        fs.rmSync(agentSkillPath, { recursive: true, force: true });
+      } catch {
+        // Ignore removal errors
+      }
+    }
+
+    try {
+      if (method === 'symlink') {
+        fs.symlinkSync(centralPath, agentSkillPath, 'dir');
+      } else {
+        fs.cpSync(centralPath, agentSkillPath, { recursive: true });
+      }
+    } catch (err) {
+      return {
+        success: false,
+        error: `Failed to ${method} skill to ${agentId}: ${(err as Error).message}`,
+      };
+    }
   }
 
-  if (method === 'symlink') {
-    fs.symlinkSync(sourcePath, targetPath);
-    return { path: targetPath, method: 'symlink' };
-  }
+  // Update state
+  const meta = readMeta();
+  const metadata = parseSkillMetadata(centralPath);
+  meta.skills[skillName] = {
+    source: sourcePath,
+    ruleCount: countSkillRules(centralPath),
+    installations: agents.reduce(
+      (acc, agentId) => {
+        acc[agentId] = {
+          path: path.join(getAgentSkillsDir(agentId), skillName),
+          method,
+        };
+        return acc;
+      },
+      {} as SkillState['installations']
+    ),
+  };
+  writeMeta(meta);
 
-  fs.copyFileSync(sourcePath, targetPath);
-  return { path: targetPath, method: 'copy' };
+  return { success: true };
 }
 
-export function uninstallCommand(agentId: AgentId, commandName: string): boolean {
-  const agent = AGENTS[agentId];
-  const ext = agent.format === 'toml' ? '.toml' : '.md';
-  const targetPath = path.join(agent.commandsDir, `${commandName}${ext}`);
+export function uninstallSkill(skillName: string): { success: boolean; error?: string } {
+  const meta = readMeta();
+  const skillState = meta.skills[skillName];
 
-  if (fs.existsSync(targetPath)) {
-    fs.unlinkSync(targetPath);
-    return true;
-  }
-  return false;
-}
-
-export function listInstalledCommands(agentId: AgentId): string[] {
-  const agent = AGENTS[agentId];
-  if (!fs.existsSync(agent.commandsDir)) {
-    return [];
+  if (!skillState) {
+    return { success: false, error: `Skill '${skillName}' not found` };
   }
 
-  const ext = agent.format === 'toml' ? '.toml' : '.md';
-  return fs
-    .readdirSync(agent.commandsDir)
-    .filter((f) => f.endsWith(ext))
-    .map((f) => f.replace(ext, ''));
-}
-
-/**
- * Get the project-scoped commands directory for an agent.
- * Claude: .claude/commands/
- * Codex: .codex/prompts/
- * Gemini: .gemini/commands/
- */
-function getProjectCommandsDir(agentId: AgentId, cwd: string = process.cwd()): string {
-  const agent = AGENTS[agentId];
-  return path.join(cwd, `.${agentId}`, agent.commandsSubdir);
-}
-
-/**
- * List commands from a specific directory.
- */
-function listCommandsFromDir(dir: string, format: 'markdown' | 'toml'): string[] {
-  if (!fs.existsSync(dir)) {
-    return [];
+  // Remove from all agents
+  for (const [agentId, installation] of Object.entries(skillState.installations)) {
+    if (installation?.path && fs.existsSync(installation.path)) {
+      try {
+        fs.rmSync(installation.path, { recursive: true, force: true });
+      } catch {
+        // Ignore removal errors
+      }
+    }
   }
 
-  const ext = format === 'toml' ? '.toml' : '.md';
-  return fs
-    .readdirSync(dir)
-    .filter((f) => f.endsWith(ext))
-    .map((f) => f.replace(ext, ''));
+  // Remove from central location
+  const centralPath = path.join(getSkillsDir(), skillName);
+  if (fs.existsSync(centralPath)) {
+    try {
+      fs.rmSync(centralPath, { recursive: true, force: true });
+    } catch {
+      // Ignore removal errors
+    }
+  }
+
+  // Update state
+  delete meta.skills[skillName];
+  writeMeta(meta);
+
+  return { success: true };
 }
 
-/**
- * List installed commands with scope information.
- */
-export function listInstalledCommandsWithScope(
+export function listInstalledSkills(): Map<string, DiscoveredSkill> {
+  const skills = new Map<string, DiscoveredSkill>();
+  const centralDir = getSkillsDir();
+
+  if (!fs.existsSync(centralDir)) {
+    return skills;
+  }
+
+  try {
+    const entries = fs.readdirSync(centralDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+
+      const skillDir = path.join(centralDir, entry.name);
+      const metadata = parseSkillMetadata(skillDir);
+
+      if (metadata) {
+        skills.set(entry.name, {
+          name: entry.name,
+          path: skillDir,
+          metadata,
+          ruleCount: countSkillRules(skillDir),
+        });
+      }
+    }
+  } catch {
+    // Ignore errors
+  }
+
+  return skills;
+}
+
+export function listInstalledSkillsWithScope(
   agentId: AgentId,
   cwd: string = process.cwd()
-): InstalledCommand[] {
-  const agent = AGENTS[agentId];
-  const ext = agent.format === 'toml' ? '.toml' : '.md';
-  const results: InstalledCommand[] = [];
+): InstalledSkill[] {
+  const results: InstalledSkill[] = [];
 
-  // User-scoped commands
-  const userCommands = listCommandsFromDir(agent.commandsDir, agent.format);
-  for (const name of userCommands) {
-    const commandPath = path.join(agent.commandsDir, `${name}${ext}`);
-    results.push({
-      name,
-      scope: 'user',
-      path: commandPath,
-      description: getCommandDescription(commandPath),
-    });
+  // User-scoped skills
+  const userSkillsDir = getAgentSkillsDir(agentId);
+  if (fs.existsSync(userSkillsDir)) {
+    try {
+      const entries = fs.readdirSync(userSkillsDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+
+        const skillDir = path.join(userSkillsDir, entry.name);
+        const metadata = parseSkillMetadata(skillDir);
+
+        if (metadata) {
+          results.push({
+            name: entry.name,
+            path: skillDir,
+            metadata,
+            ruleCount: countSkillRules(skillDir),
+            scope: 'user',
+            agent: agentId,
+          });
+        }
+      }
+    } catch {
+      // Ignore errors
+    }
   }
 
-  // Project-scoped commands
-  const projectDir = getProjectCommandsDir(agentId, cwd);
-  const projectCommands = listCommandsFromDir(projectDir, agent.format);
-  for (const name of projectCommands) {
-    const commandPath = path.join(projectDir, `${name}${ext}`);
-    results.push({
-      name,
-      scope: 'project',
-      path: commandPath,
-      description: getCommandDescription(commandPath),
-    });
+  // Project-scoped skills
+  const projectSkillsDir = getProjectSkillsDir(agentId, cwd);
+  if (fs.existsSync(projectSkillsDir)) {
+    try {
+      const entries = fs.readdirSync(projectSkillsDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+
+        const skillDir = path.join(projectSkillsDir, entry.name);
+        const metadata = parseSkillMetadata(skillDir);
+
+        if (metadata) {
+          results.push({
+            name: entry.name,
+            path: skillDir,
+            metadata,
+            ruleCount: countSkillRules(skillDir),
+            scope: 'project',
+            agent: agentId,
+          });
+        }
+      }
+    } catch {
+      // Ignore errors
+    }
   }
 
   return results;
 }
 
-/**
- * Get command description from file.
- */
-function getCommandDescription(filePath: string): string | undefined {
+export function promoteSkillToUser(
+  agentId: AgentId,
+  skillName: string,
+  cwd: string = process.cwd()
+): { success: boolean; error?: string } {
+  const projectSkillsDir = getProjectSkillsDir(agentId, cwd);
+  const projectSkillPath = path.join(projectSkillsDir, skillName);
+
+  if (!fs.existsSync(projectSkillPath)) {
+    return { success: false, error: `Project skill '${skillName}' not found` };
+  }
+
+  ensureSkillsDir(agentId);
+  const userSkillPath = path.join(getAgentSkillsDir(agentId), skillName);
+
+  // Check if already exists
+  if (fs.existsSync(userSkillPath)) {
+    return { success: false, error: `User skill '${skillName}' already exists` };
+  }
+
   try {
-    const content = fs.readFileSync(filePath, 'utf-8');
-    return extractDescription(content) || undefined;
-  } catch {
-    return undefined;
+    fs.cpSync(projectSkillPath, userSkillPath, { recursive: true });
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: `Failed to copy skill: ${(err as Error).message}` };
   }
 }
 
-/**
- * Copy a project-scoped command to user scope.
- */
-export function promoteCommandToUser(
-  agentId: AgentId,
-  commandName: string,
-  cwd: string = process.cwd()
-): { success: boolean; error?: string } {
-  const agent = AGENTS[agentId];
-  const ext = agent.format === 'toml' ? '.toml' : '.md';
-
-  const projectDir = getProjectCommandsDir(agentId, cwd);
-  const sourcePath = path.join(projectDir, `${commandName}${ext}`);
-
-  if (!fs.existsSync(sourcePath)) {
-    return { success: false, error: `Project command '${commandName}' not found` };
+export function getSkillInfo(skillName: string): DiscoveredSkill | null {
+  const centralPath = path.join(getSkillsDir(), skillName);
+  if (!fs.existsSync(centralPath)) {
+    return null;
   }
 
-  ensureCommandsDir(agentId);
-  const targetPath = path.join(agent.commandsDir, `${commandName}${ext}`);
+  const metadata = parseSkillMetadata(centralPath);
+  if (!metadata) {
+    return null;
+  }
+
+  return {
+    name: skillName,
+    path: centralPath,
+    metadata,
+    ruleCount: countSkillRules(centralPath),
+  };
+}
+
+export function getSkillRules(skillName: string): string[] {
+  const centralPath = path.join(getSkillsDir(), skillName);
+  const rulesDir = path.join(centralPath, 'rules');
+
+  if (!fs.existsSync(rulesDir)) {
+    return [];
+  }
 
   try {
-    fs.copyFileSync(sourcePath, targetPath);
-    return { success: true };
-  } catch (err) {
-    return { success: false, error: (err as Error).message };
+    const files = fs.readdirSync(rulesDir);
+    return files.filter((f) => f.endsWith('.md')).map((f) => f.replace(/\.md$/, ''));
+  } catch {
+    return [];
   }
 }
