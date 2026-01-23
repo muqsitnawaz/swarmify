@@ -1,10 +1,22 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import * as yaml from 'yaml';
 import { AGENTS, ensureCommandsDir } from './agents.js';
 import { markdownToToml } from './convert.js';
 import type { AgentId, CommandInstallation } from './types.js';
 
 export type CommandScope = 'user' | 'project';
+
+export interface CommandMetadata {
+  name: string;
+  description: string;
+}
+
+export interface ValidationResult {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+}
 
 export interface DiscoveredCommand {
   name: string;
@@ -12,6 +24,7 @@ export interface DiscoveredCommand {
   sourcePath: string;
   isShared: boolean;
   agentSpecific?: AgentId;
+  validation: ValidationResult;
 }
 
 export interface InstalledCommand {

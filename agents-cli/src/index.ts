@@ -31,7 +31,14 @@ import {
   writeState,
   ensureAgentsDir,
   getRepoLocalPath,
+  getScope,
+  setScope,
+  removeScope,
+  getScopesByPriority,
+  getScopePriority,
 } from './lib/state.js';
+import { SCOPE_PRIORITIES, DEFAULT_SYSTEM_REPO } from './lib/types.js';
+import type { ScopeName, ScopeConfig } from './lib/types.js';
 import { cloneRepo, parseSource } from './lib/git.js';
 import {
   discoverCommands,
