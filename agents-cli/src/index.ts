@@ -9,6 +9,7 @@ import {
   AGENTS,
   ALL_AGENT_IDS,
   MCP_CAPABLE_AGENTS,
+  HOOKS_CAPABLE_AGENTS,
   getAllCliStates,
   isCliInstalled,
   getCliVersion,
@@ -40,6 +41,13 @@ import {
   listInstalledCommandsWithScope,
   promoteCommandToUser,
 } from './lib/skills.js';
+import {
+  discoverHooksFromRepo,
+  installHooks,
+  listInstalledHooksWithScope,
+  promoteHookToUser,
+  removeHook,
+} from './lib/hooks.js';
 import type { AgentId, Manifest } from './lib/types.js';
 
 const DEFAULT_AGENTS_REPO = 'gh:muqsitnawaz/.agents';
@@ -358,7 +366,7 @@ const commandsCmd = program
 commandsCmd
   .command('list')
   .description('List installed commands')
-  .option('-a, --agent <agent>', 'Show commands for specific agent')
+  .option('-a, --agent <agent>', 'Filter by agent')
   .option('-s, --scope <scope>', 'Filter by scope: user, project, or all', 'all')
   .action((options) => {
     console.log(chalk.bold('\nInstalled Commands\n'));
@@ -494,6 +502,183 @@ commandsCmd
     }
   });
 
+const hooksCmd = program.command('hooks').description('Manage hooks');
+
+hooksCmd
+  .command('list')
+  .description('List installed hooks')
+  .option('-a, --agent <agent>', 'Filter by agent')
+  .option('-s, --scope <scope>', 'Filter by scope: user, project, or all', 'all')
+  .action((options) => {
+    console.log(chalk.bold('\nInstalled Hooks\n'));
+    const cwd = process.cwd();
+
+    const agents = options.agent
+      ? [options.agent as AgentId]
+      : (Array.from(HOOKS_CAPABLE_AGENTS) as AgentId[]);
+
+    for (const agentId of agents) {
+      const agent = AGENTS[agentId];
+      if (!agent.supportsHooks) {
+        console.log(`  ${chalk.bold(agent.name)}: ${chalk.gray('hooks not supported')}`);
+        console.log();
+        continue;
+      }
+
+      let hooks = listInstalledHooksWithScope(agentId, cwd);
+
+      if (options.scope !== 'all') {
+        hooks = hooks.filter((h) => h.scope === options.scope);
+      }
+
+      if (hooks.length === 0) {
+        console.log(`  ${chalk.bold(agent.name)}: ${chalk.gray('none')}`);
+      } else {
+        console.log(`  ${chalk.bold(agent.name)}:`);
+
+        const userHooks = hooks.filter((h) => h.scope === 'user');
+        const projectHooks = hooks.filter((h) => h.scope === 'project');
+
+        if (userHooks.length > 0 && (options.scope === 'all' || options.scope === 'user')) {
+          console.log(`    ${chalk.gray('User:')}`);
+          for (const hook of userHooks) {
+            console.log(`      ${chalk.cyan(hook.name)}`);
+          }
+        }
+
+        if (projectHooks.length > 0 && (options.scope === 'all' || options.scope === 'project')) {
+          console.log(`    ${chalk.gray('Project:')}`);
+          for (const hook of projectHooks) {
+            console.log(`      ${chalk.yellow(hook.name)}`);
+          }
+        }
+      }
+      console.log();
+    }
+  });
+
+hooksCmd
+  .command('add <source>')
+  .description('Install hooks from git repo or local path')
+  .option('-a, --agent <agents>', 'Target agents (comma-separated)', 'claude,gemini')
+  .action(async (source: string, options) => {
+    const spinner = ora('Fetching hooks...').start();
+
+    try {
+      const { localPath } = await cloneRepo(source);
+      const hooks = discoverHooksFromRepo(localPath);
+      const hookNames = new Set<string>();
+      for (const name of hooks.shared) {
+        hookNames.add(name);
+      }
+      for (const list of Object.values(hooks.agentSpecific)) {
+        for (const name of list) {
+          hookNames.add(name);
+        }
+      }
+      spinner.succeed(`Found ${hookNames.size} hooks`);
+
+      const agents = options.agent
+        ? (options.agent.split(',') as AgentId[])
+        : (['claude', 'gemini'] as AgentId[]);
+
+      const result = await installHooks(localPath, agents, { scope: 'user' });
+      const installedByHook = new Map<string, AgentId[]>();
+      for (const item of result.installed) {
+        const [name, agentId] = item.split(':') as [string, AgentId];
+        const list = installedByHook.get(name) || [];
+        list.push(agentId);
+        installedByHook.set(name, list);
+      }
+
+      const orderedHooks = Array.from(installedByHook.keys()).sort((a, b) => a.localeCompare(b));
+      for (const name of orderedHooks) {
+        console.log(`\n  ${chalk.cyan(name)}`);
+        const agentIds = installedByHook.get(name) || [];
+        agentIds.sort();
+        for (const agentId of agentIds) {
+          console.log(`    ${AGENTS[agentId].name}`);
+        }
+      }
+
+      if (result.errors.length > 0) {
+        console.log(chalk.red('\nErrors:'));
+        for (const error of result.errors) {
+          console.log(chalk.red(`  ${error}`));
+        }
+      }
+
+      if (result.installed.length === 0) {
+        console.log(chalk.yellow('\nNo hooks installed.'));
+      } else {
+        console.log(chalk.green('\nHooks installed.'));
+      }
+    } catch (err) {
+      spinner.fail('Failed to add hooks');
+      console.error(chalk.red((err as Error).message));
+      process.exit(1);
+    }
+  });
+
+hooksCmd
+  .command('remove <name>')
+  .description('Remove a hook')
+  .option('-a, --agent <agents>', 'Target agents (comma-separated)')
+  .action(async (name: string, options) => {
+    const agents = options.agent
+      ? (options.agent.split(',') as AgentId[])
+      : (Array.from(HOOKS_CAPABLE_AGENTS) as AgentId[]);
+
+    const result = await removeHook(name, agents);
+    let removed = 0;
+    for (const item of result.removed) {
+      const [, agentId] = item.split(':') as [string, AgentId];
+      console.log(`  ${AGENTS[agentId].name}`);
+      removed++;
+    }
+
+    if (result.errors.length > 0) {
+      console.log(chalk.red('\nErrors:'));
+      for (const error of result.errors) {
+        console.log(chalk.red(`  ${error}`));
+      }
+    }
+
+    if (removed === 0) {
+      console.log(chalk.yellow(`Hook '${name}' not found`));
+    } else {
+      console.log(chalk.green(`\nRemoved from ${removed} agents.`));
+    }
+  });
+
+hooksCmd
+  .command('push <name>')
+  .description('Copy project-scoped hook to user scope')
+  .option('-a, --agent <agents>', 'Target agents (comma-separated)')
+  .action((name: string, options) => {
+    const cwd = process.cwd();
+    const agents = options.agent
+      ? (options.agent.split(',') as AgentId[])
+      : (Array.from(HOOKS_CAPABLE_AGENTS) as AgentId[]);
+
+    let pushed = 0;
+    for (const agentId of agents) {
+      const result = promoteHookToUser(agentId, name, cwd);
+      if (result.success) {
+        console.log(`  ${AGENTS[agentId].name}`);
+        pushed++;
+      } else if (result.error && !result.error.includes('not found')) {
+        console.log(`  ${AGENTS[agentId].name}: ${result.error}`);
+      }
+    }
+
+    if (pushed === 0) {
+      console.log(chalk.yellow(`Project hook '${name}' not found for any agent`));
+    } else {
+      console.log(chalk.green(`\nPushed to user scope for ${pushed} agents.`));
+    }
+  });
+
 // =============================================================================
 // MCP COMMANDS
 // =============================================================================
@@ -505,13 +690,23 @@ const mcpCmd = program
 mcpCmd
   .command('list')
   .description('List MCP servers and registration status')
+  .option('-a, --agent <agent>', 'Filter by agent')
   .option('-s, --scope <scope>', 'Filter by scope: user, project, or all', 'all')
   .action((options) => {
     console.log(chalk.bold('\nMCP Servers\n'));
     const cwd = process.cwd();
 
-    for (const agentId of MCP_CAPABLE_AGENTS) {
+    const agents = options.agent
+      ? [options.agent as AgentId]
+      : MCP_CAPABLE_AGENTS;
+
+    for (const agentId of agents) {
       const agent = AGENTS[agentId];
+      if (!agent.capabilities.mcp) {
+        console.log(`  ${chalk.bold(agent.name)}: ${chalk.gray('mcp not supported')}`);
+        console.log();
+        continue;
+      }
       if (!isCliInstalled(agentId)) {
         console.log(`  ${chalk.bold(agent.name)}: ${chalk.gray('CLI not installed')}`);
         continue;

@@ -101,7 +101,7 @@ This extension works standalone for full-screen agent terminals. For sub-agent s
 ## Requirements
 
 - VS Code or Cursor
-- Agent CLIs installed (`claude`, `codex`, `gemini`, `cursor-agent`)
+- Agent CLIs installed (`claude`, `codex`, `gemini`, `cursor-agent`, `opencode`)
 - OpenAI API key (optional, only for commit generation)
 
 ## License

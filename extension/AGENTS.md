@@ -32,6 +32,7 @@ bun test           # 166 tests, no mocks
 | Claude sessions | `~/.claude/projects/{workspace}/*.jsonl` |
 | Codex sessions | `~/.codex/sessions/{year}/{month}/{day}/*.jsonl` |
 | Gemini sessions | `~/.gemini/sessions/*.jsonl` |
+| OpenCode sessions | `~/.local/share/opencode/storage/session/{projectHash}/*.json` |
 
 ## Gotchas
 
@@ -127,7 +128,7 @@ Session pre-warming for instant agent startup. Maintains pool of ready-to-use ag
 
 **Files:** `src/core/prewarm.ts`, `src/core/prewarm.simple.ts`, `src/vscode/prewarm.vscode.ts`
 
-**Supported Agents:** Claude, Codex, Gemini, Cursor
+**Supported Agents:** Claude, Codex, Gemini, Cursor, OpenCode
 
 **Commands:** `agents.enableWarming`, `agents.disableWarming`
 
@@ -142,6 +143,7 @@ Session pre-warming for instant agent startup. Maintains pool of ready-to-use ag
 - **Codex**: Standard session management
 - **Gemini**: Standard session management
 - **Cursor**: Standard session management
+- **OpenCode**: Session IDs use `ses_xxx` format (not UUID), resumes via `opencode -s {sessionId}`, sessions listed via `opencode session list`
 
 **Session types:**
 - `PrewarmedSession`: Ready-to-handoff session with agentType, sessionId, createdAt, workingDirectory
@@ -363,6 +365,7 @@ Live activity extraction from agent session files. Shows what the agent is curre
 - Claude: `~/.claude/projects/{workspace}/*.jsonl`
 - Codex: `~/.codex/sessions/{year}/{month}/{day}/*.jsonl`
 - Gemini: `~/.gemini/sessions/*.jsonl`
+- OpenCode: `~/.local/share/opencode/storage/session/{projectHash}/*.json` (messages in `storage/message/{sessionId}/`)
 
 **Implementation details**:
 - `getSessionPreviewInfo()`: Reads tail of session file and parses for recent activity

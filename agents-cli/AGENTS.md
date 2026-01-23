@@ -11,6 +11,7 @@ src/
     manifest.ts         # agents.yaml parsing/serialization
     state.ts            # ~/.agents/state.json management
     git.ts              # Git clone/pull operations
+    hooks.ts            # Hook discovery and installation
     skills.ts           # Skill discovery and installation
     convert.ts          # Markdown <-> TOML conversion
 ```
@@ -55,7 +56,7 @@ Each agent has different paths and formats. See `AGENTS` object in `lib/agents.t
 
 ### Scope System
 
-Commands and MCPs can exist at two scopes:
+Commands, hooks, and MCPs can exist at two scopes:
 
 | Scope | Location | Use Case |
 |-------|----------|----------|
@@ -67,6 +68,10 @@ Key functions:
 // lib/skills.ts (manages commands/prompts)
 listInstalledCommandsWithScope(agentId, cwd) -> InstalledCommand[]
 promoteCommandToUser(agentId, name, cwd) -> { success, error? }
+
+// lib/hooks.ts
+listInstalledHooksWithScope(agentId, cwd) -> InstalledHook[]
+promoteHookToUser(agentId, name, cwd) -> { success, error? }
 
 // lib/agents.ts
 listInstalledMcpsWithScope(agentId, cwd) -> InstalledMcp[]
