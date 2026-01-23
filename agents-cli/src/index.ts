@@ -41,7 +41,7 @@ import {
   listInstalledCommands,
   listInstalledCommandsWithScope,
   promoteCommandToUser,
-} from './lib/skills.js';
+} from './lib/commands.js';
 import {
   discoverHooksFromRepo,
   installHooks,
@@ -57,7 +57,7 @@ import {
   promoteSkillToUser,
   getSkillInfo,
   getSkillRules,
-} from './lib/agent-skills.js';
+} from './lib/skills.js';
 import type { AgentId, Manifest } from './lib/types.js';
 
 const DEFAULT_AGENTS_REPO = 'gh:muqsitnawaz/.agents';
