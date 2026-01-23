@@ -3,6 +3,7 @@ import * as path from 'path';
 import { homedir } from 'os';
 import type { Dirent, Stats } from 'fs';
 import { AgentSession } from '../core/sessions';
+import Database from 'better-sqlite3';
 
 const SESSION_EXTENSIONS = new Set(['.jsonl', '.json', '.txt']);
 const MAX_PREVIEW_BYTES = 12 * 1024;
@@ -330,7 +331,7 @@ async function findFileBySessionId(dir: string, sessionId: string, depth: number
 
 export async function getSessionPathBySessionId(
   sessionId: string,
-  agentType: 'claude' | 'codex' | 'gemini' | 'opencode',
+  agentType: 'claude' | 'codex' | 'gemini' | 'opencode' | 'cursor',
   workspacePath?: string
 ): Promise<string | undefined> {
   switch (agentType) {
@@ -374,6 +375,18 @@ export async function getSessionPathBySessionId(
       // with content in part/{messageId}/ - return the message directory path
       const messageDir = path.join(homedir(), '.local', 'share', 'opencode', 'storage', 'message', sessionId);
       if (await safeStat(messageDir)) return messageDir;
+      return undefined;
+    }
+    case 'cursor': {
+      // Cursor stores chats in ~/.cursor/chats/{workspaceHash}/{chatId}/store.db (SQLite)
+      // sessionId is the chatId (UUID format like 52183600-90ca-4703-aeb7-f9017aab808e)
+      const chatsRoot = path.join(homedir(), '.cursor', 'chats');
+      const workspaceHashes = await safeReaddir(chatsRoot);
+      for (const wsHash of workspaceHashes) {
+        if (!wsHash.isDirectory()) continue;
+        const chatPath = path.join(chatsRoot, wsHash.name, sessionId, 'store.db');
+        if (await safeStat(chatPath)) return chatPath;
+      }
       return undefined;
     }
     default:
@@ -532,6 +545,62 @@ export async function getOpenCodeSessionPreviewInfo(messageDir: string): Promise
       firstUserMessage,
       messageCount: msgFiles.length
     };
+  } catch {
+    return { messageCount: 0 };
+  }
+}
+
+/**
+ * Get session preview info for Cursor Agent sessions.
+ * Cursor stores chats in SQLite databases at ~/.cursor/chats/{hash}/{chatId}/store.db
+ * Structure: blobs table contains JSON messages with role and content fields
+ */
+export function getCursorSessionPreviewInfo(dbPath: string): SessionPreviewInfo {
+  try {
+    const db = new Database(dbPath, { readonly: true });
+    try {
+      // Get all blobs and find the first user message
+      const rows = db.prepare('SELECT data FROM blobs').all() as Array<{ data: Buffer | string }>;
+
+      let firstUserMessage: string | undefined;
+      let messageCount = 0;
+
+      for (const row of rows) {
+        try {
+          const dataStr = typeof row.data === 'string' ? row.data : row.data.toString('utf-8');
+          const msg = JSON.parse(dataStr);
+
+          if (msg.role === 'user') {
+            messageCount++;
+            if (!firstUserMessage && msg.content) {
+              // Extract text from content array
+              const content = Array.isArray(msg.content) ? msg.content : [msg.content];
+              for (const part of content) {
+                if (typeof part === 'string') {
+                  firstUserMessage = normalizePreview(part);
+                  break;
+                }
+                if (part && typeof part === 'object' && part.type === 'text' && part.text) {
+                  firstUserMessage = normalizePreview(part.text);
+                  break;
+                }
+              }
+            }
+          } else if (msg.role === 'assistant') {
+            messageCount++;
+          }
+        } catch {
+          continue;
+        }
+      }
+
+      return {
+        firstUserMessage,
+        messageCount
+      };
+    } finally {
+      db.close();
+    }
   } catch {
     return { messageCount: 0 };
   }

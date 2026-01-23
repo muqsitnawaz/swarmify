@@ -56,7 +56,7 @@ import { DEFAULT_DISPLAY_PREFERENCES } from '../core/settings';
 import * as prewarm from './prewarm.vscode';
 import { supportsPrewarming, buildResumeCommand, PREWARM_CONFIGS } from '../core/prewarm';
 import { needsPrewarming, generateClaudeSessionId, buildClaudeOpenCommand } from '../core/prewarm.simple';
-import { getSessionPathBySessionId, getSessionPreviewInfo, getOpenCodeSessionPreviewInfo } from './sessions.vscode';
+import { getSessionPathBySessionId, getSessionPreviewInfo, getOpenCodeSessionPreviewInfo, getCursorSessionPreviewInfo } from './sessions.vscode';
 import * as tasksImport from './tasks.vscode';
 import { SOURCE_BADGES } from '../core/tasks';
 import * as handoff from '../core/handoff';
@@ -1612,29 +1612,32 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
  * Fetch and set auto-label from first user message in session file.
  * Only fetches if sessionId exists but autoLabel is not set.
  *
- * Supported agents: claude, codex, gemini, opencode (have session files we can read)
- * Not supported: cursor (uses SQLite database)
+ * Supported agents: claude, codex, gemini, opencode, cursor
  */
 async function fetchAndSetAutoLabel(terminal: vscode.Terminal, entry: terminals.EditorTerminal): Promise<string | undefined> {
   if (!entry.sessionId || entry.autoLabel) return entry.autoLabel;
 
   const agentType = entry.agentType;
-  // claude, codex, gemini, opencode have session files we can read for auto-label
-  if (!agentType || !['claude', 'codex', 'gemini', 'opencode'].includes(agentType)) return undefined;
+  if (!agentType || !['claude', 'codex', 'gemini', 'opencode', 'cursor'].includes(agentType)) return undefined;
 
   try {
     const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     const sessionPath = await getSessionPathBySessionId(
       entry.sessionId,
-      agentType as 'claude' | 'codex' | 'gemini' | 'opencode',
+      agentType as 'claude' | 'codex' | 'gemini' | 'opencode' | 'cursor',
       workspacePath
     );
     if (!sessionPath) return undefined;
 
-    // OpenCode has a different storage structure (directory with JSON files)
-    const previewInfo = agentType === 'opencode'
-      ? await getOpenCodeSessionPreviewInfo(sessionPath)
-      : await getSessionPreviewInfo(sessionPath);
+    // Each agent has different storage structure
+    let previewInfo;
+    if (agentType === 'opencode') {
+      previewInfo = await getOpenCodeSessionPreviewInfo(sessionPath);
+    } else if (agentType === 'cursor') {
+      previewInfo = getCursorSessionPreviewInfo(sessionPath);
+    } else {
+      previewInfo = await getSessionPreviewInfo(sessionPath);
+    }
 
     if (!previewInfo.firstUserMessage) return undefined;
 
