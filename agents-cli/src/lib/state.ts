@@ -40,7 +40,7 @@ export function createDefaultState(): State {
     source: null,
     clis: {},
     packages: {},
-    skills: {},
+    commands: {},
     mcp: {},
   };
 }

@@ -67,6 +67,13 @@ const SIMPLE_PREWARM_CONFIGS: Record<PrewarmAgentType, SimplePrewarmConfig> = {
     },
     timeout: 30000,
   },
+  opencode: {
+    // OpenCode doesn't need prewarming - session ID is detected from session list
+    // after the terminal starts
+    method: 'none',
+    command: [],
+    timeout: 0,
+  },
 };
 
 /**
@@ -305,6 +312,19 @@ async function spawnWaitMethod(
       }
     }, config.timeout);
   });
+}
+
+/**
+ * Get OpenCode session IDs from 'opencode session list' output
+ * Returns most recent sessions first (sorted by updated time)
+ */
+export async function listOpencodeSessions(cwd: string): Promise<string[] | null> {
+  const result = await runCommand('opencode', ['session', 'list'], cwd, 10000);
+  if (!result) return null;
+  // Parse session IDs from table output: ses_xxx format
+  const matches = [...result.matchAll(/ses_[a-zA-Z0-9]+/g)];
+  if (matches.length === 0) return [];
+  return matches.map(m => m[0]);
 }
 
 /**

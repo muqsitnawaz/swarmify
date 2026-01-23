@@ -278,10 +278,10 @@ describe('supportsPrewarming', () => {
     expect(supportsPrewarming('codex')).toBe(true);
     expect(supportsPrewarming('gemini')).toBe(true);
     expect(supportsPrewarming('cursor')).toBe(true);
+    expect(supportsPrewarming('opencode')).toBe(true);
   });
 
   test('returns false for unsupported agents', () => {
-    expect(supportsPrewarming('opencode')).toBe(false);
     expect(supportsPrewarming('random')).toBe(false);
   });
 });
