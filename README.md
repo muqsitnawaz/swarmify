@@ -1,52 +1,20 @@
 # Swarmify
 
-Turn your IDE into an agentic IDE. Run Claude, Codex, Gemini, and Cursor as full-screen terminals alongside your code.
+Mix of Agents for every task. You ask → Lead agent plans → Spawns a swarm → You approve and ship.
+Specify your mix through the task description (for example, "I need 70% Claude planning, 30% Cursor debugging").
+
+Turn your IDE into an agentic IDE. Run Claude, Codex, Gemini, and Cursor as full-screen terminals orchestrated through `/swarm` with approvals before execution.
 
 ## Is this for you?
 
 - You use Claude Code, Codex, Gemini, or Cursor CLI agents
-- You're tired of agents buried in the bottom terminal panel
-- You want agents that can spawn sub-agents for parallel work
-
-## The idea
-
-A single coding agent is like a junior developer. Capable, but handles one thing at a time.
-
-With Swarm MCP, your agent becomes a **tech lead**. It understands the full task, breaks it into pieces, spawns sub-agents for each piece, gives them project context, and makes sure they run tests. You talk to one agent; it manages a team.
-
-The **extension** makes you an engineering manager with multiple tech leads. Full-screen terminals instead of tiny tmux panes. Keyboard shortcuts to jump between agents instantly. Labels to remember who's working on what. Like Vim for agent sessions.
-
-Some communities call this **harness engineering** - infrastructure that lets agents coordinate without you copy-pasting context between them.
-
-## How it works
-
-Open Claude as a full-screen terminal tab. Ask it to implement a feature. Claude figures out it needs auth, database changes, and API updates - spawns Codex for the API, Gemini for the database, handles auth itself. Each sub-agent gets specific files, clear scope, and project context. Claude synthesizes the results.
-
-You manage one conversation. Claude manages the team.
-
-Sub-agents run as background processes. They use your existing CLI installations and your API keys - Swarmify just coordinates them.
-
-## What it costs
-
-Swarmify is free and open source.
-
-Each agent uses your own API keys (Claude = Anthropic, Codex = OpenAI, Gemini = Google). Spawning 3 Claude sub-agents means 3x your normal Claude API cost. No hidden fees, no Swarmify subscription.
-
-## Packages
-
-| Package | Description | Install |
-| --- | --- | --- |
-| [@swarmify/agents-mcp](./agents-mcp) | MCP server for spawning sub-agents | `npx @swarmify/agents-mcp` |
-| [Extension](./extension) | VS Code/Cursor extension | [Marketplace](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext) |
-| [Prompts](./prompts) | Slash commands for all agents | Copy from `./prompts` |
+- You want a **Mix of Agents** on every task, not a single model guess
+- You want approvals before code runs, and agents that can spawn agents for parallel work
 
 ## Quick Start
 
-### 1. Install the extension
-
-Search "Agents" in VS Code/Cursor marketplace, or install `swarmify.swarm-ext`.
-
-### 2. Add Swarm MCP to your agent
+1) Install the extension: search "Agents" in VS Code/Cursor marketplace (`swarmify.swarm-ext`).
+2) Add Swarm MCP to your agent CLI:
 
 ```bash
 # Claude Code
@@ -63,13 +31,59 @@ opencode mcp add
 # Name: Swarm, Command: npx -y @swarmify/agents-mcp
 ```
 
-### 3. Open an agent and start working
-
-Press `Cmd+Shift+A` to spawn Claude as a full-screen terminal tab. Use `/swarm` to have it orchestrate sub-agents:
+3) Run `/swarm` with your task and desired mix, then approve the plan:
 
 ```
-/swarm Implement user authentication with JWT tokens
+/swarm Ship billing polish — 70% Claude planning, 30% Codex coding
 ```
+
+The lead agent proposes a plan and **Mix of Agents**; you review and approve before anything executes.
+
+## How Swarms Work
+
+| Step | What happens |
+| --- | --- |
+| 1 | Run `/swarm "your task description with mix needs"` |
+| 2 | Lead agent creates a distribution plan and assembles the **Mix of Agents** |
+| 3 | You review and approve; the swarm executes only after approval |
+
+## Mix of Agents Explained
+
+- Describe needs in the task description; the orchestrator builds the **Mix of Agents** automatically.
+- Examples: "70% Gemini research-heavy", "60% Codex coding", "50/50 Cursor/Codex debugging".
+- Diversity prevents blind spots and ensures coverage across planning, coding, debugging, and verification.
+
+## Agents Can Spawn Agents
+
+Hierarchical orchestration: a lead agent can spawn children, and those children can spawn grandchildren when tasks expand. Teams grow with complexity—for example, Claude (lead) spawns Codex for implementation, Gemini for systems analysis, and Cursor for debugging.
+
+## For Teams
+
+- Shared orchestration with session restoration so work survives IDE restarts
+- Approval gates and auditability across every `/swarm` run
+- No new infrastructure—uses your existing agent CLIs and API keys
+
+## Department-Level Transformation
+
+Ship a feature overnight: the PM writes a task, `/swarm` proposes a plan plus **Mix of Agents**, you approve, and specialized agents ship and verify in parallel. Benefits: speed (parallel execution), coverage (model diversity), and governance (approvals with audit trail).
+
+## How it works
+
+Open an agent tab, run `/swarm`, get a plan + **Mix of Agents**, approve, and let the hierarchy execute. One conversation; the lead manages the team.
+
+## What it costs
+
+Swarmify is free and open source.
+
+Each agent uses your own API keys (Claude = Anthropic, Codex = OpenAI, Gemini = Google). Spawning 3 Claude sub-agents means 3x your normal Claude API cost. No hidden fees, no Swarmify subscription.
+
+## Packages
+
+| Package | Description | Install |
+| --- | --- | --- |
+| [@swarmify/agents-mcp](./agents-mcp) | MCP server for spawning sub-agents | `npx @swarmify/agents-mcp` |
+| [Extension](./extension) | VS Code/Cursor extension | [Marketplace](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext) |
+| [Prompts](./prompts) | Slash commands for all agents | Copy from `./prompts` |
 
 ## Example Workflows
 
@@ -85,6 +99,11 @@ Spawns 2-3 agents to investigate in parallel, then synthesizes findings.
 - Agent 1: Update theme context and CSS variables
 - Agent 2: Add toggle component to settings
 - Agent 3: Persist preference to localStorage
+```
+
+**Specify the mix up front:**
+```
+/swarm Migrate billing to Stripe Checkout — 70% Claude planning, 30% Codex coding
 ```
 
 **Code review with verification:**

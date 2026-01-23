@@ -1,26 +1,28 @@
 # Examples
 
-Quick demos to get started with Swarmify.
+Quick demos to get started with Swarmify. `/swarm` is the single entry point: you describe the task and desired mix, the lead agent proposes a plan, you approve, and the swarm executes.
 
 ## MCP Server Setup
 
 ### Claude Code
 
 ```bash
-claude mcp add swarmify -- npx -y @swarmify/server
+claude mcp add Swarm -- npx -y @swarmify/agents-mcp
 ```
 
-Then use `/swarm` to orchestrate multiple agents:
+Then use `/swarm` to orchestrate multiple agents with your mix:
 
 ```
-/swarm Implement user authentication with JWT tokens
+/swarm Implement user authentication with JWT tokens — 60% Claude planning, 40% Codex coding
 ```
 
 ### Gemini CLI
 
 ```bash
-gemini mcp add swarmify -- npx -y @swarmify/server
+gemini mcp add Swarm -- npx -y @swarmify/agents-mcp
 ```
+
+Approval flow: `/swarm "task with mix"` → lead agent proposes plan + Mix of Agents → you approve → swarm executes.
 
 ## Extension Setup
 
@@ -59,6 +61,14 @@ This spawns 2-3 independent agents to investigate, then synthesizes findings.
 ```
 /sconfirm Review the changes in the last 3 commits for security issues
 ```
+
+### Mix-Driven Run
+
+```
+/swarm Ship billing polish — 70% Claude planning, 30% Cursor debugging
+```
+
+Lead agent creates the plan and distribution, you approve, and the swarm runs hierarchically.
 
 ## Prompts Library
 

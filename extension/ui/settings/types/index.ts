@@ -208,12 +208,16 @@ export interface AgentDetail {
   last_messages: string[]
 }
 
+export type ApprovalStatus = 'pending' | 'approved' | 'running' | 'complete' | 'rejected'
+
 export interface TaskSummary {
   task_name: string
   agent_count: number
   status_counts: { running: number; completed: number; failed: number; stopped: number }
   latest_activity: string
   agents: AgentDetail[]
+  approval_status?: ApprovalStatus
+  mix?: string
 }
 
 // Terminal types
@@ -228,6 +232,13 @@ export interface TerminalDetail {
   lastUserMessage?: string
   messageCount?: number
   currentActivity?: string
+  approvalStatus?: ApprovalStatus
+  role?: string
+  hint?: string
+  isParent?: boolean
+  parentId?: string | null
+  parentLabel?: string | null
+  children?: string[]
 }
 
 // Session types
