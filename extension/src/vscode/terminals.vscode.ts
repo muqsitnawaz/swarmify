@@ -470,7 +470,7 @@ export interface TerminalDetail {
 
 // Map from lowercase key (used in UI) to prefix (used in terminal names)
 const AGENT_KEY_TO_PREFIX: Record<string, string> = {
-  claude: 'CL',
+  claude: 'CC',
   codex: 'CX',
   gemini: 'GX',
   opencode: 'OC',
@@ -482,7 +482,7 @@ const AGENT_KEY_TO_PREFIX: Record<string, string> = {
 function prefixToAgentType(prefix: string | null): SessionAgentType | null {
   if (!prefix) return null;
   switch (prefix) {
-    case 'CL': return 'claude';
+    case 'CC': return 'claude';
     case 'CX': return 'codex';
     case 'GX': return 'gemini';
     case 'CR': return 'cursor';

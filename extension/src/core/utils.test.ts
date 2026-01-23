@@ -30,7 +30,7 @@ import {
 
 describe('parseTerminalName', () => {
   test('identifies exact agent prefixes', () => {
-    expect(parseTerminalName('CL')).toEqual({ isAgent: true, prefix: 'CL', label: null, sessionChunk: null });
+    expect(parseTerminalName('CC')).toEqual({ isAgent: true, prefix: 'CC', label: null, sessionChunk: null });
     expect(parseTerminalName('CX')).toEqual({ isAgent: true, prefix: 'CX', label: null, sessionChunk: null });
     expect(parseTerminalName('GX')).toEqual({ isAgent: true, prefix: 'GX', label: null, sessionChunk: null });
     expect(parseTerminalName('OC')).toEqual({ isAgent: true, prefix: 'OC', label: null, sessionChunk: null });
@@ -39,7 +39,7 @@ describe('parseTerminalName', () => {
   });
 
   test('accepts full agent names', () => {
-    expect(parseTerminalName('Claude')).toEqual({ isAgent: true, prefix: 'CL', label: null, sessionChunk: null });
+    expect(parseTerminalName('Claude')).toEqual({ isAgent: true, prefix: 'CC', label: null, sessionChunk: null });
     expect(parseTerminalName('Codex')).toEqual({ isAgent: true, prefix: 'CX', label: null, sessionChunk: null });
     expect(parseTerminalName('Gemini')).toEqual({ isAgent: true, prefix: 'GX', label: null, sessionChunk: null });
     expect(parseTerminalName('OpenCode')).toEqual({ isAgent: true, prefix: 'OC', label: null, sessionChunk: null });
@@ -55,7 +55,7 @@ describe('parseTerminalName', () => {
     });
     expect(parseTerminalName('Claude - feature work')).toEqual({
       isAgent: true,
-      prefix: 'CL',
+      prefix: 'CC',
       label: 'feature work',
       sessionChunk: null
     });
@@ -64,7 +64,7 @@ describe('parseTerminalName', () => {
   test('identifies agent prefixes with labels', () => {
     expect(parseTerminalName('CC - auth feature')).toEqual({
       isAgent: true,
-      prefix: 'CL',
+      prefix: 'CC',
       label: 'auth feature',
       sessionChunk: null
     });
@@ -77,10 +77,10 @@ describe('parseTerminalName', () => {
   });
 
   test('handles whitespace correctly', () => {
-    expect(parseTerminalName('  CC  ')).toEqual({ isAgent: true, prefix: 'CL', label: null, sessionChunk: null });
+    expect(parseTerminalName('  CC  ')).toEqual({ isAgent: true, prefix: 'CC', label: null, sessionChunk: null });
     expect(parseTerminalName('CC - label with spaces  ')).toEqual({
       isAgent: true,
-      prefix: 'CL',
+      prefix: 'CC',
       label: 'label with spaces',
       sessionChunk: null
     });
@@ -111,13 +111,13 @@ describe('parseTerminalName', () => {
   test('parses session chunk formats', () => {
     expect(parseTerminalName('CC a1b2c3d4')).toEqual({
       isAgent: true,
-      prefix: 'CL',
+      prefix: 'CC',
       label: null,
       sessionChunk: 'a1b2c3d4'
     });
     expect(parseTerminalName('Claude a1b2c3d4 - task')).toEqual({
       isAgent: true,
-      prefix: 'CL',
+      prefix: 'CC',
       label: 'task',
       sessionChunk: 'a1b2c3d4'
     });
@@ -191,7 +191,7 @@ describe('getIconFilename', () => {
 
 describe('getIconFilename reverse lookup', () => {
   test('getPrefixFromIconFilename returns correct prefix', () => {
-    expect(getPrefixFromIconFilename('claude.png')).toBe('CL');
+    expect(getPrefixFromIconFilename('claude.png')).toBe('CC');
     expect(getPrefixFromIconFilename('chatgpt.png')).toBe('CX');
     expect(getPrefixFromIconFilename('gemini.png')).toBe('GX');
     expect(getPrefixFromIconFilename('opencode.png')).toBe('OC');
@@ -207,9 +207,9 @@ describe('getIconFilename reverse lookup', () => {
 
 describe('getTerminalDisplayInfo', () => {
   test('Strategy 1: identifies by name parsing', () => {
-    expect(getTerminalDisplayInfo({ name: 'CL' })).toEqual({
+    expect(getTerminalDisplayInfo({ name: 'CC' })).toEqual({
       isAgent: true,
-      prefix: 'CL',
+      prefix: 'CC',
       label: null,
       expandedName: 'Claude',
       statusBarText: 'Claude',
@@ -225,7 +225,7 @@ describe('getTerminalDisplayInfo', () => {
     });
     expect(getTerminalDisplayInfo({ name: 'CC - auth feature' })).toEqual({
       isAgent: true,
-      prefix: 'CL',
+      prefix: 'CC',
       label: 'auth feature',
       expandedName: 'Claude',
       statusBarText: 'Claude - auth feature',
@@ -236,7 +236,7 @@ describe('getTerminalDisplayInfo', () => {
   test('Strategy 2: identifies by terminalId when name parsing fails', () => {
     expect(getTerminalDisplayInfo({ name: 'auth feature', terminalId: 'CC-1735824000000-1' })).toEqual({
       isAgent: true,
-      prefix: 'CL',
+      prefix: 'CC',
       label: 'auth feature',
       expandedName: 'Claude',
       statusBarText: 'Claude - auth feature',
@@ -247,7 +247,7 @@ describe('getTerminalDisplayInfo', () => {
   test('Strategy 3: identifies by iconFilename when other strategies fail', () => {
     expect(getTerminalDisplayInfo({ name: 'auth feature', iconFilename: 'claude.png' })).toEqual({
       isAgent: true,
-      prefix: 'CL',
+      prefix: 'CC',
       label: 'auth feature',
       expandedName: 'Claude',
       statusBarText: 'Claude - auth feature',
@@ -262,7 +262,7 @@ describe('getTerminalDisplayInfo', () => {
       terminalId: 'CX-123', // Would suggest Codex
       iconFilename: 'gemini.png' // Would suggest Gemini
     });
-    expect(result.prefix).toBe('CL');
+    expect(result.prefix).toBe('CC');
     expect(result.label).toBe('explicit label');
   });
 
@@ -290,7 +290,7 @@ describe('getTerminalDisplayInfo', () => {
   test('handles whitespace in terminal names', () => {
     expect(getTerminalDisplayInfo({ name: '  CC  ' })).toEqual({
       isAgent: true,
-      prefix: 'CL',
+      prefix: 'CC',
       label: null,
       expandedName: 'Claude',
       statusBarText: 'Claude',
@@ -301,15 +301,19 @@ describe('getTerminalDisplayInfo', () => {
   test('treats empty name as no label when identified by other means', () => {
     const result = getTerminalDisplayInfo({ name: '', terminalId: 'CC-123' });
     expect(result.isAgent).toBe(true);
-    expect(result.prefix).toBe('CL');
+    expect(result.prefix).toBe('CC');
     expect(result.label).toBeNull();
   });
 });
 
 describe('getPrefixFromTerminalId', () => {
   test('extracts prefix from valid ID', () => {
-    expect(getPrefixFromTerminalId('CC-1735824000000-1')).toBe('CL');
+    expect(getPrefixFromTerminalId('CC-1735824000000-1')).toBe('CC');
     expect(getPrefixFromTerminalId('CX-123-456')).toBe('CX');
+  });
+
+  test('backward compatibility: maps old CL prefix to CC', () => {
+    expect(getPrefixFromTerminalId('CL-1735824000000-1')).toBe('CC');
   });
 
   test('returns the ID itself if no dashes', () => {
@@ -469,41 +473,41 @@ describe('mergeMcpConfig', () => {
 
 describe('findTerminalNameByTabLabel', () => {
   test('finds exact match for agent terminal', () => {
-    const terminalNames = ['CL', 'CX', 'GX', 'bash'];
-    expect(findTerminalNameByTabLabel(terminalNames, 'CL')).toBe('CL');
+    const terminalNames = ['CC', 'CX', 'GX', 'bash'];
+    expect(findTerminalNameByTabLabel(terminalNames, 'CC')).toBe('CC');
     expect(findTerminalNameByTabLabel(terminalNames, 'CX')).toBe('CX');
     expect(findTerminalNameByTabLabel(terminalNames, 'GX')).toBe('GX');
   });
 
   test('finds terminal with label in name', () => {
-    const terminalNames = ['CL', 'CC - auth feature', 'CX - bug fix'];
+    const terminalNames = ['CC', 'CC - auth feature', 'CX - bug fix'];
     expect(findTerminalNameByTabLabel(terminalNames, 'CC - auth feature')).toBe('CC - auth feature');
     expect(findTerminalNameByTabLabel(terminalNames, 'CX - bug fix')).toBe('CX - bug fix');
   });
 
   test('returns null when no match found', () => {
-    const terminalNames = ['CL', 'CX', 'GX'];
+    const terminalNames = ['CC', 'CX', 'GX'];
     expect(findTerminalNameByTabLabel(terminalNames, 'bash')).toBeNull();
     expect(findTerminalNameByTabLabel(terminalNames, 'CR')).toBeNull();
     expect(findTerminalNameByTabLabel(terminalNames, 'CC - nonexistent')).toBeNull();
   });
 
   test('returns null for empty terminal list', () => {
-    expect(findTerminalNameByTabLabel([], 'CL')).toBeNull();
+    expect(findTerminalNameByTabLabel([], 'CC')).toBeNull();
   });
 
   test('handles multiple terminals with same base prefix', () => {
     // Simulates having multiple Claude terminals open
-    const terminalNames = ['CL', 'CL', 'CC - task 1', 'CC - task 2'];
+    const terminalNames = ['CC', 'CC', 'CC - task 1', 'CC - task 2'];
     // Should find first exact match
-    expect(findTerminalNameByTabLabel(terminalNames, 'CL')).toBe('CL');
+    expect(findTerminalNameByTabLabel(terminalNames, 'CC')).toBe('CC');
     expect(findTerminalNameByTabLabel(terminalNames, 'CC - task 1')).toBe('CC - task 1');
     expect(findTerminalNameByTabLabel(terminalNames, 'CC - task 2')).toBe('CC - task 2');
   });
 
   test('matches are case-sensitive', () => {
-    const terminalNames = ['CL', 'Cc', 'cc'];
-    expect(findTerminalNameByTabLabel(terminalNames, 'CL')).toBe('CL');
+    const terminalNames = ['CC', 'Cc', 'cc'];
+    expect(findTerminalNameByTabLabel(terminalNames, 'CC')).toBe('CC');
     expect(findTerminalNameByTabLabel(terminalNames, 'Cc')).toBe('Cc');
     expect(findTerminalNameByTabLabel(terminalNames, 'cc')).toBe('cc');
     expect(findTerminalNameByTabLabel(terminalNames, 'cC')).toBeNull();
@@ -511,7 +515,7 @@ describe('findTerminalNameByTabLabel', () => {
 
   test('does not match partial strings', () => {
     const terminalNames = ['CC - auth feature'];
-    expect(findTerminalNameByTabLabel(terminalNames, 'CL')).toBeNull();
+    expect(findTerminalNameByTabLabel(terminalNames, 'CC')).toBeNull();
     expect(findTerminalNameByTabLabel(terminalNames, 'CC - auth')).toBeNull();
     expect(findTerminalNameByTabLabel(terminalNames, 'auth feature')).toBeNull();
   });
@@ -555,22 +559,22 @@ describe('formatTerminalTitle', () => {
   });
 
   test('includes session chunk when enabled', () => {
-    expect(formatTerminalTitle('CL', {
+    expect(formatTerminalTitle('CC', {
       display: { showFullAgentNames: false, showLabelsInTitles: false, showSessionIdInTitles: true, labelReplacesTitle: false },
       sessionChunk: 'a1b2c3d4'
-    })).toBe('CL a1b2c3d4');
+    })).toBe('CC a1b2c3d4');
   });
 
   test('includes session chunk and label when enabled', () => {
-    expect(formatTerminalTitle('CL', {
+    expect(formatTerminalTitle('CC', {
       label: 'my-label',
       display: { showFullAgentNames: false, showLabelsInTitles: true, showSessionIdInTitles: true, labelReplacesTitle: false },
       sessionChunk: 'a1b2c3d4'
-    })).toBe('CL a1b2c3d4 - my-label');
+    })).toBe('CC a1b2c3d4 - my-label');
   });
 
   test('hides label when isFocused=false and showLabelOnlyOnFocus is true', () => {
-    expect(formatTerminalTitle('CL', {
+    expect(formatTerminalTitle('CC', {
       label: 'auth-feature',
       display: { showFullAgentNames: true, showLabelsInTitles: true, showSessionIdInTitles: false, labelReplacesTitle: false, showLabelOnlyOnFocus: true },
       isFocused: false
@@ -578,7 +582,7 @@ describe('formatTerminalTitle', () => {
   });
 
   test('shows label when isFocused=true and showLabelOnlyOnFocus is true', () => {
-    expect(formatTerminalTitle('CL', {
+    expect(formatTerminalTitle('CC', {
       label: 'auth-feature',
       display: { showFullAgentNames: true, showLabelsInTitles: true, showSessionIdInTitles: false, labelReplacesTitle: false, showLabelOnlyOnFocus: true },
       isFocused: true
@@ -586,32 +590,32 @@ describe('formatTerminalTitle', () => {
   });
 
   test('shows label when isFocused is undefined (legacy behavior)', () => {
-    expect(formatTerminalTitle('CL', {
+    expect(formatTerminalTitle('CC', {
       label: 'auth-feature',
       display: { showFullAgentNames: true, showLabelsInTitles: true, showSessionIdInTitles: false, labelReplacesTitle: false, showLabelOnlyOnFocus: true }
     })).toBe('Claude - auth-feature');
   });
 
   test('hides label when isFocused=false with session chunk and showLabelOnlyOnFocus enabled', () => {
-    expect(formatTerminalTitle('CL', {
+    expect(formatTerminalTitle('CC', {
       label: 'auth-feature',
       display: { showFullAgentNames: false, showLabelsInTitles: true, showSessionIdInTitles: true, labelReplacesTitle: false, showLabelOnlyOnFocus: true },
       sessionChunk: 'a1b2c3d4',
       isFocused: false
-    })).toBe('CL a1b2c3d4');
+    })).toBe('CC a1b2c3d4');
   });
 
   test('shows label when isFocused=true with session chunk and showLabelOnlyOnFocus enabled', () => {
-    expect(formatTerminalTitle('CL', {
+    expect(formatTerminalTitle('CC', {
       label: 'auth-feature',
       display: { showFullAgentNames: false, showLabelsInTitles: true, showSessionIdInTitles: true, labelReplacesTitle: false, showLabelOnlyOnFocus: true },
       sessionChunk: 'a1b2c3d4',
       isFocused: true
-    })).toBe('CL a1b2c3d4 - auth-feature');
+    })).toBe('CC a1b2c3d4 - auth-feature');
   });
 
   test('ignores isFocused when showLabelOnlyOnFocus is false', () => {
-    expect(formatTerminalTitle('CL', {
+    expect(formatTerminalTitle('CC', {
       label: 'auth-feature',
       display: { showFullAgentNames: true, showLabelsInTitles: true, showSessionIdInTitles: false, labelReplacesTitle: false, showLabelOnlyOnFocus: false },
       isFocused: false
@@ -619,7 +623,7 @@ describe('formatTerminalTitle', () => {
   });
 
   test('respects labelReplacesTitle when focused with showLabelOnlyOnFocus', () => {
-    expect(formatTerminalTitle('CL', {
+    expect(formatTerminalTitle('CC', {
       label: 'auth-feature',
       display: { showFullAgentNames: true, showLabelsInTitles: true, showSessionIdInTitles: false, labelReplacesTitle: true, showLabelOnlyOnFocus: true },
       isFocused: true
@@ -627,7 +631,7 @@ describe('formatTerminalTitle', () => {
   });
 
   test('shows base name when not focused with labelReplacesTitle and showLabelOnlyOnFocus', () => {
-    expect(formatTerminalTitle('CL', {
+    expect(formatTerminalTitle('CC', {
       label: 'auth-feature',
       display: { showFullAgentNames: true, showLabelsInTitles: true, showSessionIdInTitles: false, labelReplacesTitle: true, showLabelOnlyOnFocus: true },
       isFocused: false
