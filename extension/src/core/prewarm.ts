@@ -127,6 +127,11 @@ export function isCliReady(output: string, agentType: PrewarmAgentType): boolean
       />\s*$/,
       /cursor/i,                  // Any cursor text
       /"type":\s*"result"/,       // JSON result output
+    ],
+    opencode: [
+      />\s*$/,
+      /opencode/i,                // Any opencode text
+      /Commands:/,                // Help text indicates ready
     ]
   };
 
@@ -184,7 +189,7 @@ export function getSupportedAgentTypes(): PrewarmAgentType[] {
  * Check if an agent type supports pre-warming
  */
 export function supportsPrewarming(agentType: string): agentType is PrewarmAgentType {
-  return agentType === 'claude' || agentType === 'codex' || agentType === 'gemini' || agentType === 'cursor';
+  return agentType === 'claude' || agentType === 'codex' || agentType === 'gemini' || agentType === 'cursor' || agentType === 'opencode';
 }
 
 // === Blocking Prompt Detection ===

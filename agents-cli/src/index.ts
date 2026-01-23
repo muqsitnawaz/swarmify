@@ -32,13 +32,13 @@ import {
 } from './lib/state.js';
 import { cloneRepo, parseSource } from './lib/git.js';
 import {
-  discoverSkills,
-  resolveSkillSource,
-  installSkill,
-  uninstallSkill,
-  listInstalledSkills,
-  listInstalledSkillsWithScope,
-  promoteSkillToUser,
+  discoverCommands,
+  resolveCommandSource,
+  installCommand,
+  uninstallCommand,
+  listInstalledCommands,
+  listInstalledCommandsWithScope,
+  promoteCommandToUser,
 } from './lib/skills.js';
 import type { AgentId, Manifest } from './lib/types.js';
 
@@ -81,7 +81,7 @@ program
 
 program
   .command('status')
-  .description('Show sync status, CLI versions, installed skills and MCP servers')
+  .description('Show sync status, CLI versions, installed commands and MCP servers')
   .action(() => {
     const state = readState();
     const cliStates = getAllCliStates();
@@ -97,20 +97,20 @@ program
       console.log(`  ${agent.name.padEnd(14)} ${status}`);
     }
 
-    console.log(chalk.bold('\nInstalled Skills\n'));
+    console.log(chalk.bold('\nInstalled Commands\n'));
     for (const agentId of ALL_AGENT_IDS) {
       const agent = AGENTS[agentId];
-      const skills = listInstalledSkillsWithScope(agentId, cwd);
-      const userSkills = skills.filter((s) => s.scope === 'user');
-      const projectSkills = skills.filter((s) => s.scope === 'project');
+      const commands = listInstalledCommandsWithScope(agentId, cwd);
+      const userCommands = commands.filter((c) => c.scope === 'user');
+      const projectCommands = commands.filter((c) => c.scope === 'project');
 
-      if (skills.length > 0) {
+      if (commands.length > 0) {
         const parts: string[] = [];
-        if (userSkills.length > 0) {
-          parts.push(`${chalk.cyan(userSkills.length)} user`);
+        if (userCommands.length > 0) {
+          parts.push(`${chalk.cyan(userCommands.length)} user`);
         }
-        if (projectSkills.length > 0) {
-          parts.push(`${chalk.yellow(projectSkills.length)} project`);
+        if (projectCommands.length > 0) {
+          parts.push(`${chalk.yellow(projectCommands.length)} project`);
         }
         console.log(`  ${agent.name}: ${parts.join(', ')}`);
       }
@@ -181,15 +181,15 @@ program
         console.log(chalk.yellow(`No ${MANIFEST_FILENAME} found in repository`));
       }
 
-      const skills = discoverSkills(localPath);
-      console.log(chalk.bold(`\nFound ${skills.length} skills\n`));
+      const commands = discoverCommands(localPath);
+      console.log(chalk.bold(`\nFound ${commands.length} commands\n`));
 
-      for (const skill of skills.slice(0, 10)) {
-        const source = skill.isShared ? 'shared' : skill.agentSpecific;
-        console.log(`  ${chalk.cyan(skill.name.padEnd(20))} ${chalk.gray(source)}`);
+      for (const command of commands.slice(0, 10)) {
+        const source = command.isShared ? 'shared' : command.agentSpecific;
+        console.log(`  ${chalk.cyan(command.name.padEnd(20))} ${chalk.gray(source)}`);
       }
-      if (skills.length > 10) {
-        console.log(chalk.gray(`  ... and ${skills.length - 10} more`));
+      if (commands.length > 10) {
+        console.log(chalk.gray(`  ... and ${commands.length - 10} more`));
       }
 
       if (options.dryRun) {
@@ -227,22 +227,22 @@ program
 
       const defaultAgents = selectedAgents;
 
-      const installSpinner = ora('Installing skills...').start();
+      const installSpinner = ora('Installing commands...').start();
       let installed = 0;
 
-      for (const skill of skills) {
+      for (const command of commands) {
         for (const agentId of defaultAgents as AgentId[]) {
           if (!isCliInstalled(agentId) && agentId !== 'cursor') continue;
 
-          const sourcePath = resolveSkillSource(localPath, skill.name, agentId);
+          const sourcePath = resolveCommandSource(localPath, command.name, agentId);
           if (sourcePath) {
-            installSkill(sourcePath, agentId, skill.name, method);
+            installCommand(sourcePath, agentId, command.name, method);
             installed++;
           }
         }
       }
 
-      installSpinner.succeed(`Installed ${installed} skill instances`);
+      installSpinner.succeed(`Installed ${installed} command instances`);
 
       if (!options.skipMcp && manifest?.mcp) {
         const mcpSpinner = ora('Registering MCP servers...').start();
@@ -281,8 +281,8 @@ program
 
 program
   .command('push')
-  .description('Export local skills to .agents repo for manual commit')
-  .option('--export-only', 'Only export skills, do not update manifest')
+  .description('Export local configuration to .agents repo for manual commit')
+  .option('--export-only', 'Only export, do not update manifest')
   .action(async (options) => {
     const source = await ensureSource();
     const localPath = getRepoLocalPath(source);
@@ -339,20 +339,20 @@ program
   });
 
 // =============================================================================
-// SKILLS COMMANDS
+// COMMANDS COMMANDS
 // =============================================================================
 
-const skillsCmd = program
-  .command('skills')
-  .description('Manage skills/commands');
+const commandsCmd = program
+  .command('commands')
+  .description('Manage slash commands');
 
-skillsCmd
+commandsCmd
   .command('list')
-  .description('List installed skills')
-  .option('-a, --agent <agent>', 'Show skills for specific agent')
+  .description('List installed commands')
+  .option('-a, --agent <agent>', 'Show commands for specific agent')
   .option('-s, --scope <scope>', 'Filter by scope: user, project, or all', 'all')
   .action((options) => {
-    console.log(chalk.bold('\nInstalled Skills\n'));
+    console.log(chalk.bold('\nInstalled Commands\n'));
     const cwd = process.cwd();
 
     const agents = options.agent
@@ -361,31 +361,31 @@ skillsCmd
 
     for (const agentId of agents) {
       const agent = AGENTS[agentId];
-      let skills = listInstalledSkillsWithScope(agentId, cwd);
+      let commands = listInstalledCommandsWithScope(agentId, cwd);
 
       if (options.scope !== 'all') {
-        skills = skills.filter((s) => s.scope === options.scope);
+        commands = commands.filter((c) => c.scope === options.scope);
       }
 
-      if (skills.length === 0) {
+      if (commands.length === 0) {
         console.log(`  ${chalk.bold(agent.name)}: ${chalk.gray('none')}`);
       } else {
         console.log(`  ${chalk.bold(agent.name)}:`);
 
-        const userSkills = skills.filter((s) => s.scope === 'user');
-        const projectSkills = skills.filter((s) => s.scope === 'project');
+        const userCommands = commands.filter((c) => c.scope === 'user');
+        const projectCommands = commands.filter((c) => c.scope === 'project');
 
-        if (userSkills.length > 0 && (options.scope === 'all' || options.scope === 'user')) {
+        if (userCommands.length > 0 && (options.scope === 'all' || options.scope === 'user')) {
           console.log(`    ${chalk.gray('User:')}`);
-          for (const skill of userSkills) {
-            console.log(`      ${chalk.cyan(skill.name)}`);
+          for (const cmd of userCommands) {
+            console.log(`      ${chalk.cyan(cmd.name)}`);
           }
         }
 
-        if (projectSkills.length > 0 && (options.scope === 'all' || options.scope === 'project')) {
+        if (projectCommands.length > 0 && (options.scope === 'all' || options.scope === 'project')) {
           console.log(`    ${chalk.gray('Project:')}`);
-          for (const skill of projectSkills) {
-            console.log(`      ${chalk.yellow(skill.name)}`);
+          for (const cmd of projectCommands) {
+            console.log(`      ${chalk.yellow(cmd.name)}`);
           }
         }
       }
@@ -393,47 +393,47 @@ skillsCmd
     }
   });
 
-skillsCmd
+commandsCmd
   .command('add <source>')
-  .description('Add skill from Git repo or local path')
+  .description('Add commands from Git repo or local path')
   .option('-a, --agents <list>', 'Comma-separated agents to install to')
   .action(async (source: string, options) => {
-    const spinner = ora('Fetching skill...').start();
+    const spinner = ora('Fetching commands...').start();
 
     try {
       const { localPath } = await cloneRepo(source);
-      const skills = discoverSkills(localPath);
-      spinner.succeed(`Found ${skills.length} skills`);
+      const commands = discoverCommands(localPath);
+      spinner.succeed(`Found ${commands.length} commands`);
 
       const agents = options.agents
         ? (options.agents.split(',') as AgentId[])
         : (['claude', 'codex', 'gemini'] as AgentId[]);
 
-      for (const skill of skills) {
-        console.log(`\n  ${chalk.cyan(skill.name)}: ${skill.description}`);
+      for (const command of commands) {
+        console.log(`\n  ${chalk.cyan(command.name)}: ${command.description}`);
 
         for (const agentId of agents) {
           if (!isCliInstalled(agentId) && agentId !== 'cursor') continue;
 
-          const sourcePath = resolveSkillSource(localPath, skill.name, agentId);
+          const sourcePath = resolveCommandSource(localPath, command.name, agentId);
           if (sourcePath) {
-            installSkill(sourcePath, agentId, skill.name, 'symlink');
+            installCommand(sourcePath, agentId, command.name, 'symlink');
             console.log(`    ${chalk.green('+')} ${AGENTS[agentId].name}`);
           }
         }
       }
 
-      console.log(chalk.green('\nSkills installed.'));
+      console.log(chalk.green('\nCommands installed.'));
     } catch (err) {
-      spinner.fail('Failed to add skill');
+      spinner.fail('Failed to add commands');
       console.error(chalk.red((err as Error).message));
       process.exit(1);
     }
   });
 
-skillsCmd
+commandsCmd
   .command('remove <name>')
-  .description('Remove a skill from all agents')
+  .description('Remove a command from all agents')
   .option('-a, --agents <list>', 'Comma-separated agents to remove from')
   .action((name: string, options) => {
     const agents = options.agents
@@ -442,22 +442,22 @@ skillsCmd
 
     let removed = 0;
     for (const agentId of agents) {
-      if (uninstallSkill(agentId, name)) {
+      if (uninstallCommand(agentId, name)) {
         console.log(`  ${chalk.red('-')} ${AGENTS[agentId].name}`);
         removed++;
       }
     }
 
     if (removed === 0) {
-      console.log(chalk.yellow(`Skill '${name}' not found`));
+      console.log(chalk.yellow(`Command '${name}' not found`));
     } else {
       console.log(chalk.green(`\nRemoved from ${removed} agents.`));
     }
   });
 
-skillsCmd
+commandsCmd
   .command('push <name>')
-  .description('Save project-scoped skill to user scope')
+  .description('Save project-scoped command to user scope')
   .option('-a, --agents <list>', 'Comma-separated agents to push for')
   .action((name: string, options) => {
     const cwd = process.cwd();
@@ -469,7 +469,7 @@ skillsCmd
     for (const agentId of agents) {
       if (!isCliInstalled(agentId) && agentId !== 'cursor') continue;
 
-      const result = promoteSkillToUser(agentId, name, cwd);
+      const result = promoteCommandToUser(agentId, name, cwd);
       if (result.success) {
         console.log(`  ${chalk.green('+')} ${AGENTS[agentId].name}`);
         pushed++;
@@ -479,7 +479,7 @@ skillsCmd
     }
 
     if (pushed === 0) {
-      console.log(chalk.yellow(`Project skill '${name}' not found for any agent`));
+      console.log(chalk.yellow(`Project command '${name}' not found for any agent`));
     } else {
       console.log(chalk.green(`\nPushed to user scope for ${pushed} agents.`));
     }
