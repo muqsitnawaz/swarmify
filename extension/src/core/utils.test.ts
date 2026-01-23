@@ -9,6 +9,7 @@ import {
   findTerminalNameByTabLabel,
   formatTerminalTitle,
   getSessionChunk,
+  extractFirstNWords,
   getPrefixFromTerminalId,
   mergeMcpConfig,
   createSwarmServerConfig,
@@ -154,6 +155,35 @@ describe('getSessionChunk', () => {
   test('returns null for undefined or invalid values', () => {
     expect(getSessionChunk(undefined)).toBeNull();
     expect(getSessionChunk('invalid')).toBeNull();
+  });
+});
+
+describe('extractFirstNWords', () => {
+  test('extracts first N words from text', () => {
+    expect(extractFirstNWords('Hello world how are you doing today', 5)).toBe('Hello world how are you...');
+    expect(extractFirstNWords('Hello world how are you', 5)).toBe('Hello world how are you');
+    expect(extractFirstNWords('One two three', 5)).toBe('One two three');
+  });
+
+  test('adds ellipsis when truncated', () => {
+    expect(extractFirstNWords('one two three four five six', 5)).toBe('one two three four five...');
+    expect(extractFirstNWords('one two three four five', 5)).toBe('one two three four five');
+  });
+
+  test('handles edge cases', () => {
+    expect(extractFirstNWords(undefined, 5)).toBeNull();
+    expect(extractFirstNWords('', 5)).toBeNull();
+    expect(extractFirstNWords('   ', 5)).toBeNull();
+  });
+
+  test('normalizes whitespace', () => {
+    expect(extractFirstNWords('hello   world', 5)).toBe('hello world');
+    expect(extractFirstNWords('  hello  world  ', 5)).toBe('hello world');
+  });
+
+  test('works with different N values', () => {
+    expect(extractFirstNWords('one two three four five', 3)).toBe('one two three...');
+    expect(extractFirstNWords('one two', 3)).toBe('one two');
   });
 });
 
