@@ -26,6 +26,9 @@ export function OauthDialog({ provider, onAuthComplete, onClose }: OauthDialogPr
             clearInterval(pollIntervalRef.current);
             pollIntervalRef.current = null;
           }
+          if (status === 'waiting') {
+            setStatus('error');
+          }
         }, 120000);
       } else if (message.type === 'oauthToken' && message.provider === provider) {
         if (message.token) {

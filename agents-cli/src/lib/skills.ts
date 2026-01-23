@@ -4,12 +4,21 @@ import { AGENTS, ensureCommandsDir } from './agents.js';
 import { markdownToToml } from './convert.js';
 import type { AgentId, SkillInstallation } from './types.js';
 
+export type SkillScope = 'user' | 'project';
+
 export interface DiscoveredSkill {
   name: string;
   description: string;
   sourcePath: string;
   isShared: boolean;
   agentSpecific?: AgentId;
+}
+
+export interface InstalledSkill {
+  name: string;
+  scope: SkillScope;
+  path: string;
+  description?: string;
 }
 
 export function discoverSkills(repoPath: string): DiscoveredSkill[] {

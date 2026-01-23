@@ -490,6 +490,10 @@ export async function activate(context: vscode.ExtensionContext) {
       }
 
       terminals.register(terminal, id, agentConfig, pid, context, info.label || undefined);
+
+      if (identOpts.sessionId) {
+        terminals.setSessionId(terminal, identOpts.sessionId);
+      }
     })
   );
 
@@ -1563,11 +1567,15 @@ function updateStatusBarForTerminal(terminal: vscode.Terminal, extensionPath: st
   if (info.isAgent && info.prefix) {
     const expandedName = getExpandedAgentName(info.prefix);
     const displayLabel = entry?.label || entry?.autoLabel;
-    if (displayLabel) {
-      agentStatusBarItem.text = `Agents: ${expandedName} - ${displayLabel}`;
-    } else {
-      agentStatusBarItem.text = `Agents: ${expandedName}`;
+    const sessionChunk = getSessionChunk(entry?.sessionId);
+    const displayParts = [expandedName];
+    if (sessionChunk) {
+      displayParts.push(sessionChunk);
     }
+    if (displayLabel) {
+      displayParts.push(displayLabel);
+    }
+    agentStatusBarItem.text = `Agents: ${displayParts.join(' - ')}`;
     return;
   }
 
@@ -1752,6 +1760,11 @@ async function reloadActiveTerminal(context: vscode.ExtensionContext) {
 
     if (!sessionId || !agentType) {
       vscode.window.showErrorMessage('This terminal does not have session tracking enabled. Reload requires a session ID.');
+      return;
+    }
+
+    if (!supportsPrewarming(agentType)) {
+      vscode.window.showErrorMessage('This agent type does not support session reload.');
       return;
     }
 
