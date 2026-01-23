@@ -15,11 +15,12 @@ export const AGENTS: Record<AgentId, AgentConfig> = {
     configDir: path.join(HOME, '.claude'),
     commandsDir: path.join(HOME, '.claude', 'commands'),
     commandsSubdir: 'commands',
+    skillsDir: path.join(HOME, '.claude', 'skills'),
     hooksDir: 'hooks',
     format: 'markdown',
     variableSyntax: '$ARGUMENTS',
     supportsHooks: true,
-    capabilities: { hooks: true, mcp: true, allowlist: true },
+    capabilities: { hooks: true, mcp: true, allowlist: true, skills: true },
   },
   codex: {
     id: 'codex',
@@ -29,11 +30,12 @@ export const AGENTS: Record<AgentId, AgentConfig> = {
     configDir: path.join(HOME, '.codex'),
     commandsDir: path.join(HOME, '.codex', 'prompts'),
     commandsSubdir: 'prompts',
+    skillsDir: path.join(HOME, '.codex', 'skills'),
     hooksDir: 'hooks',
     format: 'markdown',
     variableSyntax: '$ARGUMENTS',
     supportsHooks: false,
-    capabilities: { hooks: false, mcp: true, allowlist: false },
+    capabilities: { hooks: false, mcp: true, allowlist: false, skills: true },
   },
   gemini: {
     id: 'gemini',
@@ -43,11 +45,12 @@ export const AGENTS: Record<AgentId, AgentConfig> = {
     configDir: path.join(HOME, '.gemini'),
     commandsDir: path.join(HOME, '.gemini', 'commands'),
     commandsSubdir: 'commands',
+    skillsDir: path.join(HOME, '.gemini', 'skills'),
     hooksDir: 'hooks',
     format: 'toml',
     variableSyntax: '{{args}}',
     supportsHooks: true,
-    capabilities: { hooks: true, mcp: true, allowlist: false },
+    capabilities: { hooks: true, mcp: true, allowlist: false, skills: true },
   },
   cursor: {
     id: 'cursor',
@@ -57,11 +60,12 @@ export const AGENTS: Record<AgentId, AgentConfig> = {
     configDir: path.join(HOME, '.cursor'),
     commandsDir: path.join(HOME, '.cursor', 'commands'),
     commandsSubdir: 'commands',
+    skillsDir: path.join(HOME, '.cursor', 'skills'),
     hooksDir: 'hooks',
     format: 'markdown',
     variableSyntax: '$ARGUMENTS',
     supportsHooks: false,
-    capabilities: { hooks: false, mcp: false, allowlist: false },
+    capabilities: { hooks: false, mcp: false, allowlist: false, skills: false },
   },
   opencode: {
     id: 'opencode',
@@ -71,11 +75,12 @@ export const AGENTS: Record<AgentId, AgentConfig> = {
     configDir: path.join(HOME, '.opencode'),
     commandsDir: path.join(HOME, '.opencode', 'commands'),
     commandsSubdir: 'commands',
+    skillsDir: path.join(HOME, '.opencode', 'skills'),
     hooksDir: 'hooks',
     format: 'markdown',
     variableSyntax: '$ARGUMENTS',
     supportsHooks: false,
-    capabilities: { hooks: false, mcp: false, allowlist: false },
+    capabilities: { hooks: false, mcp: false, allowlist: false, skills: false },
   },
   trae: {
     id: 'trae',
@@ -85,17 +90,21 @@ export const AGENTS: Record<AgentId, AgentConfig> = {
     configDir: path.join(HOME, '.trae'),
     commandsDir: path.join(HOME, '.trae', 'commands'),
     commandsSubdir: 'commands',
+    skillsDir: path.join(HOME, '.trae', 'skills'),
     hooksDir: 'hooks',
     format: 'markdown',
     variableSyntax: '$ARGUMENTS',
     supportsHooks: false,
-    capabilities: { hooks: false, mcp: false, allowlist: false },
+    capabilities: { hooks: false, mcp: false, allowlist: false, skills: false },
   },
 };
 
 export const ALL_AGENT_IDS: AgentId[] = Object.keys(AGENTS) as AgentId[];
 export const MCP_CAPABLE_AGENTS: AgentId[] = ALL_AGENT_IDS.filter(
   (id) => AGENTS[id].capabilities.mcp
+);
+export const SKILLS_CAPABLE_AGENTS: AgentId[] = ALL_AGENT_IDS.filter(
+  (id) => AGENTS[id].capabilities.skills
 );
 export const HOOKS_CAPABLE_AGENTS = ['claude', 'gemini'] as const;
 
@@ -161,6 +170,13 @@ export function ensureCommandsDir(agentId: AgentId): void {
   const agent = AGENTS[agentId];
   if (!fs.existsSync(agent.commandsDir)) {
     fs.mkdirSync(agent.commandsDir, { recursive: true });
+  }
+}
+
+export function ensureSkillsDir(agentId: AgentId): void {
+  const agent = AGENTS[agentId];
+  if (!fs.existsSync(agent.skillsDir)) {
+    fs.mkdirSync(agent.skillsDir, { recursive: true });
   }
 }
 

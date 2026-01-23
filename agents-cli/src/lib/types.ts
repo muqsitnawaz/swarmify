@@ -8,6 +8,7 @@ export interface AgentConfig {
   configDir: string;
   commandsDir: string;
   commandsSubdir: string;
+  skillsDir: string;
   hooksDir: string;
   format: 'markdown' | 'toml';
   variableSyntax: string;
@@ -16,6 +17,7 @@ export interface AgentConfig {
     hooks: boolean;
     mcp: boolean;
     allowlist: boolean;
+    skills: boolean;
   };
 }
 
@@ -78,6 +80,35 @@ export interface McpState {
   version?: string;
 }
 
+export interface SkillMetadata {
+  name: string;
+  description: string;
+  author?: string;
+  version?: string;
+  license?: string;
+  keywords?: string[];
+}
+
+export interface SkillInstallation {
+  path: string;
+  method: 'symlink' | 'copy';
+}
+
+export interface SkillState {
+  source: string;
+  ruleCount: number;
+  installations: Partial<Record<AgentId, SkillInstallation>>;
+}
+
+export interface InstalledSkill {
+  name: string;
+  path: string;
+  metadata: SkillMetadata;
+  ruleCount: number;
+  scope: 'user' | 'project';
+  agent: AgentId;
+}
+
 export interface PackageState {
   localPath: string;
   commit: string;
@@ -97,6 +128,7 @@ export interface Meta {
   clis: Partial<Record<AgentId, CliState>>;
   packages: Record<string, PackageState>;
   commands: Record<string, CommandState>;
+  skills: Record<string, SkillState>;
   mcp: Record<string, McpState>;
 }
 
