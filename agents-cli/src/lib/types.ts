@@ -8,8 +8,10 @@ export interface AgentConfig {
   configDir: string;
   commandsDir: string;
   commandsSubdir: string;
+  hooksDir: string;
   format: 'markdown' | 'toml';
   variableSyntax: string;
+  supportsHooks: boolean;
   capabilities: {
     hooks: boolean;
     mcp: boolean;
@@ -28,6 +30,20 @@ export interface McpServerConfig {
   scope: 'user' | 'project';
   agents: AgentId[];
   env?: Record<string, string>;
+}
+
+export interface HookConfig {
+  name: string;
+  script: string;
+  dataFile?: string;
+}
+
+export interface InstalledHook {
+  name: string;
+  path: string;
+  dataFile?: string;
+  scope: 'user' | 'project';
+  agent: AgentId;
 }
 
 export interface Manifest {
