@@ -462,6 +462,7 @@
   },
   "devDependencies": {
     "@electron/rebuild": "^3.7.1",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20.x",
     "@types/vscode": "^1.85.0",
     "typescript": "^5.3.3"
@@ -469,6 +470,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.3",
     "@vscode/webview-ui-toolkit": "^1.4.0",
+    "better-sqlite3": "^12.6.2",
     "node-pty": "^1.0.0",
     "yaml": "^2.8.2"
   },
