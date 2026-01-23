@@ -99,6 +99,42 @@ function buildTerminalTitle(
   return formatTerminalTitle(prefix, { label: label || undefined, display, sessionChunk, isFocused });
 }
 
+/**
+ * Wait for a terminal's shell to be ready to accept input.
+ * Uses VS Code's shell integration API which fires when the shell finishes loading (after .zshrc etc).
+ * Falls back to sendText if shell integration doesn't activate within the timeout.
+ *
+ * @param terminal The terminal to wait for
+ * @param timeoutMs Maximum time to wait (default 5000ms)
+ * @returns true if shell integration is available, false if timed out
+ */
+async function waitForShellReady(terminal: vscode.Terminal, timeoutMs: number = 5000): Promise<boolean> {
+  // Check if shell integration is already available
+  if (terminal.shellIntegration) {
+    return true;
+  }
+
+  return new Promise((resolve) => {
+    let resolved = false;
+
+    const listener = vscode.window.onDidChangeTerminalShellIntegration(({ terminal: t }) => {
+      if (t === terminal && !resolved) {
+        resolved = true;
+        listener.dispose();
+        resolve(true);
+      }
+    });
+
+    setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        listener.dispose();
+        resolve(false); // Timed out, fall back to sendText
+      }
+    }, timeoutMs);
+  });
+}
+
 async function updateTerminalTitleOnFocus(
   newTerminal: vscode.Terminal | undefined,
   context: vscode.ExtensionContext
@@ -1200,7 +1236,14 @@ async function openSingleAgent(
   }
 
   if (command) {
-    terminal.sendText(command);
+    // Wait for shell to be ready before sending command
+    const shellReady = await waitForShellReady(terminal);
+    if (shellReady && terminal.shellIntegration) {
+      terminal.shellIntegration.executeCommand(command);
+    } else {
+      // Fallback to sendText if shell integration not available
+      terminal.sendText(command);
+    }
   }
 }
 
@@ -1546,7 +1589,14 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
       }
 
       if (command) {
-        terminal.sendText(command);
+        // Wait for shell to be ready before sending command
+        const shellReady = await waitForShellReady(terminal);
+        if (shellReady && terminal.shellIntegration) {
+          terminal.shellIntegration.executeCommand(command);
+        } else {
+          // Fallback to sendText if shell integration not available
+          terminal.sendText(command);
+        }
       }
       totalCount++;
     }
@@ -1935,7 +1985,14 @@ async function restoreAgentTerminals(context: vscode.ExtensionContext): Promise<
       // Actually resume the session by sending the resume command
       if (supportsPrewarming(session.agentType)) {
         const resumeCmd = PREWARM_CONFIGS[session.agentType].resumeCommand(session.sessionId);
-        terminal.sendText(resumeCmd);
+        // Wait for shell to be ready before sending resume command
+        const shellReady = await waitForShellReady(terminal);
+        if (shellReady && terminal.shellIntegration) {
+          terminal.shellIntegration.executeCommand(resumeCmd);
+        } else {
+          // Fallback to sendText if shell integration not available
+          terminal.sendText(resumeCmd);
+        }
       }
     }
   }

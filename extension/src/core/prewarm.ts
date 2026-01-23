@@ -1,7 +1,7 @@
 // Session pre-warming - pure functions and types
 // VS Code integration in prewarm.vscode.ts
 
-export type PrewarmAgentType = 'claude' | 'codex' | 'gemini' | 'cursor';
+export type PrewarmAgentType = 'claude' | 'codex' | 'gemini' | 'cursor' | 'opencode';
 
 /** Configuration for pre-warming per agent type */
 export interface PrewarmConfig {
@@ -73,6 +73,15 @@ export const PREWARM_CONFIGS: Record<PrewarmAgentType, PrewarmConfig> = {
     sessionIdPattern: /Session(?:\s+ID)?:\s*([a-zA-Z0-9_-]+)/i,
     exitSequence: ['\x03', '\x03'],  // Ctrl+C twice
     resumeCommand: (id) => `cursor-agent --resume=${id}`
+  },
+  opencode: {
+    agentType: 'opencode',
+    command: 'opencode',
+    statusCommand: '',  // OpenCode doesn't have /status - session ID tracked via session list
+    // Matches OpenCode session ID format: ses_xxx
+    sessionIdPattern: /ses_[a-zA-Z0-9]+/i,
+    exitSequence: ['\x03', '\x03'],  // Ctrl+C twice
+    resumeCommand: (id) => `opencode -s ${id}`
   }
 };
 

@@ -39,27 +39,33 @@ agents pull gh:username/.agents
 
 | Command | Description |
 |---------|-------------|
-| `agents status` | Show installed CLIs, commands, MCP servers |
+| `agents status` | Show installed CLIs, skills (user/project), MCP servers (user/project) |
 | `agents pull <source>` | Pull and install from GitHub or local dir |
 | `agents push` | Export config to .agents repo |
 
 Options: `-y` (skip prompts), `-f` (force), `--dry-run` (preview)
 
-### Commands
+### Skills (Commands/Prompts)
 
 | Command | Description |
 |---------|-------------|
-| `agents skills list` | List installed commands |
+| `agents skills list` | List installed skills with user/project scope |
+| `agents skills list --scope user` | List only user-scoped skills |
+| `agents skills list --scope project` | List only project-scoped skills |
 | `agents skills add <source>` | Install from git repo or local path |
-| `agents skills remove <name>` | Uninstall command |
+| `agents skills remove <name>` | Uninstall skill |
+| `agents skills push <name>` | Copy project-scoped skill to user scope |
 
 ### MCP Servers
 
 | Command | Description |
 |---------|-------------|
-| `agents mcp list` | Show registration status per agent |
+| `agents mcp list` | Show MCP servers with user/project scope |
+| `agents mcp list --scope user` | List only user-scoped MCPs |
+| `agents mcp list --scope project` | List only project-scoped MCPs |
 | `agents mcp add <name> <cmd>` | Add and register across agents |
 | `agents mcp remove <name>` | Unregister from all agents |
+| `agents mcp push <name>` | Copy project-scoped MCP to user scope |
 
 ### CLI Management
 
@@ -68,6 +74,19 @@ Options: `-y` (skip prompts), `-f` (force), `--dry-run` (preview)
 | `agents cli list` | Show versions and install paths |
 | `agents cli upgrade` | Upgrade to manifest versions |
 | `agents cli upgrade --latest` | Upgrade to latest |
+
+## Scopes
+
+Skills and MCP servers can be installed at two scopes:
+
+| Scope | Location | Applies To |
+|-------|----------|------------|
+| User | `~/.{agent}/` | All projects |
+| Project | `./.{agent}/` | Current project only |
+
+When you run `agents status` or `agents skills list` in a directory, it shows both user-scoped and project-scoped items. Project-scoped items are defined in `.claude/commands/`, `.codex/prompts/`, etc. within the current directory.
+
+Use `agents skills push <name>` or `agents mcp push <name>` to copy a project-scoped item to user scope so it's available everywhere.
 
 ## Supported Agents
 

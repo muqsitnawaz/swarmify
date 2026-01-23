@@ -53,6 +53,26 @@ Each agent has different paths and formats. See `AGENTS` object in `lib/agents.t
 
 ## Critical Patterns
 
+### Scope System
+
+Skills and MCPs can exist at two scopes:
+
+| Scope | Location | Use Case |
+|-------|----------|----------|
+| User | `~/.{agent}/` | Available globally, all projects |
+| Project | `./.{agent}/` | Project-specific, committed to repo |
+
+Key functions:
+```typescript
+// lib/skills.ts
+listInstalledSkillsWithScope(agentId, cwd) -> InstalledSkill[]
+promoteSkillToUser(agentId, name, cwd) -> { success, error? }
+
+// lib/agents.ts
+listInstalledMcpsWithScope(agentId, cwd) -> InstalledMcp[]
+promoteMcpToUser(agentId, name, cwd) -> { success, error? }
+```
+
 ### Skill Discovery
 
 Skills are discovered from repo in this order:
@@ -172,11 +192,32 @@ bun run build    # Compiles to dist/
 
 ## File Locations
 
+### Global State
+
 | Item | Path |
 |------|------|
 | State | `~/.agents/state.json` |
 | Cloned repos | `~/.agents/repos/` |
 | External packages | `~/.agents/packages/` |
+
+### User Scope (global)
+
+| Item | Path |
+|------|------|
 | Claude commands | `~/.claude/commands/` |
+| Claude MCP config | `~/.claude/settings.json` |
 | Codex prompts | `~/.codex/prompts/` |
-| Gemini prompts | `~/.gemini/prompts/` |
+| Codex MCP config | `~/.codex/config.json` |
+| Gemini commands | `~/.gemini/commands/` |
+| Gemini MCP config | `~/.gemini/settings.json` |
+
+### Project Scope (per-directory)
+
+| Item | Path |
+|------|------|
+| Claude commands | `./.claude/commands/` |
+| Claude MCP config | `./.claude/settings.json` |
+| Codex prompts | `./.codex/prompts/` |
+| Codex MCP config | `./.codex/config.json` |
+| Gemini commands | `./.gemini/commands/` |
+| Gemini MCP config | `./.gemini/settings.json` |

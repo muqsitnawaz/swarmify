@@ -214,3 +214,124 @@ export function unregisterMcp(
     return { success: false, error: (err as Error).message };
   }
 }
+
+export type McpScope = 'user' | 'project';
+
+export interface InstalledMcp {
+  name: string;
+  scope: McpScope;
+  command?: string;
+}
+
+interface McpConfigEntry {
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+}
+
+/**
+ * Parse MCP servers from a config file.
+ */
+function parseMcpFromConfig(configPath: string): Record<string, McpConfigEntry> {
+  if (!fs.existsSync(configPath)) {
+    return {};
+  }
+
+  try {
+    const content = fs.readFileSync(configPath, 'utf-8');
+    const config = JSON.parse(content);
+
+    // Claude uses mcpServers, Codex uses mcp_servers or similar
+    return config.mcpServers || config.mcp_servers || config.mcp || {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Get user-scoped MCP config path for an agent.
+ */
+function getUserMcpConfigPath(agentId: AgentId): string {
+  const agent = AGENTS[agentId];
+
+  // Claude: ~/.claude/settings.json
+  // Codex: ~/.codex/config.json
+  // Gemini: ~/.gemini/settings.json
+  if (agentId === 'codex') {
+    return path.join(agent.configDir, 'config.json');
+  }
+  return path.join(agent.configDir, 'settings.json');
+}
+
+/**
+ * Get project-scoped MCP config path for an agent.
+ */
+function getProjectMcpConfigPath(agentId: AgentId, cwd: string = process.cwd()): string {
+  // Claude: .claude/settings.json or .claude/settings.local.json
+  // Codex: .codex/config.json
+  // Gemini: .gemini/settings.json
+  if (agentId === 'codex') {
+    return path.join(cwd, `.${agentId}`, 'config.json');
+  }
+  return path.join(cwd, `.${agentId}`, 'settings.json');
+}
+
+/**
+ * List installed MCP servers with scope information.
+ */
+export function listInstalledMcpsWithScope(
+  agentId: AgentId,
+  cwd: string = process.cwd()
+): InstalledMcp[] {
+  const results: InstalledMcp[] = [];
+
+  // User-scoped MCPs
+  const userConfigPath = getUserMcpConfigPath(agentId);
+  const userMcps = parseMcpFromConfig(userConfigPath);
+  for (const [name, config] of Object.entries(userMcps)) {
+    results.push({
+      name,
+      scope: 'user',
+      command: config.command || (config.args ? config.args.join(' ') : undefined),
+    });
+  }
+
+  // Project-scoped MCPs
+  const projectConfigPath = getProjectMcpConfigPath(agentId, cwd);
+  const projectMcps = parseMcpFromConfig(projectConfigPath);
+  for (const [name, config] of Object.entries(projectMcps)) {
+    // Skip if already in user scope (project can override, but we show both)
+    results.push({
+      name,
+      scope: 'project',
+      command: config.command || (config.args ? config.args.join(' ') : undefined),
+    });
+  }
+
+  return results;
+}
+
+/**
+ * Copy a project-scoped MCP to user scope.
+ */
+export function promoteMcpToUser(
+  agentId: AgentId,
+  mcpName: string,
+  cwd: string = process.cwd()
+): { success: boolean; error?: string } {
+  const projectConfigPath = getProjectMcpConfigPath(agentId, cwd);
+  const projectMcps = parseMcpFromConfig(projectConfigPath);
+
+  if (!projectMcps[mcpName]) {
+    return { success: false, error: `Project MCP '${mcpName}' not found` };
+  }
+
+  const mcpConfig = projectMcps[mcpName];
+  const command = mcpConfig.command || (mcpConfig.args ? mcpConfig.args.join(' ') : '');
+
+  if (!command) {
+    return { success: false, error: 'Cannot determine MCP command' };
+  }
+
+  return registerMcp(agentId, mcpName, command, 'user');
+}

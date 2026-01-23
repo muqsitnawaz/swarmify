@@ -15,6 +15,8 @@ import {
   isMcpRegistered,
   registerMcp,
   unregisterMcp,
+  listInstalledMcpsWithScope,
+  promoteMcpToUser,
 } from './lib/agents.js';
 import {
   readManifest,
@@ -35,10 +37,38 @@ import {
   installSkill,
   uninstallSkill,
   listInstalledSkills,
+  listInstalledSkillsWithScope,
+  promoteSkillToUser,
 } from './lib/skills.js';
 import type { AgentId, Manifest } from './lib/types.js';
 
+const DEFAULT_AGENTS_REPO = 'gh:muqsitnawaz/.agents';
+
 const program = new Command();
+
+/**
+ * Ensure a .agents repo source is configured.
+ * If not, automatically pull from the default repo.
+ * Returns the source string.
+ */
+async function ensureSource(): Promise<string> {
+  const state = readState();
+  if (state.source) {
+    return state.source;
+  }
+
+  console.log(chalk.gray(`No repo configured. Initializing from ${DEFAULT_AGENTS_REPO}...`));
+
+  const { localPath } = await cloneRepo(DEFAULT_AGENTS_REPO);
+
+  writeState({
+    ...state,
+    source: DEFAULT_AGENTS_REPO,
+    lastSync: new Date().toISOString(),
+  });
+
+  return DEFAULT_AGENTS_REPO;
+}
 
 program
   .name('agents')
@@ -55,6 +85,7 @@ program
   .action(() => {
     const state = readState();
     const cliStates = getAllCliStates();
+    const cwd = process.cwd();
 
     console.log(chalk.bold('\nAgent CLIs\n'));
     for (const agentId of ALL_AGENT_IDS) {
@@ -69,9 +100,40 @@ program
     console.log(chalk.bold('\nInstalled Skills\n'));
     for (const agentId of ALL_AGENT_IDS) {
       const agent = AGENTS[agentId];
-      const skills = listInstalledSkills(agentId);
+      const skills = listInstalledSkillsWithScope(agentId, cwd);
+      const userSkills = skills.filter((s) => s.scope === 'user');
+      const projectSkills = skills.filter((s) => s.scope === 'project');
+
       if (skills.length > 0) {
-        console.log(`  ${agent.name}: ${chalk.cyan(skills.length)} skills`);
+        const parts: string[] = [];
+        if (userSkills.length > 0) {
+          parts.push(`${chalk.cyan(userSkills.length)} user`);
+        }
+        if (projectSkills.length > 0) {
+          parts.push(`${chalk.yellow(projectSkills.length)} project`);
+        }
+        console.log(`  ${agent.name}: ${parts.join(', ')}`);
+      }
+    }
+
+    console.log(chalk.bold('\nInstalled MCP Servers\n'));
+    for (const agentId of MCP_CAPABLE_AGENTS) {
+      const agent = AGENTS[agentId];
+      if (!isCliInstalled(agentId)) continue;
+
+      const mcps = listInstalledMcpsWithScope(agentId, cwd);
+      const userMcps = mcps.filter((m) => m.scope === 'user');
+      const projectMcps = mcps.filter((m) => m.scope === 'project');
+
+      if (mcps.length > 0) {
+        const parts: string[] = [];
+        if (userMcps.length > 0) {
+          parts.push(`${chalk.cyan(userMcps.length)} user`);
+        }
+        if (projectMcps.length > 0) {
+          parts.push(`${chalk.yellow(projectMcps.length)} project`);
+        }
+        console.log(`  ${agent.name}: ${parts.join(', ')}`);
       }
     }
 
@@ -222,13 +284,8 @@ program
   .description('Export local skills to .agents repo for manual commit')
   .option('--export-only', 'Only export skills, do not update manifest')
   .action(async (options) => {
-    const state = readState();
-    if (!state.source) {
-      console.log(chalk.red('No .agents repo configured. Run: agents pull <source>'));
-      process.exit(1);
-    }
-
-    const localPath = getRepoLocalPath(state.source);
+    const source = await ensureSource();
+    const localPath = getRepoLocalPath(source);
     const manifest = readManifest(localPath) || createDefaultManifest();
 
     console.log(chalk.bold('\nExporting local configuration...\n'));
@@ -293,8 +350,10 @@ skillsCmd
   .command('list')
   .description('List installed skills')
   .option('-a, --agent <agent>', 'Show skills for specific agent')
+  .option('-s, --scope <scope>', 'Filter by scope: user, project, or all', 'all')
   .action((options) => {
     console.log(chalk.bold('\nInstalled Skills\n'));
+    const cwd = process.cwd();
 
     const agents = options.agent
       ? [options.agent as AgentId]
@@ -302,14 +361,32 @@ skillsCmd
 
     for (const agentId of agents) {
       const agent = AGENTS[agentId];
-      const skills = listInstalledSkills(agentId);
+      let skills = listInstalledSkillsWithScope(agentId, cwd);
+
+      if (options.scope !== 'all') {
+        skills = skills.filter((s) => s.scope === options.scope);
+      }
 
       if (skills.length === 0) {
         console.log(`  ${chalk.bold(agent.name)}: ${chalk.gray('none')}`);
       } else {
         console.log(`  ${chalk.bold(agent.name)}:`);
-        for (const skill of skills) {
-          console.log(`    ${chalk.cyan(skill)}`);
+
+        const userSkills = skills.filter((s) => s.scope === 'user');
+        const projectSkills = skills.filter((s) => s.scope === 'project');
+
+        if (userSkills.length > 0 && (options.scope === 'all' || options.scope === 'user')) {
+          console.log(`    ${chalk.gray('User:')}`);
+          for (const skill of userSkills) {
+            console.log(`      ${chalk.cyan(skill.name)}`);
+          }
+        }
+
+        if (projectSkills.length > 0 && (options.scope === 'all' || options.scope === 'project')) {
+          console.log(`    ${chalk.gray('Project:')}`);
+          for (const skill of projectSkills) {
+            console.log(`      ${chalk.yellow(skill.name)}`);
+          }
         }
       }
       console.log();
@@ -378,6 +455,36 @@ skillsCmd
     }
   });
 
+skillsCmd
+  .command('push <name>')
+  .description('Save project-scoped skill to user scope')
+  .option('-a, --agents <list>', 'Comma-separated agents to push for')
+  .action((name: string, options) => {
+    const cwd = process.cwd();
+    const agents = options.agents
+      ? (options.agents.split(',') as AgentId[])
+      : ALL_AGENT_IDS;
+
+    let pushed = 0;
+    for (const agentId of agents) {
+      if (!isCliInstalled(agentId) && agentId !== 'cursor') continue;
+
+      const result = promoteSkillToUser(agentId, name, cwd);
+      if (result.success) {
+        console.log(`  ${chalk.green('+')} ${AGENTS[agentId].name}`);
+        pushed++;
+      } else if (result.error && !result.error.includes('not found')) {
+        console.log(`  ${chalk.red('x')} ${AGENTS[agentId].name}: ${result.error}`);
+      }
+    }
+
+    if (pushed === 0) {
+      console.log(chalk.yellow(`Project skill '${name}' not found for any agent`));
+    } else {
+      console.log(chalk.green(`\nPushed to user scope for ${pushed} agents.`));
+    }
+  });
+
 // =============================================================================
 // MCP COMMANDS
 // =============================================================================
@@ -389,8 +496,10 @@ const mcpCmd = program
 mcpCmd
   .command('list')
   .description('List MCP servers and registration status')
-  .action(() => {
+  .option('-s, --scope <scope>', 'Filter by scope: user, project, or all', 'all')
+  .action((options) => {
     console.log(chalk.bold('\nMCP Servers\n'));
+    const cwd = process.cwd();
 
     for (const agentId of MCP_CAPABLE_AGENTS) {
       const agent = AGENTS[agentId];
@@ -399,9 +508,34 @@ mcpCmd
         continue;
       }
 
-      console.log(`  ${chalk.bold(agent.name)}:`);
-      const swarmRegistered = isMcpRegistered(agentId, 'Swarm');
-      console.log(`    Swarm: ${swarmRegistered ? chalk.green('registered') : chalk.gray('not registered')}`);
+      let mcps = listInstalledMcpsWithScope(agentId, cwd);
+
+      if (options.scope !== 'all') {
+        mcps = mcps.filter((m) => m.scope === options.scope);
+      }
+
+      if (mcps.length === 0) {
+        console.log(`  ${chalk.bold(agent.name)}: ${chalk.gray('none')}`);
+      } else {
+        console.log(`  ${chalk.bold(agent.name)}:`);
+
+        const userMcps = mcps.filter((m) => m.scope === 'user');
+        const projectMcps = mcps.filter((m) => m.scope === 'project');
+
+        if (userMcps.length > 0 && (options.scope === 'all' || options.scope === 'user')) {
+          console.log(`    ${chalk.gray('User:')}`);
+          for (const mcp of userMcps) {
+            console.log(`      ${chalk.cyan(mcp.name)}`);
+          }
+        }
+
+        if (projectMcps.length > 0 && (options.scope === 'all' || options.scope === 'project')) {
+          console.log(`    ${chalk.gray('Project:')}`);
+          for (const mcp of projectMcps) {
+            console.log(`      ${chalk.yellow(mcp.name)}`);
+          }
+        }
+      }
       console.log();
     }
   });
@@ -411,14 +545,9 @@ mcpCmd
   .description('Add MCP server to manifest')
   .option('-a, --agents <list>', 'Comma-separated agents', 'claude,codex,gemini')
   .option('-s, --scope <scope>', 'Scope: user or project', 'user')
-  .action((name: string, command: string, options) => {
-    const state = readState();
-    if (!state.source) {
-      console.log(chalk.yellow('No .agents repo configured. Run: agents pull <source>'));
-      return;
-    }
-
-    const localPath = getRepoLocalPath(state.source);
+  .action(async (name: string, command: string, options) => {
+    const source = await ensureSource();
+    const localPath = getRepoLocalPath(source);
     const manifest = readManifest(localPath) || createDefaultManifest();
 
     manifest.mcp = manifest.mcp || {};
@@ -465,16 +594,10 @@ mcpCmd
   .command('register [name]')
   .description('Register MCP server(s) with agent CLIs')
   .option('-a, --agents <list>', 'Comma-separated agents')
-  .action((name: string | undefined, options) => {
-    const state = readState();
-
+  .action(async (name: string | undefined, options) => {
     if (!name) {
-      if (!state.source) {
-        console.log(chalk.yellow('No .agents repo configured. Run: agents pull <source>'));
-        return;
-      }
-
-      const localPath = getRepoLocalPath(state.source);
+      const source = await ensureSource();
+      const localPath = getRepoLocalPath(source);
       const manifest = readManifest(localPath);
 
       if (!manifest?.mcp) {
@@ -499,6 +622,36 @@ mcpCmd
     }
 
     console.log(chalk.yellow('Single MCP registration not yet implemented'));
+  });
+
+mcpCmd
+  .command('push <name>')
+  .description('Save project-scoped MCP to user scope')
+  .option('-a, --agents <list>', 'Comma-separated agents to push for')
+  .action((name: string, options) => {
+    const cwd = process.cwd();
+    const agents = options.agents
+      ? (options.agents.split(',') as AgentId[])
+      : MCP_CAPABLE_AGENTS;
+
+    let pushed = 0;
+    for (const agentId of agents) {
+      if (!isCliInstalled(agentId)) continue;
+
+      const result = promoteMcpToUser(agentId, name, cwd);
+      if (result.success) {
+        console.log(`  ${chalk.green('+')} ${AGENTS[agentId].name}`);
+        pushed++;
+      } else if (result.error && !result.error.includes('not found')) {
+        console.log(`  ${chalk.red('x')} ${AGENTS[agentId].name}: ${result.error}`);
+      }
+    }
+
+    if (pushed === 0) {
+      console.log(chalk.yellow(`Project MCP '${name}' not found for any agent`));
+    } else {
+      console.log(chalk.green(`\nPushed to user scope for ${pushed} agents.`));
+    }
   });
 
 // =============================================================================
@@ -536,13 +689,7 @@ cliCmd
   .command('add <agent>')
   .description('Add agent CLI to manifest')
   .option('-v, --version <version>', 'Version to pin', 'latest')
-  .action((agent: string, options) => {
-    const state = readState();
-    if (!state.source) {
-      console.log(chalk.yellow('No .agents repo configured. Run: agents pull <source>'));
-      return;
-    }
-
+  .action(async (agent: string, options) => {
     const agentId = agent.toLowerCase() as AgentId;
     if (!AGENTS[agentId]) {
       console.log(chalk.red(`Unknown agent: ${agent}`));
@@ -550,7 +697,8 @@ cliCmd
       return;
     }
 
-    const localPath = getRepoLocalPath(state.source);
+    const source = await ensureSource();
+    const localPath = getRepoLocalPath(source);
     const manifest = readManifest(localPath) || createDefaultManifest();
 
     manifest.clis = manifest.clis || {};
@@ -566,15 +714,10 @@ cliCmd
 cliCmd
   .command('remove <agent>')
   .description('Remove agent CLI from manifest')
-  .action((agent: string) => {
-    const state = readState();
-    if (!state.source) {
-      console.log(chalk.yellow('No .agents repo configured. Run: agents pull <source>'));
-      return;
-    }
-
+  .action(async (agent: string) => {
+    const source = await ensureSource();
     const agentId = agent.toLowerCase() as AgentId;
-    const localPath = getRepoLocalPath(state.source);
+    const localPath = getRepoLocalPath(source);
     const manifest = readManifest(localPath);
 
     if (manifest?.clis?.[agentId]) {
