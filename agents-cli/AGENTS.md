@@ -9,11 +9,11 @@ src/
     types.ts            # Core types (AgentId, Manifest, State)
     agents.ts           # Agent configs, CLI detection, MCP ops
     manifest.ts         # agents.yaml parsing/serialization
-    state.ts            # ~/.agents/state.json management
+    state.ts            # ~/.agents/meta.yaml management
     git.ts              # Git clone/pull operations
     hooks.ts            # Hook discovery and installation
-    skills.ts           # Slash command discovery and installation
-    agent-skills.ts     # Agent Skills (SKILL.md + rules/) management
+    commands.ts         # Slash command discovery and installation
+    skills.ts           # Agent Skills (SKILL.md + rules/) management
     convert.ts          # Markdown <-> TOML conversion
 ```
 
@@ -66,11 +66,11 @@ Commands, skills, hooks, and MCPs can exist at two scopes:
 
 Key functions:
 ```typescript
-// lib/skills.ts (manages slash commands/prompts)
+// lib/commands.ts (manages slash commands/prompts)
 listInstalledCommandsWithScope(agentId, cwd) -> InstalledCommand[]
 promoteCommandToUser(agentId, name, cwd) -> { success, error? }
 
-// lib/agent-skills.ts (manages Agent Skills)
+// lib/skills.ts (manages Agent Skills)
 listInstalledSkillsWithScope(agentId, cwd) -> InstalledSkill[]
 promoteSkillToUser(agentId, name, cwd) -> { success, error? }
 
@@ -90,7 +90,7 @@ promoteMcpToUser(agentId, name, cwd) -> { success, error? }
 | Location | `~/.agents/commands/` | `~/.agents/skills/` |
 | Structure | Single `.md` file | Directory: `SKILL.md` + `rules/*.md` |
 | Invocation | `/plan`, `/debug` | Via `Skill` tool interface |
-| Library | `lib/skills.ts` | `lib/agent-skills.ts` |
+| Library | `lib/commands.ts` | `lib/skills.ts` |
 | Discovery | `discoverCommands()` | `discoverSkillsFromRepo()` |
 
 ### Command Discovery

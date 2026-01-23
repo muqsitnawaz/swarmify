@@ -424,14 +424,16 @@ commandsCmd
         if (userCommands.length > 0 && (options.scope === 'all' || options.scope === 'user')) {
           console.log(`    ${chalk.gray('User:')}`);
           for (const cmd of userCommands) {
-            console.log(`      ${chalk.cyan(cmd.name)}`);
+            const desc = cmd.description ? ` - ${chalk.gray(cmd.description)}` : '';
+            console.log(`      ${chalk.cyan(cmd.name)}${desc}`);
           }
         }
 
         if (projectCommands.length > 0 && (options.scope === 'all' || options.scope === 'project')) {
           console.log(`    ${chalk.gray('Project:')}`);
           for (const cmd of projectCommands) {
-            console.log(`      ${chalk.yellow(cmd.name)}`);
+            const desc = cmd.description ? ` - ${chalk.gray(cmd.description)}` : '';
+            console.log(`      ${chalk.yellow(cmd.name)}${desc}`);
           }
         }
       }
