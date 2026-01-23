@@ -47,6 +47,7 @@ export function createDefaultMeta(): Meta {
     clis: {},
     packages: {},
     commands: {},
+    skills: {},
     mcp: {},
   };
 }
