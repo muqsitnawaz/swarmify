@@ -15,8 +15,10 @@ export const AGENTS: Record<AgentId, AgentConfig> = {
     configDir: path.join(HOME, '.claude'),
     commandsDir: path.join(HOME, '.claude', 'commands'),
     commandsSubdir: 'commands',
+    hooksDir: 'hooks',
     format: 'markdown',
     variableSyntax: '$ARGUMENTS',
+    supportsHooks: true,
     capabilities: { hooks: true, mcp: true, allowlist: true },
   },
   codex: {
@@ -27,8 +29,10 @@ export const AGENTS: Record<AgentId, AgentConfig> = {
     configDir: path.join(HOME, '.codex'),
     commandsDir: path.join(HOME, '.codex', 'prompts'),
     commandsSubdir: 'prompts',
+    hooksDir: 'hooks',
     format: 'markdown',
     variableSyntax: '$ARGUMENTS',
+    supportsHooks: false,
     capabilities: { hooks: false, mcp: true, allowlist: false },
   },
   gemini: {
@@ -39,9 +43,11 @@ export const AGENTS: Record<AgentId, AgentConfig> = {
     configDir: path.join(HOME, '.gemini'),
     commandsDir: path.join(HOME, '.gemini', 'commands'),
     commandsSubdir: 'commands',
+    hooksDir: 'hooks',
     format: 'toml',
     variableSyntax: '{{args}}',
-    capabilities: { hooks: false, mcp: true, allowlist: false },
+    supportsHooks: true,
+    capabilities: { hooks: true, mcp: true, allowlist: false },
   },
   cursor: {
     id: 'cursor',
@@ -51,8 +57,10 @@ export const AGENTS: Record<AgentId, AgentConfig> = {
     configDir: path.join(HOME, '.cursor'),
     commandsDir: path.join(HOME, '.cursor', 'commands'),
     commandsSubdir: 'commands',
+    hooksDir: 'hooks',
     format: 'markdown',
     variableSyntax: '$ARGUMENTS',
+    supportsHooks: false,
     capabilities: { hooks: false, mcp: false, allowlist: false },
   },
   opencode: {
@@ -63,8 +71,10 @@ export const AGENTS: Record<AgentId, AgentConfig> = {
     configDir: path.join(HOME, '.opencode'),
     commandsDir: path.join(HOME, '.opencode', 'commands'),
     commandsSubdir: 'commands',
+    hooksDir: 'hooks',
     format: 'markdown',
     variableSyntax: '$ARGUMENTS',
+    supportsHooks: false,
     capabilities: { hooks: false, mcp: false, allowlist: false },
   },
   trae: {
@@ -75,8 +85,10 @@ export const AGENTS: Record<AgentId, AgentConfig> = {
     configDir: path.join(HOME, '.trae'),
     commandsDir: path.join(HOME, '.trae', 'commands'),
     commandsSubdir: 'commands',
+    hooksDir: 'hooks',
     format: 'markdown',
     variableSyntax: '$ARGUMENTS',
+    supportsHooks: false,
     capabilities: { hooks: false, mcp: false, allowlist: false },
   },
 };
@@ -85,6 +97,7 @@ export const ALL_AGENT_IDS: AgentId[] = Object.keys(AGENTS) as AgentId[];
 export const MCP_CAPABLE_AGENTS: AgentId[] = ALL_AGENT_IDS.filter(
   (id) => AGENTS[id].capabilities.mcp
 );
+export const HOOKS_CAPABLE_AGENTS = ['claude', 'gemini'] as const;
 
 export function isCliInstalled(agentId: AgentId): boolean {
   const agent = AGENTS[agentId];
