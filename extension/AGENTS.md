@@ -366,10 +366,12 @@ Live activity extraction from agent session files. Shows what the agent is curre
 - Codex: `~/.codex/sessions/{year}/{month}/{day}/*.jsonl`
 - Gemini: `~/.gemini/sessions/*.jsonl`
 - OpenCode: `~/.local/share/opencode/storage/session/{projectHash}/*.json` (messages in `storage/message/{sessionId}/`, content in `storage/part/{messageId}/`)
-- Cursor: `~/.cursor/chats/{hash}/{uuid}/store.db` (SQLite, not currently supported for reading)
+- Cursor: `~/.cursor/chats/{hash}/{uuid}/store.db` (SQLite with blobs table containing JSON messages)
 
 **Implementation details**:
 - `getSessionPreviewInfo()`: Reads tail of session file and parses for recent activity
+- `getOpenCodeSessionPreviewInfo()`: Reads OpenCode's 3-level JSON storage structure
+- `getCursorSessionPreviewInfo()`: Reads Cursor's SQLite database (better-sqlite3)
 - `getSessionPathBySessionId()`: Locates session file by searching known directories
 - File size filtering (minimum 5KB) to skip empty sessions
 - Sort by modification time to find most recent
