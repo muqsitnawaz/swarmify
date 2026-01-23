@@ -13,6 +13,7 @@ npm install -g @swarmify/agents-cli
 | Capability | Description |
 |------------|-------------|
 | Commands | Install to all agents at once, auto-converts Markdown to TOML for Gemini |
+| Hooks | Sync hooks and their data files across machines |
 | MCP Servers | Register/unregister across Claude, Codex, Gemini in one command |
 | CLI Versions | Pin versions, upgrade all, sync across machines |
 | Sync | Push config to GitHub, pull on new machines |
@@ -24,7 +25,7 @@ npm install -g @swarmify/agents-cli
 agents status
 
 # Install commands from any source
-agents skills add gh:user/my-commands
+agents commands add gh:user/my-commands
 
 # Register MCP servers
 agents mcp add swarm "npx @swarmify/agents-mcp"
@@ -39,7 +40,7 @@ agents pull gh:username/.agents
 
 | Command | Description |
 |---------|-------------|
-| `agents status` | Show installed CLIs, skills (user/project), MCP servers (user/project) |
+| `agents status` | Show installed CLIs, commands, hooks, MCP servers |
 | `agents pull <source>` | Pull and install from GitHub or local dir |
 | `agents push` | Export config to .agents repo |
 
@@ -49,9 +50,7 @@ Options: `-y` (skip prompts), `-f` (force), `--dry-run` (preview)
 
 | Command | Description |
 |---------|-------------|
-| `agents commands list` | List installed commands with user/project scope |
-| `agents commands list --scope user` | List only user-scoped commands |
-| `agents commands list --scope project` | List only project-scoped commands |
+| `agents commands list` | List all installed commands |
 | `agents commands add <source>` | Install from git repo or local path |
 | `agents commands remove <name>` | Uninstall command |
 | `agents commands push <name>` | Copy project-scoped command to user scope |
@@ -60,12 +59,19 @@ Options: `-y` (skip prompts), `-f` (force), `--dry-run` (preview)
 
 | Command | Description |
 |---------|-------------|
-| `agents mcp list` | Show MCP servers with user/project scope |
-| `agents mcp list --scope user` | List only user-scoped MCPs |
-| `agents mcp list --scope project` | List only project-scoped MCPs |
+| `agents mcp list` | List all MCP servers |
 | `agents mcp add <name> <cmd>` | Add and register across agents |
 | `agents mcp remove <name>` | Unregister from all agents |
 | `agents mcp push <name>` | Copy project-scoped MCP to user scope |
+
+### Hooks
+
+| Command | Description |
+|---------|-------------|
+| `agents hooks list` | List all installed hooks |
+| `agents hooks add <source>` | Install from git repo or local path |
+| `agents hooks remove <name>` | Uninstall hook |
+| `agents hooks push <name>` | Copy project-scoped hook to user scope |
 
 ### CLI Management
 
@@ -75,29 +81,44 @@ Options: `-y` (skip prompts), `-f` (force), `--dry-run` (preview)
 | `agents cli upgrade` | Upgrade to manifest versions |
 | `agents cli upgrade --latest` | Upgrade to latest |
 
+## Filtering
+
+All resource commands support filtering by agent and scope:
+
+```bash
+# Filter by agent
+agents commands list --agent claude
+agents mcp list --agent codex
+
+# Filter by scope
+agents commands list --scope user
+agents hooks list --scope project
+
+# Combine filters
+agents commands list --agent claude --scope user
+```
+
 ## Scopes
 
-Commands and MCP servers can be installed at two scopes:
+Resources (commands, MCP servers, hooks) can exist at two scopes:
 
 | Scope | Location | Applies To |
 |-------|----------|------------|
 | User | `~/.{agent}/` | All projects |
 | Project | `./.{agent}/` | Current project only |
 
-When you run `agents status` or `agents commands list` in a directory, it shows both user-scoped and project-scoped items. Project-scoped items are defined in `.claude/commands/`, `.codex/prompts/`, etc. within the current directory.
-
-Use `agents commands push <name>` or `agents mcp push <name>` to copy a project-scoped item to user scope so it's available everywhere.
+Use `push` to copy a project-scoped item to user scope so it's available everywhere.
 
 ## Supported Agents
 
-| Agent | CLI | Config | MCP |
-|-------|-----|--------|-----|
-| Claude | `claude` | `~/.claude/` | Yes |
-| Codex | `codex` | `~/.codex/` | Yes |
-| Gemini | `gemini` | `~/.gemini/` | Yes |
-| Cursor | `cursor-agent` | `~/.cursor-agent/` | - |
-| OpenCode | `opencode` | `~/.opencode/` | - |
-| Trae | `trae-cli` | `~/.trae/` | - |
+| Agent | CLI | Config | MCP | Hooks |
+|-------|-----|--------|-----|-------|
+| Claude | `claude` | `~/.claude/` | Yes | Yes |
+| Codex | `codex` | `~/.codex/` | Yes | - |
+| Gemini | `gemini` | `~/.gemini/` | Yes | Yes |
+| Cursor | `cursor-agent` | `~/.cursor-agent/` | - | - |
+| OpenCode | `opencode` | `~/.opencode/` | - | - |
+| Trae | `trae-cli` | `~/.trae/` | - | - |
 
 ## Repo Structure
 
@@ -106,9 +127,15 @@ Your `.agents` repo:
 ```
 .agents/
   agents.yaml           # CLIs, MCP servers, defaults
-  shared/commands/      # Commands for all agents
-  claude/commands/      # Claude-specific
-  gemini/prompts/       # Gemini (TOML format)
+  shared/
+    commands/           # Commands for all agents
+    hooks/              # Hooks for all agents (+ data files)
+  claude/
+    commands/           # Claude-specific commands
+    hooks/              # Claude-specific hooks
+  gemini/
+    prompts/            # Gemini commands (TOML format)
+    hooks/              # Gemini-specific hooks
 ```
 
 ## Manifest Format
