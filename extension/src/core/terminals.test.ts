@@ -108,13 +108,13 @@ describe('countRunningFromNames', () => {
 
 describe('buildAgentTerminalEnv', () => {
   test('includes AGENT_SESSION_ID when provided', () => {
-    const env = buildAgentTerminalEnv('CL-123', 'session-abc');
-    expect(env.AGENT_TERMINAL_ID).toBe('CL-123');
+    const env = buildAgentTerminalEnv('CC-123', 'session-abc');
+    expect(env.AGENT_TERMINAL_ID).toBe('CC-123');
   });
 
   test('includes AGENT_SESSION_ID', () => {
-    const env = buildAgentTerminalEnv('CL-123', null);
-    expect(env.AGENT_TERMINAL_ID).toBe('CL-123');
+    const env = buildAgentTerminalEnv('CC-123', null);
+    expect(env.AGENT_TERMINAL_ID).toBe('CC-123');
     expect(env.AGENT_SESSION_ID).toBe('');
     expect(env.AGENT_WORKSPACE_DIR).toBe('');
   });

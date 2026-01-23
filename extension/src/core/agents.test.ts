@@ -118,7 +118,7 @@ describe('getBuiltInByPrefix', () => {
 });
 
 describe('getBuiltInDefByTitle', () => {
-  test('returns claude for CL title', () => {
+  test('returns claude for CC title', () => {
     const agent = getBuiltInDefByTitle(CLAUDE_TITLE);
     expect(agent).toBeDefined();
     expect(agent!.key).toBe('claude');
