@@ -1611,11 +1611,15 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
 /**
  * Fetch and set auto-label from first user message in session file.
  * Only fetches if sessionId exists but autoLabel is not set.
+ *
+ * Supported agents: claude, codex, gemini (have session files we can read)
+ * Not supported: cursor, opencode (no session file access)
  */
 async function fetchAndSetAutoLabel(terminal: vscode.Terminal, entry: terminals.EditorTerminal): Promise<string | undefined> {
   if (!entry.sessionId || entry.autoLabel) return entry.autoLabel;
 
   const agentType = entry.agentType;
+  // Only claude, codex, gemini have session files we can read for auto-label
   if (!agentType || !['claude', 'codex', 'gemini'].includes(agentType)) return undefined;
 
   try {
