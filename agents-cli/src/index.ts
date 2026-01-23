@@ -817,16 +817,18 @@ skillsCmd
         if (userSkills.length > 0 && (options.scope === 'all' || options.scope === 'user')) {
           console.log(`    ${chalk.gray('User:')}`);
           for (const skill of userSkills) {
-            const ruleInfo = skill.ruleCount > 0 ? ` (${skill.ruleCount} rules)` : '';
-            console.log(`      ${chalk.cyan(skill.name)}${chalk.gray(ruleInfo)}`);
+            const desc = skill.metadata.description ? ` - ${chalk.gray(skill.metadata.description)}` : '';
+            const ruleInfo = skill.ruleCount > 0 ? chalk.gray(` (${skill.ruleCount} rules)`) : '';
+            console.log(`      ${chalk.cyan(skill.name)}${desc}${ruleInfo}`);
           }
         }
 
         if (projectSkills.length > 0 && (options.scope === 'all' || options.scope === 'project')) {
           console.log(`    ${chalk.gray('Project:')}`);
           for (const skill of projectSkills) {
-            const ruleInfo = skill.ruleCount > 0 ? ` (${skill.ruleCount} rules)` : '';
-            console.log(`      ${chalk.yellow(skill.name)}${chalk.gray(ruleInfo)}`);
+            const desc = skill.metadata.description ? ` - ${chalk.gray(skill.metadata.description)}` : '';
+            const ruleInfo = skill.ruleCount > 0 ? chalk.gray(` (${skill.ruleCount} rules)`) : '';
+            console.log(`      ${chalk.yellow(skill.name)}${desc}${ruleInfo}`);
           }
         }
       }
