@@ -6,6 +6,7 @@ VS Code extension for multi-agent coding. Spawns AI terminals (Claude, Codex, Ge
 
 ```
 /src/core              Pure functions (no VS Code dependencies)
+/src/core/handoff.ts     Handoff context extraction and prompt formatting
 /src/vscode            VS Code integration (commands, webviews)
 /src/vscode/ui/.tmp   Webview state files
 /ui/settings            Dashboard webview (React + Vite)
@@ -82,6 +83,7 @@ Terminal tab titles are constructed from prefix + sessionChunk + label. User pre
 | Cmd+Shift+L | Label terminal |
 | Cmd+Shift+C | Clear terminal |
 | Cmd+Shift+N | New Task |
+| Cmd+Shift+H | Handoff (from Command Palette) |
 | Cmd+Shift+S | New Shell (SH) |
 | Cmd+Shift+I | Open Agent |
 | Cmd+Shift+H | Horizontal split (tmux mode) |
@@ -195,6 +197,45 @@ If no tasks are found, falls back to a free-form input prompt (original behavior
 - `githubToUnifiedTask()`: Convert GitHub issue to UnifiedTask
 - `groupTasksBySource()`: Group by source for organized display
 - `filterTasksByStatus()`: Filter by todo/in_progress/done
+
+## Handoff Command
+
+Transfer task context from one agent to another.
+
+**Files:** `src/core/handoff.ts`, `src/vscode/extension.ts`
+
+**Command:** `agents.handoff` (Command Palette only)
+
+Reads the last 10 messages from the current agent's session and finds the most recent Claude plan file (if agent is Claude). Shows a searchable quick pick of all available agents (excluding the current one), then opens a new agent in edit mode with formatted handoff context.
+
+**Handoff prompt format:**
+```markdown
+Please take over this task from {agent_name}.
+
+<recent_messages>
+User: {last_user_message}
+Assistant: {last_assistant_message}
+...
+</recent_messages>
+
+<current_plan>
+{plan_content}
+</current_plan>
+```
+
+**Features:**
+- Extracts last 10 messages from session file
+- Finds most recent plan from `~/.claude/plans/` (for Claude agents only)
+- Shows all built-in and custom agents in searchable list
+- Excludes current agent from selection
+- Opens new agent in edit mode
+- Graceful error handling if no session or plan found
+
+**Session parsing supports:**
+- Claude: `{"type":"user","message":{"role":"user","content":[...]}}`
+- Claude: `{"type":"assistant","message":{"role":"assistant","content":[...]}}`
+- Codex: `{"type":"response_item","payload":{"type":"function_call",...}}`
+- Gemini: `{"type":"message","role":"user",...}`
 
 ## Custom Markdown Editor
 

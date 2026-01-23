@@ -3,7 +3,7 @@
   "displayName": "Agents",
   "publisher": "swarmify",
   "description": "Manage a Mix of Agents with `/swarm` (Claude Code, Codex, Gemini, Cursor) inside the editor",
-  "version": "0.9.184",
+  "version": "0.9.185",
   "license": "MIT",
   "author": "Muqsit Nawaz <dev@muqsitnawaz.com>",
   "icon": "assets/agents.png",
