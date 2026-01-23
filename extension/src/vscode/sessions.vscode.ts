@@ -330,7 +330,7 @@ async function findFileBySessionId(dir: string, sessionId: string, depth: number
 
 export async function getSessionPathBySessionId(
   sessionId: string,
-  agentType: 'claude' | 'codex' | 'gemini',
+  agentType: 'claude' | 'codex' | 'gemini' | 'opencode',
   workspacePath?: string
 ): Promise<string | undefined> {
   switch (agentType) {
@@ -368,6 +368,9 @@ export async function getSessionPathBySessionId(
     case 'gemini': {
       const root = path.join(homedir(), '.gemini', 'sessions');
       return await findFileBySessionId(root, sessionId, 3);
+    }
+    case 'opencode': {
+      return undefined;
     }
     default:
       return undefined;

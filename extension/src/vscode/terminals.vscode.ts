@@ -56,7 +56,7 @@ function extractTerminalIdentificationOptions(terminal: vscode.Terminal): Termin
 export type TerminalApprovalStatus = 'pending' | 'approved' | 'running' | 'complete' | 'rejected';
 
 // Agent types that support session tracking
-export type SessionAgentType = 'claude' | 'codex' | 'gemini' | 'cursor';
+export type SessionAgentType = 'claude' | 'codex' | 'gemini' | 'cursor' | 'opencode';
 
 // Terminal entry following API.md
 export interface EditorTerminal {
