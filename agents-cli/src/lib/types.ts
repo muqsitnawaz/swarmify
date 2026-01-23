@@ -122,9 +122,31 @@ export interface RepoInfo {
   lastSync: string;
 }
 
+// Built-in scopes have fixed priorities
+// system: 0, user: 10, custom: 20+, project: 100 (always highest)
+export type BuiltinScope = 'system' | 'user' | 'project';
+export type ScopeName = BuiltinScope | string;
+
+export const SCOPE_PRIORITIES: Record<BuiltinScope, number> = {
+  system: 0,
+  user: 10,
+  project: 100,
+};
+
+export const DEFAULT_SYSTEM_REPO = 'gh:muqsitnawaz/.agents';
+
+export interface ScopeConfig {
+  source: string;
+  branch: string;
+  commit: string;
+  lastSync: string;
+  priority: number;
+  readonly?: boolean;
+}
+
 export interface Meta {
   version: string;
-  repo: RepoInfo | null;
+  scopes: Record<ScopeName, ScopeConfig>;
   clis: Partial<Record<AgentId, CliState>>;
   packages: Record<string, PackageState>;
   commands: Record<string, CommandState>;

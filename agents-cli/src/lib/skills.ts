@@ -27,6 +27,43 @@ export function getProjectSkillsDir(agentId: AgentId, cwd: string = process.cwd(
   return path.join(cwd, `.${agentId}`, 'skills');
 }
 
+export interface ValidationResult {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+}
+
+export function validateSkillMetadata(metadata: SkillMetadata | null, skillName: string): ValidationResult {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  if (!metadata) {
+    errors.push('SKILL.md not found or has no valid frontmatter');
+    return { valid: false, errors, warnings };
+  }
+
+  // name is required
+  if (!metadata.name || metadata.name.trim() === '') {
+    errors.push('Missing required field: name');
+  } else {
+    if (metadata.name.length > 64) {
+      errors.push(`name exceeds 64 characters (${metadata.name.length})`);
+    }
+    if (!/^[a-z0-9-]+$/.test(metadata.name)) {
+      warnings.push('name should be lowercase with hyphens (e.g., my-skill-name)');
+    }
+  }
+
+  // description is required
+  if (!metadata.description || metadata.description.trim() === '') {
+    errors.push('Missing required field: description');
+  } else if (metadata.description.length > 1024) {
+    warnings.push(`description exceeds 1024 characters (${metadata.description.length})`);
+  }
+
+  return { valid: errors.length === 0, errors, warnings };
+}
+
 export function parseSkillMetadata(skillDir: string): SkillMetadata | null {
   const skillMdPath = path.join(skillDir, 'SKILL.md');
   if (!fs.existsSync(skillMdPath)) {
@@ -37,14 +74,14 @@ export function parseSkillMetadata(skillDir: string): SkillMetadata | null {
     const content = fs.readFileSync(skillMdPath, 'utf-8');
     const lines = content.split('\n');
 
-    // Check for YAML frontmatter
+    // Check for YAML frontmatter (required)
     if (lines[0] === '---') {
       const endIndex = lines.slice(1).findIndex((l) => l === '---');
       if (endIndex > 0) {
         const frontmatter = lines.slice(1, endIndex + 1).join('\n');
         const parsed = yaml.parse(frontmatter);
         return {
-          name: parsed.name || path.basename(skillDir),
+          name: parsed.name || '',
           description: parsed.description || '',
           author: parsed.author,
           version: parsed.version,
@@ -54,18 +91,10 @@ export function parseSkillMetadata(skillDir: string): SkillMetadata | null {
       }
     }
 
-    // Fallback: extract from markdown content
-    const name = path.basename(skillDir);
-    const descMatch = content.match(/^#\s+.+\n+(.+)/m);
-    return {
-      name,
-      description: descMatch ? descMatch[1].trim() : '',
-    };
+    // No valid frontmatter - return null (frontmatter is required)
+    return null;
   } catch {
-    return {
-      name: path.basename(skillDir),
-      description: '',
-    };
+    return null;
   }
 }
 
@@ -88,6 +117,7 @@ export interface DiscoveredSkill {
   path: string;
   metadata: SkillMetadata;
   ruleCount: number;
+  validation: ValidationResult;
 }
 
 export function discoverSkillsFromRepo(repoPath: string): DiscoveredSkill[] {
@@ -113,14 +143,15 @@ export function discoverSkillsFromRepo(repoPath: string): DiscoveredSkill[] {
 
         if (fs.existsSync(skillMdPath)) {
           const metadata = parseSkillMetadata(skillDir);
-          if (metadata) {
-            skills.push({
-              name: entry.name,
-              path: skillDir,
-              metadata,
-              ruleCount: countSkillRules(skillDir),
-            });
-          }
+          const validation = validateSkillMetadata(metadata, entry.name);
+          // Include even if invalid (for discovery/listing with warnings)
+          skills.push({
+            name: entry.name,
+            path: skillDir,
+            metadata: metadata || { name: entry.name, description: '' },
+            ruleCount: countSkillRules(skillDir),
+            validation,
+          });
         }
       }
     } catch {
@@ -136,7 +167,19 @@ export function installSkill(
   skillName: string,
   agents: AgentId[],
   method: 'symlink' | 'copy' = 'symlink'
-): { success: boolean; error?: string } {
+): { success: boolean; error?: string; warnings?: string[] } {
+  // Validate skill metadata before installation
+  const metadata = parseSkillMetadata(sourcePath);
+  const validation = validateSkillMetadata(metadata, skillName);
+
+  if (!validation.valid) {
+    return {
+      success: false,
+      error: `Invalid skill: ${validation.errors.join(', ')}`,
+      warnings: validation.warnings,
+    };
+  }
+
   ensureCentralSkillsDir();
 
   const centralPath = path.join(getSkillsDir(), skillName);
@@ -256,12 +299,14 @@ export function listInstalledSkills(): Map<string, DiscoveredSkill> {
       const skillDir = path.join(centralDir, entry.name);
       const metadata = parseSkillMetadata(skillDir);
 
+      const validation = validateSkillMetadata(metadata, entry.name);
       if (metadata) {
         skills.set(entry.name, {
           name: entry.name,
           path: skillDir,
           metadata,
           ruleCount: countSkillRules(skillDir),
+          validation,
         });
       }
     }
@@ -370,6 +415,7 @@ export function getSkillInfo(skillName: string): DiscoveredSkill | null {
   }
 
   const metadata = parseSkillMetadata(centralPath);
+  const validation = validateSkillMetadata(metadata, skillName);
   if (!metadata) {
     return null;
   }
@@ -379,6 +425,7 @@ export function getSkillInfo(skillName: string): DiscoveredSkill | null {
     path: centralPath,
     metadata,
     ruleCount: countSkillRules(centralPath),
+    validation,
   };
 }
 
