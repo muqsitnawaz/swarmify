@@ -1614,18 +1614,20 @@ function updateStatusBarForTerminal(terminal: vscode.Terminal, extensionPath: st
   const info = identifyAgentTerminal(terminal, extensionPath);
 
   // If this is an agent terminal, show its name
+  // Format: "Agents: Claude - <Label> (uuid-chunk)"
   if (info.isAgent && info.prefix) {
     const expandedName = getExpandedAgentName(info.prefix);
     const displayLabel = entry?.label || entry?.autoLabel;
     const sessionChunk = getSessionChunk(entry?.sessionId);
-    const displayParts = [expandedName];
-    if (sessionChunk) {
-      displayParts.push(sessionChunk);
-    }
+
+    let text = `Agents: ${expandedName}`;
     if (displayLabel) {
-      displayParts.push(displayLabel);
+      text += ` - ${displayLabel}`;
     }
-    agentStatusBarItem.text = `Agents: ${displayParts.join(' - ')}`;
+    if (sessionChunk) {
+      text += ` (${sessionChunk})`;
+    }
+    agentStatusBarItem.text = text;
     return;
   }
 
