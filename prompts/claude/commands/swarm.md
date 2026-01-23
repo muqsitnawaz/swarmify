@@ -1,6 +1,6 @@
 # /swarm
 
-Distribute and execute tasks across parallel Swarm agents.
+Primary entry point for orchestrated work. Read the requested mix, draft a distribution plan, wait for approval, then execute across parallel Swarm agents.
 
 ## Arguments
 
@@ -29,11 +29,10 @@ You coordinate work across multiple Swarm agents. Each task is different - adapt
 
 1. **Understand the task** - Parse requirements or plan provided by user
 2. **Explore if needed** - Use Claude SubAgents (Task tool with Explore/Plan), NOT Swarm
-3. **Show distribution plan** - Present agent assignments with boundary contracts (REQUIRED)
-4. **Get user approval** - Wait for explicit "go" before spawning (REQUIRED)
-5. **Spawn agents** - Use `mcp__Swarm__spawn` with appropriate mode
-6. **Report completion** - Summarize what each agent accomplished
-7. **Run tests** - Validate changes work (implement mode only)
+3. **Show distribution plan** - Present agent assignments with boundary contracts (REQUIRED). Pause here and follow the approval workflow in `prompts/README.md`.
+4. **Spawn agents** - Use `mcp__Swarm__spawn` with appropriate mode
+5. **Report completion** - Summarize what each agent accomplished
+6. **Run tests** - Validate changes work (implement mode only)
 
 ## CRITICAL: Exploration Uses Claude SubAgents
 
@@ -128,10 +127,12 @@ Ready to spawn? (yes/no)
 
 ## Agent Distribution
 
-Default distribution:
+Default mix if the user does not specify otherwise:
 - 50% Gemini
 - 45% Codex
 - 5% Cursor
+
+If the user states a mix (percentages or roles), interpret it and weight the distribution accordingly.
 
 Or use explicit user preference if specified.
 

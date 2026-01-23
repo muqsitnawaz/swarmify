@@ -6,6 +6,20 @@ Homepage: https://swarmify.co
 Marketplace: https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext
 MCP Server: [@swarmify/agents-mcp](https://www.npmjs.com/package/@swarmify/agents-mcp) - enables sub-agent spawning
 
+## Workflow: Task → Plan → Approve
+
+1. **Task** – describe what you need with `/swarm` inside the IDE.
+2. **Plan** – orchestrator drafts a distribution with a Mix of Agents (who codes, who debugs, who researches).
+3. **Approve** – you gate execution; agents run only after approval. Approval gates keep control while teams move fast.
+
+**Mix of Agents**: Describe your needs; the orchestrator composes the right team across Claude, Codex, Gemini, and Cursor.
+
+## For Teams
+
+- Shared dashboard keeps approvals and assignments visible.
+- Consistent Mix of Agents guidance prevents over- or under-staffing tasks.
+- Approval gates make it easy for leads to review before code runs.
+
 ## Why
 
 CLI agents like Claude Code, Codex, and Gemini are powerful - but running them in separate terminal windows or the bottom panel means constantly switching contexts. You lose sight of your code while talking to agents. Fonts get tiny. Sessions disappear when things crash.
@@ -44,9 +58,9 @@ Spawn any agent as a full-screen editor tab with `Cmd+Shift+A`. Built-in support
 
 Every open agent terminal is fully restorable. Session ID, icon, and custom labels are saved to disk in real-time. VS Code crashes? Restart? All your agent tabs come back exactly as they were.
 
-### Swarm Integration
+### Every swarm starts with `/swarm` in your IDE
 
-Swarm MCP is available per-agent (Claude, Codex, Gemini) via the dashboard. When enabled, your agents can spawn sub-agents for parallel work. The orchestrating agent manages them - you just see results.
+Describe the work and Mix of Agents in `/swarm`; the orchestrator composes the team. Swarm MCP then lets each agent spawn sub-agents for parallel work while the orchestrator enforces the approval gate.
 
 ### Task Management
 

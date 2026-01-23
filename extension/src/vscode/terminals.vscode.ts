@@ -53,6 +53,8 @@ function extractTerminalIdentificationOptions(terminal: vscode.Terminal): Termin
   };
 }
 
+export type TerminalApprovalStatus = 'pending' | 'approved' | 'running' | 'complete' | 'rejected';
+
 // Agent types that support session tracking
 export type SessionAgentType = 'claude' | 'codex' | 'gemini' | 'cursor';
 
@@ -68,6 +70,7 @@ export interface EditorTerminal {
   messageQueue: string[];   // Queued messages to send after terminal ready
   sessionId?: string;       // CLI session ID (for resume, history reading)
   agentType?: SessionAgentType; // Agent type for session operations
+  approvalStatus?: 'pending' | 'approved' | 'running' | 'complete'; // Swarm approval status
 }
 
 const STATUS_BAR_LABELS_KEY = 'agentStatusBarLabels';
@@ -456,6 +459,13 @@ export interface TerminalDetail {
   lastUserMessage?: string; // Last user message from session
   messageCount?: number; // Total message count in session
   currentActivity?: string; // Live activity (e.g., "Reading src/auth.ts", "Running npm test")
+  approvalStatus?: TerminalApprovalStatus;
+  role?: string;
+  hint?: string;
+  isParent?: boolean;
+  parentId?: string | null;
+  parentLabel?: string | null;
+  children?: string[];
 }
 
 // Map from lowercase key (used in UI) to prefix (used in terminal names)
@@ -479,6 +489,15 @@ function prefixToAgentType(prefix: string | null): SessionAgentType | null {
     default: return null;
   }
 }
+
+const AGENT_ROLE_HINTS: Record<string, { role: string; hint: string }> = {
+  claude: { role: 'lead', hint: 'Strategy and orchestration' },
+  codex: { role: 'fix', hint: 'Fast edits and implementation' },
+  gemini: { role: 'research', hint: 'Deep research and exploration' },
+  cursor: { role: 'trace', hint: 'Debugging and tracing' },
+  opencode: { role: 'assist', hint: 'Editor-style help' },
+  shell: { role: 'shell', hint: 'Command execution' }
+};
 
 // Helper to read tail of session file for activity extraction
 async function readSessionTail(filePath: string, maxBytes: number = 32 * 1024): Promise<string> {
@@ -538,17 +557,27 @@ export async function getTerminalsByAgentType(
       autoLabel: entry?.autoLabel || null,
       createdAt: entry?.createdAt || Date.now(),
       index: index,
-      sessionId: entry?.sessionId || null
+      sessionId: entry?.sessionId || null,
+      approvalStatus: entry?.approvalStatus || 'pending',
+      role: AGENT_ROLE_HINTS[agentType]?.role || 'agent',
+      hint: AGENT_ROLE_HINTS[agentType]?.hint || 'Generalist',
+      parentId: null,
+      parentLabel: null,
+      children: []
     });
 
     // Queue session path lookup if session exists
-    if (entry?.sessionId && entry?.agentType) {
-      const sessionAgentType = entry.agentType as 'claude' | 'codex' | 'gemini';
-      sessionPromises.push({
-        index: resultIndex,
-        sessionPath: getSessionPathBySessionId(entry.sessionId!, sessionAgentType, workspacePath),
-        agentType: sessionAgentType
-      });
+    if (entry?.sessionId) {
+      // Use agentType if available, otherwise infer from agentConfig.prefix
+      // Only include claude/codex/gemini for session path lookup (cursor not supported)
+      const sessionAgentType = entry?.agentType || prefixToAgentType(entry?.agentConfig?.prefix ?? null);
+      if (sessionAgentType && sessionAgentType !== 'cursor') {
+        sessionPromises.push({
+          index: resultIndex,
+          sessionPath: getSessionPathBySessionId(entry.sessionId!, sessionAgentType as 'claude' | 'codex' | 'gemini', workspacePath),
+          agentType: sessionAgentType as 'claude' | 'codex' | 'gemini'
+        });
+      }
     }
   }
 
@@ -584,6 +613,30 @@ export async function getTerminalsByAgentType(
     }
     if (data.activity) {
       results[data.index].currentActivity = data.activity;
+    }
+
+    const currentStatus = results[data.index].approvalStatus;
+    if (results[data.index].currentActivity) {
+      results[data.index].approvalStatus = 'running';
+    } else if (results[data.index].sessionId && currentStatus === 'pending') {
+      results[data.index].approvalStatus = 'approved';
+    }
+  }
+
+  if (results.length > 0) {
+    const parent = results[0];
+    parent.isParent = true;
+    parent.children = results.slice(1).map(r => r.id);
+    if (!parent.approvalStatus || parent.approvalStatus === 'pending') {
+      parent.approvalStatus = parent.currentActivity ? 'running' : parent.approvalStatus || 'pending';
+    }
+
+    for (let i = 1; i < results.length; i++) {
+      results[i].parentId = parent.id;
+      results[i].parentLabel = parent.label || parent.autoLabel || parent.agentType;
+      if (!results[i].approvalStatus) {
+        results[i].approvalStatus = results[i].currentActivity ? 'running' : 'pending';
+      }
     }
   }
 

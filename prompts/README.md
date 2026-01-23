@@ -41,6 +41,32 @@ Each `.md`/`.toml` file contains carefully tuned prompts that account for these 
 - Version-controlled - Fork, customize, sync across machines
 - No mock tests - All workflows tested E2E with real agents
 
+## Start with `/swarm`
+
+Use `/swarm` as the primary entry point for multi-agent work. Describe the task and what balance of strengths you want; the orchestrator proposes a distribution plan, waits for approval, then launches the mix.
+
+### Approval Workflow
+
+Three-step flow: task → plan → approve. Execution starts only after the approval gate.
+
+1. Describe the task with `/swarm`.
+2. Orchestrator presents a distribution plan (agents, ownership, boundary contracts).
+3. Approve or adjust the plan; nothing runs until you say yes.
+4. Agents execute, report results, and run relevant tests.
+
+### Specifying Your Mix
+
+Describe the Mix of Agents you want; the orchestrator interprets your percentages or roles and assembles the team automatically.
+
+- Example 1: “I need 80% Codex (fast fixes), 20% Cursor (debugging) - no research needed.”
+- Example 2: “Heavy research task: 70% Gemini, 20% Claude, 10% Codex.”
+
+### Team Orchestration Patterns
+
+- Bug triage: 40% research (Gemini) + 60% Cursor debugging
+- Feature spike: 50% planning (Claude) + 30% research (Gemini) + 20% coding (Codex)
+- Refactor: 70% coding (Codex) + 30% testing (Cursor)
+
 ## Quick Start
 
 **Prerequisites**: Install [@swarmify/agents-mcp](https://www.npmjs.com/package/@swarmify/agents-mcp) for multi-agent workflows (optional for single-agent commands).
@@ -56,10 +82,11 @@ cd ~/.agents
 
 Try a command:
 ```bash
+/swarm     # Orchestrated mix of agents with approval gate
 /plan      # Plan a feature
-/splan     # Swarm planning (requires agents-mcp)
 /debug     # Debug an issue
-/sdebug    # Swarm debugging (spawns verifier agents)
+/splan     # Swarm planning (requires agents-mcp)
+/sdebug    # Swarm debugging (parallel verifiers)
 ```
 
 ## Commands

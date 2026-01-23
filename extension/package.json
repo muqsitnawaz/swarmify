@@ -2,8 +2,8 @@
   "name": "swarm-ext",
   "displayName": "Agents",
   "publisher": "swarmify",
-  "description": "Manage multiple Claude Code, Codex, Gemini, and Cursor terminal agents in the editor",
-  "version": "0.9.181",
+  "description": "Manage a Mix of Agents with `/swarm` (Claude Code, Codex, Gemini, Cursor) inside the editor",
+  "version": "0.9.184",
   "license": "MIT",
   "author": "Muqsit Nawaz <dev@muqsitnawaz.com>",
   "icon": "assets/agents.png",
@@ -66,7 +66,7 @@
       },
       {
         "command": "agents.newAgent",
-        "title": "Agents: New"
+        "title": "Agents: New Mix of Agents"
       },
       {
         "command": "agents.newSecondaryAgent",
@@ -122,7 +122,7 @@
       },
       {
         "command": "agents.newAlias",
-        "title": "Agents: New (Alias)"
+        "title": "Agents: New Alias"
       },
       {
         "command": "agents.quickLaunch1",
@@ -185,6 +185,10 @@
         "title": "Agents: New Task"
       },
       {
+        "command": "agents.handoff",
+        "title": "Agents: Handoff"
+      },
+      {
         "command": "agents.newShell",
         "title": "Agents: New Shell (SH)",
         "icon": {
@@ -231,6 +235,10 @@
       {
         "command": "agents.init",
         "title": "Agents: Init"
+      },
+      {
+        "command": "agents.reload",
+        "title": "Agents: Reload"
       }
     ],
     "configuration": {
@@ -435,6 +443,11 @@
         "command": "agents.quickLaunch3",
         "key": "ctrl+shift+3",
         "mac": "cmd+shift+3"
+      },
+      {
+        "command": "agents.reload",
+        "key": "ctrl+shift+r",
+        "mac": "cmd+shift+r"
       }
     ]
   },

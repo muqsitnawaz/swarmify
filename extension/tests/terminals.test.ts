@@ -35,6 +35,29 @@ describe('terminals core functions', () => {
       const env = buildAgentTerminalEnv('CC-123-1', null);
       expect(env.PROMPT_COMMAND).toBe('');
     });
+
+    describe('session ID for prompt tracking', () => {
+      test('always includes sessionId when provided (critical for prompt display)', () => {
+        const sessionId = '4a78949e-xxxx-xxxx-xxxx-xxxxxxxxxxxx';
+        const env = buildAgentTerminalEnv('CL-123-1', sessionId);
+        expect(env.AGENT_SESSION_ID).toBe(sessionId);
+      });
+
+      test('Claude terminal with sessionId enables prompt extraction', () => {
+        const env = buildAgentTerminalEnv('CL-1737654321-1', 'abc-123-def-456');
+        expect(env.AGENT_SESSION_ID).toBe('abc-123-def-456');
+      });
+
+      test('Codex terminal with sessionId enables prompt extraction', () => {
+        const env = buildAgentTerminalEnv('CX-1737654321-2', 'xyz-789-uvw-012');
+        expect(env.AGENT_SESSION_ID).toBe('xyz-789-uvw-012');
+      });
+
+      test('Gemini terminal with sessionId enables prompt extraction', () => {
+        const env = buildAgentTerminalEnv('GX-1737654321-3', 'qrs-345-tuv-678');
+        expect(env.AGENT_SESSION_ID).toBe('qrs-345-tuv-678');
+      });
+    });
   });
 
   describe('generateTerminalId', () => {

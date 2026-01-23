@@ -58,6 +58,7 @@ import { needsPrewarming, generateClaudeSessionId, buildClaudeOpenCommand } from
 import { getSessionPathBySessionId, getSessionPreviewInfo } from './sessions.vscode';
 import * as tasksImport from './tasks.vscode';
 import { SOURCE_BADGES } from '../core/tasks';
+import * as handoff from '../core/handoff';
 
 // Settings types are now imported from ./settings
 // Settings functions are in ./settings.vscode
@@ -746,6 +747,10 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
+    vscode.commands.registerCommand('agents.reload', () => reloadActiveTerminal(context))
+  );
+
+  context.subscriptions.push(
     vscode.commands.registerCommand('agents.autogit', git.generateCommitMessage)
   );
 
@@ -797,62 +802,12 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('agents.openAgent', () => goToTerminal(context))
+    vscode.commands.registerCommand('agents.handoff', () => handoffToAgent(context))
   );
 
-  context.subscriptions.push(
-    vscode.commands.registerCommand('agents.prompts', () => showPrompts())
-  );
-
-  context.subscriptions.push(
-    vscode.commands.registerCommand('agents.setDefaultAgentTitle', (title: string) => {
-      defaultAgentTitle = title;
-      context.globalState.update('agents.defaultAgentTitle', title);
-    })
-  );
-
-  context.subscriptions.push(
-    vscode.commands.registerCommand('agents.setSecondaryAgentTitle', (title: string) => {
-      secondaryAgentTitle = title;
-      context.globalState.update('agents.secondaryAgentTitle', title);
-    })
-  );
-
-  context.subscriptions.push(
-    vscode.commands.registerCommand('agents.enableView', async () => {
-      const enabled = await workbench.toggleStreamlineLayout();
-      vscode.window.showInformationMessage(
-        enabled ? 'Streamline layout enabled' : 'Streamline layout disabled'
-      );
-      await updateContextKeys(context);
-    })
-  );
-
-  context.subscriptions.push(
-    vscode.commands.registerCommand('agents.disableView', async () => {
-      await workbench.disableStreamlineLayout();
-      vscode.window.showInformationMessage('Streamline layout disabled');
-      await updateContextKeys(context);
-    })
-  );
-
-  context.subscriptions.push(
-    vscode.commands.registerCommand('agents.runSetup', async () => {
-      await maybeRunFirstSetup(context, true);
-    })
-  );
-
-  // Enable session pre-warming
-  context.subscriptions.push(
-    vscode.commands.registerCommand('agents.enableWarming', async () => {
-      const currentEnabled = prewarm.isEnabled(context);
-      if (!currentEnabled) {
-        await prewarm.setEnabled(context, true);
-        vscode.window.showInformationMessage('Session warming enabled. Pre-warming Claude, Codex, and Gemini sessions...');
-        await updateContextKeys(context);
-      }
-    })
-  );
+  interface TerminalQuickPickItem extends vscode.QuickPickItem {
+    terminal: vscode.Terminal;
+  }
 
   // Disable session pre-warming
   context.subscriptions.push(
@@ -1193,10 +1148,15 @@ async function openSingleAgent(
     const pid = await terminal.processId;
     terminals.register(terminal, terminalId, agentConfig, pid, context);
 
-    // Track session ID
-    if (usePrewarmed && sessionId && agentKey && supportsPrewarming(agentKey)) {
+    // Track session ID and agent type for all terminals (not just prewarmed)
+    if (sessionId) {
       terminals.setSessionId(terminal, sessionId);
-      terminals.setAgentType(terminal, agentKey);
+      if (agentKey && supportsPrewarming(agentKey)) {
+        terminals.setAgentType(terminal, agentKey);
+      }
+    }
+    // Record prewarmed session separately
+    if (usePrewarmed && sessionId && agentKey && supportsPrewarming(agentKey)) {
       await prewarm.recordTerminalSession(context, terminalId, sessionId, agentKey, cwd);
     }
 
@@ -1223,10 +1183,15 @@ async function openSingleAgent(
   const pid = await terminal.processId;
   terminals.register(terminal, terminalId, agentConfig, pid, context);
 
-  // Track session ID
-  if (usePrewarmed && sessionId && agentKey && supportsPrewarming(agentKey)) {
+  // Track session ID and agent type for all terminals (not just prewarmed)
+  if (sessionId) {
     terminals.setSessionId(terminal, sessionId);
-    terminals.setAgentType(terminal, agentKey);
+    if (agentKey && supportsPrewarming(agentKey)) {
+      terminals.setAgentType(terminal, agentKey);
+    }
+  }
+  // Record prewarmed session separately
+  if (usePrewarmed && sessionId && agentKey && supportsPrewarming(agentKey)) {
     await prewarm.recordTerminalSession(context, terminalId, sessionId, agentKey, cwd);
   }
 
@@ -1297,6 +1262,104 @@ async function newTaskWithContext(context: vscode.ExtensionContext) {
   if (agentConfig) {
     await openSingleAgentWithQueue(context, agentConfig, [message]);
   }
+}
+
+async function handoffToAgent(context: vscode.ExtensionContext) {
+  const activeTerminal = vscode.window.activeTerminal;
+
+  if (!activeTerminal) {
+    vscode.window.showInformationMessage('No active terminal to handoff from');
+    return;
+  }
+
+  const terminalEntry = terminals.getByTerminal(activeTerminal);
+
+  if (!terminalEntry || !terminalEntry.agentConfig) {
+    vscode.window.showInformationMessage('Active terminal is not an agent terminal');
+    return;
+  }
+
+  const fromAgent = getExpandedAgentName(terminalEntry.agentConfig.prefix);
+  const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+
+  let messages: handoff.HandoffMessage[] = [];
+  let planInfo: { path: string; content: string } | null = null;
+
+  if (terminalEntry.sessionId && terminalEntry.agentType) {
+    const agentType = terminalEntry.agentType as 'claude' | 'codex' | 'gemini';
+    const sessionPath = await getSessionPathBySessionId(terminalEntry.sessionId, agentType, workspacePath);
+
+    if (sessionPath) {
+      messages = await handoff.getSessionMessages(sessionPath, 10);
+
+      if (agentType === 'claude') {
+        planInfo = await handoff.findRecentClaudePlan();
+      }
+    }
+  }
+
+  if (messages.length === 0 && !planInfo) {
+    vscode.window.showInformationMessage('No session history available for handoff');
+    return;
+  }
+
+  interface AgentQuickPickItem extends vscode.QuickPickItem {
+    agentKey: string;
+    agentConfig: Omit<AgentConfig, 'count'>;
+  }
+
+  const agentItems: AgentQuickPickItem[] = [];
+
+  for (const def of BUILT_IN_AGENTS) {
+    if (def.key === 'shell') continue;
+    if (def.title === terminalEntry.agentConfig.title) continue;
+
+    const config = getBuiltInByTitle(context.extensionPath, def.title);
+    if (!config) continue;
+
+    const expandedName = getExpandedAgentName(def.prefix);
+    agentItems.push({
+      label: expandedName,
+      description: def.key.toUpperCase(),
+      agentKey: def.key,
+      agentConfig: config
+    });
+  }
+
+  const customAgentSettings = settings.getSettings(context);
+  for (const custom of customAgentSettings.custom) {
+    if (custom.name === terminalEntry.agentConfig.title) continue;
+
+    agentItems.push({
+      label: custom.name,
+      description: 'Custom',
+      agentKey: custom.name.toLowerCase(),
+      agentConfig: createAgentConfig(context.extensionPath, custom.name, custom.command, 'agents.png', custom.name.toLowerCase())
+    });
+  }
+
+  if (agentItems.length === 0) {
+    vscode.window.showInformationMessage('No other agents available for handoff');
+    return;
+  }
+
+  const selectedAgent = await vscode.window.showQuickPick(agentItems, {
+    placeHolder: `Handoff from ${fromAgent} to...`,
+    matchOnDescription: true
+  });
+
+  if (!selectedAgent) return;
+
+  const handoffContext: handoff.HandoffContext = {
+    fromAgent,
+    messages,
+    planContent: planInfo?.content,
+    planPath: planInfo?.path
+  };
+
+  const prompt = handoff.formatHandoffPrompt(handoffContext);
+
+  await openSingleAgentWithQueue(context, selectedAgent.agentConfig, [prompt]);
 }
 
 interface TerminalQuickPickItem extends vscode.QuickPickItem {
@@ -1666,6 +1729,52 @@ async function clearActiveTerminal(context: vscode.ExtensionContext) {
   } catch (error) {
     console.error('Error clearing terminal:', error);
     vscode.window.showErrorMessage(`Failed to clear terminal: ${error}`);
+  }
+}
+
+async function reloadActiveTerminal(context: vscode.ExtensionContext) {
+  try {
+    const terminal = vscode.window.activeTerminal;
+    if (!terminal) {
+      vscode.window.showErrorMessage('No active terminal to reload.');
+      return;
+    }
+
+    const entry = terminals.getByTerminal(terminal);
+    if (!entry || !entry.agentConfig) {
+      vscode.window.showErrorMessage('Active terminal is not an agent terminal.');
+      return;
+    }
+
+    const agentConfig = entry.agentConfig;
+    const sessionId = entry.sessionId;
+    const agentType = entry.agentType;
+
+    if (!sessionId || !agentType) {
+      vscode.window.showErrorMessage('This terminal does not have session tracking enabled. Reload requires a session ID.');
+      return;
+    }
+
+    const config = PREWARM_CONFIGS[agentType];
+    const exitSequence = config.exitSequence;
+    const resumeCommand = config.resumeCommand(sessionId);
+
+    terminal.show();
+    for (const seq of exitSequence) {
+      await vscode.commands.executeCommand('workbench.action.terminal.sendSequence', {
+        text: seq
+      });
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    terminal.sendText(`clear && ${resumeCommand}`);
+
+    updateStatusBarForTerminal(terminal, context.extensionPath);
+  } catch (error) {
+    console.error('Error reloading terminal:', error);
+    vscode.window.showErrorMessage(`Failed to reload terminal: ${error}`);
   }
 }
 

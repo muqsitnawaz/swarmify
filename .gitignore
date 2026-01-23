@@ -13,3 +13,5 @@
 **/.cursor
 **/.next
 **/.gemini-clipboard
+**/.npm-cache
+**/.tmp

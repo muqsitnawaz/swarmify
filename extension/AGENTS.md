@@ -256,9 +256,9 @@ Toggle visibility of agent-related views.
 ### Guide
 - Quick start steps for new users
 
-## Swarm Integration
+## Every swarm starts with `/swarm` in your IDE
 
-MCP server integration for multi-agent orchestration. Connects to `@swarmify/agents-mcp` server.
+MCP server integration for multi-agent orchestration. `/swarm` describes the task and Mix of Agents; the extension connects to `@swarmify/agents-mcp` to execute it.
 
 **Files:** `src/vscode/swarm.vscode.ts`, `src/core/swarm.detect.ts`
 

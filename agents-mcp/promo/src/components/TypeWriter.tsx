@@ -5,15 +5,17 @@ interface TypeWriterProps {
   text: string;
   charsPerSecond?: number;
   style?: React.CSSProperties;
+  startFrame?: number;
 }
 
-export const TypeWriter: React.FC<TypeWriterProps> = ({text, charsPerSecond = 15, style}) => {
+export const TypeWriter: React.FC<TypeWriterProps> = ({text, charsPerSecond = 15, style, startFrame = 0}) => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
 
-  const charsToShow = Math.floor((frame * charsPerSecond) / fps);
+  const effectiveFrame = Math.max(0, frame - startFrame);
+  const charsToShow = Math.floor((effectiveFrame * charsPerSecond) / fps);
   const displayText = text.slice(0, charsToShow);
-  const showCursor = frame % Math.floor(fps / 2) < Math.floor(fps / 4);
+  const showCursor = frame >= startFrame && effectiveFrame % Math.floor(fps / 2) < Math.floor(fps / 4);
 
   return (
     <span style={style}>
