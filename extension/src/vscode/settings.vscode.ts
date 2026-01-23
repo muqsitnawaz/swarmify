@@ -214,6 +214,11 @@ export function getSettings(context: vscode.ExtensionContext): AgentSettings {
       stored.taskSources = { ...DEFAULT_TASK_SOURCE_SETTINGS };
       context.globalState.update('agentSettings', stored);
     }
+    // Migrate: add custom agents if missing
+    if (!stored.custom) {
+      stored.custom = [];
+      context.globalState.update('agentSettings', stored);
+    }
     // Migrate: add quick launch if missing
     if (!stored.quickLaunch) {
       stored.quickLaunch = { ...DEFAULT_QUICK_LAUNCH };

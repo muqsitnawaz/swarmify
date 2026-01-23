@@ -322,7 +322,7 @@ export function SettingsTab({
                               Installing...
                             </span>
                           ) : (
-                            'Install Swarm Integration'
+                            'Enable `/swarm` in your IDE'
                           )}
                         </Button>
                       )}
