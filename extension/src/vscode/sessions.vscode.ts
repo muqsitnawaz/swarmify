@@ -370,6 +370,10 @@ export async function getSessionPathBySessionId(
       return await findFileBySessionId(root, sessionId, 3);
     }
     case 'opencode': {
+      // OpenCode stores messages in ~/.local/share/opencode/storage/message/{sessionId}/
+      // with content in part/{messageId}/ - return the message directory path
+      const messageDir = path.join(homedir(), '.local', 'share', 'opencode', 'storage', 'message', sessionId);
+      if (await safeStat(messageDir)) return messageDir;
       return undefined;
     }
     default:
@@ -469,4 +473,66 @@ export async function getSessionPreviewInfo(filePath: string): Promise<SessionPr
     lastUserMessage,
     messageCount
   };
+}
+
+/**
+ * Get session preview info for OpenCode sessions.
+ * OpenCode stores messages in separate JSON files with content in part/ directory.
+ * Structure: message/{sessionId}/msg_xxx.json -> part/{messageId}/prt_xxx.json
+ */
+export async function getOpenCodeSessionPreviewInfo(messageDir: string): Promise<SessionPreviewInfo> {
+  try {
+    const entries = await safeReaddir(messageDir);
+    const msgFiles = entries
+      .filter(e => e.isFile() && e.name.startsWith('msg_') && e.name.endsWith('.json'))
+      .map(e => e.name)
+      .sort(); // Sort to get chronological order (IDs are time-based)
+
+    if (msgFiles.length === 0) {
+      return { messageCount: 0 };
+    }
+
+    // Find first user message
+    let firstUserMessage: string | undefined;
+    for (const msgFile of msgFiles) {
+      try {
+        const msgPath = path.join(messageDir, msgFile);
+        const msgContent = await fs.readFile(msgPath, 'utf-8');
+        const msg = JSON.parse(msgContent);
+
+        if (msg.role === 'user') {
+          // Try to get actual text from part file
+          const messageId = msg.id;
+          const partDir = path.join(homedir(), '.local', 'share', 'opencode', 'storage', 'part', messageId);
+          const partEntries = await safeReaddir(partDir);
+          const partFile = partEntries.find(e => e.isFile() && e.name.startsWith('prt_') && e.name.endsWith('.json'));
+
+          if (partFile) {
+            const partPath = path.join(partDir, partFile.name);
+            const partContent = await fs.readFile(partPath, 'utf-8');
+            const part = JSON.parse(partContent);
+            if (part.text && typeof part.text === 'string') {
+              firstUserMessage = normalizePreview(part.text);
+              break;
+            }
+          }
+
+          // Fallback to summary.title if no part file
+          if (msg.summary?.title) {
+            firstUserMessage = normalizePreview(msg.summary.title);
+            break;
+          }
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    return {
+      firstUserMessage,
+      messageCount: msgFiles.length
+    };
+  } catch {
+    return { messageCount: 0 };
+  }
 }
