@@ -475,7 +475,7 @@ export function openPanel(context: vscode.ExtensionContext): void {
         });
         break;
       case 'getDefaultAgent':
-        const defaultAgent = context.globalState.get<string>('agents.defaultAgentTitle', 'CL');
+        const defaultAgent = context.globalState.get<string>('agents.defaultAgentTitle', 'CC');
         settingsPanel?.webview.postMessage({
           type: 'defaultAgentData',
           defaultAgent

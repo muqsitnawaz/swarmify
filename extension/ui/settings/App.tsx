@@ -97,7 +97,7 @@ export default function App() {
   const [agentTerminalsLoading, setAgentTerminalsLoading] = useState(false)
 
   // Default agent and installed agents
-  const [defaultAgent, setDefaultAgent] = useState<string>('CL')
+  const [defaultAgent, setDefaultAgent] = useState<string>('CC')
   const [secondaryAgent, setSecondaryAgent] = useState<string>('CX')
   const [installedAgents, setInstalledAgents] = useState<Record<string, boolean>>({
     claude: true, codex: true, gemini: true, opencode: true, cursor: true, shell: true

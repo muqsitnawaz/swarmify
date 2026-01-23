@@ -143,8 +143,8 @@ Each tmux session uses a dedicated socket (`/tmp/agents-tmux-{session}.sock`) to
 Three different formats are used interchangeably:
 - UI: `claude`, `codex`, `gemini`, `cursor`
 - AgentConfig: `Claude`, `Codex`, `Gemini`, `Cursor`
-- Terminal names: `CL`, `CX`, `GX`, `CR`
-- Prefix constants (in utils.ts): CL=Claude, CX=Codex, GX=Gemini, OC=OpenCode, CR=Cursor, SH=Shell
+- Terminal names: `CC`, `CX`, `GX`, `CR`
+- Prefix constants (in utils.ts): CC=Claude, CX=Codex, GX=Gemini, OC=OpenCode, CR=Cursor, SH=Shell
 
 Map between them carefully.
 
@@ -158,7 +158,7 @@ Set `retainContextWhenHidden: true` or panel reloads on focus loss.
 
 ### Session Restoration
 Extracts both env vars from VS Code terminals at startup:
-- `AGENT_TERMINAL_ID`: Internal tracking ID (`CL-1705123456789-1`)
+- `AGENT_TERMINAL_ID`: Internal tracking ID (`CC-1705123456789-1`)
 - `AGENT_SESSION_ID`: CLI session UUID (`4a78949e-xxxx-xxxx-xxxx-xxxxxxxxxxxx`)
 
 ## File Locations
@@ -271,7 +271,7 @@ Terminal tab titles are constructed from prefix + sessionChunk + label. User pre
 
 | Setting | Effect |
 |---------|--------|
-| `showFullAgentNames` | `CL` vs `Claude` |
+| `showFullAgentNames` | `CC` vs `Claude` |
 | `showSessionIdInTitles` | Include first 8 chars of session UUID |
 | `showLabelsInTitles` | Include user-set label |
 | `labelReplacesTitle` | Label replaces full title vs appends with dash |

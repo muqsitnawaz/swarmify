@@ -19,7 +19,7 @@ export const SwarmDiagram: React.FC<SwarmDiagramProps> = ({active = false, start
   const relFrame = Math.max(relativeFrame, 0);
 
   const parent = {
-    label: 'CL',
+    label: 'CC',
     name: 'Claude',
     role: 'Lead',
     color: colors.agents.claude,

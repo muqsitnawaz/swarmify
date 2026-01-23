@@ -37,8 +37,8 @@ bun test           # 166 tests, no mocks
 
 - **Webview reload**: Set `retainContextWhenHidden: true` or panel reloads on focus loss.
 - **Terminal tracking**: `countRunning()` scans all VS Code terminals by name. Internal map (`editorTerminals`) may be stale after restart - scan `vscode.window.terminals` directly when needed.
-- **Agent ID formats**: UI uses `claude`, AgentConfig uses `Claude`, terminal names use `CL`. Map between them carefully.
-- **Prefix constants**: CL=Claude, CX=Codex, GX=Gemini, OC=OpenCode, CR=Cursor, SH=Shell (in `utils.ts`).
+- **Agent ID formats**: UI uses `claude`, AgentConfig uses `Claude`, terminal names use `CC`. Map between them carefully.
+- **Prefix constants**: CC=Claude, CX=Codex, GX=Gemini, OC=OpenCode, CR=Cursor, SH=Shell (in `utils.ts`).
 - **Tmux socket pinning**: Each tmux session uses a dedicated socket (`/tmp/agents-tmux-{session}.sock`) to ensure `terminal.sendText()` and `execAsync()` talk to the same server. Split operations use `execAsync()` directly to bypass terminal input (avoids Claude capturing keystrokes).
 - **Autogit AI key**: Requires `openaiApiKey` in settings for AI-generated commit messages. Without it, only basic diff is shown.
 - **Autogit controls**: `disableAutopush` skips git push after commit. `disableAutocommit` only stages changes and generates message, doesn't commit.
@@ -51,7 +51,7 @@ Terminal tab titles are constructed from prefix + sessionChunk + label. User pre
 
 | Setting | Effect |
 |---------|--------|
-| `showFullAgentNames` | `CL` vs `Claude` |
+| `showFullAgentNames` | `CC` vs `Claude` |
 | `showSessionIdInTitles` | Include first 8 chars of session UUID |
 | `showLabelsInTitles` | Include user-set label |
 | `labelReplacesTitle` | Label replaces full title vs appends with dash |
@@ -67,7 +67,7 @@ Terminal tab titles are constructed from prefix + sessionChunk + label. User pre
 | true | true | yes | yes | `Claude 12345678 - auth feature` |
 
 **Key identifiers** (stored in terminal env vars):
-- `AGENT_TERMINAL_ID`: Internal tracking ID (`CL-1705123456789-1`)
+- `AGENT_TERMINAL_ID`: Internal tracking ID (`CC-1705123456789-1`)
 - `AGENT_SESSION_ID`: CLI session UUID (`4a78949e-xxxx-xxxx-xxxx-xxxxxxxxxxxx`)
 - `sessionChunk`: First 8 chars of sessionId, shown in tab title
 

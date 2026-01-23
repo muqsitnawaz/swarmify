@@ -32,7 +32,7 @@ describe('sessions.persist', () => {
     test('saves and retrieves sessions', () => {
       const sessions: PersistedSession[] = [
         {
-          terminalId: 'CL-123-1',
+          terminalId: 'CC-123-1',
           prefix: 'CL',
           sessionId: 'abc123',
           label: 'test task',
@@ -45,7 +45,7 @@ describe('sessions.persist', () => {
       const retrieved = getWorkspaceSessions(TEST_WORKSPACE);
 
       expect(retrieved).toHaveLength(1);
-      expect(retrieved[0].terminalId).toBe('CL-123-1');
+      expect(retrieved[0].terminalId).toBe('CC-123-1');
       expect(retrieved[0].sessionId).toBe('abc123');
       expect(retrieved[0].label).toBe('test task');
       expect(retrieved[0].agentType).toBe('claude');
@@ -58,7 +58,7 @@ describe('sessions.persist', () => {
 
     test('saves multiple sessions', () => {
       const sessions: PersistedSession[] = [
-        { terminalId: 'CL-1', prefix: 'CL', createdAt: Date.now() },
+        { terminalId: 'CC-1', prefix: 'CL', createdAt: Date.now() },
         { terminalId: 'CX-1', prefix: 'CX', createdAt: Date.now() },
         { terminalId: 'GX-1', prefix: 'GX', createdAt: Date.now() }
       ];
@@ -67,14 +67,14 @@ describe('sessions.persist', () => {
       const retrieved = getWorkspaceSessions(TEST_WORKSPACE);
 
       expect(retrieved).toHaveLength(3);
-      expect(retrieved.map(s => s.terminalId)).toEqual(['CL-1', 'CX-1', 'GX-1']);
+      expect(retrieved.map(s => s.terminalId)).toEqual(['CC-1', 'CX-1', 'GX-1']);
     });
   });
 
   describe('clearWorkspaceSessions', () => {
     test('clears sessions for workspace', () => {
       const sessions: PersistedSession[] = [
-        { terminalId: 'CL-1', prefix: 'CL', createdAt: Date.now() }
+        { terminalId: 'CC-1', prefix: 'CL', createdAt: Date.now() }
       ];
 
       saveWorkspaceSessions(TEST_WORKSPACE, sessions);
@@ -88,7 +88,7 @@ describe('sessions.persist', () => {
       const workspace2 = `${TEST_WORKSPACE}-2`;
 
       saveWorkspaceSessions(TEST_WORKSPACE, [
-        { terminalId: 'CL-1', prefix: 'CL', createdAt: Date.now() }
+        { terminalId: 'CC-1', prefix: 'CL', createdAt: Date.now() }
       ]);
       saveWorkspaceSessions(workspace2, [
         { terminalId: 'CX-1', prefix: 'CX', createdAt: Date.now() }
@@ -131,11 +131,11 @@ describe('sessions.persist', () => {
   describe('updateSession', () => {
     test('updates sessionId for existing session', () => {
       const sessions: PersistedSession[] = [
-        { terminalId: 'CL-1', prefix: 'CL', createdAt: Date.now() }
+        { terminalId: 'CC-1', prefix: 'CL', createdAt: Date.now() }
       ];
 
       saveWorkspaceSessions(TEST_WORKSPACE, sessions);
-      updateSession(TEST_WORKSPACE, 'CL-1', { sessionId: 'new-session-id' });
+      updateSession(TEST_WORKSPACE, 'CC-1', { sessionId: 'new-session-id' });
 
       const retrieved = getWorkspaceSessions(TEST_WORKSPACE);
       expect(retrieved[0].sessionId).toBe('new-session-id');
@@ -143,11 +143,11 @@ describe('sessions.persist', () => {
 
     test('updates label for existing session', () => {
       const sessions: PersistedSession[] = [
-        { terminalId: 'CL-1', prefix: 'CL', createdAt: Date.now() }
+        { terminalId: 'CC-1', prefix: 'CL', createdAt: Date.now() }
       ];
 
       saveWorkspaceSessions(TEST_WORKSPACE, sessions);
-      updateSession(TEST_WORKSPACE, 'CL-1', { label: 'updated label' });
+      updateSession(TEST_WORKSPACE, 'CC-1', { label: 'updated label' });
 
       const retrieved = getWorkspaceSessions(TEST_WORKSPACE);
       expect(retrieved[0].label).toBe('updated label');
@@ -155,7 +155,7 @@ describe('sessions.persist', () => {
 
     test('does nothing for non-existent session', () => {
       const sessions: PersistedSession[] = [
-        { terminalId: 'CL-1', prefix: 'CL', createdAt: Date.now() }
+        { terminalId: 'CC-1', prefix: 'CL', createdAt: Date.now() }
       ];
 
       saveWorkspaceSessions(TEST_WORKSPACE, sessions);
@@ -168,11 +168,11 @@ describe('sessions.persist', () => {
 
     test('updates multiple fields at once', () => {
       const sessions: PersistedSession[] = [
-        { terminalId: 'CL-1', prefix: 'CL', createdAt: Date.now() }
+        { terminalId: 'CC-1', prefix: 'CL', createdAt: Date.now() }
       ];
 
       saveWorkspaceSessions(TEST_WORKSPACE, sessions);
-      updateSession(TEST_WORKSPACE, 'CL-1', {
+      updateSession(TEST_WORKSPACE, 'CC-1', {
         sessionId: 'sid',
         label: 'lbl',
         agentType: 'claude'

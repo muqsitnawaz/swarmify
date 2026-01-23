@@ -7,12 +7,12 @@ import {
 describe('terminals core functions', () => {
   describe('buildAgentTerminalEnv', () => {
     test('includes AGENT_TERMINAL_ID', () => {
-      const env = buildAgentTerminalEnv('CL-123-1', 'session-abc');
-      expect(env.AGENT_TERMINAL_ID).toBe('CL-123-1');
+      const env = buildAgentTerminalEnv('CC-123-1', 'session-abc');
+      expect(env.AGENT_TERMINAL_ID).toBe('CC-123-1');
     });
 
     test('includes AGENT_SESSION_ID when provided', () => {
-      const env = buildAgentTerminalEnv('CL-123-1', 'session-abc');
+      const env = buildAgentTerminalEnv('CC-123-1', 'session-abc');
       expect(env.AGENT_SESSION_ID).toBe('session-abc');
     });
 
@@ -39,12 +39,12 @@ describe('terminals core functions', () => {
     describe('session ID for prompt tracking', () => {
       test('always includes sessionId when provided (critical for prompt display)', () => {
         const sessionId = '4a78949e-xxxx-xxxx-xxxx-xxxxxxxxxxxx';
-        const env = buildAgentTerminalEnv('CL-123-1', sessionId);
+        const env = buildAgentTerminalEnv('CC-123-1', sessionId);
         expect(env.AGENT_SESSION_ID).toBe(sessionId);
       });
 
       test('Claude terminal with sessionId enables prompt extraction', () => {
-        const env = buildAgentTerminalEnv('CL-1737654321-1', 'abc-123-def-456');
+        const env = buildAgentTerminalEnv('CC-1737654321-1', 'abc-123-def-456');
         expect(env.AGENT_SESSION_ID).toBe('abc-123-def-456');
       });
 
@@ -62,12 +62,12 @@ describe('terminals core functions', () => {
 
   describe('generateTerminalId', () => {
     test('includes prefix', () => {
-      const id = generateTerminalId('CL', 1);
-      expect(id.startsWith('CL-')).toBe(true);
+      const id = generateTerminalId('CC', 1);
+      expect(id.startsWith('CC-')).toBe(true);
     });
 
     test('includes counter', () => {
-      const id = generateTerminalId('CL', 42);
+      const id = generateTerminalId('CC', 42);
       expect(id.endsWith('-42')).toBe(true);
     });
 
