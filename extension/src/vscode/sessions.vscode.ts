@@ -560,6 +560,7 @@ export function getCursorSessionPreviewInfo(dbPath: string): SessionPreviewInfo 
     const db = new Database(dbPath, { readonly: true });
     try {
       // Get all blobs and find the first user message
+      // Note: Some blobs are binary (protobuf/metadata), only JSON blobs start with 0x7B ('{')
       const rows = db.prepare('SELECT data FROM blobs').all() as Array<{ data: Buffer | string }>;
 
       let firstUserMessage: string | undefined;
@@ -567,22 +568,48 @@ export function getCursorSessionPreviewInfo(dbPath: string): SessionPreviewInfo 
 
       for (const row of rows) {
         try {
-          const dataStr = typeof row.data === 'string' ? row.data : row.data.toString('utf-8');
+          // Skip non-JSON blobs (binary data like protobuf)
+          // JSON blobs start with 0x7B ('{')
+          const data = row.data;
+          if (Buffer.isBuffer(data)) {
+            if (data.length === 0 || data[0] !== 0x7B) continue;
+          } else if (typeof data === 'string') {
+            if (!data.startsWith('{')) continue;
+          } else {
+            continue;
+          }
+
+          const dataStr = Buffer.isBuffer(data) ? data.toString('utf-8') : data;
           const msg = JSON.parse(dataStr);
 
           if (msg.role === 'user') {
             messageCount++;
             if (!firstUserMessage && msg.content) {
               // Extract text from content array
+              // Format: [{type: "text", text: "..."}, ...]
               const content = Array.isArray(msg.content) ? msg.content : [msg.content];
               for (const part of content) {
                 if (typeof part === 'string') {
-                  firstUserMessage = normalizePreview(part);
-                  break;
+                  // Skip context prefixes like <user_info>, <project_layout>
+                  if (!part.startsWith('<')) {
+                    firstUserMessage = normalizePreview(part);
+                    break;
+                  }
                 }
                 if (part && typeof part === 'object' && part.type === 'text' && part.text) {
-                  firstUserMessage = normalizePreview(part.text);
-                  break;
+                  // Look for actual user query, skip context
+                  const text = part.text as string;
+                  // Extract text from <user_query> tags if present
+                  const queryMatch = text.match(/<user_query>\s*([\s\S]*?)\s*(?:<\/user_query>|$)/);
+                  if (queryMatch) {
+                    firstUserMessage = normalizePreview(queryMatch[1].trim());
+                    break;
+                  }
+                  // Skip XML-like context blocks
+                  if (!text.startsWith('<')) {
+                    firstUserMessage = normalizePreview(text);
+                    break;
+                  }
                 }
               }
             }

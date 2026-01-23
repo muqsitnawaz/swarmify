@@ -219,7 +219,7 @@ program
       }
     } else {
       console.log(chalk.bold('\nNo scopes configured\n'));
-      console.log(chalk.gray('  Run: agents repo add <source> --scope user'));
+      console.log(chalk.gray('  Run: agents repo add <source>'));
     }
 
     console.log();
@@ -234,7 +234,7 @@ program
   .description('Pull and sync from remote .agents repo')
   .option('-y, --yes', 'Skip interactive prompts')
   .option('-f, --force', 'Overwrite local changes')
-  .option('-s, --scope <scope>', 'Scope to pull: system, user, project, or custom name', 'user')
+  .option('-s, --scope <scope>', 'Target scope (default: user)', 'user')
   .option('--dry-run', 'Show what would change')
   .option('--skip-clis', 'Skip CLI installation')
   .option('--skip-mcp', 'Skip MCP registration')
@@ -246,8 +246,9 @@ program
 
     if (!targetSource) {
       console.log(chalk.red(`No source specified for scope '${scopeName}'.`));
-      console.log(chalk.gray(`  Usage: agents pull <source> --scope ${scopeName}`));
-      console.log(chalk.gray('  Example: agents pull gh:username/.agents --scope user'));
+      const scopeHint = scopeName === 'user' ? '' : ` --scope ${scopeName}`;
+      console.log(chalk.gray(`  Usage: agents pull <source>${scopeHint}`));
+      console.log(chalk.gray('  Example: agents pull gh:username/.agents'));
       process.exit(1);
     }
 
@@ -375,7 +376,7 @@ program
 program
   .command('push')
   .description('Export local configuration to .agents repo for manual commit')
-  .option('-s, --scope <scope>', 'Scope to push to', 'user')
+  .option('-s, --scope <scope>', 'Target scope (default: user)', 'user')
   .option('--export-only', 'Only export, do not update manifest')
   .action(async (options) => {
     const scopeName = options.scope as ScopeName;
@@ -383,7 +384,8 @@ program
 
     if (!scope) {
       console.log(chalk.red(`Scope '${scopeName}' not configured.`));
-      console.log(chalk.gray(`  Run: agents repo add <source> --scope ${scopeName}`));
+      const scopeHint = scopeName === 'user' ? '' : ` --scope ${scopeName}`;
+      console.log(chalk.gray(`  Run: agents repo add <source>${scopeHint}`));
       process.exit(1);
     }
 
@@ -1290,7 +1292,7 @@ repoCmd
 
     if (scopes.length === 0) {
       console.log(chalk.yellow('\nNo scopes configured.'));
-      console.log(chalk.gray('  Run: agents repo add <source> --scope user'));
+      console.log(chalk.gray('  Run: agents repo add <source>'));
       console.log();
       return;
     }
@@ -1313,7 +1315,7 @@ repoCmd
 repoCmd
   .command('add <source>')
   .description('Add a repository scope')
-  .option('-s, --scope <scope>', 'Scope name: system, user, project, or custom', 'user')
+  .option('-s, --scope <scope>', 'Target scope (default: user)', 'user')
   .option('-y, --yes', 'Skip confirmation prompts')
   .action(async (source: string, options) => {
     const scopeName = options.scope as ScopeName;
