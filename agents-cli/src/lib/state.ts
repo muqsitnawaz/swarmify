@@ -74,6 +74,7 @@ export function readMeta(): Meta {
         clis: oldState.clis || {},
         packages: oldState.packages || {},
         commands: oldState.commands || oldState.skills || {},
+        skills: oldState.skills || {},
         mcp: oldState.mcp || {},
       };
       writeMeta(meta);
