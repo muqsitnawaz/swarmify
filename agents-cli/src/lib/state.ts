@@ -12,7 +12,7 @@ const REPOS_DIR = path.join(AGENTS_DIR, 'repos');
 
 const META_HEADER = `# agents-cli metadata
 # Auto-generated - do not edit manually
-# https://github.com/anthropics/agents-cli
+# https://github.com/muqsitnawaz/agents-cli
 
 `;
 
