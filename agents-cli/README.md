@@ -1,6 +1,8 @@
-# agents-cli
+# @swarmify/agents-cli
 
 Dotfiles manager for AI coding agents. Sync skills, MCP servers, and CLI versions across machines.
+
+Part of the [Swarmify](https://github.com/muqsitnawaz/swarmify) multi-agent toolkit.
 
 ## Install
 
@@ -25,47 +27,40 @@ agents pull ~/dotfiles/.agents
 
 ### Status & Sync
 
-```bash
-agents status              # Show CLIs, skills, sync source
-agents pull <source>       # Pull and install from repo
-agents push                # Export local config to repo
-agents sync <source>       # Alias for pull
-```
+| Command | Description |
+|---------|-------------|
+| `agents status` | Show CLIs, skills, sync source |
+| `agents pull <source>` | Pull and install from repo |
+| `agents push` | Export local config to repo |
+| `agents sync <source>` | Alias for pull |
 
 ### Skills
 
-```bash
-agents skills list                    # List installed skills
-agents skills list --agent claude     # Filter by agent
-agents skills add gh:user/skills      # Install from git repo
-agents skills remove <name>           # Uninstall skill
-```
+| Command | Description |
+|---------|-------------|
+| `agents skills list` | List installed skills |
+| `agents skills list --agent claude` | Filter by agent |
+| `agents skills add gh:user/skills` | Install from git repo |
+| `agents skills remove <name>` | Uninstall skill |
 
 ### MCP Servers
 
-```bash
-agents mcp list                       # Show registration status
-agents mcp add <name> <command>       # Add to manifest
-agents mcp remove <name>              # Unregister from agents
-agents mcp register                   # Register all from manifest
-```
+| Command | Description |
+|---------|-------------|
+| `agents mcp list` | Show registration status |
+| `agents mcp add <name> <command>` | Add to manifest |
+| `agents mcp remove <name>` | Unregister from agents |
+| `agents mcp register` | Register all from manifest |
 
 ### CLI Management
 
-```bash
-agents cli list                       # Show versions and paths
-agents cli add <agent>                # Add to manifest
-agents cli remove <agent>             # Remove from manifest
-agents cli upgrade                    # Upgrade all to manifest versions
-agents cli upgrade claude             # Upgrade specific agent
-agents cli upgrade --latest           # Upgrade to latest (ignore manifest)
-```
-
-### Init
-
-```bash
-agents init                           # Show default manifest structure
-```
+| Command | Description |
+|---------|-------------|
+| `agents cli list` | Show versions and paths |
+| `agents cli add <agent>` | Add to manifest |
+| `agents cli remove <agent>` | Remove from manifest |
+| `agents cli upgrade` | Upgrade all to manifest versions |
+| `agents cli upgrade --latest` | Upgrade to latest |
 
 ## Repo Structure
 
@@ -76,8 +71,6 @@ Your `.agents` repo should look like:
   agents.yaml           # Manifest with CLIs, MCP, defaults
   shared/
     commands/           # Skills shared across all agents
-      deploy.md
-      test.md
   claude/
     commands/           # Claude-specific skills
     hooks/              # Claude hooks
@@ -100,7 +93,7 @@ clis:
 
 mcp:
   swarm:
-    command: "npx @anthropic-ai/swarm-mcp"
+    command: "npx @swarmify/agents-mcp"
     transport: stdio
     scope: user
     agents: [claude, codex]
@@ -113,8 +106,8 @@ defaults:
 
 ## Supported Agents
 
-| Agent | CLI Command | Config Directory |
-|-------|-------------|------------------|
+| Agent | CLI | Config Directory |
+|-------|-----|------------------|
 | Claude | `claude` | `~/.claude/` |
 | Codex | `codex` | `~/.codex/` |
 | Gemini | `gemini` | `~/.gemini/` |
@@ -124,12 +117,12 @@ defaults:
 
 ## Options
 
-```bash
-agents pull <source> -y          # Skip interactive prompts
-agents pull <source> -f          # Force overwrite
-agents pull <source> --dry-run   # Preview changes
-agents pull <source> --skip-mcp  # Skip MCP registration
-```
+| Flag | Description |
+|------|-------------|
+| `-y, --yes` | Skip interactive prompts |
+| `-f, --force` | Force overwrite |
+| `--dry-run` | Preview changes |
+| `--skip-mcp` | Skip MCP registration |
 
 ## State
 
@@ -141,3 +134,13 @@ Local state is stored in `~/.agents/`:
   repos/        # Cloned .agents repos
   packages/     # External skill packages
 ```
+
+## Related Packages
+
+| Package | Description |
+|---------|-------------|
+| [@swarmify/agents-mcp](https://www.npmjs.com/package/@swarmify/agents-mcp) | MCP server for multi-agent orchestration. Spawn Claude, Codex, Gemini agents in parallel. |
+
+## License
+
+MIT
