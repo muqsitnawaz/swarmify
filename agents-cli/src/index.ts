@@ -67,37 +67,57 @@ import {
 } from './lib/skills.js';
 import type { AgentId, Manifest } from './lib/types.js';
 
-const DEFAULT_AGENTS_REPO = 'gh:muqsitnawaz/.agents';
-
 const program = new Command();
 
 /**
- * Ensure a .agents repo source is configured.
- * If not, automatically pull from the default repo.
- * Returns the source string.
+ * Ensure at least one scope is configured.
+ * If not, automatically initialize the system scope from DEFAULT_SYSTEM_REPO.
+ * Returns the highest priority scope's source.
  */
-async function ensureSource(): Promise<string> {
+async function ensureSource(scopeName?: ScopeName): Promise<string> {
   const meta = readState();
-  if (meta.repo?.source) {
-    return meta.repo.source;
+
+  // If specific scope requested, check if it exists
+  if (scopeName) {
+    const scope = meta.scopes[scopeName];
+    if (scope?.source) {
+      return scope.source;
+    }
+    throw new Error(`Scope '${scopeName}' not configured. Run: agents repo add <source> --scope ${scopeName}`);
   }
 
-  console.log(chalk.gray(`No repo configured. Initializing from ${DEFAULT_AGENTS_REPO}...`));
+  // Check if any scope is configured
+  const scopes = getScopesByPriority();
+  if (scopes.length > 0) {
+    // Return highest priority scope's source
+    return scopes[scopes.length - 1].config.source;
+  }
 
-  const parsed = parseSource(DEFAULT_AGENTS_REPO);
-  const { commit } = await cloneRepo(DEFAULT_AGENTS_REPO);
+  // No scopes configured - initialize system scope
+  console.log(chalk.gray(`No repo configured. Initializing system scope from ${DEFAULT_SYSTEM_REPO}...`));
 
-  writeState({
-    ...meta,
-    repo: {
-      source: DEFAULT_AGENTS_REPO,
-      branch: parsed.ref || 'main',
-      commit,
-      lastSync: new Date().toISOString(),
-    },
+  const parsed = parseSource(DEFAULT_SYSTEM_REPO);
+  const { commit } = await cloneRepo(DEFAULT_SYSTEM_REPO);
+
+  setScope('system', {
+    source: DEFAULT_SYSTEM_REPO,
+    branch: parsed.ref || 'main',
+    commit,
+    lastSync: new Date().toISOString(),
+    priority: SCOPE_PRIORITIES.system,
+    readonly: true,
   });
 
-  return DEFAULT_AGENTS_REPO;
+  return DEFAULT_SYSTEM_REPO;
+}
+
+/**
+ * Get repo local path for a scope.
+ */
+function getScopeLocalPath(scopeName: ScopeName): string | null {
+  const scope = getScope(scopeName);
+  if (!scope) return null;
+  return getRepoLocalPath(scope.source);
 }
 
 program
@@ -186,11 +206,20 @@ program
       }
     }
 
-    if (state.repo) {
-      console.log(chalk.bold('\nSync Source\n'));
-      console.log(`  ${state.repo.source}`);
-      console.log(`  Branch: ${state.repo.branch}  Commit: ${state.repo.commit}`);
-      console.log(`  Last sync: ${new Date(state.repo.lastSync).toLocaleString()}`);
+    const scopes = getScopesByPriority();
+    if (scopes.length > 0) {
+      console.log(chalk.bold('\nConfigured Scopes\n'));
+      for (const { name, config } of scopes) {
+        const readonlyTag = config.readonly ? chalk.gray(' (readonly)') : '';
+        const priorityTag = chalk.gray(` [priority: ${config.priority}]`);
+        console.log(`  ${chalk.bold(name)}${readonlyTag}${priorityTag}`);
+        console.log(`    ${config.source}`);
+        console.log(`    Branch: ${config.branch}  Commit: ${config.commit.substring(0, 8)}`);
+        console.log(`    Last sync: ${new Date(config.lastSync).toLocaleString()}`);
+      }
+    } else {
+      console.log(chalk.bold('\nNo scopes configured\n'));
+      console.log(chalk.gray('  Run: agents repo add <source> --scope user'));
     }
 
     console.log();
@@ -205,21 +234,31 @@ program
   .description('Pull and sync from remote .agents repo')
   .option('-y, --yes', 'Skip interactive prompts')
   .option('-f, --force', 'Overwrite local changes')
+  .option('-s, --scope <scope>', 'Scope to pull: system, user, project, or custom name', 'user')
   .option('--dry-run', 'Show what would change')
   .option('--skip-clis', 'Skip CLI installation')
   .option('--skip-mcp', 'Skip MCP registration')
   .action(async (source: string | undefined, options) => {
+    const scopeName = options.scope as ScopeName;
     const meta = readState();
-    const targetSource = source || meta.repo?.source;
+    const existingScope = meta.scopes[scopeName];
+    const targetSource = source || existingScope?.source;
 
     if (!targetSource) {
-      console.log(chalk.red('No source specified. Usage: agents pull <source>'));
-      console.log(chalk.gray('  Example: agents pull gh:username/.agents'));
+      console.log(chalk.red(`No source specified for scope '${scopeName}'.`));
+      console.log(chalk.gray(`  Usage: agents pull <source> --scope ${scopeName}`));
+      console.log(chalk.gray('  Example: agents pull gh:username/.agents --scope user'));
+      process.exit(1);
+    }
+
+    // Prevent modification of readonly scopes
+    if (existingScope?.readonly && !options.force) {
+      console.log(chalk.red(`Scope '${scopeName}' is readonly. Use --force to override.`));
       process.exit(1);
     }
 
     const parsed = parseSource(targetSource);
-    const spinner = ora('Cloning repository...').start();
+    const spinner = ora(`Cloning repository for ${scopeName} scope...`).start();
 
     try {
       const { localPath, commit, isNew } = await cloneRepo(targetSource);
@@ -234,8 +273,8 @@ program
       console.log(chalk.bold(`\nFound ${commands.length} commands\n`));
 
       for (const command of commands.slice(0, 10)) {
-        const source = command.isShared ? 'shared' : command.agentSpecific;
-        console.log(`  ${chalk.cyan(command.name.padEnd(20))} ${chalk.gray(source)}`);
+        const src = command.isShared ? 'shared' : command.agentSpecific;
+        console.log(`  ${chalk.cyan(command.name.padEnd(20))} ${chalk.gray(src)}`);
       }
       if (commands.length > 10) {
         console.log(chalk.gray(`  ... and ${commands.length - 10} more`));
@@ -310,17 +349,18 @@ program
         mcpSpinner.succeed(`Registered ${registered} MCP servers`);
       }
 
-      writeState({
-        ...meta,
-        repo: {
-          source: targetSource,
-          branch: parsed.ref || 'main',
-          commit,
-          lastSync: new Date().toISOString(),
-        },
+      // Update scope config
+      const priority = getScopePriority(scopeName);
+      setScope(scopeName, {
+        source: targetSource,
+        branch: parsed.ref || 'main',
+        commit,
+        lastSync: new Date().toISOString(),
+        priority,
+        readonly: scopeName === 'system',
       });
 
-      console.log(chalk.green('\nSync complete.'));
+      console.log(chalk.green(`\nSync complete. Updated scope: ${scopeName}`));
     } catch (err) {
       spinner.fail('Failed to sync');
       console.error(chalk.red((err as Error).message));
@@ -335,10 +375,24 @@ program
 program
   .command('push')
   .description('Export local configuration to .agents repo for manual commit')
+  .option('-s, --scope <scope>', 'Scope to push to', 'user')
   .option('--export-only', 'Only export, do not update manifest')
   .action(async (options) => {
-    const source = await ensureSource();
-    const localPath = getRepoLocalPath(source);
+    const scopeName = options.scope as ScopeName;
+    const scope = getScope(scopeName);
+
+    if (!scope) {
+      console.log(chalk.red(`Scope '${scopeName}' not configured.`));
+      console.log(chalk.gray(`  Run: agents repo add <source> --scope ${scopeName}`));
+      process.exit(1);
+    }
+
+    if (scope.readonly) {
+      console.log(chalk.red(`Scope '${scopeName}' is readonly. Cannot push.`));
+      process.exit(1);
+    }
+
+    const localPath = getRepoLocalPath(scope.source);
     const manifest = readManifest(localPath) || createDefaultManifest();
 
     console.log(chalk.bold('\nExporting local configuration...\n'));
@@ -1176,10 +1230,12 @@ cliCmd
 cliCmd
   .command('upgrade [agent]')
   .description('Upgrade agent CLI(s) to version in manifest')
+  .option('-s, --scope <scope>', 'Scope to read manifest from', 'user')
   .option('--latest', 'Upgrade to latest version (ignore manifest)')
   .action(async (agent: string | undefined, options) => {
-    const meta = readState();
-    const localPath = meta.repo?.source ? getRepoLocalPath(meta.repo.source) : null;
+    const scopeName = options.scope as ScopeName;
+    const scope = getScope(scopeName);
+    const localPath = scope ? getRepoLocalPath(scope.source) : null;
     const manifest = localPath ? readManifest(localPath) : null;
 
     const agentsToUpgrade: AgentId[] = agent
@@ -1214,6 +1270,165 @@ cliCmd
         console.error(chalk.gray((err as Error).message));
       }
     }
+  });
+
+// =============================================================================
+// REPO COMMANDS
+// =============================================================================
+
+const repoCmd = program
+  .command('repo')
+  .description('Manage .agents repository scopes');
+
+repoCmd
+  .command('list')
+  .description('List configured repository scopes')
+  .action(() => {
+    const scopes = getScopesByPriority();
+
+    if (scopes.length === 0) {
+      console.log(chalk.yellow('\nNo scopes configured.'));
+      console.log(chalk.gray('  Run: agents repo add <source> --scope user'));
+      console.log();
+      return;
+    }
+
+    console.log(chalk.bold('\nConfigured Scopes\n'));
+    console.log(chalk.gray('  Scopes are applied in priority order (higher overrides lower)\n'));
+
+    for (const { name, config } of scopes) {
+      const readonlyTag = config.readonly ? chalk.gray(' (readonly)') : '';
+      console.log(`  ${chalk.bold(name)}${readonlyTag}`);
+      console.log(`    Source:   ${config.source}`);
+      console.log(`    Branch:   ${config.branch}`);
+      console.log(`    Commit:   ${config.commit.substring(0, 8)}`);
+      console.log(`    Priority: ${config.priority}`);
+      console.log(`    Synced:   ${new Date(config.lastSync).toLocaleString()}`);
+      console.log();
+    }
+  });
+
+repoCmd
+  .command('add <source>')
+  .description('Add a repository scope')
+  .option('-s, --scope <scope>', 'Scope name: system, user, project, or custom', 'user')
+  .option('-y, --yes', 'Skip confirmation prompts')
+  .action(async (source: string, options) => {
+    const scopeName = options.scope as ScopeName;
+    const existingScope = getScope(scopeName);
+
+    if (existingScope && !options.yes) {
+      const shouldOverwrite = await confirm({
+        message: `Scope '${scopeName}' already exists (${existingScope.source}). Overwrite?`,
+        default: false,
+      });
+      if (!shouldOverwrite) {
+        console.log(chalk.yellow('Cancelled.'));
+        return;
+      }
+    }
+
+    if (existingScope?.readonly && !options.yes) {
+      console.log(chalk.red(`Scope '${scopeName}' is readonly. Cannot overwrite.`));
+      return;
+    }
+
+    const parsed = parseSource(source);
+    const spinner = ora(`Cloning repository for ${scopeName} scope...`).start();
+
+    try {
+      const { commit, isNew } = await cloneRepo(source);
+      spinner.succeed(isNew ? 'Repository cloned' : 'Repository updated');
+
+      const priority = getScopePriority(scopeName);
+      setScope(scopeName, {
+        source,
+        branch: parsed.ref || 'main',
+        commit,
+        lastSync: new Date().toISOString(),
+        priority,
+        readonly: scopeName === 'system',
+      });
+
+      console.log(chalk.green(`\nAdded scope '${scopeName}' with priority ${priority}`));
+      console.log(chalk.gray(`  Run: agents pull --scope ${scopeName} to sync commands`));
+    } catch (err) {
+      spinner.fail('Failed to add scope');
+      console.error(chalk.red((err as Error).message));
+      process.exit(1);
+    }
+  });
+
+repoCmd
+  .command('remove <scope>')
+  .description('Remove a repository scope')
+  .option('-y, --yes', 'Skip confirmation prompts')
+  .action(async (scopeName: string, options) => {
+    const existingScope = getScope(scopeName);
+
+    if (!existingScope) {
+      console.log(chalk.yellow(`Scope '${scopeName}' not found.`));
+      return;
+    }
+
+    if (existingScope.readonly) {
+      console.log(chalk.red(`Scope '${scopeName}' is readonly. Cannot remove.`));
+      return;
+    }
+
+    if (!options.yes) {
+      const shouldRemove = await confirm({
+        message: `Remove scope '${scopeName}' (${existingScope.source})?`,
+        default: false,
+      });
+      if (!shouldRemove) {
+        console.log(chalk.yellow('Cancelled.'));
+        return;
+      }
+    }
+
+    const removed = removeScope(scopeName);
+    if (removed) {
+      console.log(chalk.green(`Removed scope '${scopeName}'`));
+    } else {
+      console.log(chalk.yellow(`Failed to remove scope '${scopeName}'`));
+    }
+  });
+
+repoCmd
+  .command('sync [scope]')
+  .description('Sync a specific scope or all scopes')
+  .option('-y, --yes', 'Skip confirmation prompts')
+  .action(async (scopeName: string | undefined, options) => {
+    const scopes = scopeName ? [{ name: scopeName, config: getScope(scopeName) }].filter(s => s.config) : getScopesByPriority();
+
+    if (scopes.length === 0) {
+      console.log(chalk.yellow('No scopes to sync.'));
+      return;
+    }
+
+    for (const { name, config } of scopes) {
+      if (!config) continue;
+
+      console.log(chalk.bold(`\nSyncing scope: ${name}`));
+      const spinner = ora('Updating repository...').start();
+
+      try {
+        const { commit } = await cloneRepo(config.source);
+        spinner.succeed('Repository updated');
+
+        setScope(name as ScopeName, {
+          ...config,
+          commit,
+          lastSync: new Date().toISOString(),
+        });
+      } catch (err) {
+        spinner.fail(`Failed to sync ${name}`);
+        console.error(chalk.gray((err as Error).message));
+      }
+    }
+
+    console.log(chalk.green('\nSync complete.'));
   });
 
 // =============================================================================
