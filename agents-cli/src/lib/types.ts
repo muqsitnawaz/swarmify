@@ -68,10 +68,16 @@ export interface PackageState {
   installedAt: string;
 }
 
-export interface State {
+export interface RepoInfo {
+  source: string;
+  branch: string;
+  commit: string;
+  lastSync: string;
+}
+
+export interface Meta {
   version: string;
-  lastSync: string | null;
-  source: string | null;
+  repo: RepoInfo | null;
   clis: Partial<Record<AgentId, CliState>>;
   packages: Record<string, PackageState>;
   commands: Record<string, CommandState>;
