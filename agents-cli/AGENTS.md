@@ -12,7 +12,8 @@ src/
     state.ts            # ~/.agents/state.json management
     git.ts              # Git clone/pull operations
     hooks.ts            # Hook discovery and installation
-    skills.ts           # Skill discovery and installation
+    skills.ts           # Slash command discovery and installation
+    agent-skills.ts     # Agent Skills (SKILL.md + rules/) management
     convert.ts          # Markdown <-> TOML conversion
 ```
 
@@ -56,7 +57,7 @@ Each agent has different paths and formats. See `AGENTS` object in `lib/agents.t
 
 ### Scope System
 
-Commands, hooks, and MCPs can exist at two scopes:
+Commands, skills, hooks, and MCPs can exist at two scopes:
 
 | Scope | Location | Use Case |
 |-------|----------|----------|
@@ -65,9 +66,13 @@ Commands, hooks, and MCPs can exist at two scopes:
 
 Key functions:
 ```typescript
-// lib/skills.ts (manages commands/prompts)
+// lib/skills.ts (manages slash commands/prompts)
 listInstalledCommandsWithScope(agentId, cwd) -> InstalledCommand[]
 promoteCommandToUser(agentId, name, cwd) -> { success, error? }
+
+// lib/agent-skills.ts (manages Agent Skills)
+listInstalledSkillsWithScope(agentId, cwd) -> InstalledSkill[]
+promoteSkillToUser(agentId, name, cwd) -> { success, error? }
 
 // lib/hooks.ts
 listInstalledHooksWithScope(agentId, cwd) -> InstalledHook[]
@@ -77,6 +82,16 @@ promoteHookToUser(agentId, name, cwd) -> { success, error? }
 listInstalledMcpsWithScope(agentId, cwd) -> InstalledMcp[]
 promoteMcpToUser(agentId, name, cwd) -> { success, error? }
 ```
+
+### Agent Skills vs Slash Commands
+
+| Aspect | Slash Commands | Agent Skills |
+|--------|----------------|--------------|
+| Location | `~/.agents/commands/` | `~/.agents/skills/` |
+| Structure | Single `.md` file | Directory: `SKILL.md` + `rules/*.md` |
+| Invocation | `/plan`, `/debug` | Via `Skill` tool interface |
+| Library | `lib/skills.ts` | `lib/agent-skills.ts` |
+| Discovery | `discoverCommands()` | `discoverSkillsFromRepo()` |
 
 ### Command Discovery
 
@@ -201,19 +216,23 @@ bun run build    # Compiles to dist/
 
 | Item | Path |
 |------|------|
-| State | `~/.agents/state.json` |
+| State | `~/.agents/meta.yaml` |
 | Cloned repos | `~/.agents/repos/` |
 | External packages | `~/.agents/packages/` |
+| Agent Skills | `~/.agents/skills/` |
 
 ### User Scope (global)
 
 | Item | Path |
 |------|------|
 | Claude commands | `~/.claude/commands/` |
+| Claude skills | `~/.claude/skills/` |
 | Claude MCP config | `~/.claude/settings.json` |
 | Codex prompts | `~/.codex/prompts/` |
+| Codex skills | `~/.codex/skills/` |
 | Codex MCP config | `~/.codex/config.json` |
 | Gemini commands | `~/.gemini/commands/` |
+| Gemini skills | `~/.gemini/skills/` |
 | Gemini MCP config | `~/.gemini/settings.json` |
 
 ### Project Scope (per-directory)
@@ -221,8 +240,11 @@ bun run build    # Compiles to dist/
 | Item | Path |
 |------|------|
 | Claude commands | `./.claude/commands/` |
+| Claude skills | `./.claude/skills/` |
 | Claude MCP config | `./.claude/settings.json` |
 | Codex prompts | `./.codex/prompts/` |
+| Codex skills | `./.codex/skills/` |
 | Codex MCP config | `./.codex/config.json` |
 | Gemini commands | `./.gemini/commands/` |
+| Gemini skills | `./.gemini/skills/` |
 | Gemini MCP config | `./.gemini/settings.json` |
