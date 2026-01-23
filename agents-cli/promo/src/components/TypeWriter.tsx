@@ -1,5 +1,6 @@
 import React from 'react';
 import {useCurrentFrame, useVideoConfig} from 'remotion';
+import {colors} from '../styles/colors';
 
 interface TypeWriterProps {
   text: string;

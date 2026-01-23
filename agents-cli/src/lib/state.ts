@@ -2,7 +2,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import * as yaml from 'yaml';
-import type { Meta, State } from './types.js';
+import type { Meta, State, ScopeConfig, ScopeName } from './types.js';
+import { SCOPE_PRIORITIES, DEFAULT_SYSTEM_REPO } from './types.js';
 
 const HOME = os.homedir();
 const AGENTS_DIR = path.join(HOME, '.agents');
@@ -43,7 +44,7 @@ export function ensureAgentsDir(): void {
 export function createDefaultMeta(): Meta {
   return {
     version: '1.0',
-    repo: null,
+    scopes: {},
     clis: {},
     packages: {},
     commands: {},
@@ -61,19 +62,26 @@ export function readMeta(): Meta {
     try {
       const oldContent = fs.readFileSync(oldStateFile, 'utf-8');
       const oldState = JSON.parse(oldContent);
+
+      // Migrate old repo format to scopes
+      const scopes: Record<ScopeName, ScopeConfig> = {};
+      if (oldState.source) {
+        // Old single repo becomes user scope
+        scopes.user = {
+          source: oldState.source,
+          branch: 'main',
+          commit: 'unknown',
+          lastSync: oldState.lastSync || new Date().toISOString(),
+          priority: SCOPE_PRIORITIES.user,
+        };
+      }
+
       const meta: Meta = {
-        version: oldState.version || '1.0',
-        repo: oldState.source
-          ? {
-              source: oldState.source,
-              branch: 'main',
-              commit: 'unknown',
-              lastSync: oldState.lastSync || new Date().toISOString(),
-            }
-          : null,
+        version: '1.0',
+        scopes,
         clis: oldState.clis || {},
         packages: oldState.packages || {},
-        commands: oldState.commands || oldState.skills || {},
+        commands: oldState.commands || {},
         skills: oldState.skills || {},
         mcp: oldState.mcp || {},
       };
@@ -85,16 +93,43 @@ export function readMeta(): Meta {
     }
   }
 
-  if (!fs.existsSync(META_FILE)) {
-    return createDefaultMeta();
+  // Migration: check for old meta.yaml with repo field
+  if (fs.existsSync(META_FILE)) {
+    try {
+      const content = fs.readFileSync(META_FILE, 'utf-8');
+      const parsed = yaml.parse(content) as any;
+
+      // Migrate old repo field to scopes
+      if (parsed.repo && !parsed.scopes) {
+        const scopes: Record<ScopeName, ScopeConfig> = {};
+        scopes.user = {
+          source: parsed.repo.source,
+          branch: parsed.repo.branch || 'main',
+          commit: parsed.repo.commit || 'unknown',
+          lastSync: parsed.repo.lastSync || new Date().toISOString(),
+          priority: SCOPE_PRIORITIES.user,
+        };
+
+        const meta: Meta = {
+          version: parsed.version || '1.0',
+          scopes,
+          clis: parsed.clis || {},
+          packages: parsed.packages || {},
+          commands: parsed.commands || {},
+          skills: parsed.skills || {},
+          mcp: parsed.mcp || {},
+        };
+        writeMeta(meta);
+        return meta;
+      }
+
+      return parsed as Meta;
+    } catch {
+      return createDefaultMeta();
+    }
   }
 
-  try {
-    const content = fs.readFileSync(META_FILE, 'utf-8');
-    return yaml.parse(content) as Meta;
-  } catch {
-    return createDefaultMeta();
-  }
+  return createDefaultMeta();
 }
 
 export function writeMeta(meta: Meta): void {
@@ -126,6 +161,54 @@ export function getPackageLocalPath(source: string): string {
     .replace(/\.git$/, '')
     .replace(/\//g, '-');
   return path.join(PACKAGES_DIR, sanitized);
+}
+
+// Scope management helpers
+
+export function getScope(scopeName: ScopeName): ScopeConfig | null {
+  const meta = readMeta();
+  return meta.scopes[scopeName] || null;
+}
+
+export function setScope(scopeName: ScopeName, config: ScopeConfig): void {
+  const meta = readMeta();
+  meta.scopes[scopeName] = config;
+  writeMeta(meta);
+}
+
+export function removeScope(scopeName: ScopeName): boolean {
+  const meta = readMeta();
+  if (meta.scopes[scopeName]) {
+    delete meta.scopes[scopeName];
+    writeMeta(meta);
+    return true;
+  }
+  return false;
+}
+
+export function getScopesByPriority(): Array<{ name: ScopeName; config: ScopeConfig }> {
+  const meta = readMeta();
+  return Object.entries(meta.scopes)
+    .map(([name, config]) => ({ name, config }))
+    .sort((a, b) => a.config.priority - b.config.priority);
+}
+
+export function getHighestPriorityScope(): { name: ScopeName; config: ScopeConfig } | null {
+  const scopes = getScopesByPriority();
+  return scopes.length > 0 ? scopes[scopes.length - 1] : null;
+}
+
+export function getScopePriority(scopeName: ScopeName): number {
+  if (scopeName in SCOPE_PRIORITIES) {
+    return SCOPE_PRIORITIES[scopeName as keyof typeof SCOPE_PRIORITIES];
+  }
+  // Custom scopes get priority 20 + order added
+  const meta = readMeta();
+  const customScopes = Object.keys(meta.scopes).filter(
+    (s) => !['system', 'user', 'project'].includes(s)
+  );
+  const index = customScopes.indexOf(scopeName);
+  return index >= 0 ? 20 + index : 25;
 }
 
 // Legacy aliases
