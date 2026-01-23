@@ -366,7 +366,20 @@ Live activity extraction from agent session files. Shows what the agent is curre
 - Codex: `~/.codex/sessions/{year}/{month}/{day}/*.jsonl`
 - Gemini: `~/.gemini/sessions/*.jsonl`
 - OpenCode: `~/.local/share/opencode/storage/session/{projectHash}/*.json` (messages in `storage/message/{sessionId}/`, content in `storage/part/{messageId}/`)
-- Cursor: `~/.cursor/chats/{hash}/{uuid}/store.db` (SQLite with blobs table containing JSON messages)
+- Cursor: `~/.cursor/chats/{hash}/{uuid}/store.db` (SQLite with blobs table)
+
+**Cursor SQLite blob format** (critical):
+- The `blobs` table contains mixed data: some blobs are JSON, others are binary (protobuf/metadata)
+- JSON blobs start with `0x7B` (`{`) - these contain chat messages with `role` and `content` fields
+- Binary blobs start with `0x0A`, `0x1A`, `0x12` etc - skip these
+- User message content is an array: `[{type: "text", text: "..."}]`
+- First user message often contains `<user_info>` context - look for `<user_query>` tags for actual query
+- Uses `better-sqlite3` for reading (native SQLite bindings)
+
+**OpenCode 3-level storage**:
+- Session metadata: `storage/session/{sessionId}.json`
+- Message metadata: `storage/message/{sessionId}/msg_xxx.json` (contains `role`, `id`)
+- Message content: `storage/part/{messageId}/prt_xxx.json` (contains actual `text`)
 
 **Implementation details**:
 - `getSessionPreviewInfo()`: Reads tail of session file and parses for recent activity
