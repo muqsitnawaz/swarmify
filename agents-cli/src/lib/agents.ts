@@ -65,7 +65,7 @@ export const AGENTS: Record<AgentId, AgentConfig> = {
     format: 'markdown',
     variableSyntax: '$ARGUMENTS',
     supportsHooks: false,
-    capabilities: { hooks: false, mcp: false, allowlist: false, skills: false },
+    capabilities: { hooks: false, mcp: true, allowlist: false, skills: false },
   },
   opencode: {
     id: 'opencode',
@@ -80,22 +80,7 @@ export const AGENTS: Record<AgentId, AgentConfig> = {
     format: 'markdown',
     variableSyntax: '$ARGUMENTS',
     supportsHooks: false,
-    capabilities: { hooks: false, mcp: false, allowlist: false, skills: false },
-  },
-  trae: {
-    id: 'trae',
-    name: 'Trae',
-    cliCommand: 'trae-cli',
-    npmPackage: '',
-    configDir: path.join(HOME, '.trae'),
-    commandsDir: path.join(HOME, '.trae', 'commands'),
-    commandsSubdir: 'commands',
-    skillsDir: path.join(HOME, '.trae', 'skills'),
-    hooksDir: 'hooks',
-    format: 'markdown',
-    variableSyntax: '$ARGUMENTS',
-    supportsHooks: false,
-    capabilities: { hooks: false, mcp: false, allowlist: false, skills: false },
+    capabilities: { hooks: false, mcp: true, allowlist: false, skills: false },
   },
 };
 

@@ -6,7 +6,7 @@
 src/
   index.ts              # CLI entry point, all commands
   lib/
-    types.ts            # Core types (AgentId, Manifest, State)
+    types.ts            # Core types (AgentId, Manifest, State, Registry)
     agents.ts           # Agent configs, CLI detection, MCP ops
     manifest.ts         # agents.yaml parsing/serialization
     state.ts            # ~/.agents/meta.yaml management
@@ -15,6 +15,7 @@ src/
     commands.ts         # Slash command discovery and installation
     skills.ts           # Agent Skills (SKILL.md + rules/) management
     convert.ts          # Markdown <-> TOML conversion
+    registry.ts         # Package registry client (MCP, skills)
 ```
 
 ## Key Types
@@ -140,6 +141,30 @@ Sources can be specified as:
 // lib/git.ts
 parseSource(source) -> { type: 'github' | 'url' | 'local', url: string, ref?: string }
 ```
+
+### Package Registries
+
+Registries are URL-based indexes for discovering MCP servers and skills.
+
+```typescript
+// lib/registry.ts
+getRegistries(type: 'mcp' | 'skill') -> Record<string, RegistryConfig>
+getEnabledRegistries(type) -> Array<{ name, config }>
+searchMcpRegistries(query, options?) -> RegistrySearchResult[]
+getMcpServerInfo(name, registry?) -> McpServerEntry | null
+resolvePackage(identifier) -> ResolvedPackage | null
+parsePackageIdentifier(id) -> { type, name }
+```
+
+Package identifier prefixes:
+- `mcp:name` - Search MCP registries
+- `skill:user/repo` - Skill (falls back to git)
+- `gh:user/repo` - Git source directly
+
+Default registries defined in `DEFAULT_REGISTRIES` (types.ts):
+- `mcp.official`: https://registry.modelcontextprotocol.io/v0
+
+Registry config stored in `~/.agents/meta.yaml` under `registries` key.
 
 ## State Management
 
