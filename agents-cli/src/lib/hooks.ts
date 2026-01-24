@@ -137,6 +137,26 @@ function copyHook(entry: HookEntry, targetDir: string): void {
   }
 }
 
+/**
+ * Check if a hook exists for an agent.
+ */
+export function hookExists(agentId: AgentId, hookName: string): boolean {
+  const agent = AGENTS[agentId];
+  if (!agent.supportsHooks) {
+    return false;
+  }
+  const hooksDir = getHooksDir(agentId);
+  if (!fs.existsSync(hooksDir)) {
+    return false;
+  }
+  const files = fs.readdirSync(hooksDir);
+  return files.some((file) => {
+    const ext = path.extname(file);
+    const baseName = path.basename(file, ext);
+    return baseName === hookName && SCRIPT_EXTENSIONS.has(ext);
+  });
+}
+
 export function listInstalledHooksWithScope(
   agentId: AgentId,
   cwd: string = process.cwd()

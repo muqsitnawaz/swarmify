@@ -267,6 +267,16 @@ export function listInstalledCommands(agentId: AgentId): string[] {
 }
 
 /**
+ * Check if a command exists for an agent.
+ */
+export function commandExists(agentId: AgentId, commandName: string): boolean {
+  const agent = AGENTS[agentId];
+  const ext = agent.format === 'toml' ? '.toml' : '.md';
+  const targetPath = path.join(agent.commandsDir, `${commandName}${ext}`);
+  return fs.existsSync(targetPath);
+}
+
+/**
  * Get the project-scoped commands directory for an agent.
  * Claude: .claude/commands/
  * Codex: .codex/prompts/

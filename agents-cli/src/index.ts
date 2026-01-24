@@ -3,8 +3,25 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
+import * as fs from 'fs';
+import * as path from 'path';
+import { fileURLToPath } from 'url';
 
 import { checkbox, confirm, select } from '@inquirer/prompts';
+
+// Get version from package.json
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const packageJsonPath = path.join(__dirname, '..', 'package.json');
+const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+const VERSION = packageJson.version;
+
+function isPromptCancelled(err: unknown): boolean {
+  return err instanceof Error && (
+    err.name === 'ExitPromptError' ||
+    err.message.includes('force closed') ||
+    err.message.includes('User force closed')
+  );
+}
 import {
   AGENTS,
   ALL_AGENT_IDS,
@@ -48,6 +65,7 @@ import {
   listInstalledCommands,
   listInstalledCommandsWithScope,
   promoteCommandToUser,
+  commandExists,
 } from './lib/commands.js';
 import {
   discoverHooksFromRepo,
@@ -55,6 +73,7 @@ import {
   listInstalledHooksWithScope,
   promoteHookToUser,
   removeHook,
+  hookExists,
 } from './lib/hooks.js';
 import {
   discoverSkillsFromRepo,
@@ -64,6 +83,7 @@ import {
   promoteSkillToUser,
   getSkillInfo,
   getSkillRules,
+  skillExists,
 } from './lib/skills.js';
 import type { AgentId, Manifest, RegistryType } from './lib/types.js';
 import { DEFAULT_REGISTRIES } from './lib/types.js';
@@ -133,7 +153,37 @@ function getScopeLocalPath(scopeName: ScopeName): string | null {
 program
   .name('agents')
   .description('Dotfiles manager for AI coding agents')
-  .version('1.0.0');
+  .version(VERSION);
+
+// Check for updates (non-blocking, shows hint if update available)
+async function checkForUpdates(): Promise<void> {
+  try {
+    const response = await fetch('https://registry.npmjs.org/@swarmify/agents-cli/latest', {
+      signal: AbortSignal.timeout(2000), // 2s timeout
+    });
+    if (!response.ok) return;
+
+    const data = (await response.json()) as { version: string };
+    const latestVersion = data.version;
+
+    if (latestVersion !== VERSION && compareVersions(latestVersion, VERSION) > 0) {
+      console.log(chalk.yellow(`\nUpdate available: ${VERSION} -> ${latestVersion}`));
+      console.log(chalk.gray(`Run: agents upgrade\n`));
+    }
+  } catch {
+    // Silently ignore - don't block CLI usage
+  }
+}
+
+// Run update check after command completes (non-blocking)
+program.hook('postAction', async () => {
+  // Don't check on upgrade command itself
+  const args = process.argv.slice(2);
+  if (args[0] === 'upgrade' || args[0] === '--version' || args[0] === '-V' || args[0] === '--help' || args[0] === '-h') {
+    return;
+  }
+  await checkForUpdates();
+});
 
 // =============================================================================
 // STATUS COMMAND
@@ -282,26 +332,79 @@ program
 // PULL COMMAND
 // =============================================================================
 
+// Agent name aliases for flexible input
+const AGENT_NAME_ALIASES: Record<string, AgentId> = {
+  claude: 'claude',
+  'claude-code': 'claude',
+  cc: 'claude',
+  codex: 'codex',
+  'openai-codex': 'codex',
+  cx: 'codex',
+  gemini: 'gemini',
+  'gemini-cli': 'gemini',
+  gx: 'gemini',
+  cursor: 'cursor',
+  'cursor-agent': 'cursor',
+  cr: 'cursor',
+  opencode: 'opencode',
+  oc: 'opencode',
+};
+
+function resolveAgentName(input: string): AgentId | null {
+  return AGENT_NAME_ALIASES[input.toLowerCase()] || null;
+}
+
+function isAgentName(input: string): boolean {
+  return resolveAgentName(input) !== null;
+}
+
+// Resource item for tracking new vs existing
+interface ResourceItem {
+  type: 'command' | 'skill' | 'hook' | 'mcp';
+  name: string;
+  agents: AgentId[];
+  isNew: boolean;
+}
+
+// Per-resource conflict decision
+type ResourceDecision = 'overwrite' | 'skip';
+
 program
-  .command('pull [source]')
+  .command('pull [source] [agent]')
   .description('Pull and sync from remote .agents repo')
-  .option('-y, --yes', 'Skip interactive prompts')
-  .option('-f, --force', 'Overwrite local changes')
+  .option('-y, --yes', 'Auto-confirm and skip all conflicts')
+  .option('-f, --force', 'Auto-confirm and overwrite all conflicts')
   .option('-s, --scope <scope>', 'Target scope (default: user)', 'user')
   .option('--dry-run', 'Show what would change')
-  .option('--skip-clis', 'Skip CLI installation')
+  .option('--skip-clis', 'Skip CLI version sync')
   .option('--skip-mcp', 'Skip MCP registration')
-  .action(async (source: string | undefined, options) => {
+  .action(async (arg1: string | undefined, arg2: string | undefined, options) => {
+    // Parse source and agent filter from positional args
+    let targetSource: string | undefined;
+    let agentFilter: AgentId | undefined;
+
+    if (arg1) {
+      if (isAgentName(arg1)) {
+        // agents pull claude
+        agentFilter = resolveAgentName(arg1)!;
+      } else {
+        // agents pull gh:user/repo [agent]
+        targetSource = arg1;
+        if (arg2 && isAgentName(arg2)) {
+          agentFilter = resolveAgentName(arg2)!;
+        }
+      }
+    }
+
     const scopeName = options.scope as ScopeName;
     const meta = readState();
     const existingScope = meta.scopes[scopeName];
 
     // Try: 1) provided source, 2) existing scope source, 3) fall back to system scope
-    let targetSource = source || existingScope?.source;
+    targetSource = targetSource || existingScope?.source;
     let effectiveScope = scopeName;
 
     if (!targetSource && scopeName === 'user') {
-      // Fall back to system scope if user scope has no source
       const systemScope = meta.scopes['system'];
       if (systemScope?.source) {
         targetSource = systemScope.source;
@@ -311,16 +414,22 @@ program
     }
 
     if (!targetSource) {
-      console.log(chalk.red(`No source specified for scope '${scopeName}'.`));
-      const scopeHint = scopeName === 'user' ? '' : ` --scope ${scopeName}`;
-      console.log(chalk.gray(`  Usage: agents pull <source>${scopeHint}`));
-      console.log(chalk.gray('  Example: agents pull gh:username/.agents'));
-      process.exit(1);
+      if (scopeName === 'user' && Object.keys(meta.scopes).length === 0) {
+        console.log(chalk.gray(`First run detected. Initializing from ${DEFAULT_SYSTEM_REPO}...\n`));
+        targetSource = DEFAULT_SYSTEM_REPO;
+        effectiveScope = 'system';
+      } else {
+        console.log(chalk.red(`No source specified for scope '${scopeName}'.`));
+        const scopeHint = scopeName === 'user' ? '' : ` --scope ${scopeName}`;
+        console.log(chalk.gray(`  Usage: agents pull <source>${scopeHint}`));
+        console.log(chalk.gray('  Example: agents pull gh:username/.agents'));
+        process.exit(1);
+      }
     }
 
-    // Prevent modification of readonly scopes (but allow syncing from them)
     const targetScopeConfig = meta.scopes[effectiveScope];
     const isReadonly = targetScopeConfig?.readonly || effectiveScope === 'system';
+    const isUserScope = effectiveScope === 'user';
 
     const parsed = parseSource(targetSource);
     const spinner = ora(`Syncing from ${effectiveScope} scope...`).start();
@@ -335,75 +444,20 @@ program
       }
 
       // Discover all assets
-      const commands = discoverCommands(localPath);
-      const skills = discoverSkillsFromRepo(localPath);
+      const allCommands = discoverCommands(localPath);
+      const allSkills = discoverSkillsFromRepo(localPath);
       const discoveredHooks = discoverHooksFromRepo(localPath);
-      const totalHooks = discoveredHooks.shared.length +
-        Object.values(discoveredHooks.agentSpecific).reduce((sum, arr) => sum + arr.length, 0);
 
-      console.log(chalk.bold(`\nDiscovered assets:\n`));
-
-      if (commands.length > 0) {
-        console.log(`  Commands: ${commands.length}`);
-        for (const command of commands.slice(0, 5)) {
-          const src = command.isShared ? 'shared' : command.agentSpecific;
-          console.log(`    ${chalk.cyan(command.name.padEnd(18))} ${chalk.gray(src)}`);
-        }
-        if (commands.length > 5) {
-          console.log(chalk.gray(`    ... and ${commands.length - 5} more`));
-        }
-      }
-
-      if (skills.length > 0) {
-        console.log(`  Skills: ${skills.length}`);
-        for (const skill of skills.slice(0, 5)) {
-          console.log(`    ${chalk.cyan(skill.name.padEnd(18))} ${chalk.gray(skill.metadata.description || '')}`);
-        }
-        if (skills.length > 5) {
-          console.log(chalk.gray(`    ... and ${skills.length - 5} more`));
-        }
-      }
-
-      if (totalHooks > 0) {
-        console.log(`  Hooks: ${totalHooks}`);
-        for (const name of discoveredHooks.shared.slice(0, 3)) {
-          console.log(`    ${chalk.cyan(name.padEnd(18))} ${chalk.gray('shared')}`);
-        }
-        for (const [agentId, hooks] of Object.entries(discoveredHooks.agentSpecific)) {
-          for (const name of hooks.slice(0, 2)) {
-            console.log(`    ${chalk.cyan(name.padEnd(18))} ${chalk.gray(agentId)}`);
-          }
-        }
-        if (totalHooks > 5) {
-          console.log(chalk.gray(`    ... and more`));
-        }
-      }
-
-      const mcpCount = manifest?.mcp ? Object.keys(manifest.mcp).length : 0;
-      if (mcpCount > 0) {
-        console.log(`  MCP Servers: ${mcpCount}`);
-        for (const name of Object.keys(manifest!.mcp!).slice(0, 5)) {
-          console.log(`    ${chalk.cyan(name)}`);
-        }
-        if (mcpCount > 5) {
-          console.log(chalk.gray(`    ... and ${mcpCount - 5} more`));
-        }
-      }
-
-      if (options.dryRun) {
-        console.log(chalk.yellow('\nDry run - no changes made'));
-        return;
-      }
-
+      // Determine which agents to sync
       let selectedAgents: AgentId[];
-      let method: 'symlink' | 'copy';
-
-      if (options.yes) {
+      if (agentFilter) {
+        // Single agent filter
+        selectedAgents = [agentFilter];
+        console.log(chalk.gray(`\nFiltering for ${AGENTS[agentFilter].name} only\n`));
+      } else if (options.yes || options.force) {
         selectedAgents = (manifest?.defaults?.agents || ['claude', 'codex', 'gemini']) as AgentId[];
-        method = manifest?.defaults?.method || 'symlink';
       } else {
         const installedAgents = ALL_AGENT_IDS.filter((id) => isCliInstalled(id) || id === 'cursor');
-
         selectedAgents = await checkbox({
           message: 'Select agents to sync:',
           choices: installedAgents.map((id) => ({
@@ -412,7 +466,193 @@ program
             checked: (manifest?.defaults?.agents || ['claude', 'codex', 'gemini']).includes(id),
           })),
         });
+      }
 
+      // Filter agents to only installed ones (plus cursor which doesn't need CLI)
+      selectedAgents = selectedAgents.filter((id) => isCliInstalled(id) || id === 'cursor');
+
+      if (selectedAgents.length === 0) {
+        console.log(chalk.yellow('\nNo agents selected or installed. Nothing to sync.'));
+        return;
+      }
+
+      // Build resource items with conflict detection
+      const newItems: ResourceItem[] = [];
+      const existingItems: ResourceItem[] = [];
+
+      // Process commands
+      for (const command of allCommands) {
+        const applicableAgents = selectedAgents.filter((agentId) => {
+          const sourcePath = resolveCommandSource(localPath, command.name, agentId);
+          return sourcePath !== null;
+        });
+        if (applicableAgents.length === 0) continue;
+
+        const conflictingAgents = applicableAgents.filter((agentId) => commandExists(agentId, command.name));
+        const newAgents = applicableAgents.filter((agentId) => !commandExists(agentId, command.name));
+
+        if (conflictingAgents.length > 0) {
+          existingItems.push({ type: 'command', name: command.name, agents: conflictingAgents, isNew: false });
+        }
+        if (newAgents.length > 0) {
+          newItems.push({ type: 'command', name: command.name, agents: newAgents, isNew: true });
+        }
+      }
+
+      // Process skills
+      const skillAgents = SKILLS_CAPABLE_AGENTS.filter((id) => selectedAgents.includes(id));
+      for (const skill of allSkills) {
+        const conflictingAgents = skillAgents.filter((agentId) => skillExists(agentId, skill.name));
+        const newAgents = skillAgents.filter((agentId) => !skillExists(agentId, skill.name));
+
+        if (conflictingAgents.length > 0) {
+          existingItems.push({ type: 'skill', name: skill.name, agents: conflictingAgents, isNew: false });
+        }
+        if (newAgents.length > 0) {
+          newItems.push({ type: 'skill', name: skill.name, agents: newAgents, isNew: true });
+        }
+      }
+
+      // Process hooks
+      const hookAgents = selectedAgents.filter(
+        (id) => HOOKS_CAPABLE_AGENTS.includes(id as typeof HOOKS_CAPABLE_AGENTS[number]) && isCliInstalled(id)
+      );
+      const allHookNames = [
+        ...discoveredHooks.shared,
+        ...Object.entries(discoveredHooks.agentSpecific)
+          .filter(([agentId]) => hookAgents.includes(agentId as AgentId))
+          .flatMap(([_, hooks]) => hooks),
+      ];
+      const uniqueHookNames = [...new Set(allHookNames)];
+
+      for (const hookName of uniqueHookNames) {
+        const conflictingAgents = hookAgents.filter((agentId) => hookExists(agentId, hookName));
+        const newAgents = hookAgents.filter((agentId) => !hookExists(agentId, hookName));
+
+        if (conflictingAgents.length > 0) {
+          existingItems.push({ type: 'hook', name: hookName, agents: conflictingAgents, isNew: false });
+        }
+        if (newAgents.length > 0) {
+          newItems.push({ type: 'hook', name: hookName, agents: newAgents, isNew: true });
+        }
+      }
+
+      // Process MCPs
+      if (!options.skipMcp && manifest?.mcp) {
+        for (const [name, config] of Object.entries(manifest.mcp)) {
+          if (config.transport === 'http' || !config.command) continue;
+          const mcpAgents = config.agents.filter((agentId) => selectedAgents.includes(agentId) && isCliInstalled(agentId));
+          if (mcpAgents.length === 0) continue;
+
+          const conflictingAgents = mcpAgents.filter((agentId) => isMcpRegistered(agentId, name));
+          const newAgents = mcpAgents.filter((agentId) => !isMcpRegistered(agentId, name));
+
+          if (conflictingAgents.length > 0) {
+            existingItems.push({ type: 'mcp', name, agents: conflictingAgents, isNew: false });
+          }
+          if (newAgents.length > 0) {
+            newItems.push({ type: 'mcp', name, agents: newAgents, isNew: true });
+          }
+        }
+      }
+
+      // Display overview
+      console.log(chalk.bold('\nOverview\n'));
+
+      const formatAgentList = (agents: AgentId[]) =>
+        agents.map((id) => AGENTS[id].name).join(', ');
+
+      if (newItems.length > 0) {
+        console.log(chalk.green('  NEW (will install):\n'));
+        const byType = { command: [] as ResourceItem[], skill: [] as ResourceItem[], hook: [] as ResourceItem[], mcp: [] as ResourceItem[] };
+        for (const item of newItems) byType[item.type].push(item);
+
+        if (byType.command.length > 0) {
+          console.log(`    Commands:`);
+          for (const item of byType.command) {
+            console.log(`      ${chalk.cyan(item.name.padEnd(20))} ${chalk.gray(formatAgentList(item.agents))}`);
+          }
+        }
+        if (byType.skill.length > 0) {
+          console.log(`    Skills:`);
+          for (const item of byType.skill) {
+            console.log(`      ${chalk.cyan(item.name.padEnd(20))} ${chalk.gray(formatAgentList(item.agents))}`);
+          }
+        }
+        if (byType.hook.length > 0) {
+          console.log(`    Hooks:`);
+          for (const item of byType.hook) {
+            console.log(`      ${chalk.cyan(item.name.padEnd(20))} ${chalk.gray(formatAgentList(item.agents))}`);
+          }
+        }
+        if (byType.mcp.length > 0) {
+          console.log(`    MCP Servers:`);
+          for (const item of byType.mcp) {
+            console.log(`      ${chalk.cyan(item.name.padEnd(20))} ${chalk.gray(formatAgentList(item.agents))}`);
+          }
+        }
+        console.log();
+      }
+
+      if (existingItems.length > 0) {
+        console.log(chalk.yellow('  EXISTING (conflicts):\n'));
+        const byType = { command: [] as ResourceItem[], skill: [] as ResourceItem[], hook: [] as ResourceItem[], mcp: [] as ResourceItem[] };
+        for (const item of existingItems) byType[item.type].push(item);
+
+        if (byType.command.length > 0) {
+          console.log(`    Commands:`);
+          for (const item of byType.command) {
+            console.log(`      ${chalk.yellow(item.name.padEnd(20))} ${chalk.gray(formatAgentList(item.agents))}`);
+          }
+        }
+        if (byType.skill.length > 0) {
+          console.log(`    Skills:`);
+          for (const item of byType.skill) {
+            console.log(`      ${chalk.yellow(item.name.padEnd(20))} ${chalk.gray(formatAgentList(item.agents))}`);
+          }
+        }
+        if (byType.hook.length > 0) {
+          console.log(`    Hooks:`);
+          for (const item of byType.hook) {
+            console.log(`      ${chalk.yellow(item.name.padEnd(20))} ${chalk.gray(formatAgentList(item.agents))}`);
+          }
+        }
+        if (byType.mcp.length > 0) {
+          console.log(`    MCP Servers:`);
+          for (const item of byType.mcp) {
+            console.log(`      ${chalk.yellow(item.name.padEnd(20))} ${chalk.gray(formatAgentList(item.agents))}`);
+          }
+        }
+        console.log();
+      }
+
+      if (newItems.length === 0 && existingItems.length === 0) {
+        console.log(chalk.gray('  Nothing to sync.\n'));
+        return;
+      }
+
+      if (options.dryRun) {
+        console.log(chalk.yellow('Dry run - no changes made'));
+        return;
+      }
+
+      // Confirmation prompt
+      if (!options.yes && !options.force) {
+        const proceed = await confirm({
+          message: 'Proceed with installation?',
+          default: true,
+        });
+        if (!proceed) {
+          console.log(chalk.yellow('\nSync cancelled'));
+          return;
+        }
+      }
+
+      // Determine installation method
+      let method: 'symlink' | 'copy';
+      if (options.yes || options.force) {
+        method = manifest?.defaults?.method || 'symlink';
+      } else {
         method = await select({
           message: 'Installation method:',
           choices: [
@@ -423,77 +663,172 @@ program
         });
       }
 
-      const defaultAgents = selectedAgents;
+      // Per-resource conflict decisions
+      const decisions = new Map<string, ResourceDecision>();
 
-      const installSpinner = ora('Installing commands...').start();
-      let installed = 0;
+      if (existingItems.length > 0 && !options.force && !options.yes) {
+        console.log(chalk.bold('\nResolve conflicts:\n'));
 
-      for (const command of commands) {
-        for (const agentId of defaultAgents as AgentId[]) {
-          if (!isCliInstalled(agentId) && agentId !== 'cursor') continue;
+        for (const item of existingItems) {
+          const typeLabel = item.type.charAt(0).toUpperCase() + item.type.slice(1);
+          const agentList = formatAgentList(item.agents);
 
-          const sourcePath = resolveCommandSource(localPath, command.name, agentId);
-          if (sourcePath) {
-            installCommand(sourcePath, agentId, command.name, method);
-            installed++;
+          const decision = await select({
+            message: `${typeLabel} '${item.name}' exists (${agentList})`,
+            choices: [
+              { name: 'Overwrite', value: 'overwrite' as const },
+              { name: 'Skip', value: 'skip' as const },
+              { name: 'Cancel all', value: 'cancel' as const },
+            ],
+          });
+
+          if (decision === 'cancel') {
+            console.log(chalk.yellow('\nSync cancelled'));
+            return;
           }
+
+          decisions.set(`${item.type}:${item.name}`, decision);
+        }
+      } else if (options.force) {
+        // Force mode: overwrite all
+        for (const item of existingItems) {
+          decisions.set(`${item.type}:${item.name}`, 'overwrite');
+        }
+      } else if (options.yes) {
+        // Yes mode: skip all conflicts
+        for (const item of existingItems) {
+          decisions.set(`${item.type}:${item.name}`, 'skip');
         }
       }
 
-      installSpinner.succeed(`Installed ${installed} command instances`);
+      // Install new items (no conflicts)
+      console.log();
+      let installed = { commands: 0, skills: 0, hooks: 0, mcps: 0 };
+      let skipped = { commands: 0, skills: 0, hooks: 0, mcps: 0 };
 
-      // Install skills
-      if (skills.length > 0) {
-        const skillSpinner = ora('Installing skills...').start();
-        let skillsInstalled = 0;
-
-        for (const skill of skills) {
-          const skillAgents = SKILLS_CAPABLE_AGENTS.filter(
-            (id) => selectedAgents.includes(id) && (isCliInstalled(id) || id === 'cursor')
-          );
-          if (skillAgents.length > 0) {
-            const result = installSkill(skill.path, skill.name, skillAgents);
-            if (result.success) skillsInstalled++;
-          }
+      // Install commands
+      const cmdSpinner = ora('Installing commands...').start();
+      for (const item of [...newItems, ...existingItems].filter((i) => i.type === 'command')) {
+        const decision = item.isNew ? 'overwrite' : decisions.get(`command:${item.name}`);
+        if (decision === 'skip') {
+          skipped.commands++;
+          continue;
         }
 
-        skillSpinner.succeed(`Installed ${skillsInstalled} skills`);
+        for (const agentId of item.agents) {
+          const sourcePath = resolveCommandSource(localPath, item.name, agentId);
+          if (sourcePath) {
+            installCommand(sourcePath, agentId, item.name, method);
+            installed.commands++;
+          }
+        }
+      }
+      if (skipped.commands > 0) {
+        cmdSpinner.succeed(`Installed ${installed.commands} commands (skipped ${skipped.commands})`);
+      } else if (installed.commands > 0) {
+        cmdSpinner.succeed(`Installed ${installed.commands} commands`);
+      } else {
+        cmdSpinner.info('No commands to install');
+      }
+
+      // Install skills
+      const skillItems = [...newItems, ...existingItems].filter((i) => i.type === 'skill');
+      if (skillItems.length > 0) {
+        const skillSpinner = ora('Installing skills...').start();
+        for (const item of skillItems) {
+          const decision = item.isNew ? 'overwrite' : decisions.get(`skill:${item.name}`);
+          if (decision === 'skip') {
+            skipped.skills++;
+            continue;
+          }
+
+          const skill = allSkills.find((s) => s.name === item.name);
+          if (skill) {
+            const result = installSkill(skill.path, skill.name, item.agents);
+            if (result.success) installed.skills++;
+          }
+        }
+        if (skipped.skills > 0) {
+          skillSpinner.succeed(`Installed ${installed.skills} skills (skipped ${skipped.skills})`);
+        } else if (installed.skills > 0) {
+          skillSpinner.succeed(`Installed ${installed.skills} skills`);
+        } else {
+          skillSpinner.info('No skills to install');
+        }
       }
 
       // Install hooks
-      if (totalHooks > 0) {
-        const hookAgents = selectedAgents.filter(
-          (id) => HOOKS_CAPABLE_AGENTS.includes(id as typeof HOOKS_CAPABLE_AGENTS[number]) && isCliInstalled(id)
-        );
-
-        if (hookAgents.length > 0) {
-          const hookSpinner = ora('Installing hooks...').start();
-          const result = await installHooks(localPath, hookAgents, { scope: 'user' });
-          hookSpinner.succeed(`Installed ${result.installed.length} hooks`);
-        }
+      const hookItems = [...newItems, ...existingItems].filter((i) => i.type === 'hook');
+      if (hookItems.length > 0 && hookAgents.length > 0) {
+        const hookSpinner = ora('Installing hooks...').start();
+        const result = await installHooks(localPath, hookAgents, { scope: 'user' });
+        hookSpinner.succeed(`Installed ${result.installed.length} hooks`);
       }
 
-      if (!options.skipMcp && manifest?.mcp) {
+      // Register MCP servers
+      const mcpItems = [...newItems, ...existingItems].filter((i) => i.type === 'mcp');
+      if (mcpItems.length > 0 && manifest?.mcp) {
         const mcpSpinner = ora('Registering MCP servers...').start();
-        let registered = 0;
+        for (const item of mcpItems) {
+          const decision = item.isNew ? 'overwrite' : decisions.get(`mcp:${item.name}`);
+          if (decision === 'skip') {
+            skipped.mcps++;
+            continue;
+          }
 
-        for (const [name, config] of Object.entries(manifest.mcp)) {
-          // Skip HTTP transport MCPs for now (need different registration)
-          if (config.transport === 'http' || !config.command) continue;
+          const config = manifest.mcp[item.name];
+          if (!config || !config.command) continue;
 
-          for (const agentId of config.agents) {
-            if (!isCliInstalled(agentId)) continue;
-            if (isMcpRegistered(agentId, name)) continue;
-
-            const result = registerMcp(agentId, name, config.command, config.scope);
-            if (result.success) registered++;
+          for (const agentId of item.agents) {
+            if (!item.isNew) {
+              unregisterMcp(agentId, item.name);
+            }
+            const result = registerMcp(agentId, item.name, config.command, config.scope);
+            if (result.success) installed.mcps++;
           }
         }
-
-        mcpSpinner.succeed(`Registered ${registered} MCP servers`);
+        if (skipped.mcps > 0) {
+          mcpSpinner.succeed(`Registered ${installed.mcps} MCP servers (skipped ${skipped.mcps})`);
+        } else if (installed.mcps > 0) {
+          mcpSpinner.succeed(`Registered ${installed.mcps} MCP servers`);
+        } else {
+          mcpSpinner.info('No MCP servers to register');
+        }
       }
 
-      // Update scope config (only if not readonly)
+      // Sync CLI versions (user scope only)
+      if (isUserScope && !options.skipClis && manifest?.clis) {
+        const cliSpinner = ora('Checking CLI versions...').start();
+        const cliUpdates: string[] = [];
+
+        for (const [agentIdStr, cliConfig] of Object.entries(manifest.clis)) {
+          const agentId = agentIdStr as AgentId;
+          if (agentFilter && agentId !== agentFilter) continue;
+
+          const agent = AGENTS[agentId];
+          if (!agent || !cliConfig.package) continue;
+
+          const currentVersion = getCliVersion(agentId);
+          const targetVersion = cliConfig.version;
+
+          if (currentVersion === targetVersion) continue;
+          if (targetVersion === 'latest' && currentVersion) continue;
+
+          cliUpdates.push(`${agent.name}: ${currentVersion || 'not installed'} -> ${targetVersion}`);
+        }
+
+        if (cliUpdates.length > 0) {
+          cliSpinner.info('CLI version differences detected');
+          console.log(chalk.gray('  Run `agents cli upgrade` to update CLIs'));
+          for (const update of cliUpdates) {
+            console.log(chalk.gray(`    ${update}`));
+          }
+        } else {
+          cliSpinner.succeed('CLI versions match');
+        }
+      }
+
+      // Update scope config
       if (!isReadonly) {
         const priority = getScopePriority(effectiveScope);
         setScope(effectiveScope, {
@@ -508,6 +843,10 @@ program
 
       console.log(chalk.green(`\nSync complete from ${effectiveScope} scope`));
     } catch (err) {
+      if (isPromptCancelled(err)) {
+        console.log(chalk.yellow('\nCancelled'));
+        process.exit(0);
+      }
       spinner.fail('Failed to sync');
       console.error(chalk.red((err as Error).message));
       process.exit(1);
@@ -1087,9 +1426,51 @@ skillsCmd
   });
 
 skillsCmd
-  .command('info <name>')
-  .description('Show detailed info about an installed skill')
-  .action((name: string) => {
+  .command('view [name]')
+  .alias('info')
+  .description('View detailed info about an installed skill')
+  .action(async (name?: string) => {
+    // If no name provided, show interactive select
+    if (!name) {
+      const cwd = process.cwd();
+      const allSkills: Array<{ name: string; description: string }> = [];
+      const seenNames = new Set<string>();
+
+      for (const agentId of SKILLS_CAPABLE_AGENTS) {
+        const skills = listInstalledSkillsWithScope(agentId, cwd);
+        for (const skill of skills) {
+          if (!seenNames.has(skill.name)) {
+            seenNames.add(skill.name);
+            allSkills.push({
+              name: skill.name,
+              description: skill.metadata.description || '',
+            });
+          }
+        }
+      }
+
+      if (allSkills.length === 0) {
+        console.log(chalk.yellow('No skills installed'));
+        return;
+      }
+
+      try {
+        name = await select({
+          message: 'Select a skill to view',
+          choices: allSkills.map((s) => ({
+            value: s.name,
+            name: s.description ? `${s.name} - ${s.description}` : s.name,
+          })),
+        });
+      } catch (err) {
+        if (isPromptCancelled(err)) {
+          console.log(chalk.gray('Cancelled'));
+          return;
+        }
+        throw err;
+      }
+    }
+
     const skill = getSkillInfo(name);
     if (!skill) {
       console.log(chalk.yellow(`Skill '${name}' not found`));
@@ -2095,7 +2476,7 @@ program
 
     try {
       // Get current version from package.json
-      const currentVersion = program.version();
+      const currentVersion = program.version() || '0.0.0';
 
       // Fetch latest version from npm
       const response = await fetch('https://registry.npmjs.org/@swarmify/agents-cli/latest');
@@ -2110,7 +2491,7 @@ program
         return;
       }
 
-      spinner.text = `Upgrading from ${currentVersion} to ${latestVersion}...`;
+      spinner.text = `Upgrading to ${latestVersion}...`;
 
       // Detect package manager
       const { execSync } = await import('child_process');
@@ -2138,8 +2519,12 @@ program
         }
       }
 
-      execSync(cmd, { stdio: 'inherit' });
+      // Run silently (suppress npm/bun output)
+      execSync(cmd, { stdio: 'pipe' });
       spinner.succeed(`Upgraded to ${latestVersion}`);
+
+      // Show what's new from changelog
+      await showWhatsNew(currentVersion, latestVersion);
     } catch (err) {
       spinner.fail('Upgrade failed');
       console.error(chalk.red((err as Error).message));
@@ -2147,5 +2532,69 @@ program
       process.exit(1);
     }
   });
+
+async function showWhatsNew(fromVersion: string, toVersion: string): Promise<void> {
+  try {
+    // Fetch changelog from npm package
+    const response = await fetch(`https://unpkg.com/@swarmify/agents-cli@${toVersion}/CHANGELOG.md`);
+    if (!response.ok) return;
+
+    const changelog = await response.text();
+    const lines = changelog.split('\n');
+
+    // Parse changelog to find relevant sections
+    const relevantChanges: string[] = [];
+    let inRelevantSection = false;
+    let currentVersion = '';
+
+    for (const line of lines) {
+      // Check for version header (## 1.5.0)
+      const versionMatch = line.match(/^## (\d+\.\d+\.\d+)/);
+      if (versionMatch) {
+        currentVersion = versionMatch[1];
+        // Include versions newer than fromVersion
+        const isNewer = currentVersion !== fromVersion &&
+          compareVersions(currentVersion, fromVersion) > 0;
+        inRelevantSection = isNewer;
+        if (inRelevantSection) {
+          relevantChanges.push('');
+          relevantChanges.push(chalk.bold(`v${currentVersion}`));
+        }
+        continue;
+      }
+
+      if (inRelevantSection && line.trim()) {
+        // Format the line
+        if (line.startsWith('**') && line.endsWith('**')) {
+          // Section header like **Pull command redesign**
+          relevantChanges.push(chalk.cyan(line.replace(/\*\*/g, '')));
+        } else if (line.startsWith('- ')) {
+          // Bullet point
+          relevantChanges.push(chalk.gray(`  ${line}`));
+        }
+      }
+    }
+
+    if (relevantChanges.length > 0) {
+      console.log(chalk.bold("\nWhat's new:\n"));
+      for (const line of relevantChanges) {
+        console.log(line);
+      }
+      console.log();
+    }
+  } catch {
+    // Silently ignore changelog fetch errors
+  }
+}
+
+function compareVersions(a: string, b: string): number {
+  const partsA = a.split('.').map(Number);
+  const partsB = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    if (partsA[i] > partsB[i]) return 1;
+    if (partsA[i] < partsB[i]) return -1;
+  }
+  return 0;
+}
 
 program.parse();
