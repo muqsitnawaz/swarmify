@@ -55,7 +55,7 @@ import {
 import { DEFAULT_DISPLAY_PREFERENCES } from '../core/settings';
 import * as prewarm from './prewarm.vscode';
 import { supportsPrewarming, buildResumeCommand, PREWARM_CONFIGS } from '../core/prewarm';
-import { needsPrewarming, generateClaudeSessionId, buildClaudeOpenCommand } from '../core/prewarm.simple';
+import { needsPrewarming, generateClaudeSessionId, buildClaudeOpenCommand, listOpencodeSessions } from '../core/prewarm.simple';
 import { getSessionPathBySessionId, getSessionPreviewInfo, getOpenCodeSessionPreviewInfo, getCursorSessionPreviewInfo } from './sessions.vscode';
 import * as tasksImport from './tasks.vscode';
 import { SOURCE_BADGES } from '../core/tasks';
@@ -134,6 +134,53 @@ async function waitForShellReady(terminal: vscode.Terminal, timeoutMs: number = 
       }
     }, timeoutMs);
   });
+}
+
+/**
+ * Detect OpenCode session ID after spawn by comparing session lists.
+ * OpenCode creates its own session IDs (ses_xxx format) internally.
+ * This runs asynchronously and updates the terminal entry when found.
+ */
+async function detectOpencodeSessionId(
+  terminal: vscode.Terminal,
+  terminalId: string,
+  cwd: string,
+  sessionsBefore: string[],
+  context: vscode.ExtensionContext
+): Promise<void> {
+  // Wait for OpenCode to start and create a session
+  await new Promise(resolve => setTimeout(resolve, 3000));
+
+  const sessionsAfter = await listOpencodeSessions(cwd);
+  if (!sessionsAfter || sessionsAfter.length === 0) {
+    console.log(`[PREWARM] OpenCode: No sessions found after spawn`);
+    return;
+  }
+
+  // Find new session (in sessionsAfter but not in sessionsBefore)
+  const beforeSet = new Set(sessionsBefore);
+  const newSessions = sessionsAfter.filter(id => !beforeSet.has(id));
+
+  let sessionId: string | null = null;
+  if (newSessions.length === 1) {
+    sessionId = newSessions[0];
+  } else if (newSessions.length > 1) {
+    // Multiple new sessions - take the first one (most recent based on list order)
+    sessionId = newSessions[0];
+  } else {
+    // No new sessions - take the most recent from after list
+    sessionId = sessionsAfter[0];
+  }
+
+  if (sessionId) {
+    console.log(`[PREWARM] OpenCode detected session ID: ${sessionId}`);
+    terminals.setSessionId(terminal, sessionId);
+    terminals.setAgentType(terminal, 'opencode');
+    await prewarm.recordTerminalSession(context, terminalId, sessionId, 'opencode', cwd);
+
+    // Update terminal title to include session ID
+    updateStatusBarForTerminal(terminal, context.extensionPath);
+  }
 }
 
 async function updateTerminalTitleOnFocus(
@@ -1152,6 +1199,12 @@ async function openSingleAgent(
   let usePrewarmed = false;
   let sessionId: string | null = null;
 
+  // Track OpenCode sessions before spawn to detect new one
+  let opencodeSessionsBefore: string[] | null = null;
+  if (agentKey === 'opencode') {
+    opencodeSessionsBefore = await listOpencodeSessions(cwd);
+  }
+
   if (agentKey && supportsPrewarming(agentKey) && !additionalFlags) {
     if (agentKey === 'claude') {
       // Claude: Generate session ID at open time, no prewarming needed
@@ -1159,8 +1212,13 @@ async function openSingleAgent(
       command = buildClaudeOpenCommand(sessionId);
       usePrewarmed = true; // For tracking purposes
       console.log(`[PREWARM] Claude using on-demand session ID: ${sessionId}`);
+    } else if (agentKey === 'opencode') {
+      // OpenCode: Session ID will be detected after spawn
+      // Just mark as using session tracking
+      usePrewarmed = true;
+      console.log(`[PREWARM] OpenCode session ID will be detected after spawn`);
     } else if (needsPrewarming(agentKey)) {
-      // Codex/Gemini: Use prewarmed session from pool
+      // Codex/Gemini/Cursor: Use prewarmed session from pool
       prewarmedSession = prewarm.acquireSession(context, agentKey, cwd);
       if (prewarmedSession) {
         usePrewarmed = true;
@@ -1199,6 +1257,11 @@ async function openSingleAgent(
     // Record prewarmed session separately
     if (usePrewarmed && sessionId && agentKey && supportsPrewarming(agentKey)) {
       await prewarm.recordTerminalSession(context, terminalId, sessionId, agentKey, cwd);
+    }
+
+    // OpenCode: Detect session ID asynchronously after spawn
+    if (agentKey === 'opencode' && opencodeSessionsBefore !== null) {
+      detectOpencodeSessionId(terminal, terminalId, cwd, opencodeSessionsBefore, context);
     }
 
     terminal.show();
@@ -1245,6 +1308,12 @@ async function openSingleAgent(
       // Fallback to sendText if shell integration not available
       terminal.sendText(command);
     }
+  }
+
+  // OpenCode: Detect session ID asynchronously after spawn
+  // TODO: Implement detectOpencodeSessionId function
+  if (agentKey === 'opencode' && opencodeSessionsBefore !== null) {
+    // Session detection for OpenCode is handled elsewhere
   }
 }
 
@@ -1634,7 +1703,7 @@ async function fetchAndSetAutoLabel(terminal: vscode.Terminal, entry: terminals.
     if (agentType === 'opencode') {
       previewInfo = await getOpenCodeSessionPreviewInfo(sessionPath);
     } else if (agentType === 'cursor') {
-      previewInfo = getCursorSessionPreviewInfo(sessionPath);
+      previewInfo = await getCursorSessionPreviewInfo(sessionPath);
     } else {
       previewInfo = await getSessionPreviewInfo(sessionPath);
     }
@@ -1658,10 +1727,10 @@ function updateStatusBarForTerminal(terminal: vscode.Terminal, extensionPath: st
   const info = identifyAgentTerminal(terminal, extensionPath);
 
   // If this is an agent terminal, show its name
-  // Format: "Agents: Claude - <Label> (uuid-chunk)"
+  // Format: "Agents: Claude - <Label> (full-uuid)"
   if (info.isAgent && info.prefix) {
     const expandedName = getExpandedAgentName(info.prefix);
-    const sessionChunk = getSessionChunk(entry?.sessionId);
+    const sessionId = entry?.sessionId;
 
     // Show immediate status bar with current data
     const displayLabel = entry?.label || entry?.autoLabel;
@@ -1669,8 +1738,8 @@ function updateStatusBarForTerminal(terminal: vscode.Terminal, extensionPath: st
     if (displayLabel) {
       text += ` - ${displayLabel}`;
     }
-    if (sessionChunk) {
-      text += ` (${sessionChunk})`;
+    if (sessionId) {
+      text += ` (${sessionId})`;
     }
     agentStatusBarItem.text = text;
 
@@ -1681,8 +1750,8 @@ function updateStatusBarForTerminal(terminal: vscode.Terminal, extensionPath: st
           // Re-render status bar with auto-label
           let updatedText = `Agents: ${expandedName}`;
           updatedText += ` - ${autoLabel}`;
-          if (sessionChunk) {
-            updatedText += ` (${sessionChunk})`;
+          if (sessionId) {
+            updatedText += ` (${sessionId})`;
           }
           agentStatusBarItem.text = updatedText;
         }

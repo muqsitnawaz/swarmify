@@ -61,3 +61,34 @@ Initial research: The landing page lists supported IDEs in the hero. Guides are 
 ### Also, thinking this abstraction of Windowing Backend is a good way, perhaps, we can have a 3 layer diagram that shows the CLI Coding Agents L1, Windowing Backend L2, and then a Harness Engineering System at L3 <--- this can be easy for people to understand, no? It can help create a clearer mental model. And also easy to see that if you dont have L2 and L3 then youre missing out on so many more powerful things like parallel agent orchestration, managing multiple orchestrators in parallel and so on .
 
 Initial research: The landing page currently has no architecture diagram. Any visual would be implemented in `agents-web/src/app/page.tsx` and styled via `agents-web/src/app/globals.css`.
+
+---
+
+## Claude Tasks Mode - Long-running task hierarchy
+
+### Anthropic is building Claude Tasks Mode with a hierarchy: workspace -> projects -> tasks -> todos. We should consider aligning our task system with this pattern.
+
+Initial research: Claude Tasks Mode (announced Jan 2026) features:
+- Dual-panel UI: context files on right, progress tracker on left
+- Clarifying questions before execution (auto-skips on timeout)
+- Action plan generation for complex tasks
+- Skills + MCP integration to achieve goals
+- Artifacts appear in dedicated tabs
+
+Our current setup uses RALPH.md for task files and TODO.md parsing. The gap is:
+1. No real-time progress UI in dashboard
+2. No planning/clarifying phase before Spawn
+3. No visible context panel showing what files/MCPs agent is using
+4. Tasks are per-session, not cross-project
+
+Potential improvements:
+- Tasks panel in Dashboard showing long-running tasks across agents
+- Planning phase before Spawn - agent proposes plan, user approves
+- Context visibility - what files/MCPs the agent is using
+- Cross-project tasks that persist beyond single sessions
+- Hierarchy: workspace (extension) -> projects (folders) -> tasks (RALPH.md) -> todos (checkboxes)
+
+Sources:
+- https://www.testingcatalog.com/exclusive-early-look-at-claude-tasks-mode-agent-from-anthropic/
+- https://supergok.com/claude-tasks-mode-agent-workflow/
+- https://x.com/koltregaskes/status/2002061616209092639
