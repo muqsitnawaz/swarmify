@@ -66,7 +66,7 @@ export const AGENTS: Record<AgentId, AgentConfig> = {
     format: 'markdown',
     variableSyntax: '$ARGUMENTS',
     supportsHooks: false,
-    capabilities: { hooks: false, mcp: true, allowlist: false, skills: false },
+    capabilities: { hooks: false, mcp: true, allowlist: false, skills: true },
   },
   opencode: {
     id: 'opencode',
@@ -81,7 +81,7 @@ export const AGENTS: Record<AgentId, AgentConfig> = {
     format: 'markdown',
     variableSyntax: '$ARGUMENTS',
     supportsHooks: false,
-    capabilities: { hooks: false, mcp: true, allowlist: false, skills: false },
+    capabilities: { hooks: false, mcp: true, allowlist: false, skills: true },
   },
 };
 
@@ -434,6 +434,9 @@ function getUserMcpConfigPath(agentId: AgentId): string {
     case 'opencode':
       // OpenCode uses JSONC config
       return path.join(agent.configDir, 'opencode.jsonc');
+    case 'cursor':
+      // Cursor uses mcp.json
+      return path.join(agent.configDir, 'mcp.json');
     default:
       // Gemini and others use settings.json
       return path.join(agent.configDir, 'settings.json');
@@ -449,6 +452,8 @@ function getProjectMcpConfigPath(agentId: AgentId, cwd: string = process.cwd()):
       return path.join(cwd, `.${agentId}`, 'config.toml');
     case 'opencode':
       return path.join(cwd, `.${agentId}`, 'opencode.jsonc');
+    case 'cursor':
+      return path.join(cwd, `.${agentId}`, 'mcp.json');
     default:
       return path.join(cwd, `.${agentId}`, 'settings.json');
   }

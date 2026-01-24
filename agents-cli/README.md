@@ -207,8 +207,8 @@ agents mcp push my-server
 | Claude Code | Yes | Yes | Yes | Yes |
 | Codex | Yes | Yes | - | Yes |
 | Gemini CLI | Yes (TOML) | Yes | Yes | Yes |
-| Cursor | Yes | - | - | - |
-| OpenCode | Yes | - | - | - |
+| Cursor | Yes | Yes | - | Yes |
+| OpenCode | Yes | Yes | - | Yes |
 
 ## Your .agents Repo
 
