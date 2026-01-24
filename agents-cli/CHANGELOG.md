@@ -1,8 +1,8 @@
 # Changelog
 
-## 1.5.6
+## 1.5.7
 
-- (no changes, version bump for testing)
+- Remove trailing newlines from command output
 
 ## 1.5.5
 
