@@ -1,6 +1,6 @@
 {
   "name": "@swarmify/agents-cli",
-  "version": "1.3.8",
+  "version": "1.3.9",
   "description": "Your multi-Agent manager - Agent CLIs, Agent Skills, MCP Servers, Hooks and settings",
   "type": "module",
   "main": "dist/index.js",

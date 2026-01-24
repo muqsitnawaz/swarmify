@@ -235,6 +235,7 @@ export interface InstalledMcp {
   name: string;
   scope: McpScope;
   command?: string;
+  version?: string;
 }
 
 interface McpConfigEntry {
