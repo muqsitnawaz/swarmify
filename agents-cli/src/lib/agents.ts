@@ -2,6 +2,7 @@ import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import * as TOML from 'smol-toml';
 import type { AgentConfig, AgentId, CliState } from './types.js';
 
 const HOME = os.homedir();
@@ -269,19 +270,149 @@ function extractNpmVersion(args: string[]): string | undefined {
 }
 
 /**
- * Parse MCP servers from a config file.
+ * Strip JSON comments for JSONC parsing.
+ * Only removes comments outside of strings.
  */
-function parseMcpFromConfig(configPath: string): Record<string, McpConfigEntry> {
+function stripJsonComments(content: string): string {
+  let result = '';
+  let inString = false;
+  let escape = false;
+  let i = 0;
+
+  while (i < content.length) {
+    const char = content[i];
+    const next = content[i + 1];
+
+    if (escape) {
+      result += char;
+      escape = false;
+      i++;
+      continue;
+    }
+
+    if (char === '\\' && inString) {
+      result += char;
+      escape = true;
+      i++;
+      continue;
+    }
+
+    if (char === '"') {
+      inString = !inString;
+      result += char;
+      i++;
+      continue;
+    }
+
+    if (!inString) {
+      // Check for single-line comment
+      if (char === '/' && next === '/') {
+        // Skip until end of line
+        while (i < content.length && content[i] !== '\n') {
+          i++;
+        }
+        continue;
+      }
+      // Check for multi-line comment
+      if (char === '/' && next === '*') {
+        i += 2;
+        while (i < content.length && !(content[i] === '*' && content[i + 1] === '/')) {
+          i++;
+        }
+        i += 2; // Skip */
+        continue;
+      }
+    }
+
+    result += char;
+    i++;
+  }
+
+  return result;
+}
+
+/**
+ * Parse MCP servers from a JSON/JSONC config file.
+ */
+function parseMcpFromJsonConfig(configPath: string): Record<string, McpConfigEntry> {
+  if (!fs.existsSync(configPath)) {
+    return {};
+  }
+
+  try {
+    let content = fs.readFileSync(configPath, 'utf-8');
+    // Handle JSONC (JSON with comments)
+    if (configPath.endsWith('.jsonc')) {
+      content = stripJsonComments(content);
+    }
+    const config = JSON.parse(content);
+
+    // Claude uses mcpServers, others may use mcp_servers or mcp
+    return config.mcpServers || config.mcp_servers || config.mcp || {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Parse MCP servers from a TOML config file (Codex).
+ * Codex stores MCPs as [mcp_servers.ServerName] sections.
+ */
+function parseMcpFromTomlConfig(configPath: string): Record<string, McpConfigEntry> {
   if (!fs.existsSync(configPath)) {
     return {};
   }
 
   try {
     const content = fs.readFileSync(configPath, 'utf-8');
-    const config = JSON.parse(content);
+    const config = TOML.parse(content) as Record<string, unknown>;
 
-    // Claude uses mcpServers, Codex uses mcp_servers or similar
-    return config.mcpServers || config.mcp_servers || config.mcp || {};
+    // Codex uses mcp_servers as a table with server names as keys
+    const mcpServers = config.mcp_servers as Record<string, McpConfigEntry> | undefined;
+    return mcpServers || {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Parse MCP servers from OpenCode's JSONC config.
+ * OpenCode stores MCPs in the "mcp" object with different structure.
+ */
+function parseMcpFromOpenCodeConfig(configPath: string): Record<string, McpConfigEntry> {
+  if (!fs.existsSync(configPath)) {
+    return {};
+  }
+
+  try {
+    const content = stripJsonComments(fs.readFileSync(configPath, 'utf-8'));
+    const config = JSON.parse(content);
+    const mcpConfig = config.mcp as Record<string, {
+      type?: string;
+      command?: string[];
+      url?: string;
+      enabled?: boolean;
+    }> | undefined;
+
+    if (!mcpConfig) return {};
+
+    // Convert OpenCode format to our McpConfigEntry format
+    const result: Record<string, McpConfigEntry> = {};
+    for (const [name, entry] of Object.entries(mcpConfig)) {
+      if (entry.type === 'local' && entry.command) {
+        // Local MCP: command is an array like ["npx", "-y", "@pkg@version"]
+        result[name] = {
+          command: entry.command[0],
+          args: entry.command.slice(1),
+        };
+      } else if (entry.type === 'remote' && entry.url) {
+        // Remote MCP: HTTP URL
+        result[name] = {
+          url: entry.url,
+        };
+      }
+    }
+    return result;
   } catch {
     return {};
   }
@@ -293,30 +424,48 @@ function parseMcpFromConfig(configPath: string): Record<string, McpConfigEntry> 
 function getUserMcpConfigPath(agentId: AgentId): string {
   const agent = AGENTS[agentId];
 
-  // Claude user-scoped MCPs are in ~/.claude.json (global user config)
-  // NOT in ~/.claude/settings.json (which is for permissions/allowlist)
-  if (agentId === 'claude') {
-    return path.join(HOME, '.claude.json');
+  switch (agentId) {
+    case 'claude':
+      // Claude user-scoped MCPs are in ~/.claude.json (global user config)
+      return path.join(HOME, '.claude.json');
+    case 'codex':
+      // Codex uses TOML config
+      return path.join(agent.configDir, 'config.toml');
+    case 'opencode':
+      // OpenCode uses JSONC config
+      return path.join(agent.configDir, 'opencode.jsonc');
+    default:
+      // Gemini and others use settings.json
+      return path.join(agent.configDir, 'settings.json');
   }
-  // Codex: ~/.codex/config.json
-  // Gemini: ~/.gemini/settings.json
-  if (agentId === 'codex') {
-    return path.join(agent.configDir, 'config.json');
-  }
-  return path.join(agent.configDir, 'settings.json');
 }
 
 /**
  * Get project-scoped MCP config path for an agent.
  */
 function getProjectMcpConfigPath(agentId: AgentId, cwd: string = process.cwd()): string {
-  // Claude: .claude/settings.json or .claude/settings.local.json
-  // Codex: .codex/config.json
-  // Gemini: .gemini/settings.json
-  if (agentId === 'codex') {
-    return path.join(cwd, `.${agentId}`, 'config.json');
+  switch (agentId) {
+    case 'codex':
+      return path.join(cwd, `.${agentId}`, 'config.toml');
+    case 'opencode':
+      return path.join(cwd, `.${agentId}`, 'opencode.jsonc');
+    default:
+      return path.join(cwd, `.${agentId}`, 'settings.json');
   }
-  return path.join(cwd, `.${agentId}`, 'settings.json');
+}
+
+/**
+ * Parse MCP config based on agent type.
+ */
+function parseMcpConfig(agentId: AgentId, configPath: string): Record<string, McpConfigEntry> {
+  switch (agentId) {
+    case 'codex':
+      return parseMcpFromTomlConfig(configPath);
+    case 'opencode':
+      return parseMcpFromOpenCodeConfig(configPath);
+    default:
+      return parseMcpFromJsonConfig(configPath);
+  }
 }
 
 /**
@@ -330,7 +479,7 @@ export function listInstalledMcpsWithScope(
 
   // User-scoped MCPs
   const userConfigPath = getUserMcpConfigPath(agentId);
-  const userMcps = parseMcpFromConfig(userConfigPath);
+  const userMcps = parseMcpConfig(agentId, userConfigPath);
   for (const [name, config] of Object.entries(userMcps)) {
     results.push({
       name,
@@ -342,7 +491,7 @@ export function listInstalledMcpsWithScope(
 
   // Project-scoped MCPs
   const projectConfigPath = getProjectMcpConfigPath(agentId, cwd);
-  const projectMcps = parseMcpFromConfig(projectConfigPath);
+  const projectMcps = parseMcpConfig(agentId, projectConfigPath);
   for (const [name, config] of Object.entries(projectMcps)) {
     // Skip if already in user scope (project can override, but we show both)
     results.push({
@@ -365,7 +514,7 @@ export function promoteMcpToUser(
   cwd: string = process.cwd()
 ): { success: boolean; error?: string } {
   const projectConfigPath = getProjectMcpConfigPath(agentId, cwd);
-  const projectMcps = parseMcpFromConfig(projectConfigPath);
+  const projectMcps = parseMcpConfig(agentId, projectConfigPath);
 
   if (!projectMcps[mcpName]) {
     return { success: false, error: `Project MCP '${mcpName}' not found` };
