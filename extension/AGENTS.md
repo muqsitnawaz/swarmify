@@ -45,6 +45,7 @@ bun test           # 166 tests, no mocks
 - **Autogit controls**: `disableAutopush` skips git push after commit. `disableAutocommit` only stages changes and generates message, doesn't commit.
 - **Claude pre-warm exit**: Claude requires special exit sequence (Esc + Ctrl+C + Ctrl+C) to cleanly terminate session.
 - **Session pooling**: Prewarming maintains available sessions in pool for instant hand-off. Sessions expire after timeout.
+- **OpenCode session detection**: Unlike other agents, OpenCode session ID is detected 3s after spawn by comparing `opencode session list` before/after. Status bar updates async.
 
 ## Terminal Titles
 
@@ -140,10 +141,10 @@ Session pre-warming for instant agent startup. Maintains pool of ready-to-use ag
 
 **Pre-warm configurations:**
 - **Claude**: Uses `/status` command, requires Esc+Ctrl+C+Ctrl+C exit sequence, resumes via `claude -r {sessionId}`
-- **Codex**: Standard session management
-- **Gemini**: Standard session management
-- **Cursor**: Standard session management
-- **OpenCode**: Session IDs use `ses_xxx` format (not UUID), resumes via `opencode -s {sessionId}`, sessions listed via `opencode session list`
+- **Codex**: Standard session management (prewarmed from pool)
+- **Gemini**: Standard session management (prewarmed from pool)
+- **Cursor**: Standard session management (prewarmed from pool)
+- **OpenCode**: Session IDs use `ses_xxx` format (not UUID), resumes via `opencode -s {sessionId}`, sessions listed via `opencode session list`. Session ID detected async 3s after spawn by comparing session lists (no prewarming)
 
 **Session types:**
 - `PrewarmedSession`: Ready-to-handoff session with agentType, sessionId, createdAt, workingDirectory
