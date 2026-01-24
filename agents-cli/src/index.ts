@@ -216,15 +216,12 @@ program.hook('preAction', async () => {
 program
   .command('status [agent]')
   .description('Show sync status, CLI versions, installed commands and MCP servers')
-  .action((agentFilter?: string) => {
-    const state = readState();
-    const cliStates = getAllCliStates();
-    const cwd = process.cwd();
+  .action(async (agentFilter?: string) => {
+    const spinner = ora({ text: 'Loading...', isSilent: !process.stdout.isTTY }).start();
 
     // Resolve agent filter to AgentId
     let filterAgentId: AgentId | undefined;
     if (agentFilter) {
-      // Map common names to AgentId
       const agentMap: Record<string, AgentId> = {
         claude: 'claude',
         'claude-code': 'claude',
@@ -235,12 +232,15 @@ program
       };
       filterAgentId = agentMap[agentFilter.toLowerCase()];
       if (!filterAgentId) {
+        spinner.stop();
         console.log(chalk.red(`Unknown agent: ${agentFilter}`));
         console.log(chalk.gray(`Valid agents: claude, codex, gemini, cursor, opencode`));
         process.exit(1);
       }
     }
 
+    const cwd = process.cwd();
+    const cliStates = getAllCliStates();
     const agentsToShow = filterAgentId ? [filterAgentId] : ALL_AGENT_IDS;
     const skillAgentsToShow = filterAgentId
       ? SKILLS_CAPABLE_AGENTS.filter((id) => id === filterAgentId)
@@ -248,6 +248,28 @@ program
     const mcpAgentsToShow = filterAgentId
       ? MCP_CAPABLE_AGENTS.filter((id) => id === filterAgentId)
       : MCP_CAPABLE_AGENTS;
+
+    // Collect all data while spinner is active
+    const commandsData = agentsToShow.map((agentId) => ({
+      agent: AGENTS[agentId],
+      commands: listInstalledCommandsWithScope(agentId, cwd),
+    }));
+
+    const skillsData = skillAgentsToShow.map((agentId) => ({
+      agent: AGENTS[agentId],
+      skills: listInstalledSkillsWithScope(agentId, cwd),
+    }));
+
+    const mcpsData = mcpAgentsToShow
+      .filter((agentId) => isCliInstalled(agentId))
+      .map((agentId) => ({
+        agent: AGENTS[agentId],
+        mcps: listInstalledMcpsWithScope(agentId, cwd),
+      }));
+
+    const scopes = filterAgentId ? [] : getScopesByPriority();
+
+    spinner.stop();
 
     // Helper to format MCP with version
     const formatMcp = (m: { name: string; version?: string }, color: (s: string) => string) => {
@@ -265,9 +287,7 @@ program
     }
 
     console.log(chalk.bold('\nInstalled Commands\n'));
-    for (const agentId of agentsToShow) {
-      const agent = AGENTS[agentId];
-      const commands = listInstalledCommandsWithScope(agentId, cwd);
+    for (const { agent, commands } of commandsData) {
       const userCommands = commands.filter((c) => c.scope === 'user');
       const projectCommands = commands.filter((c) => c.scope === 'project');
 
@@ -284,11 +304,9 @@ program
       }
     }
 
-    if (skillAgentsToShow.length > 0) {
+    if (skillsData.length > 0) {
       console.log(chalk.bold('\nInstalled Skills\n'));
-      for (const agentId of skillAgentsToShow) {
-        const agent = AGENTS[agentId];
-        const skills = listInstalledSkillsWithScope(agentId, cwd);
+      for (const { agent, skills } of skillsData) {
         const userSkills = skills.filter((s) => s.scope === 'user');
         const projectSkills = skills.filter((s) => s.scope === 'project');
 
@@ -306,13 +324,9 @@ program
       }
     }
 
-    if (mcpAgentsToShow.length > 0) {
+    if (mcpsData.length > 0) {
       console.log(chalk.bold('\nInstalled MCP Servers\n'));
-      for (const agentId of mcpAgentsToShow) {
-        const agent = AGENTS[agentId];
-        if (!isCliInstalled(agentId)) continue;
-
-        const mcps = listInstalledMcpsWithScope(agentId, cwd);
+      for (const { agent, mcps } of mcpsData) {
         const userMcps = mcps.filter((m) => m.scope === 'user');
         const projectMcps = mcps.filter((m) => m.scope === 'project');
 
@@ -332,7 +346,6 @@ program
 
     // Only show scopes when not filtering by agent
     if (!filterAgentId) {
-      const scopes = getScopesByPriority();
       if (scopes.length > 0) {
         console.log(chalk.bold('\nConfigured Scopes\n'));
         for (const { name, config } of scopes) {
@@ -348,8 +361,6 @@ program
         console.log(chalk.gray('  Run: agents repo add <source>'));
       }
     }
-
-    console.log();
   });
 
 // =============================================================================
@@ -968,22 +979,26 @@ commandsCmd
   .description('List installed commands')
   .option('-a, --agent <agent>', 'Filter by agent')
   .option('-s, --scope <scope>', 'Filter by scope: user, project, or all', 'all')
-  .action((options) => {
-    console.log(chalk.bold('Installed Commands\n'));
+  .action(async (options) => {
+    const spinner = ora({ text: 'Loading...', isSilent: !process.stdout.isTTY }).start();
     const cwd = process.cwd();
 
     const agents = options.agent
       ? [options.agent as AgentId]
       : ALL_AGENT_IDS;
 
-    for (const agentId of agents) {
-      const agent = AGENTS[agentId];
-      let commands = listInstalledCommandsWithScope(agentId, cwd);
+    // Collect all data while spinner is active
+    const agentCommands = agents.map((agentId) => ({
+      agent: AGENTS[agentId],
+      commands: listInstalledCommandsWithScope(agentId, cwd).filter(
+        (c) => options.scope === 'all' || c.scope === options.scope
+      ),
+    }));
 
-      if (options.scope !== 'all') {
-        commands = commands.filter((c) => c.scope === options.scope);
-      }
+    spinner.stop();
+    console.log(chalk.bold('Installed Commands\n'));
 
+    for (const { agent, commands } of agentCommands) {
       if (commands.length === 0) {
         console.log(`  ${chalk.bold(agent.name)}: ${chalk.gray('none')}`);
       } else {
@@ -1111,26 +1126,32 @@ hooksCmd
   .description('List installed hooks')
   .option('-a, --agent <agent>', 'Filter by agent')
   .option('-s, --scope <scope>', 'Filter by scope: user, project, or all', 'all')
-  .action((options) => {
-    console.log(chalk.bold('Installed Hooks\n'));
+  .action(async (options) => {
+    const spinner = ora({ text: 'Loading...', isSilent: !process.stdout.isTTY }).start();
     const cwd = process.cwd();
 
     const agents = options.agent
       ? [options.agent as AgentId]
       : (Array.from(HOOKS_CAPABLE_AGENTS) as AgentId[]);
 
-    for (const agentId of agents) {
-      const agent = AGENTS[agentId];
-      if (!agent.supportsHooks) {
+    // Collect all data while spinner is active
+    const agentHooks = agents.map((agentId) => ({
+      agent: AGENTS[agentId],
+      hooks: AGENTS[agentId].supportsHooks
+        ? listInstalledHooksWithScope(agentId, cwd).filter(
+            (h) => options.scope === 'all' || h.scope === options.scope
+          )
+        : null,
+    }));
+
+    spinner.stop();
+    console.log(chalk.bold('Installed Hooks\n'));
+
+    for (const { agent, hooks } of agentHooks) {
+      if (hooks === null) {
         console.log(`  ${chalk.bold(agent.name)}: ${chalk.gray('hooks not supported')}`);
         console.log();
         continue;
-      }
-
-      let hooks = listInstalledHooksWithScope(agentId, cwd);
-
-      if (options.scope !== 'all') {
-        hooks = hooks.filter((h) => h.scope === options.scope);
       }
 
       if (hooks.length === 0) {
@@ -1294,26 +1315,32 @@ skillsCmd
   .description('List installed Agent Skills')
   .option('-a, --agent <agent>', 'Filter by agent')
   .option('-s, --scope <scope>', 'Filter by scope: user, project, or all', 'all')
-  .action((options) => {
-    console.log(chalk.bold('Installed Agent Skills\n'));
+  .action(async (options) => {
+    const spinner = ora({ text: 'Loading...', isSilent: !process.stdout.isTTY }).start();
     const cwd = process.cwd();
 
     const agents = options.agent
       ? [options.agent as AgentId]
       : SKILLS_CAPABLE_AGENTS;
 
-    for (const agentId of agents) {
-      const agent = AGENTS[agentId];
-      if (!agent.capabilities.skills) {
+    // Collect all data while spinner is active
+    const agentSkills = agents.map((agentId) => ({
+      agent: AGENTS[agentId],
+      skills: AGENTS[agentId].capabilities.skills
+        ? listInstalledSkillsWithScope(agentId, cwd).filter(
+            (s) => options.scope === 'all' || s.scope === options.scope
+          )
+        : null,
+    }));
+
+    spinner.stop();
+    console.log(chalk.bold('Installed Agent Skills\n'));
+
+    for (const { agent, skills } of agentSkills) {
+      if (skills === null) {
         console.log(`  ${chalk.bold(agent.name)}: ${chalk.gray('skills not supported')}`);
         console.log();
         continue;
-      }
-
-      let skills = listInstalledSkillsWithScope(agentId, cwd);
-
-      if (options.scope !== 'all') {
-        skills = skills.filter((s) => s.scope === options.scope);
       }
 
       if (skills.length === 0) {
@@ -1562,30 +1589,48 @@ mcpCmd
   .description('List MCP servers and registration status')
   .option('-a, --agent <agent>', 'Filter by agent')
   .option('-s, --scope <scope>', 'Filter by scope: user, project, or all', 'all')
-  .action((options) => {
-    console.log(chalk.bold('MCP Servers\n'));
+  .action(async (options) => {
+    const spinner = ora({ text: 'Loading...', isSilent: !process.stdout.isTTY }).start();
     const cwd = process.cwd();
 
     const agents = options.agent
       ? [options.agent as AgentId]
       : MCP_CAPABLE_AGENTS;
 
-    for (const agentId of agents) {
+    // Collect all data while spinner is active
+    type McpData = {
+      agent: typeof AGENTS[AgentId];
+      mcps: ReturnType<typeof listInstalledMcpsWithScope> | null;
+      notInstalled?: boolean;
+    };
+    const agentMcps: McpData[] = agents.map((agentId) => {
       const agent = AGENTS[agentId];
       if (!agent.capabilities.mcp) {
-        console.log(`  ${chalk.bold(agent.name)}: ${chalk.gray('mcp not supported')}`);
-        console.log();
-        continue;
+        return { agent, mcps: null };
       }
       if (!isCliInstalled(agentId)) {
+        return { agent, mcps: null, notInstalled: true };
+      }
+      return {
+        agent,
+        mcps: listInstalledMcpsWithScope(agentId, cwd).filter(
+          (m) => options.scope === 'all' || m.scope === options.scope
+        ),
+      };
+    });
+
+    spinner.stop();
+    console.log(chalk.bold('MCP Servers\n'));
+
+    for (const { agent, mcps, notInstalled } of agentMcps) {
+      if (mcps === null && notInstalled) {
         console.log(`  ${chalk.bold(agent.name)}: ${chalk.gray('CLI not installed')}`);
         continue;
       }
-
-      let mcps = listInstalledMcpsWithScope(agentId, cwd);
-
-      if (options.scope !== 'all') {
-        mcps = mcps.filter((m) => m.scope === options.scope);
+      if (mcps === null) {
+        console.log(`  ${chalk.bold(agent.name)}: ${chalk.gray('mcp not supported')}`);
+        console.log();
+        continue;
       }
 
       if (mcps.length === 0) {
@@ -1803,7 +1848,6 @@ cliCmd
         console.log(`  ${agent.name.padEnd(14)} ${chalk.gray('not installed')}`);
       }
     }
-    console.log();
   });
 
 cliCmd

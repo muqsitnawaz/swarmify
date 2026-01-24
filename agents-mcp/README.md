@@ -4,11 +4,11 @@ Turn any agent into a tech lead. Spawn sub-agents from Claude, Codex, Gemini, or
 
 Homepage: https://swarmify.co/#agents-mcp
 NPM: https://www.npmjs.com/package/@swarmify/agents-mcp
-VS Code Extension: [Agents](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext) - full-screen agent terminals in your editor
+VS Code Extension: [Agents](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext) - full-screen agent terminals with sub-agent spawning
 
-## What you get
+## You don't need one agent. You need a team.
 
-A single agent handles one thing at a time - like a junior developer. Add this MCP server, and your agent becomes a tech lead: it can spawn sub-agents, assign them specific files, give them project context, and synthesize their results.
+A single agent handles one thing at a time. Add this MCP server, and your agent becomes a tech lead: it can spawn sub-agents, assign them specific files, give them project context, and synthesize their results. Claude researches while Codex implements while Cursor debugs - in parallel.
 
 **4 tools:** `Spawn`, `Status`, `Stop`, `Tasks`
 **3 modes:** `plan` (read-only), `edit` (can write), `ralph` (autonomous)

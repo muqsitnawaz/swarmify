@@ -1,48 +1,39 @@
 # Agents
 
-Full-screen agent terminals in your editor. Manage multiple tech leads from one IDE.
+You don't need a coding agent. You need a team.
+
+Run Claude, Codex, Gemini, and Cursor side-by-side in your IDE. Each agent becomes a tech lead that can spawn sub-agents. You become the engineering manager - approving plans, watching execution, shipping faster.
 
 Homepage: https://swarmify.co/#agents-ext
 Marketplace: https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext
 MCP Server: [@swarmify/agents-mcp](https://www.npmjs.com/package/@swarmify/agents-mcp) - enables sub-agent spawning
 
-## Workflow: Task → Plan → Approve
+## The Problem
 
-1. **Task** – describe what you need with `/swarm` inside the IDE.
-2. **Plan** – orchestrator drafts a distribution with a Mix of Agents (who codes, who debugs, who researches).
-3. **Approve** – you gate execution; agents run only after approval. Approval gates keep control while teams move fast.
+CLI agents like Claude Code, Codex, and Gemini are powerful - but one agent can't juggle research, implementation, testing, and debugging in one pass. Context windows force awkward batching. Running agents in separate terminals means constant context-switching.
 
-**Mix of Agents**: Describe your needs; the orchestrator composes the right team across Claude, Codex, Gemini, and Cursor.
+## The Solution
 
-## For Teams
-
-- Shared dashboard keeps approvals and assignments visible.
-- Consistent Mix of Agents guidance prevents over- or under-staffing tasks.
-- Approval gates make it easy for leads to review before code runs.
-
-## Why
-
-CLI agents like Claude Code, Codex, and Gemini are powerful - but running them in separate terminal windows or the bottom panel means constantly switching contexts. You lose sight of your code while talking to agents. Fonts get tiny. Sessions disappear when things crash.
-
-This extension gives you:
+This extension turns your IDE into a command center:
 
 - **Full-screen terminals** - Agents run as editor tabs, not buried panels. See your code and agent side-by-side.
 - **Session persistence** - Close VS Code, reopen it, your agent tabs come back exactly where you left off.
-- **Fast navigation** - Keyboard shortcuts to jump between agents, label them by task, restart stuck ones. Like Vim for agent sessions.
+- **Sub-agent spawning** - With Swarm MCP enabled, each agent can delegate to other agents. Claude researches while Codex implements while Cursor debugs - in parallel.
+- **Approval gates** - You approve plans before agents execute. Control without bottleneck.
 
-## The manager's cockpit
+## Workflow: Task, Plan, Approve
 
-With Swarm MCP enabled, each agent in a tab becomes a tech lead that can spawn its own sub-agents. You become an engineering manager overseeing multiple tech leads - each running their own team in the background.
+1. **Task** - Describe what you need with `/swarm` inside the IDE.
+2. **Plan** - The orchestrator drafts a distribution: who codes, who debugs, who researches.
+3. **Approve** - You gate execution. Agents run only after your approval.
 
-The extension is optimized for this workflow: quick navigation between agents, labels to track who's working on what, dashboard to see all activity.
+## Quick Start
 
-## Features
+1. Install the extension from VS Code Marketplace
+2. Press `Cmd+Shift+A` to spawn your first agent
+3. Open Dashboard (`Cmd+Shift+D`) to configure auto-start and Swarm
 
-### Agent Terminals
-
-Spawn any agent as a full-screen editor tab with `Cmd+Shift+A`. Built-in support for Claude Code, Codex, Gemini, OpenCode, and Cursor. Add custom agents through settings.
-
-### Navigation
+## Navigation
 
 | Shortcut | Action |
 | --- | --- |
@@ -54,13 +45,19 @@ Spawn any agent as a full-screen editor tab with `Cmd+Shift+A`. Built-in support
 | `Cmd+Shift+H` | Horizontal split (tmux-style) |
 | `Cmd+Shift+V` | Vertical split (tmux-style) |
 
+## Features
+
+### Agent Terminals
+
+Spawn any agent as a full-screen editor tab. Built-in support for Claude Code, Codex, Gemini, OpenCode, and Cursor. Add custom agents through settings.
+
 ### Session Persistence
 
 Every open agent terminal is fully restorable. Session ID, icon, and custom labels are saved to disk in real-time. VS Code crashes? Restart? All your agent tabs come back exactly as they were.
 
-### Every swarm starts with `/swarm` in your IDE
+### Sub-Agent Spawning
 
-Describe the work and Mix of Agents in `/swarm`; the orchestrator composes the team. Swarm MCP then lets each agent spawn sub-agents for parallel work while the orchestrator enforces the approval gate.
+With [@swarmify/agents-mcp](https://www.npmjs.com/package/@swarmify/agents-mcp) installed, any agent can spawn sub-agents for parallel work. The orchestrator enforces approval gates. Sub-agents run in the background and survive IDE restarts.
 
 ### Task Management
 
@@ -76,8 +73,9 @@ Generate commit messages from staged changes with `Cmd+Shift+G`. Learns from you
 
 When spawning sub-agents via Swarm:
 
-- **safe** - Agents prompt for confirmation before executing commands
-- **yolo** - Agents auto-approve all tool calls (faster, less secure)
+- **plan** - Read-only. Agents can explore but not modify files.
+- **edit** - Agents can write files after your approval.
+- **ralph** - Autonomous mode. Agent works through RALPH.md tasks until done.
 
 ### Additional Features
 
@@ -86,23 +84,23 @@ When spawning sub-agents via Swarm:
 - **Shell terminals** - Spawn plain shells alongside agents (`Cmd+Shift+S`)
 - **Markdown editor** - Custom `.md` editor with image paste support
 - **Notifications** - Native macOS notifications when agents need attention
-- **Context tasks** - Select text, hit shortcut, spawn agent with that context pre-loaded
 
-## Quick Start
+## For Teams
 
-1. Install the extension from VS Code Marketplace
-2. Press `Cmd+Shift+A` to spawn your first agent
-3. Open Dashboard (`Cmd+Shift+D`) to configure auto-start and Swarm
-
-## Works great with agents-mcp
-
-This extension works standalone for full-screen agent terminals. For sub-agent spawning (turning agents into tech leads), add [@swarmify/agents-mcp](https://www.npmjs.com/package/@swarmify/agents-mcp) to your agent's MCP configuration.
+- Shared dashboard keeps approvals and assignments visible.
+- Consistent agent distribution prevents over- or under-staffing tasks.
+- Approval gates make it easy for leads to review before code runs.
 
 ## Requirements
 
 - VS Code or Cursor
 - Agent CLIs installed (`claude`, `codex`, `gemini`, `cursor-agent`, `opencode`)
 - OpenAI API key (optional, only for commit generation)
+
+## Related Packages
+
+- [@swarmify/agents-mcp](https://www.npmjs.com/package/@swarmify/agents-mcp) - MCP server for sub-agent spawning
+- [@swarmify/agents-cli](https://www.npmjs.com/package/@swarmify/agents-cli) - Sync prompts and skills across agents
 
 ## License
 
