@@ -328,9 +328,20 @@ export function listInstalledSkillsWithScope(
     try {
       const entries = fs.readdirSync(userSkillsDir, { withFileTypes: true });
       for (const entry of entries) {
-        if (!entry.isDirectory()) continue;
-
         const skillDir = path.join(userSkillsDir, entry.name);
+
+        // Handle both directories and symlinks to directories
+        let isDir = entry.isDirectory();
+        if (entry.isSymbolicLink()) {
+          try {
+            const stat = fs.statSync(skillDir);
+            isDir = stat.isDirectory();
+          } catch {
+            continue;
+          }
+        }
+        if (!isDir) continue;
+
         const metadata = parseSkillMetadata(skillDir);
 
         if (metadata) {
@@ -355,9 +366,20 @@ export function listInstalledSkillsWithScope(
     try {
       const entries = fs.readdirSync(projectSkillsDir, { withFileTypes: true });
       for (const entry of entries) {
-        if (!entry.isDirectory()) continue;
-
         const skillDir = path.join(projectSkillsDir, entry.name);
+
+        // Handle both directories and symlinks to directories
+        let isDir = entry.isDirectory();
+        if (entry.isSymbolicLink()) {
+          try {
+            const stat = fs.statSync(skillDir);
+            isDir = stat.isDirectory();
+          } catch {
+            continue;
+          }
+        }
+        if (!isDir) continue;
+
         const metadata = parseSkillMetadata(skillDir);
 
         if (metadata) {

@@ -268,7 +268,11 @@ function parseMcpFromConfig(configPath: string): Record<string, McpConfigEntry> 
 function getUserMcpConfigPath(agentId: AgentId): string {
   const agent = AGENTS[agentId];
 
-  // Claude: ~/.claude/settings.json
+  // Claude user-scoped MCPs are in ~/.claude.json (global user config)
+  // NOT in ~/.claude/settings.json (which is for permissions/allowlist)
+  if (agentId === 'claude') {
+    return path.join(HOME, '.claude.json');
+  }
   // Codex: ~/.codex/config.json
   // Gemini: ~/.gemini/settings.json
   if (agentId === 'codex') {
