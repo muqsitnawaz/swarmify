@@ -1,21 +1,25 @@
 # @swarmify/agents-cli
 
-Dotfiles for AI coding agents. Sync prompts, MCP servers, hooks, and skills across Claude, Codex, Gemini, Cursor, and more.
+Your virtual environment manager for AI coding agents.
 
 ```bash
 npm install -g @swarmify/agents-cli
 ```
 
-## The Idea
+## The Problem
 
-You configure Claude Code manually. Then you switch to Codex or Gemini and start from scratch. This CLI syncs your setup across all agents:
+You spend hours configuring Claude Code: MCP servers, slash commands, hooks, skills. Then you switch to Codex or Gemini and start from scratch. Or you get a new machine and lose everything.
+
+## The Solution
+
+One command to configure all your agents.
 
 ```bash
-# Pull your config on a new machine
-agents pull gh:username/.agents
+# New machine? One command.
+agents pull
 
-# See what you have installed
-agents status claude
+# See what's installed
+agents status
 ```
 
 ```
@@ -40,145 +44,188 @@ Installed MCP Servers
     User: Swarm@latest, GoDaddy
 ```
 
+Your `.agents` repo becomes the source of truth for all your AI coding tools.
+
 ## What Gets Synced
 
-| Resource | Location | Synced To |
-|----------|----------|-----------|
-| Slash commands | `~/.claude/commands/` | Claude, Codex, Gemini |
-| MCP servers | `~/.claude/settings.json` | Claude, Codex, Gemini |
-| Hooks | `~/.claude/hooks.json` | Claude, Gemini |
-| Agent Skills | `~/.claude/skills/` | Claude, Codex, Gemini |
-| CLI versions | npm/brew | All agents |
+| Resource | Description | Agents |
+|----------|-------------|--------|
+| Slash commands | `/debug`, `/plan`, custom prompts | Claude, Codex, Gemini, Cursor, OpenCode |
+| MCP servers | Tools your agents can use | Claude, Codex, Gemini |
+| Hooks | Pre/post execution scripts | Claude, Gemini |
+| Skills | Reusable agent capabilities | Claude, Codex, Gemini |
+| CLI versions | Which version of each agent | All |
+
+## Quick Start
+
+```bash
+# 1. Install
+npm install -g @swarmify/agents-cli
+
+# 2. Pull (auto-configures from default repo on first run)
+agents pull
+
+# 3. Check what's installed
+agents status
+```
+
+Pull a specific agent only:
+
+```bash
+agents pull claude    # Only configure Claude Code
+agents pull codex     # Only configure Codex
+```
+
+## Using Your Own Config
+
+By default, `agents pull` uses the [system repo](https://github.com/muqsitnawaz/.agents). To use your own:
+
+```bash
+# Fork the system repo, then:
+agents repo add gh:username/.agents
+
+# Now pull uses your repo
+agents pull
+```
+
+## .agents Repo Structure
+
+```
+.agents/
+  agents.yaml              # CLI versions, MCP servers, defaults
+  shared/commands/         # Slash commands for all agents
+  claude/commands/         # Claude-specific commands
+  claude/hooks/            # Claude hooks
+  codex/prompts/           # Codex-specific prompts
+  gemini/commands/         # Gemini commands (auto-converted to TOML)
+  skills/                  # Agent Skills (SKILL.md + rules/)
+```
+
+Example `agents.yaml`:
+
+```yaml
+clis:
+  claude:
+    package: "@anthropic-ai/claude-code"
+    version: "latest"
+  codex:
+    package: "@openai/codex"
+    version: "latest"
+
+mcp:
+  filesystem:
+    command: "npx -y @anthropic-ai/mcp-filesystem"
+    transport: stdio
+    scope: user
+    agents: [claude, codex, gemini]
+
+  memory:
+    command: "npx -y @anthropic-ai/mcp-memory"
+    transport: stdio
+    scope: user
+    agents: [claude, codex, gemini]
+
+defaults:
+  method: symlink
+  scope: user
+  agents: [claude, codex, gemini]
+```
 
 ## Commands
 
-### Prompts (Slash Commands)
+### Status
 
 ```bash
-# List what's installed
+agents status              # Full overview
+agents status --agent claude
+```
+
+### Pull & Push
+
+```bash
+agents pull                # Sync all agents from your repo
+agents pull claude         # Sync only Claude resources
+agents pull cc             # Same (aliases: cc, codex/cx, gemini/gx)
+agents pull --dry-run      # Preview what would change
+agents pull -y             # Auto-confirm, skip conflicts
+agents pull -f             # Auto-confirm, overwrite conflicts
+agents push                # Push local changes back
+```
+
+The pull command shows an overview of NEW vs EXISTING resources before installation. For conflicts, you're prompted per-resource to overwrite, skip, or cancel.
+
+### Slash Commands
+
+```bash
 agents commands list
-
-# Install from a git repo
-agents commands add gh:user/my-prompts
-
-# Remove
+agents commands add gh:user/my-commands
 agents commands remove my-command
+agents commands push my-command   # Promote project -> user scope
 ```
 
 ### MCP Servers
 
 ```bash
-# List servers across all agents
+# List across all agents
 agents mcp list
 
-# Add stdio server (use -- before the command)
-agents mcp add swarm -- npx @swarmify/agents-mcp
+# Add (use -- before the command)
 agents mcp add memory -- npx -y @anthropic-ai/mcp-memory
+agents mcp add api https://api.example.com --transport http
 
-# Add HTTP server with headers
-agents mcp add api https://api.example.com/mcp --transport http -H "Authorization:Bearer token"
+# Search registries
+agents search filesystem
+agents add mcp:@anthropic-ai/mcp-filesystem
 
-# Remove from all agents
-agents mcp remove swarm
+# Remove
+agents mcp remove memory
+```
+
+### Skills
+
+```bash
+agents skills list
+agents skills add gh:user/my-skills
+agents skills info my-skill
 ```
 
 ### Hooks
 
 ```bash
-# List hooks
 agents hooks list
-
-# Install from repo
 agents hooks add gh:user/my-hooks
-
-# Remove
 agents hooks remove my-hook
-```
-
-### Skills
-
-Agent Skills are reusable capabilities (SKILL.md + rules/) that agents can invoke.
-
-```bash
-# List installed skills
-agents skills list
-
-# Install from repo
-agents skills add gh:user/my-skills
-
-# Show details
-agents skills info my-skill
-```
-
-### Search & Install from Registries
-
-Search public registries for MCP servers and skills:
-
-```bash
-# Search all registries
-agents search github
-agents search filesystem --limit 10
-
-# Filter by type
-agents search github --type mcp
-
-# Install from registry (auto-detected)
-agents add mcp:io.github.bytedance/mcp-server-filesystem
-
-# Or use identifiers
-agents add skill:user/my-skill    # Skill from git
-agents add gh:user/my-repo        # Git repo directly
-```
-
-### Registry Management
-
-```bash
-# List configured registries
-agents registry list
-
-# Add custom registry
-agents registry add mcp myregistry https://api.example.com/v1
-
-# Configure API key
-agents registry config mcp myregistry --api-key YOUR_KEY
-
-# Disable/enable
-agents registry disable mcp myregistry
-agents registry enable mcp myregistry
-
-# Remove
-agents registry remove mcp myregistry
-```
-
-Default registries:
-- `official` (MCP): https://registry.modelcontextprotocol.io
-
-### Sync
-
-```bash
-# Pull config from your .agents repo
-agents pull gh:username/.agents
-
-# Push local changes back
-agents push
-
-# Full status
-agents status
 ```
 
 ### CLI Management
 
 ```bash
-# Show installed versions
-agents cli list
+agents cli list            # Show installed versions
+agents cli add claude      # Install agent CLI
+agents cli remove codex    # Uninstall agent CLI
+agents cli upgrade         # Upgrade all to latest
+```
 
-# Upgrade all to latest
-agents cli upgrade --latest
+## Scopes
+
+Resources can exist at two levels:
+
+| Scope | Location | Use |
+|-------|----------|-----|
+| User | `~/.{agent}/` | Available everywhere |
+| Project | `./.{agent}/` | This repo only, committed |
+
+Promote project-scoped items to user scope:
+
+```bash
+agents commands push my-command
+agents mcp push my-server
+agents skills push my-skill
 ```
 
 ## Filtering
 
-All commands support `--agent` and `--scope` filters:
+All list commands support filters:
 
 ```bash
 agents commands list --agent claude
@@ -186,44 +233,38 @@ agents mcp list --scope project
 agents skills list --agent codex --scope user
 ```
 
-## Scopes
+## Registries
 
-| Scope | Location | Use Case |
-|-------|----------|----------|
-| User | `~/.{agent}/` | Available everywhere |
-| Project | `./.{agent}/` | This repo only |
-
-Promote project-scoped items to user scope:
+Search and install from public registries:
 
 ```bash
-agents commands push my-command
-agents mcp push my-server
+# Search
+agents search github --type mcp
+
+# Install from registry
+agents add mcp:@anthropic-ai/mcp-filesystem
+
+# Manage registries
+agents registry list
+agents registry add mcp myregistry https://api.example.com
+agents registry config mcp myregistry --api-key KEY
 ```
 
 ## Supported Agents
 
-| Agent | Prompts | MCP | Hooks | Skills |
-|-------|---------|-----|-------|--------|
+| Agent | Commands | MCP | Hooks | Skills |
+|-------|----------|-----|-------|--------|
 | Claude Code | Yes | Yes | Yes | Yes |
 | Codex | Yes | Yes | - | Yes |
-| Gemini CLI | Yes (TOML) | Yes | Yes | Yes |
-| Cursor | Yes | Yes | - | Yes |
-| OpenCode | Yes | Yes | - | Yes |
+| Gemini CLI | Yes | Yes | Yes | Yes |
+| Cursor | Yes | Yes | - | - |
+| OpenCode | Yes | Yes | - | - |
 
-## Your .agents Repo
-
-```
-.agents/
-  agents.yaml           # CLIs, MCP servers, defaults
-  shared/commands/      # Prompts for all agents
-  claude/commands/      # Claude-specific prompts
-  claude/hooks/         # Claude hooks
-  skills/               # Agent Skills
-```
+Format conversion is automatic. Write commands in markdown, they're converted to TOML for Gemini.
 
 ## Related
 
-- [@swarmify/agents-mcp](https://www.npmjs.com/package/@swarmify/agents-mcp) - Multi-agent orchestration MCP server
+- [@swarmify/agents-mcp](https://www.npmjs.com/package/@swarmify/agents-mcp) - MCP server for multi-agent orchestration
 
 ## License
 

@@ -246,6 +246,14 @@ export function installSkill(
   return { success: true };
 }
 
+/**
+ * Check if a skill exists for an agent.
+ */
+export function skillExists(agentId: AgentId, skillName: string): boolean {
+  const agentSkillPath = path.join(getAgentSkillsDir(agentId), skillName);
+  return fs.existsSync(agentSkillPath);
+}
+
 export function uninstallSkill(skillName: string): { success: boolean; error?: string } {
   const meta = readMeta();
   const skillState = meta.skills[skillName];
