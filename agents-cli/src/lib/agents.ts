@@ -242,6 +242,30 @@ interface McpConfigEntry {
   command?: string;
   args?: string[];
   env?: Record<string, string>;
+  type?: string;
+  url?: string;
+}
+
+/**
+ * Extract version from npm package specification.
+ * Examples: @swarmify/agents-mcp@latest -> latest
+ *           @swarmify/agents-mcp@1.2.3 -> 1.2.3
+ *           some-package -> undefined
+ */
+function extractNpmVersion(args: string[]): string | undefined {
+  // Find npm package argument (looks like @scope/package@version or package@version)
+  for (const arg of args) {
+    // Match @scope/package@version or package@version
+    const match = arg.match(/@([^@]+)$|^([^@]+)@(.+)$/);
+    if (match) {
+      // @scope/package@version pattern
+      const versionMatch = arg.match(/@([^@/]+)$/);
+      if (versionMatch) {
+        return versionMatch[1];
+      }
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -312,6 +336,7 @@ export function listInstalledMcpsWithScope(
       name,
       scope: 'user',
       command: config.command || (config.args ? config.args.join(' ') : undefined),
+      version: config.args ? extractNpmVersion(config.args) : undefined,
     });
   }
 
@@ -324,6 +349,7 @@ export function listInstalledMcpsWithScope(
       name,
       scope: 'project',
       command: config.command || (config.args ? config.args.join(' ') : undefined),
+      version: config.args ? extractNpmVersion(config.args) : undefined,
     });
   }
 

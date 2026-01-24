@@ -140,15 +140,48 @@ program
 // =============================================================================
 
 program
-  .command('status')
+  .command('status [agent]')
   .description('Show sync status, CLI versions, installed commands and MCP servers')
-  .action(() => {
+  .action((agentFilter?: string) => {
     const state = readState();
     const cliStates = getAllCliStates();
     const cwd = process.cwd();
 
+    // Resolve agent filter to AgentId
+    let filterAgentId: AgentId | undefined;
+    if (agentFilter) {
+      // Map common names to AgentId
+      const agentMap: Record<string, AgentId> = {
+        claude: 'claude',
+        'claude-code': 'claude',
+        codex: 'codex',
+        gemini: 'gemini',
+        cursor: 'cursor',
+        opencode: 'opencode',
+      };
+      filterAgentId = agentMap[agentFilter.toLowerCase()];
+      if (!filterAgentId) {
+        console.log(chalk.red(`Unknown agent: ${agentFilter}`));
+        console.log(chalk.gray(`Valid agents: claude, codex, gemini, cursor, opencode`));
+        process.exit(1);
+      }
+    }
+
+    const agentsToShow = filterAgentId ? [filterAgentId] : ALL_AGENT_IDS;
+    const skillAgentsToShow = filterAgentId
+      ? SKILLS_CAPABLE_AGENTS.filter((id) => id === filterAgentId)
+      : SKILLS_CAPABLE_AGENTS;
+    const mcpAgentsToShow = filterAgentId
+      ? MCP_CAPABLE_AGENTS.filter((id) => id === filterAgentId)
+      : MCP_CAPABLE_AGENTS;
+
+    // Helper to format MCP with version
+    const formatMcp = (m: { name: string; version?: string }, color: (s: string) => string) => {
+      return m.version ? color(`${m.name}@${m.version}`) : color(m.name);
+    };
+
     console.log(chalk.bold('Agent CLIs\n'));
-    for (const agentId of ALL_AGENT_IDS) {
+    for (const agentId of agentsToShow) {
       const agent = AGENTS[agentId];
       const cli = cliStates[agentId];
       const status = cli?.installed
@@ -158,7 +191,7 @@ program
     }
 
     console.log(chalk.bold('\nInstalled Commands\n'));
-    for (const agentId of ALL_AGENT_IDS) {
+    for (const agentId of agentsToShow) {
       const agent = AGENTS[agentId];
       const commands = listInstalledCommandsWithScope(agentId, cwd);
       const userCommands = commands.filter((c) => c.scope === 'user');
@@ -177,62 +210,69 @@ program
       }
     }
 
-    console.log(chalk.bold('\nInstalled Skills\n'));
-    for (const agentId of SKILLS_CAPABLE_AGENTS) {
-      const agent = AGENTS[agentId];
-      const skills = listInstalledSkillsWithScope(agentId, cwd);
-      const userSkills = skills.filter((s) => s.scope === 'user');
-      const projectSkills = skills.filter((s) => s.scope === 'project');
+    if (skillAgentsToShow.length > 0) {
+      console.log(chalk.bold('\nInstalled Skills\n'));
+      for (const agentId of skillAgentsToShow) {
+        const agent = AGENTS[agentId];
+        const skills = listInstalledSkillsWithScope(agentId, cwd);
+        const userSkills = skills.filter((s) => s.scope === 'user');
+        const projectSkills = skills.filter((s) => s.scope === 'project');
 
-      if (skills.length === 0) {
-        console.log(`  ${chalk.bold(agent.name)}: ${chalk.gray('none')}`);
-      } else {
-        console.log(`  ${chalk.bold(agent.name)}:`);
-        if (userSkills.length > 0) {
-          console.log(`    ${chalk.gray('User:')} ${userSkills.map((s) => chalk.cyan(s.name)).join(', ')}`);
-        }
-        if (projectSkills.length > 0) {
-          console.log(`    ${chalk.gray('Project:')} ${projectSkills.map((s) => chalk.yellow(s.name)).join(', ')}`);
-        }
-      }
-    }
-
-    console.log(chalk.bold('\nInstalled MCP Servers\n'));
-    for (const agentId of MCP_CAPABLE_AGENTS) {
-      const agent = AGENTS[agentId];
-      if (!isCliInstalled(agentId)) continue;
-
-      const mcps = listInstalledMcpsWithScope(agentId, cwd);
-      const userMcps = mcps.filter((m) => m.scope === 'user');
-      const projectMcps = mcps.filter((m) => m.scope === 'project');
-
-      if (mcps.length === 0) {
-        console.log(`  ${chalk.bold(agent.name)}: ${chalk.gray('none')}`);
-      } else {
-        console.log(`  ${chalk.bold(agent.name)}:`);
-        if (userMcps.length > 0) {
-          console.log(`    ${chalk.gray('User:')} ${userMcps.map((m) => chalk.cyan(m.name)).join(', ')}`);
-        }
-        if (projectMcps.length > 0) {
-          console.log(`    ${chalk.gray('Project:')} ${projectMcps.map((m) => chalk.yellow(m.name)).join(', ')}`);
+        if (skills.length === 0) {
+          console.log(`  ${chalk.bold(agent.name)}: ${chalk.gray('none')}`);
+        } else {
+          console.log(`  ${chalk.bold(agent.name)}:`);
+          if (userSkills.length > 0) {
+            console.log(`    ${chalk.gray('User:')} ${userSkills.map((s) => chalk.cyan(s.name)).join(', ')}`);
+          }
+          if (projectSkills.length > 0) {
+            console.log(`    ${chalk.gray('Project:')} ${projectSkills.map((s) => chalk.yellow(s.name)).join(', ')}`);
+          }
         }
       }
     }
 
-    const scopes = getScopesByPriority();
-    if (scopes.length > 0) {
-      console.log(chalk.bold('\nConfigured Scopes\n'));
-      for (const { name, config } of scopes) {
-        const readonlyTag = config.readonly ? chalk.gray(' (readonly)') : '';
-        const priorityTag = chalk.gray(` [priority: ${config.priority}]`);
-        console.log(`  ${chalk.bold(name)}${readonlyTag}${priorityTag}`);
-        console.log(`    ${config.source}`);
-        console.log(`    Branch: ${config.branch}  Commit: ${config.commit.substring(0, 8)}`);
-        console.log(`    Last sync: ${new Date(config.lastSync).toLocaleString()}`);
+    if (mcpAgentsToShow.length > 0) {
+      console.log(chalk.bold('\nInstalled MCP Servers\n'));
+      for (const agentId of mcpAgentsToShow) {
+        const agent = AGENTS[agentId];
+        if (!isCliInstalled(agentId)) continue;
+
+        const mcps = listInstalledMcpsWithScope(agentId, cwd);
+        const userMcps = mcps.filter((m) => m.scope === 'user');
+        const projectMcps = mcps.filter((m) => m.scope === 'project');
+
+        if (mcps.length === 0) {
+          console.log(`  ${chalk.bold(agent.name)}: ${chalk.gray('none')}`);
+        } else {
+          console.log(`  ${chalk.bold(agent.name)}:`);
+          if (userMcps.length > 0) {
+            console.log(`    ${chalk.gray('User:')} ${userMcps.map((m) => formatMcp(m, chalk.cyan)).join(', ')}`);
+          }
+          if (projectMcps.length > 0) {
+            console.log(`    ${chalk.gray('Project:')} ${projectMcps.map((m) => formatMcp(m, chalk.yellow)).join(', ')}`);
+          }
+        }
       }
-    } else {
-      console.log(chalk.bold('\nNo scopes configured\n'));
-      console.log(chalk.gray('  Run: agents repo add <source>'));
+    }
+
+    // Only show scopes when not filtering by agent
+    if (!filterAgentId) {
+      const scopes = getScopesByPriority();
+      if (scopes.length > 0) {
+        console.log(chalk.bold('\nConfigured Scopes\n'));
+        for (const { name, config } of scopes) {
+          const readonlyTag = config.readonly ? chalk.gray(' (readonly)') : '';
+          const priorityTag = chalk.gray(` [priority: ${config.priority}]`);
+          console.log(`  ${chalk.bold(name)}${readonlyTag}${priorityTag}`);
+          console.log(`    ${config.source}`);
+          console.log(`    Branch: ${config.branch}  Commit: ${config.commit.substring(0, 8)}`);
+          console.log(`    Last sync: ${new Date(config.lastSync).toLocaleString()}`);
+        }
+      } else {
+        console.log(chalk.bold('\nNo scopes configured\n'));
+        console.log(chalk.gray('  Run: agents repo add <source>'));
+      }
     }
 
     console.log();

@@ -11,11 +11,33 @@ npm install -g @swarmify/agents-cli
 You configure Claude Code manually. Then you switch to Codex or Gemini and start from scratch. This CLI syncs your setup across all agents:
 
 ```bash
-# See what you have installed
-agents status
-
 # Pull your config on a new machine
 agents pull gh:username/.agents
+
+# See what you have installed
+agents status claude
+```
+
+```
+Agent CLIs
+
+  Claude Code    2.0.65
+
+Installed Commands
+
+  Claude Code:
+    User: clean, debug, plan, recap, ship, spawn, test, verify
+    Project: eval
+
+Installed Skills
+
+  Claude Code:
+    User: remotion-best-practices, vercel-react-best-practices
+
+Installed MCP Servers
+
+  Claude Code:
+    User: Swarm@latest, GoDaddy
 ```
 
 ## What Gets Synced
@@ -187,7 +209,6 @@ agents mcp push my-server
 | Gemini CLI | Yes (TOML) | Yes | Yes | Yes |
 | Cursor | Yes | - | - | - |
 | OpenCode | Yes | - | - | - |
-| Trae | Yes | - | - | - |
 
 ## Your .agents Repo
 
