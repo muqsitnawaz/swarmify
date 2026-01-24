@@ -2,7 +2,7 @@
 
 Full-screen agent terminals in your editor. Manage multiple tech leads from one IDE.
 
-Homepage: https://swarmify.co
+Homepage: https://swarmify.co/#agents-ext
 Marketplace: https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext
 MCP Server: [@swarmify/agents-mcp](https://www.npmjs.com/package/@swarmify/agents-mcp) - enables sub-agent spawning
 

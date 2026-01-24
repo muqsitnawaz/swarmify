@@ -1,4 +1,4 @@
-export type AgentId = 'claude' | 'codex' | 'gemini' | 'cursor' | 'opencode' | 'trae';
+export type AgentId = 'claude' | 'codex' | 'gemini' | 'cursor' | 'opencode';
 
 export interface AgentConfig {
   id: AgentId;
@@ -27,11 +27,13 @@ export interface CliConfig {
 }
 
 export interface McpServerConfig {
-  command: string;
-  transport: 'stdio' | 'sse';
+  command?: string;
+  url?: string;
+  transport: 'stdio' | 'http' | 'sse';
   scope: 'user' | 'project';
   agents: AgentId[];
   env?: Record<string, string>;
+  headers?: Record<string, string>;
 }
 
 export interface HookConfig {
@@ -135,6 +137,103 @@ export const SCOPE_PRIORITIES: Record<BuiltinScope, number> = {
 
 export const DEFAULT_SYSTEM_REPO = 'gh:muqsitnawaz/.agents';
 
+// Registry types
+export type RegistryType = 'mcp' | 'skill';
+
+export interface RegistryConfig {
+  url: string;
+  enabled: boolean;
+  apiKey?: string;
+}
+
+export const DEFAULT_REGISTRIES: Record<RegistryType, Record<string, RegistryConfig>> = {
+  mcp: {
+    official: {
+      url: 'https://registry.modelcontextprotocol.io/v0',
+      enabled: true,
+    },
+  },
+  skill: {
+    // No public API available yet - skills.sh has no programmatic access
+    // When available: official: { url: 'https://api.skills.sh/v1', enabled: true }
+  },
+};
+
+// MCP Registry API response types
+export interface McpPackage {
+  registry_name: string;
+  name: string;
+  description?: string;
+  runtime?: 'node' | 'python' | 'docker' | 'binary';
+  transport?: 'stdio' | 'sse' | 'streamable-http';
+  packageArguments?: Array<{
+    name: string;
+    description?: string;
+    required?: boolean;
+  }>;
+}
+
+export interface McpServerEntry {
+  name: string;
+  description?: string;
+  repository?: {
+    url: string;
+    source?: string;
+    directory?: string;
+  };
+  version_detail?: {
+    version: string;
+  };
+  packages?: McpPackage[];
+  _meta?: Record<string, unknown>;
+}
+
+export interface McpRegistryResponse {
+  servers: Array<{ server: McpServerEntry }>;
+  metadata?: {
+    count: number;
+    next_cursor?: string;
+  };
+}
+
+// Skill Registry API response types (for future use)
+export interface SkillEntry {
+  name: string;
+  description?: string;
+  source: string;
+  path?: string;
+  author?: string;
+  installs?: number;
+  tags?: string[];
+}
+
+export interface SkillRegistryResponse {
+  skills: SkillEntry[];
+  metadata?: {
+    count: number;
+    next_cursor?: string;
+  };
+}
+
+// Unified search result
+export interface RegistrySearchResult {
+  name: string;
+  description?: string;
+  type: 'mcp' | 'skill';
+  source: string;
+  registry: string;
+  version?: string;
+  installs?: number;
+}
+
+// Resolved package for installation
+export interface ResolvedPackage {
+  type: 'mcp' | 'skill' | 'git';
+  source: string;
+  mcpEntry?: McpServerEntry;
+  skillEntry?: SkillEntry;
+}
+
 export interface ScopeConfig {
   source: string;
   branch: string;
@@ -147,6 +246,7 @@ export interface ScopeConfig {
 export interface Meta {
   version: string;
   scopes: Record<ScopeName, ScopeConfig>;
+  registries?: Record<RegistryType, Record<string, RegistryConfig>>;
   clis: Partial<Record<AgentId, CliState>>;
   packages: Record<string, PackageState>;
   commands: Record<string, CommandState>;

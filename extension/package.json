@@ -3,14 +3,16 @@
   "displayName": "Agents",
   "publisher": "swarmify",
   "description": "Manage a Mix of Agents with `/swarm` (Claude Code, Codex, Gemini, Cursor) inside the editor",
-  "version": "0.9.186",
+  "version": "0.9.188",
   "license": "MIT",
   "author": "Muqsit Nawaz <dev@muqsitnawaz.com>",
   "icon": "assets/agents.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/muqsitnawaz/swarmify"
+    "url": "https://github.com/muqsitnawaz/swarmify",
+    "directory": "extension"
   },
+  "homepage": "https://swarmify.co/#agents-ext",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -462,16 +464,16 @@
   },
   "devDependencies": {
     "@electron/rebuild": "^3.7.1",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20.x",
+    "@types/sql.js": "^1.4.9",
     "@types/vscode": "^1.85.0",
     "typescript": "^5.3.3"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.3",
     "@vscode/webview-ui-toolkit": "^1.4.0",
-    "better-sqlite3": "^12.6.2",
     "node-pty": "^1.0.0",
+    "sql.js": "^1.13.0",
     "yaml": "^2.8.2"
   },
   "bundledDependencies": [

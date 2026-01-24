@@ -2,7 +2,7 @@
 
 Turn any agent into a tech lead. Spawn sub-agents from Claude, Codex, Gemini, or any MCP client.
 
-Homepage: https://swarmify.co
+Homepage: https://swarmify.co/#agents-mcp
 NPM: https://www.npmjs.com/package/@swarmify/agents-mcp
 VS Code Extension: [Agents](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext) - full-screen agent terminals in your editor
 

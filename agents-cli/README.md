@@ -1,189 +1,208 @@
-# agents
+# @swarmify/agents-cli
 
-Unified CLI for AI coding agents. Manage commands, MCP servers, and CLI versions across Claude, Codex, Gemini, and more.
-
-## Install
+Dotfiles for AI coding agents. Sync prompts, MCP servers, hooks, and skills across Claude, Codex, Gemini, Cursor, and more.
 
 ```bash
 npm install -g @swarmify/agents-cli
 ```
 
-## What It Does
+## The Idea
 
-| Capability | Description |
-|------------|-------------|
-| Commands | Install slash commands to all agents at once, auto-converts Markdown to TOML for Gemini |
-| Skills | Install Agent Skills (SKILL.md + rules/) from repos like skills.sh |
-| Hooks | Sync hooks and their data files across machines |
-| MCP Servers | Register/unregister across Claude, Codex, Gemini in one command |
-| CLI Versions | Pin versions, upgrade all, sync across machines |
-| Sync | Push config to GitHub, pull on new machines |
-
-## Quick Start
+You configure Claude Code manually. Then you switch to Codex or Gemini and start from scratch. This CLI syncs your setup across all agents:
 
 ```bash
-# See what's installed
+# See what you have installed
 agents status
 
-# Install commands from any source
-agents commands add gh:user/my-commands
-
-# Register MCP servers
-agents mcp add swarm "npx @swarmify/agents-mcp"
-
-# Sync to new machine
+# Pull your config on a new machine
 agents pull gh:username/.agents
 ```
 
+## What Gets Synced
+
+| Resource | Location | Synced To |
+|----------|----------|-----------|
+| Slash commands | `~/.claude/commands/` | Claude, Codex, Gemini |
+| MCP servers | `~/.claude/settings.json` | Claude, Codex, Gemini |
+| Hooks | `~/.claude/hooks.json` | Claude, Gemini |
+| Agent Skills | `~/.claude/skills/` | Claude, Codex, Gemini |
+| CLI versions | npm/brew | All agents |
+
 ## Commands
 
-### Status & Sync
+### Prompts (Slash Commands)
 
-| Command | Description |
-|---------|-------------|
-| `agents status` | Show installed CLIs, commands, hooks, MCP servers |
-| `agents pull <source>` | Pull and install from GitHub or local dir |
-| `agents push` | Export config to .agents repo |
+```bash
+# List what's installed
+agents commands list
 
-Options: `-y` (skip prompts), `-f` (force), `--dry-run` (preview)
+# Install from a git repo
+agents commands add gh:user/my-prompts
 
-### Commands (Slash Commands)
-
-| Command | Description |
-|---------|-------------|
-| `agents commands list` | List all installed commands |
-| `agents commands add <source>` | Install from git repo or local path |
-| `agents commands remove <name>` | Uninstall command |
-| `agents commands push <name>` | Copy project-scoped command to user scope |
-
-### Skills (Agent Skills)
-
-Agent Skills are reusable capabilities (like from skills.sh) with SKILL.md and rules/ directory.
-
-| Command | Description |
-|---------|-------------|
-| `agents skills list` | List all installed Agent Skills |
-| `agents skills add <source>` | Install from git repo or local path |
-| `agents skills remove <name>` | Uninstall skill from all agents |
-| `agents skills push <name>` | Copy project-scoped skill to user scope |
-| `agents skills info <name>` | Show skill metadata and rules |
+# Remove
+agents commands remove my-command
+```
 
 ### MCP Servers
 
-| Command | Description |
-|---------|-------------|
-| `agents mcp list` | List all MCP servers |
-| `agents mcp add <name> <cmd>` | Add and register across agents |
-| `agents mcp remove <name>` | Unregister from all agents |
-| `agents mcp push <name>` | Copy project-scoped MCP to user scope |
+```bash
+# List servers across all agents
+agents mcp list
+
+# Add stdio server (use -- before the command)
+agents mcp add swarm -- npx @swarmify/agents-mcp
+agents mcp add memory -- npx -y @anthropic-ai/mcp-memory
+
+# Add HTTP server with headers
+agents mcp add api https://api.example.com/mcp --transport http -H "Authorization:Bearer token"
+
+# Remove from all agents
+agents mcp remove swarm
+```
 
 ### Hooks
 
-| Command | Description |
-|---------|-------------|
-| `agents hooks list` | List all installed hooks |
-| `agents hooks add <source>` | Install from git repo or local path |
-| `agents hooks remove <name>` | Uninstall hook |
-| `agents hooks push <name>` | Copy project-scoped hook to user scope |
+```bash
+# List hooks
+agents hooks list
+
+# Install from repo
+agents hooks add gh:user/my-hooks
+
+# Remove
+agents hooks remove my-hook
+```
+
+### Skills
+
+Agent Skills are reusable capabilities (SKILL.md + rules/) that agents can invoke.
+
+```bash
+# List installed skills
+agents skills list
+
+# Install from repo
+agents skills add gh:user/my-skills
+
+# Show details
+agents skills info my-skill
+```
+
+### Search & Install from Registries
+
+Search public registries for MCP servers and skills:
+
+```bash
+# Search all registries
+agents search github
+agents search filesystem --limit 10
+
+# Filter by type
+agents search github --type mcp
+
+# Install from registry (auto-detected)
+agents add mcp:io.github.bytedance/mcp-server-filesystem
+
+# Or use identifiers
+agents add skill:user/my-skill    # Skill from git
+agents add gh:user/my-repo        # Git repo directly
+```
+
+### Registry Management
+
+```bash
+# List configured registries
+agents registry list
+
+# Add custom registry
+agents registry add mcp myregistry https://api.example.com/v1
+
+# Configure API key
+agents registry config mcp myregistry --api-key YOUR_KEY
+
+# Disable/enable
+agents registry disable mcp myregistry
+agents registry enable mcp myregistry
+
+# Remove
+agents registry remove mcp myregistry
+```
+
+Default registries:
+- `official` (MCP): https://registry.modelcontextprotocol.io
+
+### Sync
+
+```bash
+# Pull config from your .agents repo
+agents pull gh:username/.agents
+
+# Push local changes back
+agents push
+
+# Full status
+agents status
+```
 
 ### CLI Management
 
-| Command | Description |
-|---------|-------------|
-| `agents cli list` | Show versions and install paths |
-| `agents cli upgrade` | Upgrade to manifest versions |
-| `agents cli upgrade --latest` | Upgrade to latest |
+```bash
+# Show installed versions
+agents cli list
+
+# Upgrade all to latest
+agents cli upgrade --latest
+```
 
 ## Filtering
 
-All resource commands support filtering by agent and scope:
+All commands support `--agent` and `--scope` filters:
 
 ```bash
-# Filter by agent
 agents commands list --agent claude
-agents skills list --agent codex
-agents mcp list --agent codex
-
-# Filter by scope
-agents commands list --scope user
-agents skills list --scope project
-agents hooks list --scope project
-
-# Combine filters
-agents commands list --agent claude --scope user
+agents mcp list --scope project
+agents skills list --agent codex --scope user
 ```
 
 ## Scopes
 
-Resources (commands, skills, MCP servers, hooks) can exist at two scopes:
+| Scope | Location | Use Case |
+|-------|----------|----------|
+| User | `~/.{agent}/` | Available everywhere |
+| Project | `./.{agent}/` | This repo only |
 
-| Scope | Location | Applies To |
-|-------|----------|------------|
-| User | `~/.{agent}/` | All projects |
-| Project | `./.{agent}/` | Current project only |
+Promote project-scoped items to user scope:
 
-Use `push` to copy a project-scoped item to user scope so it's available everywhere.
+```bash
+agents commands push my-command
+agents mcp push my-server
+```
 
 ## Supported Agents
 
-| Agent | CLI | Config | MCP | Hooks | Skills |
-|-------|-----|--------|-----|-------|--------|
-| Claude | `claude` | `~/.claude/` | Yes | Yes | Yes |
-| Codex | `codex` | `~/.codex/` | Yes | - | Yes |
-| Gemini | `gemini` | `~/.gemini/` | Yes | Yes | Yes |
-| Cursor | `cursor-agent` | `~/.cursor-agent/` | - | - | - |
-| OpenCode | `opencode` | `~/.opencode/` | - | - | - |
-| Trae | `trae-cli` | `~/.trae/` | - | - | - |
+| Agent | Prompts | MCP | Hooks | Skills |
+|-------|---------|-----|-------|--------|
+| Claude Code | Yes | Yes | Yes | Yes |
+| Codex | Yes | Yes | - | Yes |
+| Gemini CLI | Yes (TOML) | Yes | Yes | Yes |
+| Cursor | Yes | - | - | - |
+| OpenCode | Yes | - | - | - |
+| Trae | Yes | - | - | - |
 
-## Repo Structure
-
-Your `.agents` repo:
+## Your .agents Repo
 
 ```
 .agents/
   agents.yaml           # CLIs, MCP servers, defaults
-  skills/               # Central storage for Agent Skills
-    my-skill/
-      SKILL.md
-      rules/*.md
-  shared/
-    commands/           # Commands for all agents
-    hooks/              # Hooks for all agents (+ data files)
-  claude/
-    commands/           # Claude-specific commands
-    hooks/              # Claude-specific hooks
-  gemini/
-    prompts/            # Gemini commands (TOML format)
-    hooks/              # Gemini-specific hooks
+  shared/commands/      # Prompts for all agents
+  claude/commands/      # Claude-specific prompts
+  claude/hooks/         # Claude hooks
+  skills/               # Agent Skills
 ```
-
-## Manifest Format
-
-```yaml
-clis:
-  claude:
-    package: "@anthropic-ai/claude-code"
-    version: "2.0.65"
-
-mcp:
-  swarm:
-    command: "npx @swarmify/agents-mcp"
-    agents: [claude, codex, gemini]
-
-defaults:
-  method: symlink
-  agents: [claude, codex, gemini]
-```
-
-## State
-
-Local state in `~/.agents/`:
-- `state.json` - sync source, last sync time
-- `repos/` - cloned .agents repos
 
 ## Related
 
-- [@swarmify/agents-mcp](https://www.npmjs.com/package/@swarmify/agents-mcp) - MCP server for multi-agent orchestration
+- [@swarmify/agents-mcp](https://www.npmjs.com/package/@swarmify/agents-mcp) - Multi-agent orchestration MCP server
 
 ## License
 

@@ -89,7 +89,7 @@ describe('Session Reading - Real Sessions', () => {
     }
     
     console.log('Testing Cursor session:', dbPath);
-    const preview = getCursorSessionPreviewInfo(dbPath);
+    const preview = await getCursorSessionPreviewInfo(dbPath);
     console.log('Cursor preview:', preview);
     expect(preview.messageCount).toBeGreaterThan(0);
     if (preview.firstUserMessage) {
