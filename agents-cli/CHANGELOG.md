@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.5.6
+
+- (no changes, version bump for testing)
+
+## 1.5.5
+
+- Update prompt: Interactive menu before command runs (Upgrade now / Later)
+
+## 1.5.4
+
+- `cli list`: Shows spinner while checking installed CLIs
+
+## 1.5.3
+
+- `skills view`: Opens in pager (less) for scrolling, press `q` to quit
+
+## 1.5.2
+
+- `skills view`: Truncate descriptions to fit on one line
+
 ## 1.5.1
 
 - Update check: Shows prompt when new version available

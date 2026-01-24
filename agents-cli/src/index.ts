@@ -155,7 +155,7 @@ program
   .description('Dotfiles manager for AI coding agents')
   .version(VERSION);
 
-// Check for updates (non-blocking, shows hint if update available)
+// Check for updates before command runs, prompt to upgrade
 async function checkForUpdates(): Promise<void> {
   try {
     const response = await fetch('https://registry.npmjs.org/@swarmify/agents-cli/latest', {
@@ -167,19 +167,43 @@ async function checkForUpdates(): Promise<void> {
     const latestVersion = data.version;
 
     if (latestVersion !== VERSION && compareVersions(latestVersion, VERSION) > 0) {
-      console.log(chalk.yellow(`\nUpdate available: ${VERSION} -> ${latestVersion}`));
-      console.log(chalk.gray(`Run: agents upgrade\n`));
+      const answer = await select({
+        message: `Update available: ${VERSION} -> ${latestVersion}`,
+        choices: [
+          { value: 'now', name: 'Upgrade now' },
+          { value: 'later', name: 'Later' },
+        ],
+      });
+
+      if (answer === 'now') {
+        // Run upgrade
+        const { execSync } = await import('child_process');
+        const spinner = ora('Upgrading...').start();
+        try {
+          execSync('npm install -g @swarmify/agents-cli@latest', { stdio: 'pipe' });
+          spinner.succeed(`Upgraded to ${latestVersion}`);
+          await showWhatsNew(VERSION, latestVersion);
+        } catch {
+          spinner.fail('Upgrade failed');
+          console.log(chalk.gray('Run manually: npm install -g @swarmify/agents-cli@latest'));
+        }
+        console.log();
+      }
     }
-  } catch {
-    // Silently ignore - don't block CLI usage
+  } catch (err) {
+    if (isPromptCancelled(err)) {
+      // User pressed Ctrl+C, continue with command
+      return;
+    }
+    // Silently ignore network errors
   }
 }
 
-// Run update check after command completes (non-blocking)
-program.hook('postAction', async () => {
-  // Don't check on upgrade command itself
+// Run update check before command runs
+program.hook('preAction', async () => {
   const args = process.argv.slice(2);
-  if (args[0] === 'upgrade' || args[0] === '--version' || args[0] === '-V' || args[0] === '--help' || args[0] === '-h') {
+  const skipCommands = ['upgrade', '--version', '-V', '--help', '-h'];
+  if (args.length === 0 || skipCommands.includes(args[0])) {
     return;
   }
   await checkForUpdates();
@@ -1457,10 +1481,16 @@ skillsCmd
       try {
         name = await select({
           message: 'Select a skill to view',
-          choices: allSkills.map((s) => ({
-            value: s.name,
-            name: s.description ? `${s.name} - ${s.description}` : s.name,
-          })),
+          choices: allSkills.map((s) => {
+            const maxDescLen = Math.max(0, 70 - s.name.length);
+            const desc = s.description.length > maxDescLen
+              ? s.description.slice(0, maxDescLen - 3) + '...'
+              : s.description;
+            return {
+              value: s.name,
+              name: desc ? `${s.name} - ${desc}` : s.name,
+            };
+          }),
         });
       } catch (err) {
         if (isPromptCancelled(err)) {
@@ -1477,30 +1507,46 @@ skillsCmd
       return;
     }
 
-    console.log(chalk.bold(`\n${skill.metadata.name}\n`));
+    // Build output
+    const lines: string[] = [];
+    lines.push(chalk.bold(`\n${skill.metadata.name}\n`));
     if (skill.metadata.description) {
-      console.log(`  ${skill.metadata.description}`);
+      lines.push(`  ${skill.metadata.description}`);
     }
-    console.log();
+    lines.push('');
     if (skill.metadata.author) {
-      console.log(`  Author: ${skill.metadata.author}`);
+      lines.push(`  Author: ${skill.metadata.author}`);
     }
     if (skill.metadata.version) {
-      console.log(`  Version: ${skill.metadata.version}`);
+      lines.push(`  Version: ${skill.metadata.version}`);
     }
     if (skill.metadata.license) {
-      console.log(`  License: ${skill.metadata.license}`);
+      lines.push(`  License: ${skill.metadata.license}`);
     }
-    console.log(`  Path: ${skill.path}`);
+    lines.push(`  Path: ${skill.path}`);
 
     const rules = getSkillRules(name);
     if (rules.length > 0) {
-      console.log(chalk.bold(`\n  Rules (${rules.length}):\n`));
+      lines.push(chalk.bold(`\n  Rules (${rules.length}):\n`));
       for (const rule of rules) {
-        console.log(`    ${chalk.cyan(rule)}`);
+        lines.push(`    ${chalk.cyan(rule)}`);
       }
     }
-    console.log();
+    lines.push('');
+
+    const output = lines.join('\n');
+
+    // Pipe through less for scrolling (q to quit)
+    const { spawnSync } = await import('child_process');
+    const less = spawnSync('less', ['-R'], {
+      input: output,
+      stdio: ['pipe', 'inherit', 'inherit'],
+    });
+
+    // Fallback to direct output if less fails
+    if (less.status !== 0) {
+      console.log(output);
+    }
   });
 
 // =============================================================================
@@ -1737,10 +1783,13 @@ const cliCmd = program
 cliCmd
   .command('list')
   .description('List installed agent CLIs')
-  .action(() => {
-    console.log(chalk.bold('Agent CLIs\n'));
+  .action(async () => {
+    const spinner = ora('Checking installed CLIs...').start();
 
     const states = getAllCliStates();
+    spinner.stop();
+
+    console.log(chalk.bold('Agent CLIs\n'));
     for (const agentId of ALL_AGENT_IDS) {
       const agent = AGENTS[agentId];
       const state = states[agentId];
