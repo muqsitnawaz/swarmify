@@ -2,6 +2,10 @@
 
 Your virtual environment manager for AI coding agents.
 
+Homepage: https://swarmify.co/#agents-cli
+NPM: https://www.npmjs.com/package/@swarmify/agents-cli
+VS Code Extension: [Agents](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext) - full-screen agent terminals with sub-agent spawning
+
 ```bash
 npm install -g @swarmify/agents-cli
 ```
@@ -264,7 +268,8 @@ Format conversion is automatic. Write commands in markdown, they're converted to
 
 ## Related
 
-- [@swarmify/agents-mcp](https://www.npmjs.com/package/@swarmify/agents-mcp) - MCP server for multi-agent orchestration
+- [@swarmify/agents-mcp](https://www.npmjs.com/package/@swarmify/agents-mcp) - MCP server for sub-agent spawning
+- [Agents Extension](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext) - Full-screen agent terminals in VS Code/Cursor
 
 ## License
 
