@@ -164,15 +164,16 @@ program
       const userCommands = commands.filter((c) => c.scope === 'user');
       const projectCommands = commands.filter((c) => c.scope === 'project');
 
-      if (commands.length > 0) {
-        const parts: string[] = [];
+      if (commands.length === 0) {
+        console.log(`  ${chalk.bold(agent.name)}: ${chalk.gray('none')}`);
+      } else {
+        console.log(`  ${chalk.bold(agent.name)}:`);
         if (userCommands.length > 0) {
-          parts.push(`${chalk.cyan(userCommands.length)} user`);
+          console.log(`    ${chalk.gray('User:')} ${userCommands.map((c) => chalk.cyan(c.name)).join(', ')}`);
         }
         if (projectCommands.length > 0) {
-          parts.push(`${chalk.yellow(projectCommands.length)} project`);
+          console.log(`    ${chalk.gray('Project:')} ${projectCommands.map((c) => chalk.yellow(c.name)).join(', ')}`);
         }
-        console.log(`  ${agent.name}: ${parts.join(', ')}`);
       }
     }
 
@@ -183,15 +184,16 @@ program
       const userSkills = skills.filter((s) => s.scope === 'user');
       const projectSkills = skills.filter((s) => s.scope === 'project');
 
-      if (skills.length > 0) {
-        const parts: string[] = [];
+      if (skills.length === 0) {
+        console.log(`  ${chalk.bold(agent.name)}: ${chalk.gray('none')}`);
+      } else {
+        console.log(`  ${chalk.bold(agent.name)}:`);
         if (userSkills.length > 0) {
-          parts.push(`${chalk.cyan(userSkills.length)} user`);
+          console.log(`    ${chalk.gray('User:')} ${userSkills.map((s) => chalk.cyan(s.name)).join(', ')}`);
         }
         if (projectSkills.length > 0) {
-          parts.push(`${chalk.yellow(projectSkills.length)} project`);
+          console.log(`    ${chalk.gray('Project:')} ${projectSkills.map((s) => chalk.yellow(s.name)).join(', ')}`);
         }
-        console.log(`  ${agent.name}: ${parts.join(', ')}`);
       }
     }
 
@@ -204,15 +206,16 @@ program
       const userMcps = mcps.filter((m) => m.scope === 'user');
       const projectMcps = mcps.filter((m) => m.scope === 'project');
 
-      if (mcps.length > 0) {
-        const parts: string[] = [];
+      if (mcps.length === 0) {
+        console.log(`  ${chalk.bold(agent.name)}: ${chalk.gray('none')}`);
+      } else {
+        console.log(`  ${chalk.bold(agent.name)}:`);
         if (userMcps.length > 0) {
-          parts.push(`${chalk.cyan(userMcps.length)} user`);
+          console.log(`    ${chalk.gray('User:')} ${userMcps.map((m) => chalk.cyan(m.name)).join(', ')}`);
         }
         if (projectMcps.length > 0) {
-          parts.push(`${chalk.yellow(projectMcps.length)} project`);
+          console.log(`    ${chalk.gray('Project:')} ${projectMcps.map((m) => chalk.yellow(m.name)).join(', ')}`);
         }
-        console.log(`  ${agent.name}: ${parts.join(', ')}`);
       }
     }
 
