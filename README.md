@@ -10,18 +10,13 @@ You don't need a coding agent. You need a team.
 
 [Homepage](https://swarmify.co) | [Agents Extension](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext) | [Agents MCP](https://www.npmjs.com/package/@swarmify/agents-mcp) | [Agents CLI](https://www.npmjs.com/package/@swarmify/agents-cli)
 
-Turn your IDE into an agentic IDE. Run Claude, Codex, Gemini, and Cursor as full-screen terminals orchestrated through `/swarm` with approvals before execution.
+Run Claude, Codex, Gemini, and Cursor as a team. Orchestrate through `/swarm` with approvals before execution.
 
-## Is this for you?
+## Get Swarmify
 
-- You use Claude Code, Codex, Gemini, or Cursor CLI agents
-- You want a **Mix of Agents** on every task, not a single model guess
-- You want approvals before code runs, and agents that can spawn agents for parallel work
+**Option 1: Quick start (have agent CLIs already)**
 
-## Quick Start
-
-1) Install the extension: search "Agents" in VS Code/Cursor marketplace (`swarmify.swarm-ext`).
-2) Add Swarm MCP to your agent CLI:
+Install the [Agents Extension](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext) from VS Code/Cursor marketplace, then add [Agents MCP](https://www.npmjs.com/package/@swarmify/agents-mcp):
 
 ```bash
 # Claude Code
@@ -32,154 +27,175 @@ codex mcp add swarm -- npx -y @swarmify/agents-mcp@latest
 
 # Gemini CLI
 gemini mcp add Swarm -- npx -y @swarmify/agents-mcp
-
-# OpenCode
-opencode mcp add
-# Name: Swarm, Command: npx -y @swarmify/agents-mcp
 ```
 
-3) Run `/swarm` with your task and desired mix, then approve the plan:
+**Option 2: Full setup (fresh machine)**
+
+Use [Agents CLI](https://www.npmjs.com/package/@swarmify/agents-cli) to install everything:
+
+```bash
+npm install -g @swarmify/agents-cli
+
+# Install agent CLIs
+agents cli add claude
+agents cli add codex
+agents cli add gemini
+
+# Pull prompts, MCP servers, skills
+agents pull
+
+# Check what's installed
+agents status
+```
+
+Then install the [Agents Extension](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext).
+
+**Run your first swarm:**
 
 ```
-/swarm Ship billing polish — 70% Claude planning, 30% Codex coding
+/swarm Ship billing polish - 70% Claude planning, 30% Codex coding
 ```
 
-The lead agent proposes a plan and **Mix of Agents**; you review and approve before anything executes.
+## How It Works
 
-## How Swarms Work
-
-| Step | What happens |
+| Step | What Happens |
 | --- | --- |
-| 1 | Run `/swarm "your task description with mix needs"` |
-| 2 | Lead agent creates a distribution plan and assembles the **Mix of Agents** |
-| 3 | You review and approve; the swarm executes only after approval |
+| 1 | Run `/swarm "your task with mix needs"` |
+| 2 | Lead agent creates a plan and assembles the team |
+| 3 | You review and approve; agents execute in parallel |
 
-## Mix of Agents Explained
+## Why Multiple CLI Agents?
 
-- Describe needs in the task description; the orchestrator builds the **Mix of Agents** automatically.
-- Examples: "70% Gemini research-heavy", "60% Codex coding", "50/50 Cursor/Codex debugging".
-- Diversity prevents blind spots and ensures coverage across planning, coding, debugging, and verification.
+One model can't juggle research, implementation, testing, and debugging in one pass. Context windows force awkward batching. Different models have different strengths:
 
-## Agents Can Spawn Agents
-
-Hierarchical orchestration: a lead agent can spawn children, and those children can spawn grandchildren when tasks expand. Teams grow with complexity—for example, Claude (lead) spawns Codex for implementation, Gemini for systems analysis, and Cursor for debugging.
-
-## For Teams
-
-- Shared orchestration with session restoration so work survives IDE restarts
-- Approval gates and auditability across every `/swarm` run
-- No new infrastructure—uses your existing agent CLIs and API keys
-
-## Department-Level Transformation
-
-Ship a feature overnight: the PM writes a task, `/swarm` proposes a plan plus **Mix of Agents**, you approve, and specialized agents ship and verify in parallel. Benefits: speed (parallel execution), coverage (model diversity), and governance (approvals with audit trail).
-
-## How it works
-
-Open an agent tab, run `/swarm`, get a plan + **Mix of Agents**, approve, and let the hierarchy execute. One conversation; the lead manages the team.
-
-## What it costs
-
-Swarmify is free and open source.
-
-Each agent uses your own API keys (Claude = Anthropic, Codex = OpenAI, Gemini = Google). Spawning 3 Claude sub-agents means 3x your normal Claude API cost. No hidden fees, no Swarmify subscription.
-
-## Packages
-
-| Package | Description | Install |
+| Agent | CLI | Best For |
 | --- | --- | --- |
-| [@swarmify/agents-mcp](./agents-mcp) | MCP server for spawning sub-agents | `npx @swarmify/agents-mcp` |
-| [Extension](./extension) | VS Code/Cursor extension | [Marketplace](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext) |
-| [Prompts](./prompts) | Slash commands for all agents | Copy from `./prompts` |
+| Claude | `claude` | Planning, synthesis, multi-step reasoning |
+| Codex | `codex` | Fast implementation, syntax-heavy tasks |
+| Gemini | `gemini` | Research depth, multi-system changes |
+| Cursor | `cursor-agent` | Debugging, tracing through codebases |
 
-## Example Workflows
+Swarmify lets them work together. Claude plans while Codex implements while Cursor debugs - in parallel.
 
-**Multi-agent debugging:**
-```
-/sdebug The API returns 500 errors intermittently on /users endpoint
-```
-Spawns 2-3 agents to investigate in parallel, then synthesizes findings.
+## Why CLI Agents in an IDE?
 
-**Parallel feature implementation:**
-```
-/swarm Add dark mode support:
-- Agent 1: Update theme context and CSS variables
-- Agent 2: Add toggle component to settings
-- Agent 3: Persist preference to localStorage
-```
+CLI agents like Claude Code, Codex, and Gemini are powerful - but running them in separate terminal windows means constant context-switching. You lose sight of your code while talking to agents.
 
-**Specify the mix up front:**
-```
-/swarm Migrate billing to Stripe Checkout — 70% Claude planning, 30% Codex coding
-```
+The [Agents Extension](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext) gives you:
 
-**Code review with verification:**
-```
-/sconfirm Review the changes in the last 3 commits for security issues
-```
+- **Full-screen terminals** - Agents run as editor tabs, not buried panels
+- **Session persistence** - Close VS Code, reopen, your agent tabs come back
+- **Sub-agent spawning** - Any agent can delegate to other agents via [Agents MCP](https://www.npmjs.com/package/@swarmify/agents-mcp)
+- **Approval gates** - You approve plans before agents execute
 
-## Keyboard Shortcuts
+## Agents Extension
+
+Full-screen agent terminals in your IDE. Each agent becomes a tech lead that can spawn sub-agents. You become the engineering manager.
+
+[Get it on VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext)
 
 | Shortcut | Action |
 | --- | --- |
 | `Cmd+Shift+A` | Spawn new agent |
 | `Cmd+Shift+L` | Label agent by task |
-| `Cmd+Shift+C` | Clear and restart agent |
 | `Cmd+Shift+D` | Open Dashboard |
 | `Cmd+Shift+G` | Generate git commit |
+| `Cmd+Shift+H/V` | Split horizontal/vertical |
 
-## Supported Agents
+## Agents MCP
 
-| Agent | CLI | Best For |
-| --- | --- | --- |
-| Claude Code | `claude` | Complex research, orchestration |
-| Codex | `codex` | Fast implementation, self-contained features |
-| Gemini | `gemini` | Multi-system changes, architecture |
-| Cursor | `cursor-agent` | Debugging, tracing through codebases |
+MCP server that turns any agent into a tech lead. Spawn sub-agents from Claude, Codex, Gemini, or any MCP client.
 
-## Prompts
+[Get it on npm](https://www.npmjs.com/package/@swarmify/agents-mcp)
 
-Slash commands calibrated for each agent. Commands prefixed with `s` spawn multiple agents for parallel work.
-
-| Command | Description |
-| --- | --- |
-| `/plan` | Design implementation approach |
-| `/splan` | Parallel agents validate the plan |
-| `/debug` | Root cause analysis |
-| `/sdebug` | Parallel investigation |
-| `/test` | Write critical path tests |
-| `/stest` | Parallel agents test different paths |
-| `/clean` | Remove tech debt |
-| `/sclean` | Parallel cleanup across areas |
-| `/ship` | Pre-launch verification |
-| `/sship` | Independent agents confirm readiness |
-| `/swarm` | Multi-agent orchestration |
-
-## Agent Modes
+**4 tools:** `Spawn`, `Status`, `Stop`, `Tasks`
 
 | Mode | File Access | Use Case |
 | --- | --- | --- |
-| `plan` | Read-only | Research, exploration, code review |
+| `plan` | Read-only | Research, code review |
 | `edit` | Read + Write | Implementation, refactoring |
-| `ralph` | Full access + auto-loop | Autonomous task execution via RALPH.md |
+| `ralph` | Full + auto-loop | Autonomous via RALPH.md |
 
-See [@swarmify/agents-mcp](./agents-mcp) for mode details and Ralph documentation.
+## Agents CLI
+
+Install, configure, and sync all your agent CLIs from one place. Like dotfiles for AI coding tools.
+
+[Get it on npm](https://www.npmjs.com/package/@swarmify/agents-cli)
+
+```bash
+npm install -g @swarmify/agents-cli
+
+# Install agent CLIs
+agents cli add claude
+agents cli add codex
+agents cli add gemini
+
+# Upgrade (all or specific)
+agents cli upgrade           # Upgrade all
+agents cli upgrade claude    # Upgrade just Claude
+
+# Sync prompts, MCP servers, hooks, skills
+agents pull
+
+# Check what's installed
+agents status
+```
+
+**What gets synced:**
+
+| Resource | Description |
+| --- | --- |
+| Slash commands | `/debug`, `/plan`, custom prompts |
+| MCP servers | Tools your agents can use |
+| Hooks | Pre/post execution scripts |
+| Skills | Reusable agent capabilities |
+
+## Developer Experience
+
+**Slash commands** calibrated for each agent. Commands prefixed with `s` spawn multiple agents:
+
+| Command | Description |
+| --- | --- |
+| `/swarm` | Multi-agent orchestration |
+| `/plan` / `/splan` | Design approach / parallel validation |
+| `/debug` / `/sdebug` | Root cause / parallel investigation |
+| `/test` / `/stest` | Critical paths / parallel testing |
+| `/ship` / `/sship` | Pre-launch / parallel verification |
+
+**For Teams:**
+
+- Shared dashboard keeps approvals visible
+- Session logs for auditability
+- Approval gates before code runs
+
+## Common Workflows
+
+**Multi-agent debugging:**
+```
+/sdebug The API returns 500 errors intermittently on /users endpoint
+```
+
+**Feature with mixed agents:**
+```
+/swarm Add dark mode - 50% Claude planning, 30% Codex coding, 20% Cursor testing
+```
+
+**Code review:**
+```
+/sconfirm Review the last 3 commits for security issues
+```
+
+## What It Costs
+
+Swarmify is free and open source.
+
+Each agent uses your own API keys. Spawning 3 Claude sub-agents means 3x your normal Claude API cost. No hidden fees.
 
 ## Requirements
 
 - VS Code or Cursor
-- At least one agent CLI installed (`claude`, `codex`, `gemini`, or `cursor-agent`)
+- At least one agent CLI (`claude`, `codex`, `gemini`, or `cursor-agent`)
 - API keys configured for your agents
-
-## Development
-
-```bash
-# MCP Server
-cd agents-mcp && bun install && bun run build
-
-# Extension
-cd extension && bun install && bun run compile
-```
 
 ## License
 
