@@ -1,7 +1,17 @@
 # Swarmify
 
-Mix of Agents for every task. You ask → Lead agent plans → Spawns a swarm → You approve and ship.
-Specify your mix through the task description (for example, "I need 70% Claude planning, 30% Cursor debugging").
+[![Extension](https://img.shields.io/visual-studio-marketplace/v/swarmify.swarm-ext?label=Extension&color=blue)](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext)
+[![MCP Server](https://img.shields.io/npm/v/@swarmify/agents-mcp?label=MCP%20Server&color=green)](https://www.npmjs.com/package/@swarmify/agents-mcp)
+[![CLI](https://img.shields.io/npm/v/@swarmify/agents-cli?label=CLI&color=orange)](https://www.npmjs.com/package/@swarmify/agents-cli)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue)](https://www.typescriptlang.org/)
+[![License](https://img.shields.io/badge/License-MIT-yellow)](./LICENSE)
+
+You don't need a coding agent. You need a team.
+
+Homepage: https://swarmify.co
+VS Code Extension: [Agents](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext)
+MCP Server: [@swarmify/agents-mcp](https://www.npmjs.com/package/@swarmify/agents-mcp)
+CLI: [@swarmify/agents-cli](https://www.npmjs.com/package/@swarmify/agents-cli)
 
 Turn your IDE into an agentic IDE. Run Claude, Codex, Gemini, and Cursor as full-screen terminals orchestrated through `/swarm` with approvals before execution.
 
