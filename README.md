@@ -8,10 +8,7 @@
 
 You don't need a coding agent. You need a team.
 
-Homepage: https://swarmify.co
-VS Code Extension: [Agents](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext)
-MCP Server: [@swarmify/agents-mcp](https://www.npmjs.com/package/@swarmify/agents-mcp)
-CLI: [@swarmify/agents-cli](https://www.npmjs.com/package/@swarmify/agents-cli)
+[Homepage](https://swarmify.co) | [Agents Extension](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext) | [Agents MCP](https://www.npmjs.com/package/@swarmify/agents-mcp) | [Agents CLI](https://www.npmjs.com/package/@swarmify/agents-cli)
 
 Turn your IDE into an agentic IDE. Run Claude, Codex, Gemini, and Cursor as full-screen terminals orchestrated through `/swarm` with approvals before execution.
 
