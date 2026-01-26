@@ -3,7 +3,7 @@ import * as path from 'path';
 import { AGENTS, ALL_AGENT_IDS } from './agents.js';
 import type { AgentId, InstalledHook } from './types.js';
 
-type HookEntry = { name: string; scriptPath: string; dataFile?: string };
+export type HookEntry = { name: string; scriptPath: string; dataFile?: string };
 
 const SCRIPT_EXTENSIONS = new Set([
   '.sh',
@@ -155,6 +155,70 @@ export function hookExists(agentId: AgentId, hookName: string): boolean {
     const baseName = path.basename(file, ext);
     return baseName === hookName && SCRIPT_EXTENSIONS.has(ext);
   });
+}
+
+/**
+ * Normalize content for comparison (trim, normalize line endings).
+ */
+function normalizeContent(content: string): string {
+  return content.replace(/\r\n/g, '\n').trim();
+}
+
+/**
+ * Get the installed hook entry for an agent.
+ */
+function getInstalledHookEntry(agentId: AgentId, hookName: string): HookEntry | null {
+  const hooksDir = getHooksDir(agentId);
+  const entries = listHookEntriesFromDir(hooksDir);
+  return entries.find((e) => e.name === hookName) || null;
+}
+
+/**
+ * Check if installed hook content matches source hook content.
+ * Compares both script file and data file (if present).
+ */
+export function hookContentMatches(
+  agentId: AgentId,
+  hookName: string,
+  sourceEntry: HookEntry
+): boolean {
+  const agent = AGENTS[agentId];
+  if (!agent.supportsHooks) {
+    return false;
+  }
+
+  const installedEntry = getInstalledHookEntry(agentId, hookName);
+  if (!installedEntry) {
+    return false;
+  }
+
+  try {
+    const installedScript = fs.readFileSync(installedEntry.scriptPath, 'utf-8');
+    const sourceScript = fs.readFileSync(sourceEntry.scriptPath, 'utf-8');
+
+    if (normalizeContent(installedScript) !== normalizeContent(sourceScript)) {
+      return false;
+    }
+
+    const hasInstalledData = !!installedEntry.dataFile;
+    const hasSourceData = !!sourceEntry.dataFile;
+
+    if (hasInstalledData !== hasSourceData) {
+      return false;
+    }
+
+    if (hasInstalledData && hasSourceData) {
+      const installedData = fs.readFileSync(installedEntry.dataFile!, 'utf-8');
+      const sourceData = fs.readFileSync(sourceEntry.dataFile!, 'utf-8');
+      if (normalizeContent(installedData) !== normalizeContent(sourceData)) {
+        return false;
+      }
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function listInstalledHooksWithScope(
@@ -310,4 +374,25 @@ export function discoverHooksFromRepo(
   }
 
   return { shared, agentSpecific };
+}
+
+/**
+ * Get the source hook entry from repo for a given agent.
+ * Checks agent-specific dir first, then shared.
+ */
+export function getSourceHookEntry(
+  repoPath: string,
+  agentId: AgentId,
+  hookName: string
+): HookEntry | null {
+  const agent = AGENTS[agentId];
+
+  const agentDir = path.join(repoPath, agentId, agent.hooksDir);
+  const agentEntries = listHookEntriesFromDir(agentDir);
+  const agentEntry = agentEntries.find((e) => e.name === hookName);
+  if (agentEntry) return agentEntry;
+
+  const sharedDir = path.join(repoPath, 'shared', 'hooks');
+  const sharedEntries = listHookEntriesFromDir(sharedDir);
+  return sharedEntries.find((e) => e.name === hookName) || null;
 }

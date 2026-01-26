@@ -254,6 +254,81 @@ export function skillExists(agentId: AgentId, skillName: string): boolean {
   return fs.existsSync(agentSkillPath);
 }
 
+/**
+ * Normalize content for comparison (trim, normalize line endings).
+ */
+function normalizeContent(content: string): string {
+  return content.replace(/\r\n/g, '\n').trim();
+}
+
+/**
+ * Compare two directories recursively for content equality.
+ */
+function directoriesMatch(dir1: string, dir2: string): boolean {
+  if (!fs.existsSync(dir1) || !fs.existsSync(dir2)) {
+    return fs.existsSync(dir1) === fs.existsSync(dir2);
+  }
+
+  try {
+    const files1 = fs.readdirSync(dir1).filter(f => f.endsWith('.md')).sort();
+    const files2 = fs.readdirSync(dir2).filter(f => f.endsWith('.md')).sort();
+
+    if (files1.length !== files2.length) return false;
+    if (files1.join(',') !== files2.join(',')) return false;
+
+    for (const file of files1) {
+      const content1 = fs.readFileSync(path.join(dir1, file), 'utf-8');
+      const content2 = fs.readFileSync(path.join(dir2, file), 'utf-8');
+      if (normalizeContent(content1) !== normalizeContent(content2)) {
+        return false;
+      }
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check if installed skill content matches source content.
+ * Compares SKILL.md and all rules/*.md files.
+ */
+export function skillContentMatches(
+  agentId: AgentId,
+  skillName: string,
+  sourcePath: string
+): boolean {
+  const installedPath = path.join(getAgentSkillsDir(agentId), skillName);
+
+  if (!fs.existsSync(installedPath) || !fs.existsSync(sourcePath)) {
+    return false;
+  }
+
+  try {
+    const installedSkillMd = path.join(installedPath, 'SKILL.md');
+    const sourceSkillMd = path.join(sourcePath, 'SKILL.md');
+
+    if (!fs.existsSync(installedSkillMd) || !fs.existsSync(sourceSkillMd)) {
+      return false;
+    }
+
+    const installedContent = fs.readFileSync(installedSkillMd, 'utf-8');
+    const sourceContent = fs.readFileSync(sourceSkillMd, 'utf-8');
+
+    if (normalizeContent(installedContent) !== normalizeContent(sourceContent)) {
+      return false;
+    }
+
+    const installedRulesDir = path.join(installedPath, 'rules');
+    const sourceRulesDir = path.join(sourcePath, 'rules');
+
+    return directoriesMatch(installedRulesDir, sourceRulesDir);
+  } catch {
+    return false;
+  }
+}
+
 export function uninstallSkill(skillName: string): { success: boolean; error?: string } {
   const meta = readMeta();
   const skillState = meta.skills[skillName];

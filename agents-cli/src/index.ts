@@ -66,6 +66,7 @@ import {
   listInstalledCommandsWithScope,
   promoteCommandToUser,
   commandExists,
+  commandContentMatches,
 } from './lib/commands.js';
 import {
   discoverHooksFromRepo,
@@ -74,6 +75,8 @@ import {
   promoteHookToUser,
   removeHook,
   hookExists,
+  hookContentMatches,
+  getSourceHookEntry,
 } from './lib/hooks.js';
 import {
   discoverSkillsFromRepo,
@@ -84,6 +87,7 @@ import {
   getSkillInfo,
   getSkillRules,
   skillExists,
+  skillContentMatches,
 } from './lib/skills.js';
 import type { AgentId, Manifest, RegistryType } from './lib/types.js';
 import { DEFAULT_REGISTRIES } from './lib/types.js';
@@ -514,6 +518,7 @@ program
       // Build resource items with conflict detection
       const newItems: ResourceItem[] = [];
       const existingItems: ResourceItem[] = [];
+      const upToDateItems: ResourceItem[] = [];
 
       // Process commands
       for (const command of allCommands) {
@@ -523,28 +528,50 @@ program
         });
         if (applicableAgents.length === 0) continue;
 
-        const conflictingAgents = applicableAgents.filter((agentId) => commandExists(agentId, command.name));
         const newAgents = applicableAgents.filter((agentId) => !commandExists(agentId, command.name));
+        const upToDateAgents = applicableAgents.filter((agentId) => {
+          if (!commandExists(agentId, command.name)) return false;
+          const sourcePath = resolveCommandSource(localPath, command.name, agentId);
+          return sourcePath && commandContentMatches(agentId, command.name, sourcePath);
+        });
+        const conflictingAgents = applicableAgents.filter((agentId) => {
+          if (!commandExists(agentId, command.name)) return false;
+          const sourcePath = resolveCommandSource(localPath, command.name, agentId);
+          return sourcePath && !commandContentMatches(agentId, command.name, sourcePath);
+        });
 
-        if (conflictingAgents.length > 0) {
-          existingItems.push({ type: 'command', name: command.name, agents: conflictingAgents, isNew: false });
-        }
         if (newAgents.length > 0) {
           newItems.push({ type: 'command', name: command.name, agents: newAgents, isNew: true });
+        }
+        if (upToDateAgents.length > 0) {
+          upToDateItems.push({ type: 'command', name: command.name, agents: upToDateAgents, isNew: false });
+        }
+        if (conflictingAgents.length > 0) {
+          existingItems.push({ type: 'command', name: command.name, agents: conflictingAgents, isNew: false });
         }
       }
 
       // Process skills
       const skillAgents = SKILLS_CAPABLE_AGENTS.filter((id) => selectedAgents.includes(id));
       for (const skill of allSkills) {
-        const conflictingAgents = skillAgents.filter((agentId) => skillExists(agentId, skill.name));
         const newAgents = skillAgents.filter((agentId) => !skillExists(agentId, skill.name));
+        const upToDateAgents = skillAgents.filter((agentId) => {
+          if (!skillExists(agentId, skill.name)) return false;
+          return skillContentMatches(agentId, skill.name, skill.path);
+        });
+        const conflictingAgents = skillAgents.filter((agentId) => {
+          if (!skillExists(agentId, skill.name)) return false;
+          return !skillContentMatches(agentId, skill.name, skill.path);
+        });
 
-        if (conflictingAgents.length > 0) {
-          existingItems.push({ type: 'skill', name: skill.name, agents: conflictingAgents, isNew: false });
-        }
         if (newAgents.length > 0) {
           newItems.push({ type: 'skill', name: skill.name, agents: newAgents, isNew: true });
+        }
+        if (upToDateAgents.length > 0) {
+          upToDateItems.push({ type: 'skill', name: skill.name, agents: upToDateAgents, isNew: false });
+        }
+        if (conflictingAgents.length > 0) {
+          existingItems.push({ type: 'skill', name: skill.name, agents: conflictingAgents, isNew: false });
         }
       }
 
@@ -561,18 +588,30 @@ program
       const uniqueHookNames = [...new Set(allHookNames)];
 
       for (const hookName of uniqueHookNames) {
-        const conflictingAgents = hookAgents.filter((agentId) => hookExists(agentId, hookName));
         const newAgents = hookAgents.filter((agentId) => !hookExists(agentId, hookName));
+        const upToDateAgents = hookAgents.filter((agentId) => {
+          if (!hookExists(agentId, hookName)) return false;
+          const sourceEntry = getSourceHookEntry(localPath, agentId, hookName);
+          return sourceEntry && hookContentMatches(agentId, hookName, sourceEntry);
+        });
+        const conflictingAgents = hookAgents.filter((agentId) => {
+          if (!hookExists(agentId, hookName)) return false;
+          const sourceEntry = getSourceHookEntry(localPath, agentId, hookName);
+          return !sourceEntry || !hookContentMatches(agentId, hookName, sourceEntry);
+        });
 
-        if (conflictingAgents.length > 0) {
-          existingItems.push({ type: 'hook', name: hookName, agents: conflictingAgents, isNew: false });
-        }
         if (newAgents.length > 0) {
           newItems.push({ type: 'hook', name: hookName, agents: newAgents, isNew: true });
         }
+        if (upToDateAgents.length > 0) {
+          upToDateItems.push({ type: 'hook', name: hookName, agents: upToDateAgents, isNew: false });
+        }
+        if (conflictingAgents.length > 0) {
+          existingItems.push({ type: 'hook', name: hookName, agents: conflictingAgents, isNew: false });
+        }
       }
 
-      // Process MCPs
+      // Process MCPs (no content comparison - just existence check)
       if (!options.skipMcp && manifest?.mcp) {
         for (const [name, config] of Object.entries(manifest.mcp)) {
           if (config.transport === 'http' || !config.command) continue;
@@ -629,6 +668,32 @@ program
         console.log();
       }
 
+      if (upToDateItems.length > 0) {
+        console.log(chalk.gray('  UP TO DATE (no changes):\n'));
+        const byType = { command: [] as ResourceItem[], skill: [] as ResourceItem[], hook: [] as ResourceItem[], mcp: [] as ResourceItem[] };
+        for (const item of upToDateItems) byType[item.type].push(item);
+
+        if (byType.command.length > 0) {
+          console.log(`    Commands:`);
+          for (const item of byType.command) {
+            console.log(`      ${chalk.dim(item.name.padEnd(20))} ${chalk.dim(formatAgentList(item.agents))}`);
+          }
+        }
+        if (byType.skill.length > 0) {
+          console.log(`    Skills:`);
+          for (const item of byType.skill) {
+            console.log(`      ${chalk.dim(item.name.padEnd(20))} ${chalk.dim(formatAgentList(item.agents))}`);
+          }
+        }
+        if (byType.hook.length > 0) {
+          console.log(`    Hooks:`);
+          for (const item of byType.hook) {
+            console.log(`      ${chalk.dim(item.name.padEnd(20))} ${chalk.dim(formatAgentList(item.agents))}`);
+          }
+        }
+        console.log();
+      }
+
       if (existingItems.length > 0) {
         console.log(chalk.yellow('  EXISTING (conflicts):\n'));
         const byType = { command: [] as ResourceItem[], skill: [] as ResourceItem[], hook: [] as ResourceItem[], mcp: [] as ResourceItem[] };
@@ -662,7 +727,7 @@ program
       }
 
       if (newItems.length === 0 && existingItems.length === 0) {
-        console.log(chalk.gray('  Nothing to sync.\n'));
+        console.log(chalk.gray('  Already up to date.\n'));
         return;
       }
 

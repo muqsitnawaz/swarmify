@@ -277,6 +277,48 @@ export function commandExists(agentId: AgentId, commandName: string): boolean {
 }
 
 /**
+ * Normalize content for comparison (trim, normalize line endings).
+ */
+function normalizeContent(content: string): string {
+  return content.replace(/\r\n/g, '\n').trim();
+}
+
+/**
+ * Check if installed command content matches source content.
+ * Handles format conversion (markdown to TOML for Gemini).
+ */
+export function commandContentMatches(
+  agentId: AgentId,
+  commandName: string,
+  sourcePath: string
+): boolean {
+  const agent = AGENTS[agentId];
+  const ext = agent.format === 'toml' ? '.toml' : '.md';
+  const installedPath = path.join(agent.commandsDir, `${commandName}${ext}`);
+
+  if (!fs.existsSync(installedPath) || !fs.existsSync(sourcePath)) {
+    return false;
+  }
+
+  try {
+    const installedContent = fs.readFileSync(installedPath, 'utf-8');
+    const sourceContent = fs.readFileSync(sourcePath, 'utf-8');
+
+    const sourceIsMarkdown = sourcePath.endsWith('.md');
+    const needsConversion = agent.format === 'toml' && sourceIsMarkdown;
+
+    if (needsConversion) {
+      const convertedSource = markdownToToml(commandName, sourceContent);
+      return normalizeContent(installedContent) === normalizeContent(convertedSource);
+    }
+
+    return normalizeContent(installedContent) === normalizeContent(sourceContent);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Get the project-scoped commands directory for an agent.
  * Claude: .claude/commands/
  * Codex: .codex/prompts/
