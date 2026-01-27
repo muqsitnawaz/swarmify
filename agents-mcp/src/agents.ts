@@ -60,7 +60,6 @@ export const AGENT_COMMANDS: Record<AgentType, string[]> = {
   cursor: ['cursor-agent', '-p', '--output-format', 'stream-json', '{prompt}'],
   gemini: ['gemini', '{prompt}', '--output-format', 'stream-json'],
   claude: ['claude', '-p', '--verbose', '{prompt}', '--output-format', 'stream-json', '--permission-mode', 'plan'],
-  trae: ['trae-cli', 'run', '{prompt}'],
   opencode: ['opencode', 'run', '--format', 'json', '{prompt}'],
 };
 
@@ -170,16 +169,6 @@ function loadDefaultAgentConfigs(): Record<AgentType, AgentConfig> {
         fast: 'zai-coding-plan/glm-4.7-flash',
         default: 'zai-coding-plan/glm-4.7',
         detailed: 'zai-coding-plan/glm-4.7'
-      },
-      provider: 'custom'
-    },
-    trae: {
-      command: 'trae-cli run \'{prompt}\'',
-      enabled: false,
-      models: {
-        fast: 'gpt-4o-mini',
-        default: 'gpt-4o',
-        detailed: 'claude-sonnet-4-20250514'
       },
       provider: 'custom'
     }
