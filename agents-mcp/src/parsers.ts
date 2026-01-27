@@ -1,6 +1,6 @@
 import { extractFileOpsFromBash } from './file_ops.js';
 
-export type AgentType = 'codex' | 'gemini' | 'cursor' | 'claude' | 'trae' | 'opencode';
+export type AgentType = 'codex' | 'gemini' | 'cursor' | 'claude' | 'opencode';
 
 const claudeToolUseMap = new Map<string, { tool: string; command?: string; path?: string }>();
 
@@ -13,8 +13,6 @@ export function normalizeEvents(agentType: AgentType, raw: any): any[] {
     return normalizeGemini(raw);
   } else if (agentType === 'claude') {
     return normalizeClaude(raw);
-  } else if (agentType === 'trae') {
-    return normalizeTrae(raw);
   } else if (agentType === 'opencode') {
     return normalizeOpencode(raw);
   }
@@ -702,161 +700,6 @@ function normalizeClaude(raw: any): any[] {
   return [{
     type: eventType,
     agent: 'claude',
-    raw: raw,
-    timestamp: timestamp,
-  }];
-}
-
-// --- Trae parsing ---
-// Trae Agent (ByteDance) outputs JSON trajectory files with tool calls
-// Tool types: shell_command, read_file, write_file, edit_file, sequential_thinking
-
-function normalizeTrae(raw: any): any[] {
-  if (!raw || typeof raw !== 'object') {
-    return [{
-      type: 'unknown',
-      agent: 'trae',
-      raw: raw,
-      timestamp: new Date().toISOString(),
-    }];
-  }
-
-  const eventType = raw?.type || raw?.event_type || 'unknown';
-  const timestamp = raw?.timestamp || new Date().toISOString();
-
-  // Tool call events
-  if (eventType === 'tool_call' || eventType === 'tool_use' || eventType === 'action') {
-    const toolName = String(raw?.tool_name || raw?.tool || raw?.name || '').toLowerCase();
-    const toolArgs = raw?.arguments || raw?.args || raw?.parameters || {};
-
-    const filePath = toolArgs?.file_path || toolArgs?.path || toolArgs?.target_file || '';
-    const command = toolArgs?.command || '';
-
-    // Shell/bash tools
-    if (['shell_command', 'shell', 'bash', 'execute', 'run_command'].includes(toolName)) {
-      if (!command.trim()) {
-        return [];
-      }
-      const events: any[] = [{
-        type: 'bash',
-        agent: 'trae',
-        tool: toolName,
-        command: command,
-        timestamp: timestamp,
-      }];
-
-      const [filesRead, filesWritten, filesDeleted] = extractFileOpsFromBash(command);
-      for (const path of filesRead) {
-        events.push({ type: 'file_read', agent: 'trae', tool: 'bash', path, command, timestamp });
-      }
-      for (const path of filesWritten) {
-        events.push({ type: 'file_write', agent: 'trae', tool: 'bash', path, command, timestamp });
-      }
-      for (const path of filesDeleted) {
-        events.push({ type: 'file_delete', agent: 'trae', tool: 'bash', path, command, timestamp });
-      }
-      return events;
-    }
-
-    // File write/edit tools
-    const writeTools = ['write_file', 'edit_file', 'patch_file', 'create_file', 'modify_file'];
-    if (writeTools.includes(toolName) || toolName.includes('write') || toolName.includes('edit')) {
-      if (!filePath.trim()) {
-        return [];
-      }
-      return [{
-        type: 'file_write',
-        agent: 'trae',
-        tool: toolName,
-        path: filePath,
-        timestamp: timestamp,
-      }];
-    }
-
-    // File read tools
-    const readTools = ['read_file', 'view_file', 'cat_file', 'get_file'];
-    if (readTools.includes(toolName) || toolName.includes('read')) {
-      if (!filePath.trim()) {
-        return [];
-      }
-      return [{
-        type: 'file_read',
-        agent: 'trae',
-        tool: toolName,
-        path: filePath,
-        timestamp: timestamp,
-      }];
-    }
-
-    // File delete tools
-    const deleteTools = ['delete_file', 'remove_file'];
-    if (deleteTools.includes(toolName)) {
-      if (!filePath.trim()) {
-        return [];
-      }
-      return [{
-        type: 'file_delete',
-        agent: 'trae',
-        tool: toolName,
-        path: filePath,
-        timestamp: timestamp,
-      }];
-    }
-
-    // Sequential thinking (Trae's reasoning tool)
-    if (toolName === 'sequential_thinking' || toolName === 'thinking') {
-      return [{
-        type: 'thinking',
-        agent: 'trae',
-        content: toolArgs?.thought || toolArgs?.content || '',
-        timestamp: timestamp,
-      }];
-    }
-
-    // Generic tool use
-    return [{
-      type: 'tool_use',
-      agent: 'trae',
-      tool: toolName,
-      args: toolArgs,
-      timestamp: timestamp,
-    }];
-  }
-
-  // Message events
-  if (eventType === 'message' || eventType === 'assistant_message') {
-    return [{
-      type: 'message',
-      agent: 'trae',
-      content: raw?.content || raw?.text || '',
-      complete: !raw?.delta,
-      timestamp: timestamp,
-    }];
-  }
-
-  // Result/completion events
-  if (eventType === 'result' || eventType === 'complete' || eventType === 'done') {
-    return [{
-      type: 'result',
-      agent: 'trae',
-      status: raw?.status || 'success',
-      timestamp: timestamp,
-    }];
-  }
-
-  // Step events (Trae uses Lakeview for step summaries)
-  if (eventType === 'step' || eventType === 'lakeview') {
-    return [{
-      type: 'step',
-      agent: 'trae',
-      summary: raw?.summary || raw?.description || '',
-      timestamp: timestamp,
-    }];
-  }
-
-  return [{
-    type: eventType,
-    agent: 'trae',
     raw: raw,
     timestamp: timestamp,
   }];
