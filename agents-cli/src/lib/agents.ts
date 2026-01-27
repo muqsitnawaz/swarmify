@@ -1,9 +1,12 @@
-import { execSync } from 'child_process';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import * as TOML from 'smol-toml';
 import type { AgentConfig, AgentId, CliState } from './types.js';
+
+const execAsync = promisify(exec);
 
 const HOME = os.homedir();
 
@@ -58,6 +61,7 @@ export const AGENTS: Record<AgentId, AgentConfig> = {
     name: 'Cursor',
     cliCommand: 'cursor-agent',
     npmPackage: '',
+    installScript: 'curl https://cursor.com/install -fsS | bash && mv ~/.local/bin/agent ~/.local/bin/cursor-agent && grep -q "/.local/bin" ~/.zshrc || echo \'export PATH="$HOME/.local/bin:$PATH"\' >> ~/.zshrc',
     configDir: path.join(HOME, '.cursor'),
     commandsDir: path.join(HOME, '.cursor', 'commands'),
     commandsSubdir: 'commands',
@@ -72,7 +76,7 @@ export const AGENTS: Record<AgentId, AgentConfig> = {
     id: 'opencode',
     name: 'OpenCode',
     cliCommand: 'opencode',
-    npmPackage: '',
+    npmPackage: 'opencode-ai',
     configDir: path.join(HOME, '.opencode'),
     commandsDir: path.join(HOME, '.opencode', 'commands'),
     commandsSubdir: 'commands',
@@ -94,55 +98,56 @@ export const SKILLS_CAPABLE_AGENTS: AgentId[] = ALL_AGENT_IDS.filter(
 );
 export const HOOKS_CAPABLE_AGENTS = ['claude', 'gemini'] as const;
 
-export function isCliInstalled(agentId: AgentId): boolean {
+export async function isCliInstalled(agentId: AgentId): Promise<boolean> {
   const agent = AGENTS[agentId];
   try {
-    execSync(`which ${agent.cliCommand}`, { stdio: 'pipe' });
+    await execAsync(`which ${agent.cliCommand}`);
     return true;
   } catch {
     return false;
   }
 }
 
-export function getCliVersion(agentId: AgentId): string | null {
+export async function getCliVersion(agentId: AgentId): Promise<string | null> {
   const agent = AGENTS[agentId];
   try {
-    const output = execSync(`${agent.cliCommand} --version`, {
-      stdio: 'pipe',
-      encoding: 'utf-8',
-    });
-    const match = output.match(/(\d+\.\d+\.\d+)/);
-    return match ? match[1] : output.trim();
+    const { stdout } = await execAsync(`${agent.cliCommand} --version`);
+    const match = stdout.match(/(\d+\.\d+\.\d+)/);
+    return match ? match[1] : stdout.trim();
   } catch {
     return null;
   }
 }
 
-export function getCliPath(agentId: AgentId): string | null {
+export async function getCliPath(agentId: AgentId): Promise<string | null> {
   const agent = AGENTS[agentId];
   try {
-    return execSync(`which ${agent.cliCommand}`, {
-      stdio: 'pipe',
-      encoding: 'utf-8',
-    }).trim();
+    const { stdout } = await execAsync(`which ${agent.cliCommand}`);
+    return stdout.trim();
   } catch {
     return null;
   }
 }
 
-export function getCliState(agentId: AgentId): CliState {
-  const installed = isCliInstalled(agentId);
+export async function getCliState(agentId: AgentId): Promise<CliState> {
+  const installed = await isCliInstalled(agentId);
   return {
     installed,
-    version: installed ? getCliVersion(agentId) : null,
-    path: installed ? getCliPath(agentId) : null,
+    version: installed ? await getCliVersion(agentId) : null,
+    path: installed ? await getCliPath(agentId) : null,
   };
 }
 
-export function getAllCliStates(): Partial<Record<AgentId, CliState>> {
+export async function getAllCliStates(): Promise<Partial<Record<AgentId, CliState>>> {
   const states: Partial<Record<AgentId, CliState>> = {};
-  for (const agentId of ALL_AGENT_IDS) {
-    states[agentId] = getCliState(agentId);
+  const results = await Promise.all(
+    ALL_AGENT_IDS.map(async (agentId) => ({
+      agentId,
+      state: await getCliState(agentId),
+    }))
+  );
+  for (const { agentId, state } of results) {
+    states[agentId] = state;
   }
   return states;
 }
@@ -166,33 +171,30 @@ export function ensureSkillsDir(agentId: AgentId): void {
   }
 }
 
-export function isMcpRegistered(agentId: AgentId, mcpName: string): boolean {
+export async function isMcpRegistered(agentId: AgentId, mcpName: string): Promise<boolean> {
   const agent = AGENTS[agentId];
-  if (!agent.capabilities.mcp || !isCliInstalled(agentId)) {
+  if (!agent.capabilities.mcp || !(await isCliInstalled(agentId))) {
     return false;
   }
   try {
-    const output = execSync(`${agent.cliCommand} mcp list`, {
-      stdio: 'pipe',
-      encoding: 'utf-8',
-    });
-    return output.toLowerCase().includes(mcpName.toLowerCase());
+    const { stdout } = await execAsync(`${agent.cliCommand} mcp list`);
+    return stdout.toLowerCase().includes(mcpName.toLowerCase());
   } catch {
     return false;
   }
 }
 
-export function registerMcp(
+export async function registerMcp(
   agentId: AgentId,
   name: string,
   command: string,
   scope: 'user' | 'project' = 'user'
-): { success: boolean; error?: string } {
+): Promise<{ success: boolean; error?: string }> {
   const agent = AGENTS[agentId];
   if (!agent.capabilities.mcp) {
     return { success: false, error: 'Agent does not support MCP' };
   }
-  if (!isCliInstalled(agentId)) {
+  if (!(await isCliInstalled(agentId))) {
     return { success: false, error: 'CLI not installed' };
   }
 
@@ -203,27 +205,27 @@ export function registerMcp(
     } else {
       cmd = `${agent.cliCommand} mcp add "${name}" ${command}`;
     }
-    execSync(cmd, { stdio: 'pipe' });
+    await execAsync(cmd);
     return { success: true };
   } catch (err) {
     return { success: false, error: (err as Error).message };
   }
 }
 
-export function unregisterMcp(
+export async function unregisterMcp(
   agentId: AgentId,
   name: string
-): { success: boolean; error?: string } {
+): Promise<{ success: boolean; error?: string }> {
   const agent = AGENTS[agentId];
   if (!agent.capabilities.mcp) {
     return { success: false, error: 'Agent does not support MCP' };
   }
-  if (!isCliInstalled(agentId)) {
+  if (!(await isCliInstalled(agentId))) {
     return { success: false, error: 'CLI not installed' };
   }
 
   try {
-    execSync(`${agent.cliCommand} mcp remove "${name}"`, { stdio: 'pipe' });
+    await execAsync(`${agent.cliCommand} mcp remove "${name}"`);
     return { success: true };
   } catch (err) {
     return { success: false, error: (err as Error).message };
@@ -513,11 +515,11 @@ export function listInstalledMcpsWithScope(
 /**
  * Copy a project-scoped MCP to user scope.
  */
-export function promoteMcpToUser(
+export async function promoteMcpToUser(
   agentId: AgentId,
   mcpName: string,
   cwd: string = process.cwd()
-): { success: boolean; error?: string } {
+): Promise<{ success: boolean; error?: string }> {
   const projectConfigPath = getProjectMcpConfigPath(agentId, cwd);
   const projectMcps = parseMcpConfig(agentId, projectConfigPath);
 

@@ -5,6 +5,7 @@ export interface AgentConfig {
   name: string;
   cliCommand: string;
   npmPackage: string;
+  installScript?: string;
   configDir: string;
   commandsDir: string;
   commandsSubdir: string;
