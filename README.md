@@ -94,6 +94,8 @@ Full-screen agent terminals in your IDE. Each agent becomes a tech lead that can
 
 [Get it on VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext)
 
+![Agents Dashboard](docs/images/agetns-dashboard.png)
+
 | Shortcut | Action |
 | --- | --- |
 | `Cmd+Shift+A` | Spawn new agent |
