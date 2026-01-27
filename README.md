@@ -12,6 +12,8 @@ You don't need a coding agent. You need a team.
 
 Run Claude, Codex, Gemini, and Cursor as a team. Orchestrate through `/swarm` with approvals before execution.
 
+[![Watch the demo](https://img.youtube.com/vi/rbeoKhDxK8E/maxresdefault.jpg)](https://www.youtube.com/watch?v=rbeoKhDxK8E)
+
 ## Get Swarmify
 
 **Option 1: Quick start (have agent CLIs already)**
