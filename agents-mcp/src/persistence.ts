@@ -5,7 +5,7 @@ import { constants as fsConstants } from 'fs';
 import { AgentType } from './parsers.js';
 
 // All supported swarm agent types
-const ALL_AGENTS: AgentType[] = ['claude', 'codex', 'gemini', 'cursor', 'trae', 'opencode'];
+const ALL_AGENTS: AgentType[] = ['claude', 'codex', 'gemini', 'cursor', 'opencode'];
 
 // Config directory
 const AGENTS_CONFIG_DIR = path.join(homedir(), '.agents');
@@ -180,16 +180,6 @@ function getDefaultAgentConfig(agentType: AgentType): AgentConfig {
         fast: 'zai-coding-plan/glm-4.7-flash',
         default: 'zai-coding-plan/glm-4.7',
         detailed: 'zai-coding-plan/glm-4.7'
-      },
-      provider: 'custom'
-    },
-    trae: {
-      command: 'trae-cli run \'{prompt}\'',
-      enabled: false,
-      models: {
-        fast: 'gpt-4o-mini',
-        default: 'gpt-4o',
-        detailed: 'claude-sonnet-4-20250514'
       },
       provider: 'custom'
     }
