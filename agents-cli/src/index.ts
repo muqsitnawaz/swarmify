@@ -181,10 +181,12 @@ async function checkForUpdates(): Promise<void> {
 
       if (answer === 'now') {
         // Run upgrade
-        const { execSync } = await import('child_process');
+        const { exec } = await import('child_process');
+        const { promisify } = await import('util');
+        const execAsync = promisify(exec);
         const spinner = ora('Upgrading...').start();
         try {
-          execSync('npm install -g @swarmify/agents-cli@latest', { stdio: 'pipe' });
+          await execAsync('npm install -g @swarmify/agents-cli@latest');
           spinner.succeed(`Upgraded to ${latestVersion}`);
           await showWhatsNew(VERSION, latestVersion);
         } catch {
@@ -244,7 +246,7 @@ program
     }
 
     const cwd = process.cwd();
-    const cliStates = getAllCliStates();
+    const cliStates = await getAllCliStates();
     const agentsToShow = filterAgentId ? [filterAgentId] : ALL_AGENT_IDS;
     const skillAgentsToShow = filterAgentId
       ? SKILLS_CAPABLE_AGENTS.filter((id) => id === filterAgentId)
@@ -264,12 +266,11 @@ program
       skills: listInstalledSkillsWithScope(agentId, cwd),
     }));
 
-    const mcpsData = mcpAgentsToShow
-      .filter((agentId) => isCliInstalled(agentId))
-      .map((agentId) => ({
-        agent: AGENTS[agentId],
-        mcps: listInstalledMcpsWithScope(agentId, cwd),
-      }));
+    const installedMcpAgents = mcpAgentsToShow.filter((agentId) => cliStates[agentId]?.installed);
+    const mcpsData = installedMcpAgents.map((agentId) => ({
+      agent: AGENTS[agentId],
+      mcps: listInstalledMcpsWithScope(agentId, cwd),
+    }));
 
     const scopes = filterAgentId ? [] : getScopesByPriority();
 
@@ -488,6 +489,7 @@ program
       const discoveredHooks = discoverHooksFromRepo(localPath);
 
       // Determine which agents to sync
+      const cliStates = await getAllCliStates();
       let selectedAgents: AgentId[];
       if (agentFilter) {
         // Single agent filter
@@ -496,7 +498,7 @@ program
       } else if (options.yes || options.force) {
         selectedAgents = (manifest?.defaults?.agents || ['claude', 'codex', 'gemini']) as AgentId[];
       } else {
-        const installedAgents = ALL_AGENT_IDS.filter((id) => isCliInstalled(id) || id === 'cursor');
+        const installedAgents = ALL_AGENT_IDS.filter((id) => cliStates[id]?.installed || id === 'cursor');
         selectedAgents = await checkbox({
           message: 'Select agents to sync:',
           choices: installedAgents.map((id) => ({
@@ -508,7 +510,7 @@ program
       }
 
       // Filter agents to only installed ones (plus cursor which doesn't need CLI)
-      selectedAgents = selectedAgents.filter((id) => isCliInstalled(id) || id === 'cursor');
+      selectedAgents = selectedAgents.filter((id) => cliStates[id]?.installed || id === 'cursor');
 
       if (selectedAgents.length === 0) {
         console.log(chalk.yellow('\nNo agents selected or installed. Nothing to sync.'));
@@ -577,7 +579,7 @@ program
 
       // Process hooks
       const hookAgents = selectedAgents.filter(
-        (id) => HOOKS_CAPABLE_AGENTS.includes(id as typeof HOOKS_CAPABLE_AGENTS[number]) && isCliInstalled(id)
+        (id) => HOOKS_CAPABLE_AGENTS.includes(id as typeof HOOKS_CAPABLE_AGENTS[number]) && cliStates[id]?.installed
       );
       const allHookNames = [
         ...discoveredHooks.shared,
@@ -615,11 +617,17 @@ program
       if (!options.skipMcp && manifest?.mcp) {
         for (const [name, config] of Object.entries(manifest.mcp)) {
           if (config.transport === 'http' || !config.command) continue;
-          const mcpAgents = config.agents.filter((agentId) => selectedAgents.includes(agentId) && isCliInstalled(agentId));
+          const mcpAgents = config.agents.filter((agentId) => selectedAgents.includes(agentId) && cliStates[agentId]?.installed);
           if (mcpAgents.length === 0) continue;
 
-          const conflictingAgents = mcpAgents.filter((agentId) => isMcpRegistered(agentId, name));
-          const newAgents = mcpAgents.filter((agentId) => !isMcpRegistered(agentId, name));
+          const registrationChecks = await Promise.all(
+            mcpAgents.map(async (agentId) => ({
+              agentId,
+              isRegistered: await isMcpRegistered(agentId, name),
+            }))
+          );
+          const conflictingAgents = registrationChecks.filter((r) => r.isRegistered).map((r) => r.agentId);
+          const newAgents = registrationChecks.filter((r) => !r.isRegistered).map((r) => r.agentId);
 
           if (conflictingAgents.length > 0) {
             existingItems.push({ type: 'mcp', name, agents: conflictingAgents, isNew: false });
@@ -881,9 +889,9 @@ program
 
           for (const agentId of item.agents) {
             if (!item.isNew) {
-              unregisterMcp(agentId, item.name);
+              await unregisterMcp(agentId, item.name);
             }
-            const result = registerMcp(agentId, item.name, config.command, config.scope);
+            const result = await registerMcp(agentId, item.name, config.command, config.scope);
             if (result.success) installed.mcps++;
           }
         }
@@ -908,7 +916,7 @@ program
           const agent = AGENTS[agentId];
           if (!agent || !cliConfig.package) continue;
 
-          const currentVersion = getCliVersion(agentId);
+          const currentVersion = await getCliVersion(agentId);
           const targetVersion = cliConfig.version;
 
           if (currentVersion === targetVersion) continue;
@@ -983,7 +991,7 @@ program
 
     console.log(chalk.bold('\nExporting local configuration...\n'));
 
-    const cliStates = getAllCliStates();
+    const cliStates = await getAllCliStates();
     let exported = 0;
 
     for (const agentId of ALL_AGENT_IDS) {
@@ -1108,11 +1116,12 @@ commandsCmd
         ? (options.agents.split(',') as AgentId[])
         : (['claude', 'codex', 'gemini'] as AgentId[]);
 
+      const cliStates = await getAllCliStates();
       for (const command of commands) {
         console.log(`\n  ${chalk.cyan(command.name)}: ${command.description}`);
 
         for (const agentId of agents) {
-          if (!isCliInstalled(agentId) && agentId !== 'cursor') continue;
+          if (!cliStates[agentId]?.installed && agentId !== 'cursor') continue;
 
           const sourcePath = resolveCommandSource(localPath, command.name, agentId);
           if (sourcePath) {
@@ -1158,15 +1167,16 @@ commandsCmd
   .command('push <name>')
   .description('Save project-scoped command to user scope')
   .option('-a, --agents <list>', 'Comma-separated agents to push for')
-  .action((name: string, options) => {
+  .action(async (name: string, options) => {
     const cwd = process.cwd();
     const agents = options.agents
       ? (options.agents.split(',') as AgentId[])
       : ALL_AGENT_IDS;
 
+    const cliStates = await getAllCliStates();
     let pushed = 0;
     for (const agentId of agents) {
-      if (!isCliInstalled(agentId) && agentId !== 'cursor') continue;
+      if (!cliStates[agentId]?.installed && agentId !== 'cursor') continue;
 
       const result = promoteCommandToUser(agentId, name, cwd);
       if (result.success) {
@@ -1462,11 +1472,12 @@ skillsCmd
         }
       }
 
+      const cliStates = await getAllCliStates();
       const agents = options.agents
         ? (options.agents.split(',') as AgentId[])
         : await checkbox({
             message: 'Select agents to install skills to:',
-            choices: SKILLS_CAPABLE_AGENTS.filter((id) => isCliInstalled(id) || id === 'cursor').map((id) => ({
+            choices: SKILLS_CAPABLE_AGENTS.filter((id) => cliStates[id]?.installed || id === 'cursor').map((id) => ({
               name: AGENTS[id].name,
               value: id,
               checked: ['claude', 'codex', 'gemini'].includes(id),
@@ -1663,6 +1674,7 @@ mcpCmd
       : MCP_CAPABLE_AGENTS;
 
     // Collect all data while spinner is active
+    const cliStates = await getAllCliStates();
     type McpData = {
       agent: typeof AGENTS[AgentId];
       mcps: ReturnType<typeof listInstalledMcpsWithScope> | null;
@@ -1673,7 +1685,7 @@ mcpCmd
       if (!agent.capabilities.mcp) {
         return { agent, mcps: null };
       }
-      if (!isCliInstalled(agentId)) {
+      if (!cliStates[agentId]?.installed) {
         return { agent, mcps: null, notInstalled: true };
       }
       return {
@@ -1789,16 +1801,17 @@ mcpCmd
   .command('remove <name>')
   .description('Remove MCP server from agents')
   .option('-a, --agents <list>', 'Comma-separated agents')
-  .action((name: string, options) => {
+  .action(async (name: string, options) => {
     const agents = options.agents
       ? (options.agents.split(',') as AgentId[])
       : MCP_CAPABLE_AGENTS;
 
+    const cliStates = await getAllCliStates();
     let removed = 0;
     for (const agentId of agents) {
-      if (!isCliInstalled(agentId)) continue;
+      if (!cliStates[agentId]?.installed) continue;
 
-      const result = unregisterMcp(agentId, name);
+      const result = await unregisterMcp(agentId, name);
       if (result.success) {
         console.log(`  ${chalk.red('-')} ${AGENTS[agentId].name}`);
         removed++;
@@ -1827,6 +1840,7 @@ mcpCmd
         return;
       }
 
+      const cliStates = await getAllCliStates();
       for (const [mcpName, config] of Object.entries(manifest.mcp)) {
         // Skip HTTP transport MCPs for now (need different registration)
         if (config.transport === 'http' || !config.command) {
@@ -1836,9 +1850,9 @@ mcpCmd
 
         console.log(`\n  ${chalk.cyan(mcpName)}:`);
         for (const agentId of config.agents) {
-          if (!isCliInstalled(agentId)) continue;
+          if (!cliStates[agentId]?.installed) continue;
 
-          const result = registerMcp(agentId, mcpName, config.command, config.scope);
+          const result = await registerMcp(agentId, mcpName, config.command, config.scope);
           if (result.success) {
             console.log(`    ${chalk.green('+')} ${AGENTS[agentId].name}`);
           } else {
@@ -1856,17 +1870,18 @@ mcpCmd
   .command('push <name>')
   .description('Save project-scoped MCP to user scope')
   .option('-a, --agents <list>', 'Comma-separated agents to push for')
-  .action((name: string, options) => {
+  .action(async (name: string, options) => {
     const cwd = process.cwd();
     const agents = options.agents
       ? (options.agents.split(',') as AgentId[])
       : MCP_CAPABLE_AGENTS;
 
+    const cliStates = await getAllCliStates();
     let pushed = 0;
     for (const agentId of agents) {
-      if (!isCliInstalled(agentId)) continue;
+      if (!cliStates[agentId]?.installed) continue;
 
-      const result = promoteMcpToUser(agentId, name, cwd);
+      const result = await promoteMcpToUser(agentId, name, cwd);
       if (result.success) {
         console.log(`  ${chalk.green('+')} ${AGENTS[agentId].name}`);
         pushed++;
@@ -1896,7 +1911,7 @@ cliCmd
   .action(async () => {
     const spinner = ora('Checking installed CLIs...').start();
 
-    const states = getAllCliStates();
+    const states = await getAllCliStates();
     spinner.stop();
 
     console.log(chalk.bold('Agent CLIs\n'));
@@ -1916,100 +1931,144 @@ cliCmd
   });
 
 cliCmd
-  .command('add <agent>')
-  .description('Install agent CLI and add to manifest')
+  .command('add <agents...>')
+  .description('Install agent CLI(s)')
   .option('-v, --version <version>', 'Version to install', 'latest')
   .option('--manifest-only', 'Only add to manifest, do not install')
-  .action(async (agent: string, options) => {
-    const agentId = agent.toLowerCase() as AgentId;
-    if (!AGENTS[agentId]) {
-      console.log(chalk.red(`Unknown agent: ${agent}`));
-      console.log(chalk.gray(`Available: ${ALL_AGENT_IDS.join(', ')}`));
-      return;
+  .action(async (agents: string[], options) => {
+    const validAgents: AgentId[] = [];
+    for (const agent of agents) {
+      const agentId = agent.toLowerCase() as AgentId;
+      if (!AGENTS[agentId]) {
+        console.log(chalk.red(`Unknown agent: ${agent}`));
+        console.log(chalk.gray(`Available: ${ALL_AGENT_IDS.join(', ')}`));
+        return;
+      }
+      validAgents.push(agentId);
     }
 
-    const agentConfig = AGENTS[agentId];
-    const pkg = agentConfig.npmPackage;
+    const { exec } = await import('child_process');
+    const { promisify } = await import('util');
+    const execAsync = promisify(exec);
     const version = options.version;
 
-    // Install the CLI
-    if (!options.manifestOnly) {
-      if (!pkg) {
-        console.log(chalk.yellow(`${agentConfig.name} has no npm package. Install manually.`));
-      } else {
-        const { execSync } = await import('child_process');
-        const spinner = ora(`Installing ${agentConfig.name}@${version}...`).start();
+    for (const agentId of validAgents) {
+      const agentConfig = AGENTS[agentId];
+      const pkg = agentConfig.npmPackage;
+      const installScript = agentConfig.installScript;
 
-        try {
-          execSync(`npm install -g ${pkg}@${version}`, { stdio: 'pipe' });
-          spinner.succeed(`Installed ${agentConfig.name}@${version}`);
-        } catch (err) {
-          spinner.fail(`Failed to install ${agentConfig.name}`);
-          console.error(chalk.gray((err as Error).message));
-          return;
+      if (!options.manifestOnly) {
+        if (pkg) {
+          const spinner = ora(`Installing ${agentConfig.name}@${version}...`).start();
+
+          try {
+            await execAsync(`npm install -g ${pkg}@${version}`);
+            spinner.succeed(`Installed ${agentConfig.name}@${version}`);
+          } catch (err) {
+            spinner.fail(`Failed to install ${agentConfig.name}`);
+            console.error(chalk.gray((err as Error).message));
+            continue;
+          }
+        } else if (installScript) {
+          const spinner = ora(`Installing ${agentConfig.name}...`).start();
+
+          try {
+            await execAsync(installScript, { shell: '/bin/bash' });
+            spinner.succeed(`Installed ${agentConfig.name}`);
+          } catch (err) {
+            spinner.fail(`Failed to install ${agentConfig.name}`);
+            console.error(chalk.gray((err as Error).message));
+            continue;
+          }
+        } else {
+          console.log(chalk.yellow(`${agentConfig.name} has no installer. Install manually.`));
         }
       }
     }
 
-    // Add to manifest
     const source = await ensureSource();
     const localPath = getRepoLocalPath(source);
     const manifest = readManifest(localPath) || createDefaultManifest();
 
     manifest.clis = manifest.clis || {};
-    manifest.clis[agentId] = {
-      package: pkg,
-      version: version,
-    };
+    for (const agentId of validAgents) {
+      const agentConfig = AGENTS[agentId];
+      manifest.clis[agentId] = {
+        package: agentConfig.npmPackage,
+        version: version,
+      };
+    }
 
     writeManifest(localPath, manifest);
-    console.log(chalk.green(`Added ${agentConfig.name} to manifest`));
+    if (validAgents.length === 1) {
+      console.log(chalk.green(`Added ${AGENTS[validAgents[0]].name} to manifest`));
+    } else {
+      console.log(chalk.green(`Added ${validAgents.length} agents to manifest`));
+    }
   });
 
 cliCmd
-  .command('remove <agent>')
-  .description('Uninstall agent CLI and remove from manifest')
+  .command('remove <agents...>')
+  .description('Uninstall agent CLI(s)')
   .option('--manifest-only', 'Only remove from manifest, do not uninstall')
-  .action(async (agent: string, options) => {
-    const agentId = agent.toLowerCase() as AgentId;
-    if (!AGENTS[agentId]) {
-      console.log(chalk.red(`Unknown agent: ${agent}`));
-      console.log(chalk.gray(`Available: ${ALL_AGENT_IDS.join(', ')}`));
-      return;
+  .action(async (agents: string[], options) => {
+    const validAgents: AgentId[] = [];
+    for (const agent of agents) {
+      const agentId = agent.toLowerCase() as AgentId;
+      if (!AGENTS[agentId]) {
+        console.log(chalk.red(`Unknown agent: ${agent}`));
+        console.log(chalk.gray(`Available: ${ALL_AGENT_IDS.join(', ')}`));
+        return;
+      }
+      validAgents.push(agentId);
     }
 
-    const agentConfig = AGENTS[agentId];
-    const pkg = agentConfig.npmPackage;
+    const { exec } = await import('child_process');
+    const { promisify } = await import('util');
+    const execAsync = promisify(exec);
 
-    // Uninstall the CLI
-    if (!options.manifestOnly) {
-      if (!pkg) {
-        console.log(chalk.yellow(`${agentConfig.name} has no npm package.`));
-      } else if (!isCliInstalled(agentId)) {
-        console.log(chalk.gray(`${agentConfig.name} is not installed`));
-      } else {
-        const { execSync } = await import('child_process');
-        const spinner = ora(`Uninstalling ${agentConfig.name}...`).start();
+    for (const agentId of validAgents) {
+      const agentConfig = AGENTS[agentId];
+      const pkg = agentConfig.npmPackage;
 
-        try {
-          execSync(`npm uninstall -g ${pkg}`, { stdio: 'pipe' });
-          spinner.succeed(`Uninstalled ${agentConfig.name}`);
-        } catch (err) {
-          spinner.fail(`Failed to uninstall ${agentConfig.name}`);
-          console.error(chalk.gray((err as Error).message));
+      if (!options.manifestOnly) {
+        if (!pkg) {
+          console.log(chalk.yellow(`${agentConfig.name} has no npm package.`));
+        } else if (!(await isCliInstalled(agentId))) {
+          console.log(chalk.gray(`${agentConfig.name} is not installed`));
+        } else {
+          const spinner = ora(`Uninstalling ${agentConfig.name}...`).start();
+
+          try {
+            await execAsync(`npm uninstall -g ${pkg}`);
+            spinner.succeed(`Uninstalled ${agentConfig.name}`);
+          } catch (err) {
+            spinner.fail(`Failed to uninstall ${agentConfig.name}`);
+            console.error(chalk.gray((err as Error).message));
+          }
         }
       }
     }
 
-    // Remove from manifest
     const source = await ensureSource();
     const localPath = getRepoLocalPath(source);
     const manifest = readManifest(localPath);
 
-    if (manifest?.clis?.[agentId]) {
-      delete manifest.clis[agentId];
+    let removed = 0;
+    for (const agentId of validAgents) {
+      if (manifest?.clis?.[agentId]) {
+        delete manifest.clis[agentId];
+        removed++;
+      }
+    }
+
+    if (removed > 0 && manifest) {
       writeManifest(localPath, manifest);
-      console.log(chalk.green(`Removed ${agentConfig.name} from manifest`));
+      if (removed === 1) {
+        console.log(chalk.green(`Removed ${AGENTS[validAgents[0]].name} from manifest`));
+      } else {
+        console.log(chalk.green(`Removed ${removed} agents from manifest`));
+      }
     }
   });
 
@@ -2033,7 +2092,9 @@ cliCmd
       return;
     }
 
-    const { execSync } = await import('child_process');
+    const { exec } = await import('child_process');
+    const { promisify } = await import('util');
+    const execAsync = promisify(exec);
 
     for (const agentId of agentsToUpgrade) {
       const agentConfig = AGENTS[agentId];
@@ -2049,7 +2110,7 @@ cliCmd
       const spinner = ora(`Upgrading ${agentConfig.name} to ${version}...`).start();
 
       try {
-        execSync(`npm install -g ${pkg}@${version}`, { stdio: 'pipe' });
+        await execAsync(`npm install -g ${pkg}@${version}`);
         spinner.succeed(`${agentConfig.name} upgraded to ${version}`);
       } catch (err) {
         spinner.fail(`Failed to upgrade ${agentConfig.name}`);
@@ -2526,9 +2587,10 @@ program
           command = pkg.name || pkg.registry_name;
         }
 
+        const cliStates = await getAllCliStates();
         const agents = options.agents
           ? (options.agents.split(',') as AgentId[])
-          : MCP_CAPABLE_AGENTS.filter((id) => isCliInstalled(id));
+          : MCP_CAPABLE_AGENTS.filter((id) => cliStates[id]?.installed);
 
         if (agents.length === 0) {
           console.log(chalk.yellow('\nNo MCP-capable agents installed.'));
@@ -2537,9 +2599,9 @@ program
 
         console.log(chalk.bold('\nInstalling to agents...'));
         for (const agentId of agents) {
-          if (!isCliInstalled(agentId)) continue;
+          if (!cliStates[agentId]?.installed) continue;
 
-          const result = registerMcp(agentId, entry.name, command, 'user');
+          const result = await registerMcp(agentId, entry.name, command, 'user');
           if (result.success) {
             console.log(`  ${chalk.green('+')} ${AGENTS[agentId].name}`);
           } else {
@@ -2577,13 +2639,14 @@ program
           ? (options.agents.split(',') as AgentId[])
           : (['claude', 'codex', 'gemini'] as AgentId[]);
 
+        const gitCliStates = await getAllCliStates();
         // Install commands
         if (hasCommands) {
           console.log(chalk.bold('\nInstalling commands...'));
           let installed = 0;
           for (const command of commands) {
             for (const agentId of agents) {
-              if (!isCliInstalled(agentId) && agentId !== 'cursor') continue;
+              if (!gitCliStates[agentId]?.installed && agentId !== 'cursor') continue;
 
               const sourcePath = resolveCommandSource(localPath, command.name, agentId);
               if (sourcePath) {
@@ -2652,7 +2715,9 @@ program
       spinner.text = `Upgrading to ${latestVersion}...`;
 
       // Detect package manager
-      const { execSync } = await import('child_process');
+      const { execSync, exec } = await import('child_process');
+      const { promisify } = await import('util');
+      const execAsync = promisify(exec);
       let cmd: string;
 
       // Check if installed globally via npm, bun, or other
@@ -2677,8 +2742,8 @@ program
         }
       }
 
-      // Run silently (suppress npm/bun output)
-      execSync(cmd, { stdio: 'pipe' });
+      // Run silently (suppress npm/bun output) - use async to allow spinner to animate
+      await execAsync(cmd);
       spinner.succeed(`Upgraded to ${latestVersion}`);
 
       // Show what's new from changelog
