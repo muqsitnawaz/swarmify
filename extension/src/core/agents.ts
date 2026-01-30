@@ -7,7 +7,6 @@ import {
   GEMINI_TITLE,
   OPENCODE_TITLE,
   CURSOR_TITLE,
-  TRAE_TITLE,
   SHELL_TITLE
 } from './utils';
 
@@ -27,7 +26,6 @@ export const BUILT_IN_AGENTS: BuiltInAgentDef[] = [
   { key: 'gemini', title: GEMINI_TITLE, command: 'gemini', icon: 'gemini.png', prefix: 'gm', commandId: 'agents.newGemini' },
   { key: 'opencode', title: OPENCODE_TITLE, command: 'opencode', icon: 'opencode.png', prefix: 'oc', commandId: 'agents.newOpenCode' },
   { key: 'cursor', title: CURSOR_TITLE, command: 'cursor-agent', icon: 'cursor.png', prefix: 'cr', commandId: 'agents.newCursor' },
-  { key: 'trae', title: TRAE_TITLE, command: 'trae-cli', icon: 'trae.png', prefix: 'tr', commandId: 'agents.newTrae' },
   { key: 'shell', title: SHELL_TITLE, command: '', icon: 'agents.png', prefix: 'sh', commandId: 'agents.newShell' }
 ];
 
