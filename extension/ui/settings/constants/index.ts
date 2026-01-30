@@ -14,13 +14,12 @@ export const AGENT_MODELS: Record<string, string[]> = {
   codex: ['gpt-5.2-codex', 'gpt-5.1-codex-max'],
   gemini: ['gemini-3-flash', 'gemini-3-pro'],
   cursor: ['composer-1'],
-  trae: ['gpt-4o', 'claude-sonnet-4-20250514', 'gemini-2.5-flash'],
   opencode: [],
   shell: []
 }
 
 // All swarm-capable agents
-export const ALL_SWARM_AGENTS: SwarmAgentType[] = ['claude', 'codex', 'gemini', 'trae']
+export const ALL_SWARM_AGENTS: SwarmAgentType[] = ['claude', 'codex', 'gemini', 'opencode']
 
 // Default settings
 export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
@@ -41,14 +40,14 @@ export const SOURCE_BADGES: Record<TaskSource, { label: string; color: string }>
 }
 
 // Reserved agent name prefixes (cannot be used for custom agents)
-export const RESERVED_NAMES = ['CC', 'CX', 'GX', 'OC', 'CR', 'TR', 'SH']
+export const RESERVED_NAMES = ['CC', 'CX', 'GX', 'OC', 'CR', 'SH']
 
 // Swarm agent display labels
 export const SWARM_AGENT_LABELS: Record<SwarmAgentType, string> = {
   codex: 'Codex',
   claude: 'Claude',
   gemini: 'Gemini',
-  trae: 'Trae'
+  opencode: 'OpenCode'
 }
 
 // Tab display labels
@@ -63,7 +62,6 @@ export const AGENT_INSTALL_INFO: Record<string, { command?: string; url?: string
   claude: { command: 'npm install -g @anthropic-ai/claude-code' },
   codex: { command: 'npm install -g @openai/codex' },
   gemini: { command: 'npm install -g @anthropic-ai/claude-code', url: 'https://github.com/google-gemini/gemini-cli' },
-  trae: { command: 'pipx install "trae-agent[evaluation] @ git+https://github.com/bytedance/trae-agent.git"', url: 'https://github.com/bytedance/trae-agent' },
   opencode: { url: 'https://github.com/opencode-ai/opencode' },
   cursor: { url: 'https://cursor.com' },
 }
@@ -75,14 +73,12 @@ export const AGENT_TITLE_TO_KEY: Record<string, string> = {
   'GX': 'gemini',
   'OC': 'opencode',
   'CR': 'cursor',
-  'TR': 'trae',
   'SH': 'shell',
   'Claude': 'claude',
   'Codex': 'codex',
   'Gemini': 'gemini',
   'OpenCode': 'opencode',
   'Cursor': 'cursor',
-  'Trae': 'trae',
   'Shell': 'shell',
 }
 
@@ -93,7 +89,6 @@ export const AGENT_KEY_TO_TITLE: Record<string, string> = {
   'gemini': 'GX',
   'opencode': 'OC',
   'cursor': 'CR',
-  'trae': 'TR',
 }
 
 // Notification-capable agents
@@ -101,7 +96,6 @@ export const NOTIFICATION_AGENTS = [
   { key: 'claude', name: 'Claude', supported: true },
   { key: 'codex', name: 'Codex', supported: false },
   { key: 'gemini', name: 'Gemini', supported: false },
-  { key: 'trae', name: 'Trae', supported: false },
   { key: 'opencode', name: 'OpenCode', supported: false },
   { key: 'cursor', name: 'Cursor', supported: false },
   { key: 'shell', name: 'Shell', supported: false },
@@ -145,7 +139,6 @@ export function createBuiltInAgents(icons: {
   gemini: string
   opencode: string
   cursor: ThemedIcon
-  trae: string
   shell: string
 }): BuiltInAgentConfig[] {
   return [
@@ -154,7 +147,6 @@ export function createBuiltInAgents(icons: {
     { key: 'gemini', name: 'Gemini', icon: icons.gemini },
     { key: 'opencode', name: 'OpenCode', icon: icons.opencode },
     { key: 'cursor', name: 'Cursor', icon: icons.cursor },
-    { key: 'trae', name: 'Trae', icon: icons.trae },
     { key: 'shell', name: 'Shell', icon: icons.shell },
   ]
 }

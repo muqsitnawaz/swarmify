@@ -8,8 +8,8 @@ import {
 import { CLAUDE_TITLE, CODEX_TITLE, GEMINI_TITLE, OPENCODE_TITLE, CURSOR_TITLE, SHELL_TITLE } from './utils';
 
 describe('BUILT_IN_AGENTS', () => {
-  test('has 7 built-in agents', () => {
-    expect(BUILT_IN_AGENTS).toHaveLength(7);
+  test('has 6 built-in agents', () => {
+    expect(BUILT_IN_AGENTS).toHaveLength(6);
   });
 
   test('claude agent has correct properties', () => {

@@ -825,7 +825,6 @@ function getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri): s
   const opencodeIcon = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'opencode.png'));
   const cursorIcon = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'cursor.png'));
   const cursorIconLight = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'cursor-light.png'));
-  const traeIcon = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'trae.png'));
   const agentsIcon = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'agents.png'));
   const githubIcon = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'github.png'));
 
@@ -843,7 +842,6 @@ function getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri): s
       gemini: "${geminiIcon}",
       opencode: "${opencodeIcon}",
       cursor: { dark: "${cursorIcon}", light: "${cursorIconLight}" },
-      trae: "${traeIcon}",
       shell: "${agentsIcon}",
       agents: "${agentsIcon}",
       github: "${githubIcon}"

@@ -103,3 +103,34 @@ const AGENT_DISPLAY_NAMES: Record<string, string> = {
 export function getAgentDisplayName(agentKey: string): string {
   return AGENT_DISPLAY_NAMES[agentKey] || agentKey.charAt(0).toUpperCase() + agentKey.slice(1)
 }
+
+/**
+ * Format actual time from ISO timestamp
+ * Shows "10:32 AM" for today, "Jan 27, 10:32 AM" for other days
+ */
+export function formatActualTime(isoTimestamp?: string): string {
+  if (!isoTimestamp) return 'Waiting for first message...'
+
+  const date = new Date(isoTimestamp)
+  if (Number.isNaN(date.getTime())) return 'Waiting for first message...'
+
+  const now = new Date()
+  const isToday = date.toDateString() === now.toDateString()
+
+  const timeStr = date.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  })
+
+  if (isToday) {
+    return timeStr
+  }
+
+  const dateStr = date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+  })
+
+  return `${dateStr}, ${timeStr}`
+}

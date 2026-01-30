@@ -31,8 +31,8 @@ export interface QuickLaunchConfig {
   slot3?: QuickLaunchSlot
 }
 
-export type SwarmAgentType = 'claude' | 'codex' | 'gemini' | 'trae'
-export type PromptPackAgentType = 'claude' | 'codex' | 'gemini' | 'cursor' | 'trae'
+export type SwarmAgentType = 'claude' | 'codex' | 'gemini' | 'opencode'
+export type PromptPackAgentType = 'claude' | 'codex' | 'gemini' | 'cursor'
 
 // Skills types
 export type SkillName =
@@ -145,7 +145,6 @@ export interface AgentSettings {
     gemini: BuiltInAgentSettings
     opencode: BuiltInAgentSettings
     cursor: BuiltInAgentSettings
-    trae: BuiltInAgentSettings
     shell: BuiltInAgentSettings
   }
   custom: CustomAgentSettings[]
@@ -167,7 +166,6 @@ export interface RunningCounts {
   gemini: number
   opencode: number
   cursor: number
-  trae: number
   shell: number
   custom: Record<string, number>
 }
@@ -187,7 +185,7 @@ export interface SwarmStatus {
     claude: AgentInstallStatus
     codex: AgentInstallStatus
     gemini: AgentInstallStatus
-    trae: AgentInstallStatus
+    opencode: AgentInstallStatus
   }
 }
 
@@ -231,6 +229,7 @@ export interface TerminalDetail {
   sessionId: string | null
   lastUserMessage?: string
   messageCount?: number
+  firstMessageTimestamp?: string
   currentActivity?: string
   approvalStatus?: ApprovalStatus
   role?: string
@@ -251,7 +250,7 @@ export interface AgentSession {
 }
 
 // Context types
-export type ContextAgentType = 'claude' | 'gemini' | 'codex' | 'agents' | 'cursor' | 'opencode' | 'trae' | 'unknown'
+export type ContextAgentType = 'claude' | 'gemini' | 'codex' | 'agents' | 'cursor' | 'opencode' | 'unknown'
 
 export interface ContextFile {
   path: string
@@ -281,7 +280,6 @@ export interface IconConfig {
   gemini: string
   opencode: string
   cursor: ThemedIcon
-  trae: string
   agents: string
   shell: string
   github: string

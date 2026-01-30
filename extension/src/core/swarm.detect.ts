@@ -6,8 +6,7 @@ import { exec } from 'child_process';
 
 const execAsync = promisify(exec);
 
-export type AgentCli = 'claude' | 'codex' | 'gemini' | 'trae';
-// Agents that support prompt packs/skills (trae doesn't support this yet)
+export type AgentCli = 'claude' | 'codex' | 'gemini' | 'opencode';
 export type PromptPackAgent = 'claude' | 'codex' | 'gemini' | 'cursor';
 
 // Exported paths for testing
@@ -15,7 +14,7 @@ export const AGENT_COMMAND_PATHS: Record<AgentCli, string> = {
   claude: path.join(os.homedir(), '.claude', 'commands', 'swarm.md'),
   codex: path.join(os.homedir(), '.codex', 'prompts', 'swarm.md'),
   gemini: path.join(os.homedir(), '.gemini', 'commands', 'swarm.toml'),
-  trae: path.join(os.homedir(), '.trae', 'commands', 'swarm.md'),
+  opencode: path.join(os.homedir(), '.opencode', 'commands', 'swarm.md'),
 };
 
 // Paths where the /swarm command file lives for each CLI
@@ -25,7 +24,7 @@ export function getAgentCommandPath(agent: AgentCli, command: string = 'swarm'):
     claude: path.join(os.homedir(), '.claude', 'commands'),
     codex: path.join(os.homedir(), '.codex', 'prompts'),
     gemini: path.join(os.homedir(), '.gemini', 'commands'),
-    trae: path.join(os.homedir(), '.trae', 'commands'),
+    opencode: path.join(os.homedir(), '.opencode', 'commands'),
   };
 
   const ext = agent === 'gemini' ? 'toml' : 'md';
@@ -45,7 +44,7 @@ export async function isAgentCliAvailable(agent: AgentCli): Promise<boolean> {
     claude: 'claude --version',
     codex: 'codex --version',
     gemini: 'gemini --version',
-    trae: 'trae-cli --version',
+    opencode: 'opencode --version',
   };
 
   try {
@@ -62,7 +61,7 @@ export async function isAgentMcpEnabled(agent: AgentCli): Promise<boolean> {
     claude: 'claude mcp list',
     codex: 'codex mcp list',
     gemini: 'gemini mcp list',
-    trae: 'trae-cli mcp list',  // May not support MCP yet
+    opencode: 'opencode mcp list',
   };
 
   try {
