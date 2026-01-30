@@ -19,7 +19,7 @@ export interface CurrentActivity {
   timestamp: Date;
 }
 
-type AgentType = 'claude' | 'codex' | 'gemini' | 'trae';
+type AgentType = 'claude' | 'codex' | 'gemini';
 
 /**
  * Extract current activity from session content (tail of file).
@@ -55,8 +55,6 @@ function parseLineForActivity(line: string, agentType: AgentType): CurrentActivi
         return parseCodexActivity(raw);
       case 'gemini':
         return parseGeminiActivity(raw);
-      case 'trae':
-        return parseTraeActivity(raw);
       default:
         return null;
     }
@@ -324,92 +322,6 @@ function parseGeminiActivity(raw: any): CurrentActivity | null {
     }
   }
 
-  if (eventType === 'result') {
-    return {
-      type: 'completed',
-      summary: raw?.status || 'done',
-      timestamp,
-    };
-  }
-
-  return null;
-}
-
-// --- Trae parsing ---
-// Trae format (from trae-cli JSON trajectory):
-// - tool_call events with tool_name (shell_command, file_read, file_write, file_delete)
-// - sequential_thinking for reasoning
-// - message events for assistant messages
-
-function parseTraeActivity(raw: any): CurrentActivity | null {
-  const eventType = raw?.type;
-  const timestamp = raw?.timestamp ? new Date(raw.timestamp) : new Date();
-
-  // Tool calls
-  if (eventType === 'tool_call') {
-    const toolName = String(raw?.tool_name || raw?.name || '').toLowerCase();
-    const toolArgs = raw?.arguments || raw?.parameters || raw?.args || {};
-
-    const filePath = toolArgs?.file_path || toolArgs?.path || '';
-    const command = toolArgs?.command || '';
-
-    // Shell commands
-    if (toolName === 'shell_command' || toolName === 'shell' || toolName === 'bash' || toolName === 'execute') {
-      return {
-        type: 'running',
-        summary: truncateCommand(command),
-        timestamp,
-      };
-    }
-
-    // File write/edit
-    if (['file_write', 'file_edit', 'write_file', 'edit_file', 'file_delete', 'create_file'].includes(toolName)) {
-      return {
-        type: 'editing',
-        summary: truncatePath(filePath),
-        timestamp,
-      };
-    }
-
-    // File read
-    if (['file_read', 'read_file', 'view_file'].includes(toolName)) {
-      return {
-        type: 'reading',
-        summary: truncatePath(filePath),
-        timestamp,
-      };
-    }
-
-    // Generic tool
-    return {
-      type: 'thinking',
-      summary: `Using ${toolName}`,
-      timestamp,
-    };
-  }
-
-  // Sequential thinking
-  if (eventType === 'sequential_thinking') {
-    return {
-      type: 'thinking',
-      summary: '',
-      timestamp,
-    };
-  }
-
-  // Message from assistant
-  if (eventType === 'message') {
-    const role = raw?.role || 'assistant';
-    if (role === 'assistant') {
-      return {
-        type: 'thinking',
-        summary: '',
-        timestamp,
-      };
-    }
-  }
-
-  // Result/completion
   if (eventType === 'result') {
     return {
       type: 'completed',

@@ -9,6 +9,7 @@ import {
   getAgentDisplayName,
   formatSessionTimestamp,
   formatTimeAgoSafe,
+  formatActualTime,
 } from '../../utils'
 import {
   RunningCounts,
@@ -86,7 +87,7 @@ function truncateMiddle(value: string, headChars: number, tailChars: number): st
 
 function getTerminalPrompt(terminal: TerminalDetail): string {
   const raw = terminal.lastUserMessage || terminal.label || terminal.autoLabel || ''
-  return raw.trim() || 'No prompt available.'
+  return raw.trim() || 'Waiting for first message...'
 }
 
 function getFilesChangedCount(tasksForSession?: TaskSummary[]): number | null {
@@ -545,7 +546,8 @@ export function DashboardTab({
               const displayLabel = terminal.label || terminal.autoLabel
               const agentName = getAgentDisplayName(terminal.agentType)
               const prompt = getTerminalPrompt(terminal)
-              const currentActivity = terminal.currentActivity || 'Thinking...'
+              const hasMessages = terminal.messageCount && terminal.messageCount > 0
+              const currentActivity = terminal.currentActivity || (hasMessages ? 'Thinking...' : 'Waiting for input')
               const activityLine = currentActivity.startsWith('>') ? currentActivity : `> ${currentActivity}`
               const isExpanded = expandedTerminalIds.has(terminal.id)
               const sessionId = terminal.sessionId || ''
@@ -584,7 +586,7 @@ export function DashboardTab({
                       </div>
                     </div>
                     <span className="text-xs text-[var(--muted-foreground)] shrink-0">
-                      {formatTimeSince(terminal.createdAt)}
+                      {formatActualTime(terminal.firstMessageTimestamp)}
                     </span>
                   </div>
 

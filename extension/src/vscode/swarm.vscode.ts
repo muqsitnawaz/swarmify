@@ -44,7 +44,7 @@ export interface SwarmStatus {
     claude: AgentInstallStatus;
     codex: AgentInstallStatus;
     gemini: AgentInstallStatus;
-    trae: AgentInstallStatus;
+    opencode: AgentInstallStatus;
   };
 }
 
@@ -166,37 +166,37 @@ const SKILL_DEFS: SkillDefinition[] = [
 // Get full swarm integration status (per-agent, not globally shared)
 export async function getSwarmStatus(): Promise<SwarmStatus> {
   // Run ALL CLI availability checks in parallel
-  const [claudeCliAvailable, codexCliAvailable, geminiCliAvailable, traeCliAvailable] =
+  const [claudeCliAvailable, codexCliAvailable, geminiCliAvailable, opencodeCliAvailable] =
     await Promise.all([
       isAgentCliAvailable('claude'),
       isAgentCliAvailable('codex'),
       isAgentCliAvailable('gemini'),
-      isAgentCliAvailable('trae'),
+      isAgentCliAvailable('opencode'),
     ]);
 
   // Run MCP checks in parallel (only for available CLIs)
-  const [claudeMcp, codexMcp, geminiMcp, traeMcp] = await Promise.all([
+  const [claudeMcp, codexMcp, geminiMcp, opencodeMcp] = await Promise.all([
     claudeCliAvailable ? isAgentMcpEnabled('claude') : Promise.resolve(false),
     codexCliAvailable ? isAgentMcpEnabled('codex') : Promise.resolve(false),
     geminiCliAvailable ? isAgentMcpEnabled('gemini') : Promise.resolve(false),
-    traeCliAvailable ? isAgentMcpEnabled('trae') : Promise.resolve(false),
+    opencodeCliAvailable ? isAgentMcpEnabled('opencode') : Promise.resolve(false),
   ]);
 
   // Command checks are sync (fs.existsSync) - no need to parallelize
   const claudeCmd = claudeCliAvailable ? isAgentCommandInstalled('claude', 'swarm') : false;
   const codexCmd = codexCliAvailable ? isAgentCommandInstalled('codex', 'swarm') : false;
   const geminiCmd = geminiCliAvailable ? isAgentCommandInstalled('gemini', 'swarm') : false;
-  const traeCmd = traeCliAvailable ? isAgentCommandInstalled('trae', 'swarm') : false;
+  const opencodeCmd = opencodeCliAvailable ? isAgentCommandInstalled('opencode', 'swarm') : false;
 
   const mcpEnabled = (!claudeCliAvailable || claudeMcp) &&
     (!codexCliAvailable || codexMcp) &&
     (!geminiCliAvailable || geminiMcp) &&
-    (!traeCliAvailable || traeMcp);
+    (!opencodeCliAvailable || opencodeMcp);
 
   const commandInstalled = (!claudeCliAvailable || claudeCmd) &&
     (!codexCliAvailable || codexCmd) &&
     (!geminiCliAvailable || geminiCmd) &&
-    (!traeCliAvailable || traeCmd);
+    (!opencodeCliAvailable || opencodeCmd);
 
   return {
     mcpEnabled,
@@ -220,11 +220,11 @@ export async function getSwarmStatus(): Promise<SwarmStatus> {
         mcpEnabled: geminiMcp,
         commandInstalled: geminiCmd,
       },
-      trae: {
-        installed: traeMcp && traeCmd && traeCliAvailable,
-        cliAvailable: traeCliAvailable,
-        mcpEnabled: traeMcp,
-        commandInstalled: traeCmd,
+      opencode: {
+        installed: opencodeMcp && opencodeCmd && opencodeCliAvailable,
+        cliAvailable: opencodeCliAvailable,
+        mcpEnabled: opencodeMcp,
+        commandInstalled: opencodeCmd,
       },
     },
   };
@@ -440,20 +440,18 @@ function installSwarmCommandForPromptPackAgent(agent: PromptPackAgent, context: 
 
 const NPX_SWARM_CMD = `npx -y ${SWARM_PACKAGE}@latest`;
 
-// CLI npm packages for each agent (trae uses uv/pip, not npm)
 const CLI_PACKAGES: Record<AgentCli, string> = {
   claude: '@anthropic-ai/claude-code',
   codex: '@openai/codex',
   gemini: '@google/gemini-cli',
-  trae: '', // trae uses git clone + uv, not npm
+  opencode: '',
 };
 
 // Install CLI globally if not present
 async function installCliIfMissing(agent: AgentCli): Promise<boolean> {
   // Check if CLI is available
-  const cliCommand = agent === 'trae' ? 'trae-cli' : agent;
   try {
-    await execAsync(`which ${cliCommand}`);
+    await execAsync(`which ${agent}`);
     return true; // Already installed
   } catch {
     // Not installed, proceed with installation
@@ -462,51 +460,12 @@ async function installCliIfMissing(agent: AgentCli): Promise<boolean> {
   const pkg = CLI_PACKAGES[agent];
   const agentName = agent.charAt(0).toUpperCase() + agent.slice(1);
 
-  // Trae uses pipx to install from git (not npm), requires Python 3.12+
-  if (agent === 'trae') {
-    try {
-      // First check if pipx is available
-      try {
-        await execAsync('python3 -m pipx --version');
-      } catch {
-        vscode.window.showInformationMessage('Installing pipx...');
-        await execAsync('pip install --user pipx && python3 -m pipx ensurepath');
-      }
-
-      // Check for Python 3.12+
-      let python312Path = '';
-      try {
-        // Try common Python 3.12 locations
-        const { stdout } = await execAsync('python3.12 --version 2>/dev/null && which python3.12 || pyenv versions --bare | grep "^3\\.12" | head -1 | xargs -I{} echo "$HOME/.pyenv/versions/{}/bin/python"');
-        python312Path = stdout.trim().split('\n').pop() || '';
-      } catch {
-        // Fallback: check if default python3 is 3.12+
-        try {
-          const { stdout } = await execAsync('python3 -c "import sys; print(sys.version_info >= (3, 12))"');
-          if (stdout.trim() === 'True') {
-            python312Path = 'python3';
-          }
-        } catch { /* ignore */ }
-      }
-
-      if (!python312Path) {
-        vscode.window.showErrorMessage('Trae requires Python 3.12+. Please install Python 3.12 or later.');
-        return false;
-      }
-
-      vscode.window.showInformationMessage(`Installing ${agentName} CLI via pipx (requires Python 3.12+)...`);
-      const pythonFlag = python312Path !== 'python3' ? `--python ${python312Path}` : '';
-      await execAsync(`python3 -m pipx install ${pythonFlag} "trae-agent[evaluation] @ git+https://github.com/bytedance/trae-agent.git"`);
-      vscode.window.showInformationMessage(`${agentName} CLI installed successfully.`);
-      return true;
-    } catch (err) {
-      const error = err as Error & { stderr?: string };
-      vscode.window.showErrorMessage(`Failed to install ${agentName} CLI: ${error.stderr || error.message}`);
-      return false;
-    }
+  // If no npm package available, can't auto-install
+  if (!pkg) {
+    vscode.window.showErrorMessage(`${agentName} CLI must be installed manually. Visit https://github.com/opencode-ai/opencode for instructions.`);
+    return false;
   }
 
-  // Other agents use npm
   try {
     vscode.window.showInformationMessage(`Installing ${agentName} CLI...`);
     await execAsync(`npm install -g ${pkg}`);
@@ -533,9 +492,8 @@ async function registerMcpForAgent(agent: AgentCli): Promise<boolean> {
       await execAsync(`gemini mcp add Swarm ${NPX_SWARM_CMD}`);
       return true;
     }
-    if (agent === 'trae') {
-      // Trae may not support MCP yet - skip for now
-      // When supported: await execAsync(`trae-cli mcp add Swarm ${NPX_SWARM_CMD}`);
+    if (agent === 'opencode') {
+      await execAsync(`opencode mcp add Swarm ${NPX_SWARM_CMD}`);
       return true;
     }
   } catch {
@@ -548,7 +506,7 @@ export async function setupSwarmIntegration(
   context: vscode.ExtensionContext,
   onUpdate?: (status: SwarmStatus) => void
 ): Promise<void> {
-  await setupSwarmIntegrationForAgents(['claude', 'codex', 'gemini', 'trae'], context, onUpdate);
+  await setupSwarmIntegrationForAgents(['claude', 'codex', 'gemini', 'opencode'], context, onUpdate);
 }
 
 export async function setupSwarmIntegrationForAgent(
@@ -586,9 +544,9 @@ async function setupSwarmIntegrationForAgents(
     }
   }
 
-  // Install prompt packs for requested agents (trae doesn't support prompt packs)
+  // Install prompt packs for requested agents (opencode doesn't support prompt packs yet)
   for (const agent of agents) {
-    if (agent !== 'trae') {
+    if (agent !== 'opencode') {
       await installPromptPacksForAgent(agent, context);
     }
   }

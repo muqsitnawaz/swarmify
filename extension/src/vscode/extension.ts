@@ -180,6 +180,7 @@ async function detectOpencodeSessionId(
 
     // Update terminal title to include session ID
     updateStatusBarForTerminal(terminal, context.extensionPath);
+    startAutoLabelPollerForTerminal(terminal, context.extensionPath);
   }
 }
 
@@ -539,7 +540,11 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // Scan existing terminals in the editor area to register any agent terminals
   // Then restore persisted sessions with proper icons/titles
-  terminals.scanExisting((name, knownPrefix) => inferAgentConfigFromName(name, context.extensionPath, knownPrefix), context)
+  terminals.scanExisting(
+    (name, knownPrefix) => inferAgentConfigFromName(name, context.extensionPath, knownPrefix),
+    context,
+    (terminal) => startAutoLabelPollerForTerminal(terminal, context.extensionPath)
+  )
     .then(() => restoreAgentTerminals(context))
     .catch(err => {
       console.error('[EXTENSION] Error scanning/restoring terminals:', err);
@@ -577,6 +582,11 @@ export async function activate(context: vscode.ExtensionContext) {
 
       if (identOpts.sessionId) {
         terminals.setSessionId(terminal, identOpts.sessionId);
+        const agentType = terminals.prefixToAgentType(info.prefix);
+        if (agentType) {
+          terminals.setAgentType(terminal, agentType);
+          startAutoLabelPollerForTerminal(terminal, context.extensionPath);
+        }
       }
     })
   );
@@ -855,10 +865,6 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('agents.setupTrae', () => swarm.setupSwarmIntegrationForAgent('trae', context))
-  );
-
-  context.subscriptions.push(
     vscode.commands.registerCommand('agents.enableNotifications', () => notifications.enableNotifications(context))
   );
 
@@ -1087,6 +1093,9 @@ export async function activate(context: vscode.ExtensionContext) {
       const agentInfo = identifyAgentTerminal(terminal, context.extensionPath);
       if (agentInfo.isAgent) {
         vscode.commands.executeCommand('workbench.action.terminal.scrollToBottom');
+
+        // Try to fetch label on focus if not already set (immediate update instead of 5-min poller)
+        tryFetchLabelOnFocus(terminal, context);
       }
 
       updateStatusBarForTerminal(terminal, context.extensionPath);
@@ -1146,6 +1155,9 @@ export async function activate(context: vscode.ExtensionContext) {
       if (matchedName) {
         const matchedTerminal = vscode.window.terminals.find(t => t.name === matchedName);
         if (matchedTerminal) {
+          // Try to fetch label on focus if not already set
+          tryFetchLabelOnFocus(matchedTerminal, context);
+
           updateStatusBarForTerminal(matchedTerminal, context.extensionPath);
 
           // Update terminal titles based on focus state (for showLabelOnlyOnFocus feature)
@@ -1252,6 +1264,7 @@ async function openSingleAgent(
       terminals.setSessionId(terminal, sessionId);
       if (agentKey && supportsPrewarming(agentKey)) {
         terminals.setAgentType(terminal, agentKey);
+        startAutoLabelPollerForTerminal(terminal, context.extensionPath);
       }
     }
     // Record prewarmed session separately
@@ -1292,6 +1305,7 @@ async function openSingleAgent(
     terminals.setSessionId(terminal, sessionId);
     if (agentKey && supportsPrewarming(agentKey)) {
       terminals.setAgentType(terminal, agentKey);
+      startAutoLabelPollerForTerminal(terminal, context.extensionPath);
     }
   }
   // Record prewarmed session separately
@@ -1655,6 +1669,7 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
       if (sessionId && agentKey && supportsPrewarming(agentKey)) {
         terminals.setSessionId(terminal, sessionId);
         terminals.setAgentType(terminal, agentKey);
+        startAutoLabelPollerForTerminal(terminal, context.extensionPath);
         await prewarm.recordTerminalSession(context, terminalId, sessionId, agentKey, cwd);
       }
 
@@ -1717,6 +1732,57 @@ async function fetchAndSetAutoLabel(terminal: vscode.Terminal, entry: terminals.
     return autoLabel ?? undefined;
   } catch {
     return undefined;
+  }
+}
+
+function startAutoLabelPollerForTerminal(terminal: vscode.Terminal, extensionPath: string): void {
+  const entry = terminals.getByTerminal(terminal);
+  if (!entry || entry.label || entry.autoLabel) return;
+  if (!entry.sessionId || !entry.agentType) return;
+
+  terminals.startAutoLabelPoller(terminal, async () => {
+    const autoLabel = await fetchAndSetAutoLabel(terminal, entry);
+    if (autoLabel && vscode.window.activeTerminal === terminal) {
+      updateStatusBarForTerminal(terminal, extensionPath);
+    }
+  });
+}
+
+/**
+ * Try to fetch and set the auto-label when terminal gains focus.
+ * This provides immediate label update instead of waiting for the 5-minute poller.
+ * Also updates the terminal tab title if showLabelsInTitles is enabled.
+ */
+async function tryFetchLabelOnFocus(
+  terminal: vscode.Terminal,
+  context: vscode.ExtensionContext
+): Promise<void> {
+  const entry = terminals.getByTerminal(terminal);
+  if (!entry) return;
+
+  // Skip if already has a label
+  if (entry.label || entry.autoLabel) return;
+
+  // Need sessionId and agentType to fetch label
+  if (!entry.sessionId || !entry.agentType) return;
+
+  // Fetch the label from session file
+  const autoLabel = await fetchAndSetAutoLabel(terminal, entry);
+  if (!autoLabel) return;
+
+  // Update status bar
+  updateStatusBarForTerminal(terminal, context.extensionPath);
+
+  // Update terminal tab title if showLabelsInTitles is enabled
+  const display = getDisplayPrefs(context);
+  if (display.showLabelsInTitles && entry.agentConfig) {
+    const newTitle = buildTerminalTitle(
+      entry.agentConfig.title,
+      autoLabel,
+      context,
+      entry.sessionId
+    );
+    await terminals.renameTerminal(terminal, newTitle);
   }
 }
 
@@ -1892,9 +1958,10 @@ async function clearActiveTerminal(context: vscode.ExtensionContext) {
         await prewarm.recordTerminalSession(context, newTerminalId, newSessionId, agentKey, cwd);
       }
 
-      // 5. Clear labels
+      // 5. Clear labels and start fresh poller
       await terminals.setLabel(terminal, undefined, context);
       terminals.setAutoLabel(terminal, undefined);
+      startAutoLabelPollerForTerminal(terminal, context.extensionPath);
 
       // 6. Unpin terminal
       await vscode.commands.executeCommand('workbench.action.unpinEditor');
@@ -2112,6 +2179,7 @@ async function restoreAgentTerminals(context: vscode.ExtensionContext): Promise<
     if (session.sessionId && session.agentType) {
       terminals.setSessionId(terminal, session.sessionId);
       terminals.setAgentType(terminal, session.agentType as terminals.SessionAgentType);
+      startAutoLabelPollerForTerminal(terminal, context.extensionPath);
 
       // Actually resume the session by sending the resume command
       if (supportsPrewarming(session.agentType)) {

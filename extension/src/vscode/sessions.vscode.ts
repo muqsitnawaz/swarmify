@@ -117,19 +117,35 @@ function extractCandidatesFromValue(value: unknown): Array<{ role?: string; text
   return [{ role, text }];
 }
 
-function extractPreviewLines(head: string): string | undefined {
+interface ExtractedPreview {
+  text?: string;
+  timestamp?: string;
+}
+
+function extractPreviewLines(head: string): ExtractedPreview {
   const lines = head.split(/\r?\n/);
   let firstAny: string | undefined;
 
   for (const line of lines) {
     if (!line.trim()) continue;
     const trimmed = line.trim();
-    let candidates: Array<{ role?: string; text: string }> = [];
+    let candidates: Array<{ role?: string; text: string; timestamp?: string }> = [];
 
     if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
       try {
         const parsed = JSON.parse(trimmed);
         candidates = extractCandidatesFromValue(parsed);
+
+        // Extract timestamp from the parsed event for user messages
+        // Claude: event.timestamp, Codex: event.timestamp, Gemini: event.timestamp
+        if (parsed && typeof parsed === 'object') {
+          const eventTimestamp = parsed.timestamp;
+          if (eventTimestamp && typeof eventTimestamp === 'string') {
+            for (const candidate of candidates) {
+              candidate.timestamp = eventTimestamp;
+            }
+          }
+        }
       } catch {
         candidates = [];
       }
@@ -142,20 +158,20 @@ function extractPreviewLines(head: string): string | undefined {
       if (!text) continue;
       const role = candidate.role?.toLowerCase();
       if (role === 'user' || role === 'human') {
-        return normalizePreview(text);
+        return { text: normalizePreview(text), timestamp: candidate.timestamp };
       }
       if (!firstAny) firstAny = text;
     }
   }
 
-  if (!firstAny) return undefined;
-  return normalizePreview(firstAny);
+  if (!firstAny) return {};
+  return { text: normalizePreview(firstAny) };
 }
 
 async function getPreview(filePath: string): Promise<string | undefined> {
   try {
     const head = await readFileHead(filePath, MAX_PREVIEW_BYTES);
-    return extractPreviewLines(head);
+    return extractPreviewLines(head).text;
   } catch {
     return undefined;
   }
@@ -415,6 +431,7 @@ export async function getSessionPathBySessionId(
 
 export interface SessionPreviewInfo {
   firstUserMessage?: string;
+  firstUserMessageTimestamp?: string;
   lastUserMessage?: string;
   messageCount: number;
 }
@@ -495,11 +512,12 @@ export async function getSessionPreviewInfo(filePath: string): Promise<SessionPr
     countNonEmptyLines(filePath)
   ]);
 
-  const firstUserMessage = extractPreviewLines(head);
+  const extracted = extractPreviewLines(head);
   const lastUserMessage = extractLastUserMessage(tail);
 
   return {
-    firstUserMessage,
+    firstUserMessage: extracted.text,
+    firstUserMessageTimestamp: extracted.timestamp,
     lastUserMessage,
     messageCount
   };

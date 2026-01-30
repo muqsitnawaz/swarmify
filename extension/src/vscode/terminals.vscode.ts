@@ -71,6 +71,7 @@ export interface EditorTerminal {
   sessionId?: string;       // CLI session ID (for resume, history reading)
   agentType?: SessionAgentType; // Agent type for session operations
   approvalStatus?: 'pending' | 'approved' | 'running' | 'complete'; // Swarm approval status
+  autoLabelPollerId?: NodeJS.Timeout; // Poller for auto-label fetch (cleared once label is set)
 }
 
 const STATUS_BAR_LABELS_KEY = 'agentStatusBarLabels';
@@ -234,6 +235,10 @@ export function register(
 export function unregister(terminal: vscode.Terminal): void {
   const id = terminalToId.get(terminal);
   if (id) {
+    const entry = editorTerminals.get(id);
+    if (entry?.autoLabelPollerId) {
+      clearInterval(entry.autoLabelPollerId);
+    }
     editorTerminals.delete(id);
     terminalToId.delete(terminal);
 
@@ -268,6 +273,46 @@ export function setAutoLabel(terminal: vscode.Terminal, autoLabel: string | unde
   const entry = getByTerminal(terminal);
   if (entry) {
     entry.autoLabel = autoLabel;
+    if (autoLabel && entry.autoLabelPollerId) {
+      clearInterval(entry.autoLabelPollerId);
+      entry.autoLabelPollerId = undefined;
+      console.log(`[TERMINALS] Cleared auto-label poller for terminal "${terminal.name}" - label set: "${autoLabel}"`);
+    }
+  }
+}
+
+export function startAutoLabelPoller(
+  terminal: vscode.Terminal,
+  pollFn: () => Promise<void>,
+  intervalMs: number = 5 * 60 * 1000
+): void {
+  const entry = getByTerminal(terminal);
+  if (!entry) return;
+  if (entry.autoLabelPollerId) return;
+  if (entry.autoLabel || entry.label) return;
+
+  // Run immediately on start, then set up the interval for subsequent polls
+  pollFn().catch(() => {});
+
+  entry.autoLabelPollerId = setInterval(async () => {
+    if (entry.autoLabel || entry.label) {
+      if (entry.autoLabelPollerId) {
+        clearInterval(entry.autoLabelPollerId);
+        entry.autoLabelPollerId = undefined;
+      }
+      return;
+    }
+    await pollFn();
+  }, intervalMs);
+  console.log(`[TERMINALS] Started auto-label poller for terminal "${terminal.name}" (interval: ${intervalMs}ms)`);
+}
+
+export function stopAutoLabelPoller(terminal: vscode.Terminal): void {
+  const entry = getByTerminal(terminal);
+  if (entry?.autoLabelPollerId) {
+    clearInterval(entry.autoLabelPollerId);
+    entry.autoLabelPollerId = undefined;
+    console.log(`[TERMINALS] Stopped auto-label poller for terminal "${terminal.name}"`);
   }
 }
 
@@ -339,7 +384,8 @@ export async function renameTerminal(terminal: vscode.Terminal, newName: string)
 
 export async function scanExisting(
   inferAgentConfig: (name: string, knownPrefix?: string | null) => Omit<AgentConfig, 'count'> | null,
-  context?: vscode.ExtensionContext
+  context?: vscode.ExtensionContext,
+  onSessionRestored?: (terminal: vscode.Terminal) => void
 ): Promise<number> {
   console.log('[TERMINALS] Scanning all terminals...');
   let registeredCount = 0;
@@ -390,6 +436,9 @@ export async function scanExisting(
         setAgentType(terminal, agentType);
       }
       console.log(`[TERMINALS] Restored session: sessionId=${identOpts.sessionId}, agentType=${agentType}`);
+      if (onSessionRestored) {
+        onSessionRestored(terminal);
+      }
     }
   }
 
@@ -458,6 +507,7 @@ export interface TerminalDetail {
   sessionId: string | null; // CLI session ID
   lastUserMessage?: string; // Last user message from session
   messageCount?: number; // Total message count in session
+  firstMessageTimestamp?: string; // ISO-8601 timestamp of first user message
   currentActivity?: string; // Live activity (e.g., "Reading src/auth.ts", "Running npm test")
   approvalStatus?: TerminalApprovalStatus;
   role?: string;
@@ -479,7 +529,7 @@ const AGENT_KEY_TO_PREFIX: Record<string, string> = {
 };
 
 // Map from prefix to SessionAgentType (only for agents that support sessions)
-function prefixToAgentType(prefix: string | null): SessionAgentType | null {
+export function prefixToAgentType(prefix: string | null): SessionAgentType | null {
   if (!prefix) return null;
   switch (prefix) {
     case 'CC': return 'claude';
@@ -610,6 +660,7 @@ export async function getTerminalsByAgentType(
     if (data.preview) {
       results[data.index].lastUserMessage = data.preview.lastUserMessage;
       results[data.index].messageCount = data.preview.messageCount;
+      results[data.index].firstMessageTimestamp = data.preview.firstUserMessageTimestamp;
     }
     if (data.activity) {
       results[data.index].currentActivity = data.activity;
