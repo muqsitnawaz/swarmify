@@ -21,6 +21,7 @@ export const AGENTS: Record<AgentId, AgentConfig> = {
     commandsSubdir: 'commands',
     skillsDir: path.join(HOME, '.claude', 'skills'),
     hooksDir: 'hooks',
+    instructionsFile: 'CLAUDE.md',
     format: 'markdown',
     variableSyntax: '$ARGUMENTS',
     supportsHooks: true,
@@ -36,6 +37,7 @@ export const AGENTS: Record<AgentId, AgentConfig> = {
     commandsSubdir: 'prompts',
     skillsDir: path.join(HOME, '.codex', 'skills'),
     hooksDir: 'hooks',
+    instructionsFile: 'AGENTS.md',
     format: 'markdown',
     variableSyntax: '$ARGUMENTS',
     supportsHooks: false,
@@ -51,6 +53,7 @@ export const AGENTS: Record<AgentId, AgentConfig> = {
     commandsSubdir: 'commands',
     skillsDir: path.join(HOME, '.gemini', 'skills'),
     hooksDir: 'hooks',
+    instructionsFile: 'GEMINI.md',
     format: 'toml',
     variableSyntax: '{{args}}',
     supportsHooks: true,
@@ -67,6 +70,7 @@ export const AGENTS: Record<AgentId, AgentConfig> = {
     commandsSubdir: 'commands',
     skillsDir: path.join(HOME, '.cursor', 'skills'),
     hooksDir: 'hooks',
+    instructionsFile: '.cursorrules',
     format: 'markdown',
     variableSyntax: '$ARGUMENTS',
     supportsHooks: false,
@@ -82,6 +86,7 @@ export const AGENTS: Record<AgentId, AgentConfig> = {
     commandsSubdir: 'commands',
     skillsDir: path.join(HOME, '.opencode', 'skills'),
     hooksDir: 'hooks',
+    instructionsFile: 'OPENCODE.md',
     format: 'markdown',
     variableSyntax: '$ARGUMENTS',
     supportsHooks: false,
@@ -489,6 +494,14 @@ export function listInstalledMcpsWithScope(
 ): InstalledMcp[] {
   const results: InstalledMcp[] = [];
 
+  // Helper to build full command string
+  const buildCommand = (config: McpConfigEntry): string | undefined => {
+    if (config.command && config.args?.length) {
+      return `${config.command} ${config.args.join(' ')}`;
+    }
+    return config.command || (config.args ? config.args.join(' ') : undefined);
+  };
+
   // User-scoped MCPs
   const userConfigPath = getUserMcpConfigPath(agentId);
   const userMcps = parseMcpConfig(agentId, userConfigPath);
@@ -496,7 +509,7 @@ export function listInstalledMcpsWithScope(
     results.push({
       name,
       scope: 'user',
-      command: config.command || (config.args ? config.args.join(' ') : undefined),
+      command: buildCommand(config),
       version: config.args ? extractNpmVersion(config.args) : undefined,
     });
   }
@@ -509,7 +522,7 @@ export function listInstalledMcpsWithScope(
     results.push({
       name,
       scope: 'project',
-      command: config.command || (config.args ? config.args.join(' ') : undefined),
+      command: buildCommand(config),
       version: config.args ? extractNpmVersion(config.args) : undefined,
     });
   }

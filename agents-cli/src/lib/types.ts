@@ -11,6 +11,7 @@ export interface AgentConfig {
   commandsSubdir: string;
   skillsDir: string;
   hooksDir: string;
+  instructionsFile: string;
   format: 'markdown' | 'toml';
   variableSyntax: string;
   supportsHooks: boolean;
