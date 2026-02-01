@@ -450,12 +450,17 @@ function getUserMcpConfigPath(agentId: AgentId): string {
  */
 function getProjectMcpConfigPath(agentId: AgentId, cwd: string = process.cwd()): string {
   switch (agentId) {
+    case 'claude':
+      // Claude uses .mcp.json at project root for project-scoped MCPs
+      return path.join(cwd, '.mcp.json');
     case 'codex':
       return path.join(cwd, `.${agentId}`, 'config.toml');
     case 'opencode':
       return path.join(cwd, `.${agentId}`, 'opencode.jsonc');
     case 'cursor':
       return path.join(cwd, `.${agentId}`, 'mcp.json');
+    case 'gemini':
+      return path.join(cwd, `.${agentId}`, 'settings.json');
     default:
       return path.join(cwd, `.${agentId}`, 'settings.json');
   }

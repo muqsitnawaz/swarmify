@@ -85,10 +85,9 @@ export function validateCommandMetadata(
     return { valid: false, errors, warnings };
   }
 
-  // name is required
-  if (!metadata.name || metadata.name.trim() === '') {
-    errors.push('Missing required field: name');
-  } else if (metadata.name.length > 64) {
+  // name is optional - if not provided, will use filename (commandName)
+  // Only validate length if name is explicitly provided
+  if (metadata.name && metadata.name.length > 64) {
     warnings.push(`name exceeds 64 characters (${metadata.name.length})`);
   }
 
