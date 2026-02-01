@@ -826,8 +826,12 @@ program
         for (const agentId of item.agents) {
           const sourcePath = resolveCommandSource(localPath, item.name, agentId);
           if (sourcePath) {
-            installCommand(sourcePath, agentId, item.name, method);
-            installed.commands++;
+            const result = installCommand(sourcePath, agentId, item.name, method);
+            if (result.error) {
+              console.log(chalk.yellow(`\n  Warning: ${item.name} (${AGENTS[agentId].name}): ${result.error}`));
+            } else {
+              installed.commands++;
+            }
           }
         }
       }
@@ -1125,8 +1129,12 @@ commandsCmd
 
           const sourcePath = resolveCommandSource(localPath, command.name, agentId);
           if (sourcePath) {
-            installCommand(sourcePath, agentId, command.name, 'symlink');
-            console.log(`    ${chalk.green('+')} ${AGENTS[agentId].name}`);
+            const result = installCommand(sourcePath, agentId, command.name, 'symlink');
+            if (result.error) {
+              console.log(`    ${chalk.yellow('!')} ${AGENTS[agentId].name}: ${result.error}`);
+            } else {
+              console.log(`    ${chalk.green('+')} ${AGENTS[agentId].name}`);
+            }
           }
         }
       }
@@ -2644,18 +2652,27 @@ program
         if (hasCommands) {
           console.log(chalk.bold('\nInstalling commands...'));
           let installed = 0;
+          let failed = 0;
           for (const command of commands) {
             for (const agentId of agents) {
               if (!gitCliStates[agentId]?.installed && agentId !== 'cursor') continue;
 
               const sourcePath = resolveCommandSource(localPath, command.name, agentId);
               if (sourcePath) {
-                installCommand(sourcePath, agentId, command.name, 'symlink');
-                installed++;
+                const result = installCommand(sourcePath, agentId, command.name, 'symlink');
+                if (result.error) {
+                  failed++;
+                } else {
+                  installed++;
+                }
               }
             }
           }
-          console.log(`  Installed ${installed} command instances`);
+          if (failed > 0) {
+            console.log(`  Installed ${installed} command instances (${failed} failed)`);
+          } else {
+            console.log(`  Installed ${installed} command instances`);
+          }
         }
 
         // Install skills
