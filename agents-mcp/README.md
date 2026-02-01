@@ -1,10 +1,14 @@
 # @swarmify/agents-mcp
 
-Turn any agent into a tech lead. Spawn sub-agents from Claude, Codex, Gemini, or any MCP client.
+[![npm](https://img.shields.io/npm/v/@swarmify/agents-mcp)](https://www.npmjs.com/package/@swarmify/agents-mcp)
+[![License](https://img.shields.io/badge/License-MIT-yellow)](./LICENSE)
+[![Node](https://img.shields.io/badge/Node-%3E%3D18.17-green)](https://nodejs.org)
 
-Homepage: https://swarmify.co/#agents-mcp
-NPM: https://www.npmjs.com/package/@swarmify/agents-mcp
-VS Code Extension: [Agents](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext) - full-screen agent terminals with sub-agent spawning
+**Turn any agent into a tech lead.** Spawn sub-agents from Claude, Codex, Gemini, or any MCP client.
+
+Part of [Swarmify](https://github.com/muqsitnawaz/swarmify) - multi-agent coding in your IDE.
+
+[Homepage](https://swarmify.co/#agents-mcp) | [NPM](https://www.npmjs.com/package/@swarmify/agents-mcp) | [VS Code Extension](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext) | [Demo Video](https://www.youtube.com/watch?v=rbeoKhDxK8E)
 
 ## You don't need one agent. You need a team.
 
@@ -33,11 +37,21 @@ opencode mcp add
 
 The server auto-discovers which agent CLIs you have installed.
 
-## What it costs
+## What It Costs
 
 This server is free and open source.
 
 Each sub-agent uses your own API keys. Spawning 3 Claude agents means 3x your normal Claude API cost. No hidden fees.
+
+## Try It
+
+After installing, try this in Claude:
+
+> Spawn a codex agent to add input validation to src/api/users.ts, and a claude agent to review the security implications
+
+The orchestrating agent will use `Spawn` and `Status` to coordinate both sub-agents.
+
+![Swarm Dashboard](docs/swarm-1.png)
 
 ## API Reference
 
