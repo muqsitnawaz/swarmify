@@ -14,6 +14,7 @@ src/
     hooks.ts            # Hook discovery and installation
     commands.ts         # Slash command discovery and installation
     skills.ts           # Agent Skills (SKILL.md + rules/) management
+    instructions.ts     # Agent instructions (CLAUDE.md, etc.) management
     convert.ts          # Markdown <-> TOML conversion
     registry.ts         # Package registry client (MCP, skills)
 ```
@@ -45,20 +46,19 @@ interface State {
 
 Each agent has different paths and formats. See `AGENTS` object in `lib/agents.ts`:
 
-| Agent | Commands Dir | Format | MCP Support |
-|-------|--------------|--------|-------------|
-| Claude | `~/.claude/commands/` | markdown | Yes |
-| Codex | `~/.codex/prompts/` | markdown | Yes |
-| Gemini | `~/.gemini/prompts/` | toml | Yes |
-| Cursor | `~/.cursor-agent/prompts/` | markdown | No |
-| OpenCode | `~/.opencode/prompts/` | markdown | No |
-| Trae | `~/.trae/prompts/` | markdown | No |
+| Agent | Commands Dir | Format | Instructions File | MCP Support |
+|-------|--------------|--------|-------------------|-------------|
+| Claude | `~/.claude/commands/` | markdown | `CLAUDE.md` | Yes |
+| Codex | `~/.codex/prompts/` | markdown | `AGENTS.md` | Yes |
+| Gemini | `~/.gemini/commands/` | toml | `GEMINI.md` | Yes |
+| Cursor | `~/.cursor/commands/` | markdown | `.cursorrules` | Yes |
+| OpenCode | `~/.opencode/commands/` | markdown | `OPENCODE.md` | Yes |
 
 ## Critical Patterns
 
 ### Scope System
 
-Commands, skills, hooks, and MCPs can exist at two scopes:
+Commands, skills, hooks, MCPs, and instructions can exist at two scopes:
 
 | Scope | Location | Use Case |
 |-------|----------|----------|
@@ -82,6 +82,12 @@ promoteHookToUser(agentId, name, cwd) -> { success, error? }
 // lib/agents.ts
 listInstalledMcpsWithScope(agentId, cwd) -> InstalledMcp[]
 promoteMcpToUser(agentId, name, cwd) -> { success, error? }
+
+// lib/instructions.ts (manages agent instructions files)
+listInstalledInstructionsWithScope(agentId, cwd) -> InstalledInstructions[]
+promoteInstructionsToUser(agentId, cwd) -> { success, error? }
+discoverInstructionsFromRepo(repoPath) -> DiscoveredInstructions[]
+installInstructions(sourcePath, agentId, method) -> { path, method, error? }
 ```
 
 ### Agent Skills vs Slash Commands
@@ -101,6 +107,21 @@ Commands are discovered from repo in this order:
 2. `{agent}/{commandsSubdir}/*` - Agent-specific
 
 Agent-specific commands override shared commands with the same name.
+
+### Instructions Discovery
+
+Instructions are discovered from `instructions/` directory in the repo:
+
+```
+instructions/
+  claude.md      -> ~/.claude/CLAUDE.md
+  codex.md       -> ~/.codex/AGENTS.md
+  gemini.md      -> ~/.gemini/GEMINI.md
+  opencode.md    -> ~/.opencode/OPENCODE.md
+  cursor.md      -> ~/.cursor/.cursorrules
+```
+
+Files can be named either `{agentId}.md` or match the agent's `instructionsFile` config.
 
 ### Format Conversion
 
@@ -252,12 +273,15 @@ bun run build    # Compiles to dist/
 |------|------|
 | Claude commands | `~/.claude/commands/` |
 | Claude skills | `~/.claude/skills/` |
+| Claude instructions | `~/.claude/CLAUDE.md` |
 | Claude MCP config | `~/.claude/settings.json` |
 | Codex prompts | `~/.codex/prompts/` |
 | Codex skills | `~/.codex/skills/` |
+| Codex instructions | `~/.codex/AGENTS.md` |
 | Codex MCP config | `~/.codex/config.json` |
 | Gemini commands | `~/.gemini/commands/` |
 | Gemini skills | `~/.gemini/skills/` |
+| Gemini instructions | `~/.gemini/GEMINI.md` |
 | Gemini MCP config | `~/.gemini/settings.json` |
 
 ### Project Scope (per-directory)
@@ -266,10 +290,13 @@ bun run build    # Compiles to dist/
 |------|------|
 | Claude commands | `./.claude/commands/` |
 | Claude skills | `./.claude/skills/` |
+| Claude instructions | `./.claude/CLAUDE.md` |
 | Claude MCP config | `./.claude/settings.json` |
 | Codex prompts | `./.codex/prompts/` |
 | Codex skills | `./.codex/skills/` |
+| Codex instructions | `./.codex/AGENTS.md` |
 | Codex MCP config | `./.codex/config.json` |
 | Gemini commands | `./.gemini/commands/` |
 | Gemini skills | `./.gemini/skills/` |
+| Gemini instructions | `./.gemini/GEMINI.md` |
 | Gemini MCP config | `./.gemini/settings.json` |

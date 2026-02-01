@@ -89,6 +89,17 @@ import {
   skillExists,
   skillContentMatches,
 } from './lib/skills.js';
+import {
+  discoverInstructionsFromRepo,
+  resolveInstructionsSource,
+  installInstructions,
+  uninstallInstructions,
+  listInstalledInstructionsWithScope,
+  promoteInstructionsToUser,
+  instructionsExists,
+  instructionsContentMatches,
+  getInstructionsContent,
+} from './lib/instructions.js';
 import type { AgentId, Manifest, RegistryType } from './lib/types.js';
 import { DEFAULT_REGISTRIES } from './lib/types.js';
 import {
@@ -272,6 +283,11 @@ program
       mcps: listInstalledMcpsWithScope(agentId, cwd),
     }));
 
+    const instructionsData = agentsToShow.map((agentId) => ({
+      agent: AGENTS[agentId],
+      instructions: listInstalledInstructionsWithScope(agentId, cwd),
+    }));
+
     const scopes = filterAgentId ? [] : getScopesByPriority();
 
     spinner.stop();
@@ -349,6 +365,24 @@ program
       }
     }
 
+    console.log(chalk.bold('\nInstalled Instructions\n'));
+    for (const { agent, instructions } of instructionsData) {
+      const userInstr = instructions.find((i) => i.scope === 'user' && i.exists);
+      const projectInstr = instructions.find((i) => i.scope === 'project' && i.exists);
+
+      if (!userInstr && !projectInstr) {
+        console.log(`  ${chalk.bold(agent.name)}: ${chalk.gray('none')}`);
+      } else {
+        console.log(`  ${chalk.bold(agent.name)}:`);
+        if (userInstr) {
+          console.log(`    ${chalk.gray('User:')} ${chalk.cyan(agent.instructionsFile)}`);
+        }
+        if (projectInstr) {
+          console.log(`    ${chalk.gray('Project:')} ${chalk.yellow(agent.instructionsFile)}`);
+        }
+      }
+    }
+
     // Only show scopes when not filtering by agent
     if (!filterAgentId) {
       if (scopes.length > 0) {
@@ -400,7 +434,7 @@ function isAgentName(input: string): boolean {
 
 // Resource item for tracking new vs existing
 interface ResourceItem {
-  type: 'command' | 'skill' | 'hook' | 'mcp';
+  type: 'command' | 'skill' | 'hook' | 'mcp' | 'instructions';
   name: string;
   agents: AgentId[];
   isNew: boolean;
@@ -487,6 +521,7 @@ program
       const allCommands = discoverCommands(localPath);
       const allSkills = discoverSkillsFromRepo(localPath);
       const discoveredHooks = discoverHooksFromRepo(localPath);
+      const allInstructions = discoverInstructionsFromRepo(localPath);
 
       // Determine which agents to sync
       const cliStates = await getAllCliStates();
@@ -638,6 +673,20 @@ program
         }
       }
 
+      // Process instructions
+      for (const instr of allInstructions) {
+        if (!selectedAgents.includes(instr.agentId)) continue;
+
+        const hasExisting = instructionsExists(instr.agentId, 'user');
+        if (!hasExisting) {
+          newItems.push({ type: 'instructions', name: AGENTS[instr.agentId].instructionsFile, agents: [instr.agentId], isNew: true });
+        } else if (instructionsContentMatches(instr.agentId, instr.sourcePath, 'user')) {
+          upToDateItems.push({ type: 'instructions', name: AGENTS[instr.agentId].instructionsFile, agents: [instr.agentId], isNew: false });
+        } else {
+          existingItems.push({ type: 'instructions', name: AGENTS[instr.agentId].instructionsFile, agents: [instr.agentId], isNew: false });
+        }
+      }
+
       // Display overview
       console.log(chalk.bold('\nOverview\n'));
 
@@ -646,7 +695,7 @@ program
 
       if (newItems.length > 0) {
         console.log(chalk.green('  NEW (will install):\n'));
-        const byType = { command: [] as ResourceItem[], skill: [] as ResourceItem[], hook: [] as ResourceItem[], mcp: [] as ResourceItem[] };
+        const byType = { command: [] as ResourceItem[], skill: [] as ResourceItem[], hook: [] as ResourceItem[], mcp: [] as ResourceItem[], instructions: [] as ResourceItem[] };
         for (const item of newItems) byType[item.type].push(item);
 
         if (byType.command.length > 0) {
@@ -673,12 +722,18 @@ program
             console.log(`      ${chalk.cyan(item.name.padEnd(20))} ${chalk.gray(formatAgentList(item.agents))}`);
           }
         }
+        if (byType.instructions.length > 0) {
+          console.log(`    Instructions:`);
+          for (const item of byType.instructions) {
+            console.log(`      ${chalk.cyan(item.name.padEnd(20))} ${chalk.gray(formatAgentList(item.agents))}`);
+          }
+        }
         console.log();
       }
 
       if (upToDateItems.length > 0) {
         console.log(chalk.gray('  UP TO DATE (no changes):\n'));
-        const byType = { command: [] as ResourceItem[], skill: [] as ResourceItem[], hook: [] as ResourceItem[], mcp: [] as ResourceItem[] };
+        const byType = { command: [] as ResourceItem[], skill: [] as ResourceItem[], hook: [] as ResourceItem[], mcp: [] as ResourceItem[], instructions: [] as ResourceItem[] };
         for (const item of upToDateItems) byType[item.type].push(item);
 
         if (byType.command.length > 0) {
@@ -699,12 +754,18 @@ program
             console.log(`      ${chalk.dim(item.name.padEnd(20))} ${chalk.dim(formatAgentList(item.agents))}`);
           }
         }
+        if (byType.instructions.length > 0) {
+          console.log(`    Instructions:`);
+          for (const item of byType.instructions) {
+            console.log(`      ${chalk.dim(item.name.padEnd(20))} ${chalk.dim(formatAgentList(item.agents))}`);
+          }
+        }
         console.log();
       }
 
       if (existingItems.length > 0) {
         console.log(chalk.yellow('  EXISTING (conflicts):\n'));
-        const byType = { command: [] as ResourceItem[], skill: [] as ResourceItem[], hook: [] as ResourceItem[], mcp: [] as ResourceItem[] };
+        const byType = { command: [] as ResourceItem[], skill: [] as ResourceItem[], hook: [] as ResourceItem[], mcp: [] as ResourceItem[], instructions: [] as ResourceItem[] };
         for (const item of existingItems) byType[item.type].push(item);
 
         if (byType.command.length > 0) {
@@ -728,6 +789,12 @@ program
         if (byType.mcp.length > 0) {
           console.log(`    MCP Servers:`);
           for (const item of byType.mcp) {
+            console.log(`      ${chalk.yellow(item.name.padEnd(20))} ${chalk.gray(formatAgentList(item.agents))}`);
+          }
+        }
+        if (byType.instructions.length > 0) {
+          console.log(`    Instructions:`);
+          for (const item of byType.instructions) {
             console.log(`      ${chalk.yellow(item.name.padEnd(20))} ${chalk.gray(formatAgentList(item.agents))}`);
           }
         }
@@ -811,8 +878,8 @@ program
 
       // Install new items (no conflicts)
       console.log();
-      let installed = { commands: 0, skills: 0, hooks: 0, mcps: 0 };
-      let skipped = { commands: 0, skills: 0, hooks: 0, mcps: 0 };
+      let installed = { commands: 0, skills: 0, hooks: 0, mcps: 0, instructions: 0 };
+      let skipped = { commands: 0, skills: 0, hooks: 0, mcps: 0, instructions: 0 };
 
       // Install commands
       const cmdSpinner = ora('Installing commands...').start();
@@ -905,6 +972,38 @@ program
           mcpSpinner.succeed(`Registered ${installed.mcps} MCP servers`);
         } else {
           mcpSpinner.info('No MCP servers to register');
+        }
+      }
+
+      // Install instructions
+      const instructionItems = [...newItems, ...existingItems].filter((i) => i.type === 'instructions');
+      if (instructionItems.length > 0) {
+        const instrSpinner = ora('Installing instructions...').start();
+        for (const item of instructionItems) {
+          const decision = item.isNew ? 'overwrite' : decisions.get(`instructions:${item.name}`);
+          if (decision === 'skip') {
+            skipped.instructions++;
+            continue;
+          }
+
+          for (const agentId of item.agents) {
+            const sourcePath = resolveInstructionsSource(localPath, agentId);
+            if (sourcePath) {
+              const result = installInstructions(sourcePath, agentId, method);
+              if (result.error) {
+                console.log(chalk.yellow(`\n  Warning: ${item.name} (${AGENTS[agentId].name}): ${result.error}`));
+              } else {
+                installed.instructions++;
+              }
+            }
+          }
+        }
+        if (skipped.instructions > 0) {
+          instrSpinner.succeed(`Installed ${installed.instructions} instructions (skipped ${skipped.instructions})`);
+        } else if (installed.instructions > 0) {
+          instrSpinner.succeed(`Installed ${installed.instructions} instructions`);
+        } else {
+          instrSpinner.info('No instructions to install');
         }
       }
 
@@ -1010,6 +1109,46 @@ program
         };
         console.log(`  ${chalk.green('+')} ${agent.name} @ ${cli.version}`);
         exported++;
+      }
+    }
+
+    // Export MCP servers from installed agents
+    console.log();
+    let mcpExported = 0;
+    const mcpByName = new Map<string, { command: string; agents: AgentId[] }>();
+
+    for (const agentId of MCP_CAPABLE_AGENTS) {
+      if (!cliStates[agentId]?.installed) continue;
+
+      const mcps = listInstalledMcpsWithScope(agentId);
+      for (const mcp of mcps) {
+        if (mcp.scope !== 'user') continue; // Only export user-scoped MCPs
+
+        const existing = mcpByName.get(mcp.name);
+        if (existing) {
+          if (!existing.agents.includes(agentId)) {
+            existing.agents.push(agentId);
+          }
+        } else {
+          mcpByName.set(mcp.name, {
+            command: mcp.command || '',
+            agents: [agentId],
+          });
+        }
+      }
+    }
+
+    if (mcpByName.size > 0) {
+      manifest.mcp = manifest.mcp || {};
+      for (const [name, config] of mcpByName) {
+        manifest.mcp[name] = {
+          command: config.command,
+          transport: 'stdio',
+          agents: config.agents,
+          scope: 'user',
+        };
+        console.log(`  ${chalk.green('+')} MCP: ${name} (${config.agents.map(id => AGENTS[id].name).join(', ')})`);
+        mcpExported++;
       }
     }
 
@@ -1657,6 +1796,174 @@ skillsCmd
     // Fallback to direct output if less fails
     if (less.status !== 0) {
       console.log(output);
+    }
+  });
+
+// =============================================================================
+// INSTRUCTIONS COMMANDS
+// =============================================================================
+
+const instructionsCmd = program
+  .command('instructions')
+  .alias('instr')
+  .description('Manage agent instructions (CLAUDE.md, GEMINI.md, etc.)');
+
+instructionsCmd
+  .command('list')
+  .description('List installed instructions files')
+  .option('-a, --agent <agent>', 'Filter by agent')
+  .action(async (options) => {
+    const cwd = process.cwd();
+    const agents = options.agent
+      ? [resolveAgentName(options.agent)].filter(Boolean) as AgentId[]
+      : ALL_AGENT_IDS;
+
+    console.log(chalk.bold('Installed Instructions\n'));
+
+    for (const agentId of agents) {
+      const agent = AGENTS[agentId];
+      const installed = listInstalledInstructionsWithScope(agentId, cwd);
+      const userInstr = installed.find((i) => i.scope === 'user');
+      const projectInstr = installed.find((i) => i.scope === 'project');
+
+      const userStatus = userInstr?.exists ? chalk.green(agent.instructionsFile) : chalk.gray('none');
+      const projectStatus = projectInstr?.exists ? chalk.yellow(agent.instructionsFile) : chalk.gray('none');
+
+      console.log(`  ${chalk.bold(agent.name)}:`);
+      console.log(`    ${chalk.gray('User:')} ${userStatus}`);
+      console.log(`    ${chalk.gray('Project:')} ${projectStatus}`);
+      console.log();
+    }
+  });
+
+instructionsCmd
+  .command('view [agent]')
+  .alias('show')
+  .description('View instructions content for an agent')
+  .option('-s, --scope <scope>', 'Scope: user or project', 'user')
+  .action(async (agentArg?: string, options?: { scope?: string }) => {
+    const cwd = process.cwd();
+    let agentId: AgentId | undefined;
+
+    if (agentArg) {
+      agentId = resolveAgentName(agentArg) || undefined;
+      if (!agentId) {
+        console.log(chalk.red(`Unknown agent: ${agentArg}`));
+        process.exit(1);
+      }
+    } else {
+      const choices = ALL_AGENT_IDS.filter((id) => instructionsExists(id, 'user', cwd) || instructionsExists(id, 'project', cwd));
+      if (choices.length === 0) {
+        console.log(chalk.yellow('No instructions files found.'));
+        return;
+      }
+      agentId = await select({
+        message: 'Select agent:',
+        choices: choices.map((id) => ({ name: AGENTS[id].name, value: id })),
+      });
+    }
+
+    const scope = (options?.scope || 'user') as 'user' | 'project';
+    const content = getInstructionsContent(agentId, scope, cwd);
+
+    if (!content) {
+      console.log(chalk.yellow(`No ${scope} instructions found for ${AGENTS[agentId].name}`));
+      return;
+    }
+
+    console.log(chalk.bold(`\n${AGENTS[agentId].name} Instructions (${scope}):\n`));
+    console.log(content);
+  });
+
+instructionsCmd
+  .command('diff [agent]')
+  .description('Show differences between local and repo instructions')
+  .action(async (agentArg?: string) => {
+    const cwd = process.cwd();
+    const meta = readState();
+    const scopes = getScopesByPriority();
+
+    if (scopes.length === 0) {
+      console.log(chalk.yellow('No repo configured. Run: agents repo add <source>'));
+      return;
+    }
+
+    const agents = agentArg
+      ? [resolveAgentName(agentArg)].filter(Boolean) as AgentId[]
+      : ALL_AGENT_IDS;
+
+    const diff = await import('diff');
+
+    for (const { name: scopeName, config } of scopes) {
+      const localPath = getRepoLocalPath(config.source);
+      const repoInstructions = discoverInstructionsFromRepo(localPath);
+
+      for (const agentId of agents) {
+        const repoInstr = repoInstructions.find((i) => i.agentId === agentId);
+        if (!repoInstr) continue;
+
+        const installedContent = getInstructionsContent(agentId, 'user', cwd);
+        if (!installedContent) {
+          console.log(`${chalk.bold(AGENTS[agentId].name)}: ${chalk.green('NEW')} (not installed)`);
+          continue;
+        }
+
+        const repoContent = fs.readFileSync(repoInstr.sourcePath, 'utf-8');
+        if (installedContent.trim() === repoContent.trim()) {
+          console.log(`${chalk.bold(AGENTS[agentId].name)}: ${chalk.gray('up to date')}`);
+          continue;
+        }
+
+        console.log(`${chalk.bold(AGENTS[agentId].name)}:`);
+        const changes = diff.diffLines(installedContent, repoContent);
+        for (const change of changes) {
+          if (change.added) {
+            process.stdout.write(chalk.green(change.value));
+          } else if (change.removed) {
+            process.stdout.write(chalk.red(change.value));
+          }
+        }
+        console.log();
+      }
+    }
+  });
+
+instructionsCmd
+  .command('push <agent>')
+  .description('Save project-scoped instructions to user scope')
+  .action((agentArg: string) => {
+    const cwd = process.cwd();
+    const agentId = resolveAgentName(agentArg);
+
+    if (!agentId) {
+      console.log(chalk.red(`Unknown agent: ${agentArg}`));
+      process.exit(1);
+    }
+
+    const result = promoteInstructionsToUser(agentId, cwd);
+    if (result.success) {
+      console.log(chalk.green(`Pushed ${AGENTS[agentId].instructionsFile} to user scope`));
+    } else {
+      console.log(chalk.red(result.error || 'Failed to push instructions'));
+    }
+  });
+
+instructionsCmd
+  .command('remove <agent>')
+  .description('Remove user-scoped instructions for an agent')
+  .action((agentArg: string) => {
+    const agentId = resolveAgentName(agentArg);
+
+    if (!agentId) {
+      console.log(chalk.red(`Unknown agent: ${agentArg}`));
+      process.exit(1);
+    }
+
+    const result = uninstallInstructions(agentId);
+    if (result) {
+      console.log(chalk.green(`Removed ${AGENTS[agentId].instructionsFile}`));
+    } else {
+      console.log(chalk.yellow(`No instructions file found for ${AGENTS[agentId].name}`));
     }
   });
 
