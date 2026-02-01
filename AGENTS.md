@@ -77,16 +77,13 @@ Never use environment variables for:
 **Only OK:** Server-side API keys in .env files
 For user credentials: use Keychain, encrypted config files, or secure storage.
 
-### 4. NO GIT COMMANDS
-Never run any git command. Not git status. Not git log. Not git add. Not git commit. Not git reset. Not git push. Nothing. The user manages all git operations manually.
-
-### 5. NO TESTS IN /TMP
+### 4. NO TESTS IN /TMP
 Tests belong in the codebase, not /tmp. Never write tests, test scripts, or verification code to /tmp. If you need to verify something works, write a proper test that can be rerun.
 
-### 6. NO BACKGROUND SHELLS
+### 5. NO BACKGROUND SHELLS
 Never use `run_in_background: true` with the Bash tool. Background shells accumulate and crash. All commands must run in the foreground.
 
-### 7. NO TOASTS
+### 6. NO TOASTS
 Never use toast notifications in UI. Operations must either work silently (one-click, no feedback) or show inline errors (red text near the action). Success is assumed.
 **Exception:** Critical system errors that require immediate user attention.
 
