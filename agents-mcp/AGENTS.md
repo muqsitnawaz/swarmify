@@ -1,6 +1,31 @@
 # @swarmify/agents-mcp
 
-MCP server for multi-agent orchestration. Spawns CLI agents (Claude, Codex, Gemini, Cursor, OpenCode) in parallel from any MCP client.
+MCP server enabling SubAgents and Swarms for any MCP client. Any client (Claude, Codex, Gemini) can spawn any agent CLI.
+
+## Cross-Platform Architecture
+
+```
+                         MCP Protocol
+                              |
+        +---------------------+---------------------+
+        |                     |                     |
+   Claude Code             Codex                Gemini CLI
+   (MCP Client)         (MCP Client)          (MCP Client)
+        |                     |                     |
+        +---------------------+---------------------+
+                              |
+                    +-------------------+
+                    |   agents-mcp      |
+                    | (MCP Server)      |
+                    +-------------------+
+                              |
+        +---------------------+---------------------+
+        |                     |                     |
+   claude CLI            codex CLI            gemini CLI
+   (SubAgent)            (SubAgent)           (SubAgent)
+```
+
+**Any client can spawn any agent.** Claude can spawn Codex. Gemini can spawn Claude. The MCP protocol is the universal interface.
 
 ## Package Overview
 
@@ -11,6 +36,16 @@ This server provides four MCP tools for agent lifecycle management:
 - `Tasks` - List all tasks sorted by recent activity
 
 Pure infrastructure - no decision-making. The orchestrator handles scheduling, task assignment, and conflict resolution.
+
+## Multi-Agent Patterns
+
+This server enables two patterns:
+
+**SubAgents** - Hierarchical delegation. Orchestrator spawns specialized agents for specific tasks. Each agent works in isolation and reports back.
+
+**Swarms** - Parallel execution. Multiple agents work simultaneously on different parts of a problem. Orchestrator assigns non-overlapping files and synthesizes results.
+
+Both patterns use the same tools. The orchestrator decides the pattern based on the task.
 
 ## Repository Structure
 
