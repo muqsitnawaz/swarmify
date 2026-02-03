@@ -52,10 +52,16 @@ Without this server, each agent is siloed:
 - Codex has no native subagent support
 - Gemini CLI has no native subagent support
 
-With this server, every MCP client gets the same capabilities:
-- Spawn agents from any provider (Anthropic, OpenAI, Google)
-- Mix and match: Claude for research, Codex for speed, Gemini for breadth
-- Use each agent's strengths for different parts of a task
+With this server, every MCP client gets the same capabilities. Mix models based on their strengths:
+
+| Workflow | How It Works |
+|----------|--------------|
+| **Opus for planning, Codex for speed** | Use Claude Opus as orchestrator to design architecture, spawn Codex agents for fast, cheap implementation |
+| **Claude for research, Cursor for code** | Claude explores codebase and plans approach, Cursor (Composer) writes the code |
+| **Parallel specialists** | Claude reviews security while Codex adds validation - simultaneously |
+| **Codex spawning Claude** | When Codex hits something needing deeper reasoning, it spawns Claude |
+
+You control the cost tradeoffs. Expensive models for planning, fast models for execution.
 
 **4 tools:** `Spawn`, `Status`, `Stop`, `Tasks`
 **3 modes:** `plan` (read-only), `edit` (can write), `ralph` (autonomous)
