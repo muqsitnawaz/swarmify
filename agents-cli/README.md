@@ -1,10 +1,8 @@
 # @swarmify/agents-cli
 
-Your virtual environment manager for AI coding agents.
+**One config for all your AI coding agents.** Sync CLIs, MCP servers, commands, hooks, and skills across Claude, Codex, Gemini, and Cursor.
 
-Homepage: https://swarmify.co/#agents-cli
-NPM: https://www.npmjs.com/package/@swarmify/agents-cli
-VS Code Extension: [Agents](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext) - full-screen agent terminals with sub-agent spawning
+[Homepage](https://swarmify.co/#agents-cli) | [NPM](https://www.npmjs.com/package/@swarmify/agents-cli) | [VS Code Extension](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext)
 
 ```bash
 npm install -g @swarmify/agents-cli
@@ -12,11 +10,39 @@ npm install -g @swarmify/agents-cli
 
 ## The Problem
 
-You spend hours configuring Claude Code: MCP servers, slash commands, hooks, skills. Then you switch to Codex or Gemini and start from scratch. Or you get a new machine and lose everything.
+Each agent stores config differently. Different paths, different formats:
+
+| What | Claude | Codex | Gemini |
+|------|--------|-------|--------|
+| Commands | `~/.claude/commands/` (md) | `~/.codex/prompts/` (md) | `~/.gemini/commands/` (TOML) |
+| MCP config | `~/.claude/settings.json` | `~/.codex/config.json` | `~/.gemini/settings.json` |
+| Hooks | `~/.claude/hooks/` | - | `~/.gemini/hooks/` |
+
+You spend hours configuring Claude Code - MCP servers, slash commands, hooks, skills. Then you switch to Codex and start from scratch. Get a new machine and lose everything.
 
 ## The Solution
 
-One command to configure all your agents.
+```
+                      .agents repo (GitHub)
+                             |
+            +----------------+----------------+
+            |                |                |
+      agents.yaml      commands/          hooks/
+     (CLIs, MCPs)     (slash cmds)       (scripts)
+            |                |                |
+            +----------------+----------------+
+                             |
+                       agents pull
+                             |
+         +-------------------+-------------------+
+         |                   |                   |
+    ~/.claude/          ~/.codex/          ~/.gemini/
+  - commands/ (md)    - prompts/ (md)    - commands/ (TOML)
+  - hooks/            - config.json      - hooks/
+  - settings.json                        - settings.json
+```
+
+One repo. One command. All agents configured.
 
 ```bash
 # New machine? One command.
@@ -30,25 +56,26 @@ agents status
 Agent CLIs
 
   Claude Code    2.0.65
+  Codex          1.0.3
+  Gemini CLI     0.1.15
 
 Installed Commands
 
-  Claude Code:
-    User: clean, debug, plan, recap, ship, spawn, test, verify
-    Project: eval
-
-Installed Skills
-
-  Claude Code:
-    User: remotion-best-practices, vercel-react-best-practices
+  Claude Code:   clean, debug, plan, ship, test
+  Codex:         clean, debug, plan, ship, test
+  Gemini CLI:    clean, debug, plan, ship, test
 
 Installed MCP Servers
 
-  Claude Code:
-    User: Swarm@latest, GoDaddy
+  All agents:    Swarm, filesystem, memory
+
+Installed Hooks
+
+  Claude Code:   pre-commit, post-tool
+  Gemini CLI:    pre-commit, post-tool
 ```
 
-Your `.agents` repo becomes the source of truth for all your AI coding tools.
+Write commands once in markdown - auto-converts to TOML for Gemini. Define MCP servers once - installs to all agents. Your `.agents` repo becomes the single source of truth.
 
 ## What Gets Synced
 
@@ -265,6 +292,64 @@ agents registry config mcp myregistry --api-key KEY
 | OpenCode | Yes | Yes | - | - |
 
 Format conversion is automatic. Write commands in markdown, they're converted to TOML for Gemini.
+
+## Roadmap: Context Drives
+
+Sync your docs, research, and chat history across machines and teams.
+
+```
+~/.agents/
+  drives/                    # Context drives (synced)
+    work/
+      .context               # Per-drive settings
+      docs/
+      research/
+      specs/
+    personal/
+      .context
+      notes/
+
+  sessions/                  # Agent chat history (synced)
+    claude/
+    codex/
+    gemini/
+```
+
+**Why not just Google Drive?**
+
+| Feature | Google Drive | Context Drives |
+|---------|--------------|----------------|
+| Sync files | Yes | Yes |
+| Real-time collab | Yes (Docs only) | Yes (CRDT for all files) |
+| Agent session sync | No | Yes |
+| Checkpointing | No | Yes (snapshot & rollback) |
+| Per-directory conflict strategy | No | Yes (`.context` file) |
+| Designed for AI agents | No | Yes |
+
+**Conflict resolution strategies** (configurable per directory):
+
+```yaml
+# .context file
+strategy: crdt              # Auto-merge (like Google Docs)
+# strategy: git             # Branch/PR/merge (for code)
+# strategy: lock            # Exclusive access
+# strategy: last-write-wins # Don't care about conflicts
+
+sync: realtime              # or: on-demand, ignore
+```
+
+**Planned commands:**
+
+```bash
+agents drive create <name>
+agents drive list
+agents drive use <name>
+agents drive sync
+agents drive checkpoint "before refactor"
+agents drive rollback <checkpoint>
+```
+
+**Multi-agent coordination:** When multiple agents (or developers) work on the same drive, the drive acts as a coordination layer - checkout files, see who's working on what, avoid conflicts.
 
 ## Related
 
