@@ -2,21 +2,18 @@
 
 [![Extension](https://img.shields.io/visual-studio-marketplace/v/swarmify.swarm-ext?label=Extension&color=blue)](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext)
 [![MCP Server](https://img.shields.io/npm/v/@swarmify/agents-mcp?label=MCP%20Server&color=green)](https://www.npmjs.com/package/@swarmify/agents-mcp)
-[![CLI](https://img.shields.io/npm/v/@swarmify/agents-cli?label=CLI&color=orange)](https://www.npmjs.com/package/@swarmify/agents-cli)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue)](https://www.typescriptlang.org/)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](./LICENSE)
 
 You don't need a coding agent. You need a team.
 
-[Homepage](https://swarmify.co) | [Agents Extension](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext) | [Agents MCP](https://www.npmjs.com/package/@swarmify/agents-mcp) | [Agents CLI](https://www.npmjs.com/package/@swarmify/agents-cli)
+[Homepage](https://swarmify.co) | [Agents Extension](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext) | [Agents MCP](https://www.npmjs.com/package/@swarmify/agents-mcp)
 
 Run Claude, Codex, Gemini, and Cursor as a team. Orchestrate through `/swarm` with approvals before execution.
 
 [![Watch the demo](https://img.youtube.com/vi/rbeoKhDxK8E/maxresdefault.jpg)](https://www.youtube.com/watch?v=rbeoKhDxK8E)
 
 ## Get Swarmify
-
-**Option 1: Quick start (have agent CLIs already)**
 
 Install the [Agents Extension](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext) from VS Code/Cursor marketplace, then add [Agents MCP](https://www.npmjs.com/package/@swarmify/agents-mcp):
 
@@ -30,27 +27,6 @@ codex mcp add swarm -- npx -y @swarmify/agents-mcp@latest
 # Gemini CLI
 gemini mcp add Swarm -- npx -y @swarmify/agents-mcp
 ```
-
-**Option 2: Full setup (fresh machine)**
-
-Use [Agents CLI](https://www.npmjs.com/package/@swarmify/agents-cli) to install everything:
-
-```bash
-npm install -g @swarmify/agents-cli
-
-# Install agent CLIs
-agents cli add claude
-agents cli add codex
-agents cli add gemini
-
-# Pull prompts, MCP servers, skills
-agents pull
-
-# Check what's installed
-agents status
-```
-
-Then install the [Agents Extension](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext).
 
 **Run your first swarm:**
 
@@ -120,40 +96,6 @@ MCP server that turns any agent into a tech lead. Spawn sub-agents from Claude, 
 | `edit` | Read + Write | Implementation, refactoring |
 | `ralph` | Full + auto-loop | Autonomous via RALPH.md |
 
-## Agents CLI
-
-Install, configure, and sync all your agent CLIs from one place. Like dotfiles for AI coding tools.
-
-[Get it on npm](https://www.npmjs.com/package/@swarmify/agents-cli)
-
-```bash
-npm install -g @swarmify/agents-cli
-
-# Install agent CLIs
-agents cli add claude
-agents cli add codex
-agents cli add gemini
-
-# Upgrade (all or specific)
-agents cli upgrade           # Upgrade all
-agents cli upgrade claude    # Upgrade just Claude
-
-# Sync prompts, MCP servers, hooks, skills
-agents pull
-
-# Check what's installed
-agents status
-```
-
-**What gets synced:**
-
-| Resource | Description |
-| --- | --- |
-| Slash commands | `/debug`, `/plan`, custom prompts |
-| MCP servers | Tools your agents can use |
-| Hooks | Pre/post execution scripts |
-| Skills | Reusable agent capabilities |
-
 ## Developer Experience
 
 **Slash commands** calibrated for each agent. Commands prefixed with `s` spawn multiple agents:
@@ -200,6 +142,10 @@ Each agent uses your own API keys. Spawning 3 Claude sub-agents means 3x your no
 - VS Code or Cursor
 - At least one agent CLI (`claude`, `codex`, `gemini`, or `cursor-agent`)
 - API keys configured for your agents
+
+## Agents CLI
+
+The Agents CLI has moved to its own repository: [@swarmify/agents-cli](https://www.npmjs.com/package/@swarmify/agents-cli)
 
 ## License
 
