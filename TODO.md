@@ -1,5 +1,31 @@
 ## Todo
 
+## Fix GitHub OAuth connection stuck in Cursor
+
+### GitHub OAuth flow gets stuck at "Waiting for GitHub authorization..." in Cursor IDE
+
+The OAuth callback (`cursor://swarm-ext/oauth/callback`) doesn't reach the extension's URI handler after GitHub redirects back. Debug logging was added but needs investigation.
+
+**Root cause hypothesis:** redirect_uri mismatch between authorization request and token exchange (fixed in oauth-worker), but the URI handler itself may not be receiving the callback in Cursor.
+
+**Files involved:**
+- `extension/src/vscode/extension.ts` (lines 624-680) - URI handler registration
+- `extension/src/vscode/settings.vscode.ts` (lines 533-564) - OAuth initiation
+- `oauth-worker/src/index.ts` - Token exchange endpoint
+- `extension/ui/settings/components/common/OAuthDialog.tsx` - Modal UI
+
+**Debug steps:**
+1. Check Extension Host output for `[OAUTH] Registering URI handler for scheme: xxx`
+2. Verify `[OAUTH] URI handler called with: xxx` appears after GitHub redirect
+3. Confirm Cursor's actual URI scheme matches what's registered
+
+**Potential issues:**
+- Cursor may use different URI scheme than `cursor`
+- URI handler may not be registered correctly for Cursor
+- GitHub OAuth app callback URL may not match Cursor's scheme
+
+---
+
 ## Clear explanation of why using CLI Coding Agents in the IDE is faster and better
 
 ### Clear explanation of why using CLI Coding Agents in the IDE is faster and better (even IDEs like VS Code support SSH so not an issue overall)

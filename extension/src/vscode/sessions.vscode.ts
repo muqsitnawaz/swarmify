@@ -227,9 +227,10 @@ async function buildSession(
 }
 
 // Convert workspace path to Claude's project folder name format
-// e.g., /Users/muqsit/src/project -> -Users-muqsit-src-project
+// Claude replaces both slashes AND periods with dashes
+// e.g., /Users/muqsit/src/github.com/project -> -Users-muqsit-src-github-com-project
 function workspaceToClaudeFolder(workspacePath: string): string {
-  return workspacePath.replace(/\//g, '-');
+  return workspacePath.replace(/[\/\.]/g, '-');
 }
 
 async function discoverClaudeProjectSessions(projectPath: string): Promise<AgentSession[]> {
