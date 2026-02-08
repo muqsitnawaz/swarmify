@@ -250,6 +250,7 @@ export interface TerminalDisplayInfo {
   expandedName: string | null;
   statusBarText: string | null;
   iconFilename: string | null;
+  sessionChunk: string | null;
 }
 
 /**
@@ -286,14 +287,14 @@ export function getTerminalDisplayInfo(options: TerminalIdentificationOptions): 
   // Strategy 1: Parse name (handles "CC", "Claude", "CC - label", etc.)
   const parsed = parseTerminalName(name);
   if (parsed.isAgent && parsed.prefix) {
-    return buildDisplayInfo(parsed.prefix, parsed.label);
+    return buildDisplayInfo(parsed.prefix, parsed.label, parsed.sessionChunk);
   }
 
   // Strategy 2: Extract prefix from AGENT_TERMINAL_ID env var
   if (terminalId) {
     const prefix = getPrefixFromTerminalId(terminalId);
     if (prefix && KNOWN_PREFIXES.includes(prefix)) {
-      return buildDisplayInfo(prefix, name.trim() || null);
+      return buildDisplayInfo(prefix, name.trim() || null, null);
     }
   }
 
@@ -301,7 +302,7 @@ export function getTerminalDisplayInfo(options: TerminalIdentificationOptions): 
   if (iconFilename) {
     const prefix = getPrefixFromIconFilename(iconFilename);
     if (prefix) {
-      return buildDisplayInfo(prefix, name.trim() || null);
+      return buildDisplayInfo(prefix, name.trim() || null, null);
     }
   }
 
@@ -312,11 +313,12 @@ export function getTerminalDisplayInfo(options: TerminalIdentificationOptions): 
     label: null,
     expandedName: null,
     statusBarText: null,
-    iconFilename: null
+    iconFilename: null,
+    sessionChunk: null
   };
 }
 
-function buildDisplayInfo(prefix: string, label: string | null): TerminalDisplayInfo {
+function buildDisplayInfo(prefix: string, label: string | null, sessionChunk: string | null): TerminalDisplayInfo {
   const expandedName = getExpandedAgentName(prefix);
   const statusBarText = label
     ? `${expandedName} - ${label}`
@@ -328,7 +330,8 @@ function buildDisplayInfo(prefix: string, label: string | null): TerminalDisplay
     label,
     expandedName,
     statusBarText,
-    iconFilename: getIconFilename(prefix)
+    iconFilename: getIconFilename(prefix),
+    sessionChunk
   };
 }
 

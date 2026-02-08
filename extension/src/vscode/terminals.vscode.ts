@@ -390,6 +390,12 @@ export async function scanExisting(
   console.log('[TERMINALS] Scanning all terminals...');
   let registeredCount = 0;
 
+  // Load persisted sessions for session recovery
+  const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  const persistedSessions = workspacePath ? sessionsPersist.getWorkspaceSessions(workspacePath) : [];
+  const usedPersistedIds = new Set<string>();
+  console.log(`[TERMINALS] Loaded ${persistedSessions.length} persisted sessions`);
+
   for (const terminal of vscode.window.terminals) {
     console.log(`[TERMINALS] Checking terminal: "${terminal.name}"`);
 
@@ -428,14 +434,52 @@ export async function scanExisting(
     registeredCount++;
     console.log(`[TERMINALS] Registered: id=${id}, prefix=${info.prefix}, pid=${pid}, label=${info.label}`);
 
-    // Restore session tracking if available from env vars
-    if (identOpts.sessionId) {
-      setSessionId(terminal, identOpts.sessionId);
-      const agentType = prefixToAgentType(info.prefix);
+    // Restore session tracking - prefer env var sessionId, fallback to sessionChunk from name
+    const agentType = prefixToAgentType(info.prefix);
+    let sessionId = identOpts.sessionId;
+
+    // Strategy 1: Try to recover from sessionChunk in terminal name
+    if (!sessionId && info.sessionChunk && agentType) {
+      const sessionPath = await getSessionPathBySessionId(
+        info.sessionChunk,
+        agentType as 'claude' | 'codex' | 'gemini',
+        workspacePath
+      );
+      if (sessionPath) {
+        // Extract full sessionId from file path (filename without extension)
+        const filename = path.basename(sessionPath);
+        const ext = path.extname(filename);
+        sessionId = filename.slice(0, -ext.length);
+        console.log(`[TERMINALS] Recovered sessionId from chunk: ${info.sessionChunk} -> ${sessionId}`);
+      }
+    }
+
+    // Strategy 2: Try to match with persisted session by prefix
+    // Use the most recently created persisted session for this prefix that hasn't been used yet
+    if (!sessionId && info.prefix) {
+      const matchingSessions = persistedSessions
+        .filter(p => p.prefix === info.prefix && p.sessionId && !usedPersistedIds.has(p.terminalId))
+        .sort((a, b) => b.createdAt - a.createdAt); // Most recent first
+
+      if (matchingSessions.length > 0) {
+        const matched = matchingSessions[0];
+        sessionId = matched.sessionId;
+        usedPersistedIds.add(matched.terminalId);
+        console.log(`[TERMINALS] Recovered sessionId from persisted session: ${matched.terminalId} -> ${sessionId}`);
+
+        // Also recover the agentType if available
+        if (matched.agentType && !agentType) {
+          setAgentType(terminal, matched.agentType as SessionAgentType);
+        }
+      }
+    }
+
+    if (sessionId) {
+      setSessionId(terminal, sessionId);
       if (agentType) {
         setAgentType(terminal, agentType);
       }
-      console.log(`[TERMINALS] Restored session: sessionId=${identOpts.sessionId}, agentType=${agentType}`);
+      console.log(`[TERMINALS] Restored session: sessionId=${sessionId}, agentType=${agentType}`);
       if (onSessionRestored) {
         onSessionRestored(terminal);
       }
@@ -505,6 +549,7 @@ export interface TerminalDetail {
   createdAt: number;
   index: number; // 1-based index within agent type
   sessionId: string | null; // CLI session ID
+  firstUserMessage?: string; // First user message (initial task/prompt)
   lastUserMessage?: string; // Last user message from session
   messageCount?: number; // Total message count in session
   firstMessageTimestamp?: string; // ISO-8601 timestamp of first user message
@@ -658,6 +703,7 @@ export async function getTerminalsByAgentType(
   // Populate results with fetched data
   for (const data of dataResults) {
     if (data.preview) {
+      results[data.index].firstUserMessage = data.preview.firstUserMessage;
       results[data.index].lastUserMessage = data.preview.lastUserMessage;
       results[data.index].messageCount = data.preview.messageCount;
       results[data.index].firstMessageTimestamp = data.preview.firstUserMessageTimestamp;
@@ -674,20 +720,11 @@ export async function getTerminalsByAgentType(
     }
   }
 
-  if (results.length > 0) {
-    const parent = results[0];
-    parent.isParent = true;
-    parent.children = results.slice(1).map(r => r.id);
-    if (!parent.approvalStatus || parent.approvalStatus === 'pending') {
-      parent.approvalStatus = parent.currentActivity ? 'running' : parent.approvalStatus || 'pending';
-    }
-
-    for (let i = 1; i < results.length; i++) {
-      results[i].parentId = parent.id;
-      results[i].parentLabel = parent.label || parent.autoLabel || parent.agentType;
-      if (!results[i].approvalStatus) {
-        results[i].approvalStatus = results[i].currentActivity ? 'running' : 'pending';
-      }
+  // All terminals are at the same level - no automatic hierarchy
+  // Set status based on activity
+  for (const result of results) {
+    if (!result.approvalStatus) {
+      result.approvalStatus = result.currentActivity ? 'running' : 'pending';
     }
   }
 
