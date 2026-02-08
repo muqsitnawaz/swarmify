@@ -622,9 +622,11 @@ export async function activate(context: vscode.ExtensionContext) {
   });
 
   // Register URI handler for notification callbacks and OAuth
+  console.log(`[OAUTH] Registering URI handler for scheme: ${vscode.env.uriScheme}`);
   context.subscriptions.push(
     vscode.window.registerUriHandler({
       async handleUri(uri: vscode.Uri) {
+        console.log(`[OAUTH] URI handler called with: ${uri.toString()}`);
         const params = new URLSearchParams(uri.query);
 
         if (uri.path === '/focus') {
@@ -1580,19 +1582,49 @@ async function openSingleAgentWithQueue(
     preserveFocus: false
   };
 
-  const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
   const terminalId = terminals.nextId(agentConfig.prefix);
-  const title = buildTerminalTitle(agentConfig.title, undefined, context, null);
+
+  // Determine agent key and handle session ID
+  const builtInDef = getBuiltInByPrefix(agentConfig.prefix);
+  const agentKey = builtInDef?.key as 'claude' | 'codex' | 'gemini' | 'opencode' | 'cursor' | undefined;
+
+  let command = agentConfig.command;
+  let sessionId: string | null = null;
+
+  if (agentKey && supportsPrewarming(agentKey)) {
+    if (agentKey === 'claude') {
+      // Claude: Generate session ID at open time
+      sessionId = generateClaudeSessionId();
+      command = buildClaudeOpenCommand(sessionId);
+    } else if (needsPrewarming(agentKey)) {
+      // Codex/Gemini/Cursor: Use prewarmed session from pool
+      const prewarmedSession = prewarm.acquireSession(context, agentKey, cwd);
+      if (prewarmedSession) {
+        sessionId = prewarmedSession.sessionId;
+        command = buildResumeCommand(prewarmedSession);
+      }
+    }
+  }
+
+  const title = buildTerminalTitle(agentConfig.title, undefined, context, sessionId);
   const terminal = vscode.window.createTerminal({
     iconPath: agentConfig.iconPath,
     location: editorLocation,
     name: title,
-    env: buildAgentTerminalEnv(terminalId, null, workspacePath),
+    env: buildAgentTerminalEnv(terminalId, sessionId, cwd),
     isTransient: true
   });
 
   const pid = await terminal.processId;
   terminals.register(terminal, terminalId, agentConfig, pid, context);
+
+  // Track session ID and agent type
+  if (sessionId && agentKey && supportsPrewarming(agentKey)) {
+    terminals.setSessionId(terminal, sessionId);
+    terminals.setAgentType(terminal, agentKey);
+    await prewarm.recordTerminalSession(context, terminalId, sessionId, agentKey, cwd);
+  }
 
   // Queue messages
   for (const msg of messages) {
@@ -1600,8 +1632,8 @@ async function openSingleAgentWithQueue(
   }
 
   // Send agent command
-  if (agentConfig.command) {
-    terminal.sendText(agentConfig.command);
+  if (command) {
+    terminal.sendText(command);
   }
 
   // After delay, send queued messages (5s to ensure agent process fully loaded)
