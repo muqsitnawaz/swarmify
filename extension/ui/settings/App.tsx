@@ -334,10 +334,14 @@ export default function App() {
     if (selectedAgentType === agentKey) {
       setSelectedAgentType(null)
       setAgentTerminals([])
+      // Unsubscribe from live updates
+      vscode.postMessage({ type: 'unsubscribeAgentTerminals' })
     } else {
       setSelectedAgentType(agentKey)
       setAgentTerminalsLoading(true)
       vscode.postMessage({ type: 'fetchAgentTerminals', agentType: agentKey })
+      // Subscribe to live updates for this agent type
+      vscode.postMessage({ type: 'subscribeAgentTerminals', agentType: agentKey })
     }
   }
 

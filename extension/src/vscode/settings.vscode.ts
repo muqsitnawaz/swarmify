@@ -12,7 +12,7 @@ import * as terminals from './terminals.vscode';
 import * as swarm from './swarm.vscode';
 import { discoverTodoFiles, spawnSwarmForTodo } from './todos.vscode';
 import { fetchAllTasks, detectAvailableSources } from './tasks.vscode';
-import { discoverRecentSessions } from './sessions.vscode';
+import { discoverRecentSessions, getSessionPathBySessionId } from './sessions.vscode';
 import { formatTerminalTitle, parseTerminalName, getSessionChunk } from '../core/utils';
 import { getBuiltInByKey } from '../core/agents';
 import * as prewarm from './prewarm.vscode';
@@ -75,9 +75,71 @@ export async function checkInstalledAgents(): Promise<Record<string, boolean>> {
 // Module state
 let settingsPanel: vscode.WebviewPanel | undefined;
 
+// Session file watchers for live updates
+const sessionWatchers = new Map<string, fs.FSWatcher>();
+let sessionUpdateTimeout: NodeJS.Timeout | undefined;
+let currentlySubscribedAgentType: string | null = null;
+
 // Notify settings panel when OAuth completes (called from extension.ts URI handler)
 export function notifyOAuthComplete(provider: string, token: string): void {
   settingsPanel?.webview.postMessage({ type: 'oauthToken', provider, token });
+}
+
+// Clean up all session file watchers
+function cleanupSessionWatchers(): void {
+  for (const watcher of sessionWatchers.values()) {
+    watcher.close();
+  }
+  sessionWatchers.clear();
+  currentlySubscribedAgentType = null;
+  if (sessionUpdateTimeout) {
+    clearTimeout(sessionUpdateTimeout);
+    sessionUpdateTimeout = undefined;
+  }
+}
+
+// Subscribe to session file changes for live updates
+async function subscribeToAgentSessions(agentType: string, workspacePath?: string): Promise<void> {
+  // Clean up previous subscriptions
+  cleanupSessionWatchers();
+  currentlySubscribedAgentType = agentType;
+
+  // Get all terminals of this agent type
+  const terminalDetails = await terminals.getTerminalsByAgentType(agentType, workspacePath);
+
+  // For each terminal with a session, watch the session file
+  for (const terminal of terminalDetails) {
+    if (!terminal.sessionId) continue;
+
+    // Map agentType to session agent type
+    const sessionAgentType = agentType as 'claude' | 'codex' | 'gemini';
+    if (!['claude', 'codex', 'gemini'].includes(agentType)) continue;
+
+    try {
+      const sessionPath = await getSessionPathBySessionId(terminal.sessionId, sessionAgentType, workspacePath);
+      if (!sessionPath || sessionWatchers.has(sessionPath)) continue;
+
+      const watcher = fs.watch(sessionPath, { persistent: false }, () => {
+        // Debounce updates - wait 500ms after last change
+        if (sessionUpdateTimeout) clearTimeout(sessionUpdateTimeout);
+        sessionUpdateTimeout = setTimeout(async () => {
+          if (!settingsPanel || currentlySubscribedAgentType !== agentType) return;
+
+          // Re-fetch terminal data and push to webview
+          const updatedTerminals = await terminals.getTerminalsByAgentType(agentType, workspacePath);
+          settingsPanel.webview.postMessage({
+            type: 'agentTerminalsData',
+            agentType,
+            terminals: updatedTerminals
+          });
+        }, 500);
+      });
+
+      sessionWatchers.set(sessionPath, watcher);
+    } catch {
+      // Ignore errors - session file may not exist yet
+    }
+  }
 }
 
 // Data directory: ~/.agents/
@@ -464,6 +526,15 @@ export function openPanel(context: vscode.ExtensionContext): void {
           terminals: terminalDetails
         });
         break;
+      case 'subscribeAgentTerminals':
+        // Start watching session files for live updates
+        const subscribeWorkspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        await subscribeToAgentSessions(message.agentType, subscribeWorkspace);
+        break;
+      case 'unsubscribeAgentTerminals':
+        // Stop watching session files
+        cleanupSessionWatchers();
+        break;
       case 'openGuide':
         openGuide(context, message.guide);
         break;
@@ -734,6 +805,7 @@ export function openPanel(context: vscode.ExtensionContext): void {
     terminalListener.dispose();
     terminalCloseListener.dispose();
     if (terminalUpdateTimeout) clearTimeout(terminalUpdateTimeout);
+    cleanupSessionWatchers();
   }, undefined, context.subscriptions);
 }
 
