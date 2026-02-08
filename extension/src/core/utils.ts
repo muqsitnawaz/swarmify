@@ -10,6 +10,47 @@ export const LABEL_MAX_WORDS = 5;
 
 export const KNOWN_PREFIXES = [CLAUDE_TITLE, CODEX_TITLE, GEMINI_TITLE, OPENCODE_TITLE, CURSOR_TITLE, SHELL_TITLE];
 
+// Agent type for session operations
+export type SessionAgentType = 'claude' | 'codex' | 'gemini' | 'cursor' | 'opencode';
+
+// Bidirectional prefix mappings (case-insensitive)
+// Canonical: CC, CX, GX, OC, CR, SH (used in terminal names, utils.ts)
+// Config: cl, cx, gm, oc, cr, sh (used in agents.ts agentConfig.prefix)
+const PREFIX_MAPPINGS: Array<{ canonical: string; config: string; agentType: SessionAgentType | null }> = [
+  { canonical: CLAUDE_TITLE, config: 'cl', agentType: 'claude' },
+  { canonical: CODEX_TITLE, config: 'cx', agentType: 'codex' },
+  { canonical: GEMINI_TITLE, config: 'gm', agentType: 'gemini' },
+  { canonical: OPENCODE_TITLE, config: 'oc', agentType: 'opencode' },
+  { canonical: CURSOR_TITLE, config: 'cr', agentType: 'cursor' },
+  { canonical: SHELL_TITLE, config: 'sh', agentType: null }
+];
+
+// Convert canonical prefix (CC) to config prefix (cl) - case insensitive
+export function canonicalToConfigPrefix(input: string | null): string | null {
+  if (!input) return null;
+  const lower = input.toLowerCase();
+  const mapping = PREFIX_MAPPINGS.find(m => m.canonical.toLowerCase() === lower);
+  return mapping?.config || null;
+}
+
+// Convert config prefix (cl) to canonical prefix (CC) - case insensitive
+export function configToCanonicalPrefix(input: string | null): string | null {
+  if (!input) return null;
+  const lower = input.toLowerCase();
+  const mapping = PREFIX_MAPPINGS.find(m => m.config.toLowerCase() === lower);
+  return mapping?.canonical || null;
+}
+
+// Map from prefix to SessionAgentType - accepts either format, case insensitive
+export function prefixToAgentType(input: string | null): SessionAgentType | null {
+  if (!input) return null;
+  const lower = input.toLowerCase();
+  const mapping = PREFIX_MAPPINGS.find(
+    m => m.canonical.toLowerCase() === lower || m.config.toLowerCase() === lower
+  );
+  return mapping?.agentType || null;
+}
+
 // Mapping of acceptable terminal base names to canonical prefixes
 const NAME_TO_PREFIX: Record<string, string> = {
   [CLAUDE_TITLE]: CLAUDE_TITLE,
