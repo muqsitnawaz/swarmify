@@ -40,7 +40,8 @@ import {
   formatRelativeTime,
   truncateText,
   extractFirstNWords,
-  TerminalIdentificationOptions
+  TerminalIdentificationOptions,
+  prefixToAgentType
 } from '../core/utils';
 import * as path from 'path';
 import {
@@ -582,7 +583,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
       if (identOpts.sessionId) {
         terminals.setSessionId(terminal, identOpts.sessionId);
-        const agentType = terminals.prefixToAgentType(info.prefix);
+        const agentType = prefixToAgentType(info.prefix);
         if (agentType) {
           terminals.setAgentType(terminal, agentType);
           startAutoLabelPollerForTerminal(terminal, context.extensionPath);
