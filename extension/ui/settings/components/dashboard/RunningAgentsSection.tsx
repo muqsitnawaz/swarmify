@@ -3,7 +3,6 @@ import { BuiltInAgentConfig, IconConfig, RunningCounts } from '../../types'
 import { postMessage } from '../../hooks'
 import { getIcon, getAgentDisplayName } from '../../utils'
 import { SectionHeader } from '../common'
-import { getRoleInfo } from './helpers'
 
 interface RunningAgentsSectionProps {
   builtInAgents: BuiltInAgentConfig[]
@@ -31,7 +30,6 @@ export function RunningAgentsSection({
         {builtInAgents.map(agent => {
           const count = runningCounts[agent.key as keyof typeof runningCounts] as number
           const isSelected = selectedAgentType === agent.key
-          const roleInfo = getRoleInfo(agent.key)
           const inMix = currentMix ? currentMix.toLowerCase().includes(agent.name.toLowerCase()) : false
           return (
             <div
@@ -42,13 +40,10 @@ export function RunningAgentsSection({
                   ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
                   : 'bg-[var(--muted)]'
               } ${inMix ? 'border border-[var(--primary)]/50' : ''} ${count > 0 ? 'cursor-pointer hover:bg-[var(--muted-foreground)]/10' : ''}`}
-              title={`${agent.name} – ${roleInfo.bestFor}`}
+              title={agent.name}
             >
               <img src={getIcon(agent.icon, isLightTheme)} alt={agent.name} className="w-5 h-5" />
-              <div className="flex flex-col leading-tight">
-                <span className="text-sm font-medium">{agent.name}</span>
-                <span className="text-[11px] text-[var(--muted-foreground)]">{roleInfo.bestFor}</span>
-              </div>
+              <span className="text-sm font-medium">{agent.name}</span>
               <button
                 onClick={(event) => {
                   event.stopPropagation()
@@ -64,7 +59,6 @@ export function RunningAgentsSection({
         })}
         {Object.entries(runningCounts.custom).map(([name, count]) => {
           const isSelected = selectedAgentType === name
-          const roleInfo = getRoleInfo(name)
           return (
             <div
               key={name}
@@ -74,13 +68,10 @@ export function RunningAgentsSection({
                   ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
                   : 'bg-[var(--muted)]'
               } ${count > 0 ? 'cursor-pointer hover:bg-[var(--muted-foreground)]/10' : ''}`}
-              title={`${name} – ${roleInfo.bestFor}`}
+              title={name}
             >
               <img src={icons.agents} alt={name} className="w-5 h-5" />
-              <div className="flex flex-col leading-tight">
-                <span className="text-sm font-medium">{name}</span>
-                <span className="text-[11px] text-[var(--muted-foreground)]">{roleInfo.bestFor}</span>
-              </div>
+              <span className="text-sm font-medium">{name}</span>
               <button
                 onClick={(event) => {
                   event.stopPropagation()

@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { buildHierarchy, deriveApprovalStatusFromTask, formatMixFromTask, getTerminalPrompt } from './helpers'
+import { deriveApprovalStatusFromTask, formatMixFromTask, getTerminalPrompt } from './helpers'
 import { TaskSummary } from '../../types'
 
 function makeTask(overrides?: Partial<TaskSummary>): TaskSummary {
@@ -109,10 +109,3 @@ test('formatMixFromTask computes distribution when mix missing', () => {
   expect(formatMixFromTask(task)).toBe('100% Codex')
 })
 
-test('buildHierarchy picks claude as parent when present', () => {
-  const task = makeTask()
-  const nodes = buildHierarchy(task)
-  expect(nodes).toHaveLength(2)
-  expect(nodes[0].isParent).toBe(true)
-  expect(nodes[0].label.toLowerCase()).toContain('claude')
-})
