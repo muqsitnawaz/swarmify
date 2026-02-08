@@ -10,6 +10,8 @@ const AGENTS_DIR = path.join(HOME, '.agents');
 const META_FILE = path.join(AGENTS_DIR, 'meta.yaml');
 const PACKAGES_DIR = path.join(AGENTS_DIR, 'packages');
 const REPOS_DIR = path.join(AGENTS_DIR, 'repos');
+const JOBS_DIR = path.join(AGENTS_DIR, 'jobs');
+const RUNS_DIR = path.join(AGENTS_DIR, 'runs');
 
 const META_HEADER = `# agents-cli metadata
 # Auto-generated - do not edit manually
@@ -29,6 +31,14 @@ export function getReposDir(): string {
   return REPOS_DIR;
 }
 
+export function getJobsDir(): string {
+  return JOBS_DIR;
+}
+
+export function getRunsDir(): string {
+  return RUNS_DIR;
+}
+
 export function ensureAgentsDir(): void {
   if (!fs.existsSync(AGENTS_DIR)) {
     fs.mkdirSync(AGENTS_DIR, { recursive: true });
@@ -38,6 +48,12 @@ export function ensureAgentsDir(): void {
   }
   if (!fs.existsSync(REPOS_DIR)) {
     fs.mkdirSync(REPOS_DIR, { recursive: true });
+  }
+  if (!fs.existsSync(JOBS_DIR)) {
+    fs.mkdirSync(JOBS_DIR, { recursive: true });
+  }
+  if (!fs.existsSync(RUNS_DIR)) {
+    fs.mkdirSync(RUNS_DIR, { recursive: true });
   }
 }
 

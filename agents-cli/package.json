@@ -58,7 +58,8 @@
     "semver": "^7.6.0",
     "simple-git": "^3.27.0",
     "smol-toml": "^1.6.0",
-    "yaml": "^2.6.0"
+    "yaml": "^2.6.0",
+    "croner": "^9.0.0"
   },
   "devDependencies": {
     "@types/diff": "^6.0.0",
