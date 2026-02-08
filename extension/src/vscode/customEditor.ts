@@ -118,15 +118,21 @@ The user selected the above text from a markdown file. Help them with whatever t
 
       // Import dynamically to avoid circular dependencies
       const { getBuiltInByTitle } = await import('./agents.vscode');
-      const { CLAUDE_TITLE } = await import('../core/utils');
+      const { CLAUDE_TITLE, formatTerminalTitle, getSessionChunk } = await import('../core/utils');
       const terminals = await import('./terminals.vscode');
       const { buildAgentTerminalEnv } = await import('../core/terminals');
+      const { generateClaudeSessionId, buildClaudeOpenCommand } = await import('../core/prewarm.simple');
+      const settingsModule = await import('./settings.vscode');
 
       const agentConfig = getBuiltInByTitle(this.context.extensionPath, CLAUDE_TITLE);
       if (!agentConfig) {
         vscode.window.showErrorMessage('Could not find Claude agent configuration');
         return;
       }
+
+      // Generate session ID for Claude
+      const sessionId = generateClaudeSessionId();
+      const command = buildClaudeOpenCommand(sessionId);
 
       // Create new terminal
       const editorLocation: vscode.TerminalEditorLocationOptions = {
@@ -136,24 +142,29 @@ The user selected the above text from a markdown file. Help them with whatever t
 
       const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
       const terminalId = terminals.nextId(agentConfig.prefix);
+      const display = settingsModule.getSettings(this.context).display || {};
+      const sessionChunk = display.showSessionIdInTitles ? getSessionChunk(sessionId) : null;
+      const title = formatTerminalTitle(agentConfig.title, { sessionChunk });
       const terminal = vscode.window.createTerminal({
         iconPath: agentConfig.iconPath,
         location: editorLocation,
-        name: agentConfig.title,
-        env: buildAgentTerminalEnv(terminalId, null, workspacePath),
+        name: title,
+        env: buildAgentTerminalEnv(terminalId, sessionId, workspacePath),
         isTransient: true
       });
 
       const pid = await terminal.processId;
       terminals.register(terminal, terminalId, agentConfig, pid, this.context);
 
+      // Track session ID and agent type
+      terminals.setSessionId(terminal, sessionId);
+      terminals.setAgentType(terminal, 'claude');
+
       // Queue the context message
       terminals.queueMessage(terminal, contextMessage);
 
-      // Send agent command
-      if (agentConfig.command) {
-        terminal.sendText(agentConfig.command);
-      }
+      // Send Claude command with session ID
+      terminal.sendText(command);
 
       // After delay, send queued messages (5s to ensure agent process fully loaded)
       setTimeout(() => {
@@ -481,15 +492,21 @@ async function sendSwarmCommand(content: string, context: vscode.ExtensionContex
 
   // Import dynamically to avoid circular dependencies
   const { getBuiltInByTitle } = await import('./agents.vscode');
-  const { CLAUDE_TITLE } = await import('../core/utils');
+  const { CLAUDE_TITLE, formatTerminalTitle, getSessionChunk } = await import('../core/utils');
   const terminals = await import('./terminals.vscode');
   const { buildAgentTerminalEnv } = await import('../core/terminals');
+  const { generateClaudeSessionId, buildClaudeOpenCommand } = await import('../core/prewarm.simple');
+  const settingsModule = await import('./settings.vscode');
 
   const agentConfig = getBuiltInByTitle(context.extensionPath, CLAUDE_TITLE);
   if (!agentConfig) {
     vscode.window.showErrorMessage('Could not find Claude agent configuration');
     return;
   }
+
+  // Generate session ID for Claude
+  const sessionId = generateClaudeSessionId();
+  const command = buildClaudeOpenCommand(sessionId);
 
   // Create new terminal
   const editorLocation: vscode.TerminalEditorLocationOptions = {
@@ -499,24 +516,29 @@ async function sendSwarmCommand(content: string, context: vscode.ExtensionContex
 
   const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   const terminalId = terminals.nextId(agentConfig.prefix);
+  const display = settingsModule.getSettings(context).display || {};
+  const sessionChunk = display.showSessionIdInTitles ? getSessionChunk(sessionId) : null;
+  const title = formatTerminalTitle(agentConfig.title, { sessionChunk });
   const terminal = vscode.window.createTerminal({
     iconPath: agentConfig.iconPath,
     location: editorLocation,
-    name: agentConfig.title,
-    env: buildAgentTerminalEnv(terminalId, null, workspacePath),
+    name: title,
+    env: buildAgentTerminalEnv(terminalId, sessionId, workspacePath),
     isTransient: true
   });
 
   const pid = await terminal.processId;
   terminals.register(terminal, terminalId, agentConfig, pid, context);
 
+  // Track session ID and agent type
+  terminals.setSessionId(terminal, sessionId);
+  terminals.setAgentType(terminal, 'claude');
+
   // Queue the swarm message
   terminals.queueMessage(terminal, message);
 
-  // Send agent command
-  if (agentConfig.command) {
-    terminal.sendText(agentConfig.command);
-  }
+  // Send Claude command with session ID
+  terminal.sendText(command);
 
   // After delay, send queued messages (5s to ensure agent process fully loaded)
   setTimeout(() => {

@@ -614,12 +614,15 @@ export async function getTerminalsByAgentType(
   }> = [];
   let index = 0;
 
+  console.log(`[getTerminalsByAgentType] Looking for agentType="${agentType}", expectedPrefix="${expectedPrefix}", total terminals=${vscode.window.terminals.length}`);
+
   for (const terminal of vscode.window.terminals) {
     // Skip terminals whose process has exited (tab may still be open)
     if (terminal.exitStatus !== undefined) continue;
 
     const identOpts = extractTerminalIdentificationOptions(terminal);
     const info = getTerminalDisplayInfo(identOpts);
+    console.log(`[getTerminalsByAgentType] Terminal "${terminal.name}": info.prefix="${info.prefix}", info.isAgent=${info.isAgent}`);
     if (!info.isAgent || !info.prefix) continue;
 
     // Match by prefix for built-in agents, or by exact name for custom agents
@@ -634,6 +637,8 @@ export async function getTerminalsByAgentType(
     // Try to get additional info from our internal map
     const entry = getByTerminal(terminal);
     const resultIndex = results.length;
+
+    console.log(`[getTerminalsByAgentType] Terminal "${terminal.name}": entry=${entry ? 'found' : 'not found'}, sessionId=${entry?.sessionId || 'null'}, agentType=${entry?.agentType || 'null'}`);
 
     results.push({
       id: entry?.id || `unregistered-${index}`,
