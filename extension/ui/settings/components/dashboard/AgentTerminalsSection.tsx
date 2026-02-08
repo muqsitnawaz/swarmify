@@ -2,7 +2,7 @@ import React from 'react'
 import { IconConfig, TaskSummary, TerminalDetail } from '../../types'
 import { getAgentDisplayName, getIcon, formatActualTime } from '../../utils'
 import { SectionHeader } from '../common'
-import { getFilesChangedCount, getRoleInfo, getTerminalPrompt, truncateMiddle, truncateText } from './helpers'
+import { getFilesChangedCount, getTerminalPrompt, truncateMiddle, truncateText } from './helpers'
 
 interface AgentTerminalsSectionProps {
   selectedAgentType: string | null
@@ -60,7 +60,6 @@ export function AgentTerminalsSection({
             const isExpanded = expandedTerminalIds.has(terminal.id)
             const sessionId = terminal.sessionId || ''
             const filesChanged = getFilesChangedCount(sessionTasks[sessionId])
-            const roleInfo = getRoleInfo(terminal.agentType)
             const status = terminal.status || (hasMessages ? 'running' : 'idle')
 
             return (
@@ -68,7 +67,6 @@ export function AgentTerminalsSection({
                 key={terminal.id}
                 onClick={() => onToggleExpanded(terminal.id)}
                 className="px-4 py-3 rounded-xl bg-[var(--muted)] transition-colors cursor-pointer hover:bg-[var(--muted-foreground)]/10"
-                title={roleInfo.bestFor}
               >
                 <div className="flex items-center gap-3">
                   <img

@@ -3,18 +3,15 @@ import { Button } from '../ui/button'
 import { SectionHeader } from '../common'
 import { ApprovalStatus, IconConfig, TaskSummary } from '../../types'
 import { formatAgentCount, formatSessionTimestamp, formatTimeAgoSafe, getAgentDisplayName, getIcon, getTaskSummaryStatus } from '../../utils'
-import { APPROVAL_BADGE_STYLES, approvalLabel, buildHierarchy, deriveApprovalStatusFromTask, formatMixFromTask, getRoleInfo } from './helpers'
+import { APPROVAL_BADGE_STYLES, approvalLabel, deriveApprovalStatusFromTask, getAgentPromptSnippet } from './helpers'
 
 interface RecentSwarmsSectionProps {
   tasks: TaskSummary[]
   tasksLoading: boolean
   tasksDisplayCount: number
   approvalStates: Record<string, ApprovalStatus>
-  mixEdits: Record<string, string>
-  expandedSwarms: Set<string>
   icons: IconConfig
   isLightTheme: boolean
-  onToggleSwarmHierarchy: (taskName: string) => void
   onApprove: (taskName: string) => void
   onRefreshTasks: () => void
   onLoadMoreTasks: () => void
@@ -25,11 +22,8 @@ export function RecentSwarmsSection({
   tasksLoading,
   tasksDisplayCount,
   approvalStates,
-  mixEdits,
-  expandedSwarms,
   icons,
   isLightTheme,
-  onToggleSwarmHierarchy,
   onApprove,
   onRefreshTasks,
   onLoadMoreTasks,
@@ -57,9 +51,6 @@ export function RecentSwarmsSection({
                 const latestAgent = task.agents[0]
                 const latestTime = latestAgent?.started_at || task.latest_activity
                 const approvalStatus = approvalStates[task.task_name] || deriveApprovalStatusFromTask(task)
-                const mixValue = mixEdits[task.task_name] || formatMixFromTask(task)
-                const hierarchy = buildHierarchy(task)
-                const isHierarchyOpen = expandedSwarms.has(task.task_name)
 
                 return (
                   <div key={task.task_name} className="rounded-xl bg-[var(--muted)] p-4">
@@ -71,9 +62,6 @@ export function RecentSwarmsSection({
                           <span className={`px-2 py-0.5 rounded-full ${APPROVAL_BADGE_STYLES[approvalStatus]}`}>
                             {approvalLabel(approvalStatus)}
                           </span>
-                          <span className="px-2 py-0.5 rounded-full bg-[var(--background)] border border-[var(--border)]">
-                            Mix of Agents: {mixValue}
-                          </span>
                         </div>
                       </div>
                       <div className="text-xs text-[var(--muted-foreground)] text-right shrink-0">
@@ -81,61 +69,41 @@ export function RecentSwarmsSection({
                         <div>{formatTimeAgoSafe(latestTime)}</div>
                       </div>
                     </div>
-                    <div className="mt-2 flex items-center gap-2">
-                      <Button size="sm" variant="ghost" onClick={() => onToggleSwarmHierarchy(task.task_name)}>
-                        {isHierarchyOpen ? 'Hide hierarchy' : 'Show hierarchy'}
-                      </Button>
-                      {approvalStatus === 'pending' && (
+                    {approvalStatus === 'pending' && (
+                      <div className="mt-2">
                         <Button size="sm" variant="secondary" onClick={() => onApprove(task.task_name)}>
                           Approve plan
                         </Button>
-                      )}
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-2">
+                      </div>
+                    )}
+                    <div className="mt-3 space-y-2">
                       {task.agents.map(agent => {
                         const agentKey = (agent.agent_type || '').toLowerCase()
                         const iconKey = (agentKey in icons ? agentKey : 'agents') as keyof typeof icons
                         const displayName = getAgentDisplayName(agentKey || 'agents')
-                        const roleInfo = getRoleInfo(agentKey)
+                        const idChunk = agent.agent_id ? agent.agent_id.slice(0, 8) : ''
+                        const snippet = getAgentPromptSnippet(agent)
                         return (
-                          <span
+                          <div
                             key={`${task.task_name}-${agent.agent_id}`}
-                            className="inline-flex items-center gap-2 rounded-full bg-[var(--background)] px-2.5 py-1"
-                            title={`${roleInfo.role} · ${roleInfo.bestFor}`}
+                            className="flex items-start gap-3 px-3 py-2 rounded-lg bg-[var(--background)] border border-[var(--border)]"
                           >
                             <img
                               src={getIcon(icons[iconKey], isLightTheme)}
                               alt={agent.agent_type}
-                              className="w-4 h-4"
+                              className="w-4 h-4 mt-0.5 shrink-0"
                             />
-                            <span className="flex flex-col leading-tight">
-                              <span className="text-xs font-medium">{displayName}</span>
-                              <span className="text-[10px] text-[var(--muted-foreground)]">{roleInfo.bestFor}</span>
-                            </span>
-                          </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-xs font-medium">
+                                {displayName}
+                                {idChunk && <span className="text-[var(--muted-foreground)] ml-1.5 font-mono">{idChunk}</span>}
+                              </div>
+                              <div className="text-[11px] text-[var(--muted-foreground)] mt-0.5 line-clamp-2">{snippet}</div>
+                            </div>
+                          </div>
                         )
                       })}
                     </div>
-                    {isHierarchyOpen && hierarchy.length > 0 && (
-                      <div className="mt-3 space-y-2">
-                        {hierarchy.map(node => (
-                          <div
-                            key={`${task.task_name}-${node.label}`}
-                            className="flex items-start gap-3 px-3 py-2 rounded-lg bg-[var(--background)] border border-[var(--border)]"
-                            title={node.reasoning}
-                          >
-                            <span className="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-[var(--muted-foreground)]/10">
-                              {node.role}
-                            </span>
-                            <div className="min-w-0">
-                              <div className="text-sm font-medium">{node.label}</div>
-                              <div className="text-[11px] text-[var(--muted-foreground)]">{node.hint}</div>
-                            </div>
-                            <div className="text-xs text-[var(--foreground)] flex-1">{node.reasoning}</div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 )
               })}
