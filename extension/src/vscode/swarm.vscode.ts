@@ -597,8 +597,7 @@ async function setupSwarmIntegrationForAgents(
   // Ensure agents-cli is installed (auto-install if needed)
   const agentsCliReady = await ensureAgentsCli();
   if (!agentsCliReady) {
-    // Fallback to legacy setup if agents-cli install failed
-    await setupSwarmIntegrationLegacy(agents, context, onUpdate);
+    vscode.window.showErrorMessage('Failed to install agents CLI. Run: npm install -g @swarmify/agents-cli');
     return;
   }
 
@@ -635,72 +634,6 @@ async function setupSwarmIntegrationForAgents(
   await sendStatus();
 }
 
-// Legacy setup (fallback when agents-cli is not available)
-async function setupSwarmIntegrationLegacy(
-  agents: AgentCli[],
-  context: vscode.ExtensionContext,
-  onUpdate?: (status: SwarmStatus) => void
-): Promise<void> {
-  const sendStatus = async () => {
-    if (onUpdate) {
-      onUpdate(await getSwarmStatus());
-    }
-  };
-
-  // Install /swarm slash commands for requested agents
-  const installedCommands: string[] = [];
-  for (const agent of agents) {
-    if (installSwarmCommandForAgent(agent, context)) {
-      installedCommands.push(agent.charAt(0).toUpperCase() + agent.slice(1));
-    }
-  }
-
-  // Install prompt packs for requested agents (opencode doesn't support prompt packs yet)
-  for (const agent of agents) {
-    if (agent !== 'opencode') {
-      await installPromptPacksForAgent(agent, context);
-    }
-  }
-
-  // Install CLIs if missing
-  const installableAgents: AgentCli[] = [];
-  for (const agent of agents) {
-    const installed = await installCliIfMissing(agent);
-    if (installed) {
-      installableAgents.push(agent);
-    }
-    await sendStatus();
-  }
-
-  if (installableAgents.length === 0) {
-    vscode.window.showErrorMessage('Could not install any CLI. Check npm permissions.');
-    return;
-  }
-
-  // Register MCP using npx (no local install needed - npx fetches on demand)
-  try {
-    const registrations: string[] = [];
-
-    for (const agent of installableAgents) {
-      const ok = await registerMcpForAgent(agent);
-      if (ok) {
-        registrations.push(agent.charAt(0).toUpperCase() + agent.slice(1));
-      }
-      await sendStatus();
-    }
-
-    if (registrations.length === 0) {
-      vscode.window.showWarningMessage('Could not register Swarm MCP with selected CLIs. Make sure Claude/Codex/Gemini CLIs are installed.');
-    } else {
-      vscode.window.showInformationMessage(`Swarm MCP registered for: ${registrations.join(', ')}. Reload your IDE agents.`);
-    }
-    await sendStatus();
-  } catch (err) {
-    const error = err as Error & { stderr?: string };
-    vscode.window.showErrorMessage(`Failed to enable swarm: ${error.stderr || error.message}`);
-    await sendStatus();
-  }
-}
 
 // Types for task listing
 export interface AgentMeta {

@@ -41,7 +41,8 @@ import {
   truncateText,
   extractFirstNWords,
   TerminalIdentificationOptions,
-  prefixToAgentType
+  prefixToAgentType,
+  SessionAgentType
 } from '../core/utils';
 import * as path from 'path';
 import {
@@ -2183,7 +2184,7 @@ async function restoreAgentTerminals(context: vscode.ExtensionContext): Promise<
     // Restore session tracking metadata if present
     if (session.sessionId && session.agentType) {
       terminals.setSessionId(terminal, session.sessionId);
-      terminals.setAgentType(terminal, session.agentType as terminals.SessionAgentType);
+      terminals.setAgentType(terminal, session.agentType as SessionAgentType);
       startAutoLabelPollerForTerminal(terminal, context.extensionPath);
 
       // Actually resume the session by sending the resume command

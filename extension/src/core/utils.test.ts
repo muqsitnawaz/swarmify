@@ -21,6 +21,9 @@ import {
   sortPrompts,
   isBuiltInPromptId,
   truncateText,
+  canonicalToConfigPrefix,
+  configToCanonicalPrefix,
+  prefixToAgentType,
   CLAUDE_TITLE,
   CODEX_TITLE,
   GEMINI_TITLE,
@@ -746,6 +749,99 @@ describe('prompt utilities', () => {
       expect(truncateText('', 10)).toBe('');
       expect(truncateText('abc', 3)).toBe('abc');
       expect(truncateText('abcd', 3)).toBe('...');
+    });
+  });
+});
+
+describe('prefix conversion utilities', () => {
+  describe('canonicalToConfigPrefix', () => {
+    test('converts canonical prefixes to config prefixes', () => {
+      expect(canonicalToConfigPrefix('CC')).toBe('cl');
+      expect(canonicalToConfigPrefix('CX')).toBe('cx');
+      expect(canonicalToConfigPrefix('GX')).toBe('gm');
+      expect(canonicalToConfigPrefix('OC')).toBe('oc');
+      expect(canonicalToConfigPrefix('CR')).toBe('cr');
+      expect(canonicalToConfigPrefix('SH')).toBe('sh');
+    });
+
+    test('is case insensitive', () => {
+      expect(canonicalToConfigPrefix('cc')).toBe('cl');
+      expect(canonicalToConfigPrefix('Cc')).toBe('cl');
+      expect(canonicalToConfigPrefix('gx')).toBe('gm');
+    });
+
+    test('returns null for unknown prefixes', () => {
+      expect(canonicalToConfigPrefix('XX')).toBe(null);
+      expect(canonicalToConfigPrefix('unknown')).toBe(null);
+    });
+
+    test('handles null input', () => {
+      expect(canonicalToConfigPrefix(null)).toBe(null);
+    });
+  });
+
+  describe('configToCanonicalPrefix', () => {
+    test('converts config prefixes to canonical prefixes', () => {
+      expect(configToCanonicalPrefix('cl')).toBe('CC');
+      expect(configToCanonicalPrefix('cx')).toBe('CX');
+      expect(configToCanonicalPrefix('gm')).toBe('GX');
+      expect(configToCanonicalPrefix('oc')).toBe('OC');
+      expect(configToCanonicalPrefix('cr')).toBe('CR');
+      expect(configToCanonicalPrefix('sh')).toBe('SH');
+    });
+
+    test('is case insensitive', () => {
+      expect(configToCanonicalPrefix('CL')).toBe('CC');
+      expect(configToCanonicalPrefix('Cl')).toBe('CC');
+      expect(configToCanonicalPrefix('GM')).toBe('GX');
+    });
+
+    test('returns null for unknown prefixes', () => {
+      expect(configToCanonicalPrefix('xx')).toBe(null);
+      expect(configToCanonicalPrefix('unknown')).toBe(null);
+    });
+
+    test('handles null input', () => {
+      expect(configToCanonicalPrefix(null)).toBe(null);
+    });
+  });
+
+  describe('prefixToAgentType', () => {
+    test('converts canonical prefixes to agent types', () => {
+      expect(prefixToAgentType('CC')).toBe('claude');
+      expect(prefixToAgentType('CX')).toBe('codex');
+      expect(prefixToAgentType('GX')).toBe('gemini');
+      expect(prefixToAgentType('OC')).toBe('opencode');
+      expect(prefixToAgentType('CR')).toBe('cursor');
+    });
+
+    test('converts config prefixes to agent types', () => {
+      expect(prefixToAgentType('cl')).toBe('claude');
+      expect(prefixToAgentType('cx')).toBe('codex');
+      expect(prefixToAgentType('gm')).toBe('gemini');
+      expect(prefixToAgentType('oc')).toBe('opencode');
+      expect(prefixToAgentType('cr')).toBe('cursor');
+    });
+
+    test('is case insensitive', () => {
+      expect(prefixToAgentType('cc')).toBe('claude');
+      expect(prefixToAgentType('CC')).toBe('claude');
+      expect(prefixToAgentType('Cl')).toBe('claude');
+      expect(prefixToAgentType('CL')).toBe('claude');
+    });
+
+    test('returns null for shell prefix (no session support)', () => {
+      expect(prefixToAgentType('SH')).toBe(null);
+      expect(prefixToAgentType('sh')).toBe(null);
+    });
+
+    test('returns null for unknown prefixes', () => {
+      expect(prefixToAgentType('XX')).toBe(null);
+      expect(prefixToAgentType('unknown')).toBe(null);
+    });
+
+    test('handles null input', () => {
+      expect(prefixToAgentType(null)).toBe(null);
     });
   });
 });
