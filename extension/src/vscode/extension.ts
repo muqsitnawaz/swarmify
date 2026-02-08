@@ -658,7 +658,7 @@ export async function activate(context: vscode.ExtensionContext) {
               const response = await fetch('https://swarmify-oauth.muqsitnawaz.workers.dev/oauth/exchange', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ code, provider: state, client_id })
+                body: JSON.stringify({ code, provider: state, client_id, uri_scheme: uriScheme })
               });
 
               if (response.ok) {
