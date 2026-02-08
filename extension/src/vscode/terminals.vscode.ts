@@ -677,6 +677,7 @@ export async function getTerminalsByAgentType(
   // Now fetch preview info and activity in parallel for each session
   const dataPromises = sessionPromises.map(async (p, i) => {
     const sessionPath = sessionPaths[i];
+    console.log(`[getTerminalsByAgentType] Session ${i}: path=${sessionPath || 'NOT FOUND'}`);
     if (!sessionPath) return { index: p.index, preview: null, activity: null };
 
     const [preview, tail] = await Promise.all([
