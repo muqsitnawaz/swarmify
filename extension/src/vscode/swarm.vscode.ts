@@ -16,6 +16,8 @@ import {
   getPromptPackCommandPath,
   isPromptPackTargetAvailable,
   isPromptPackInstalled,
+  isAgentsCliAvailable,
+  getAgentsCliVersion,
 } from '../core/swarm.detect';
 
 // Re-export for consumers that need the union type
@@ -38,6 +40,8 @@ export interface AgentInstallStatus {
 }
 
 export interface SwarmStatus {
+  agentsCliAvailable: boolean;
+  agentsCliVersion: string | null;
   mcpEnabled: boolean;
   commandInstalled: boolean;
   agents: {
@@ -165,14 +169,22 @@ const SKILL_DEFS: SkillDefinition[] = [
 
 // Get full swarm integration status (per-agent, not globally shared)
 export async function getSwarmStatus(): Promise<SwarmStatus> {
-  // Run ALL CLI availability checks in parallel
-  const [claudeCliAvailable, codexCliAvailable, geminiCliAvailable, opencodeCliAvailable] =
-    await Promise.all([
-      isAgentCliAvailable('claude'),
-      isAgentCliAvailable('codex'),
-      isAgentCliAvailable('gemini'),
-      isAgentCliAvailable('opencode'),
-    ]);
+  // Run ALL CLI availability checks in parallel (including agents-cli)
+  const [
+    agentsCliAvail,
+    agentsCliVer,
+    claudeCliAvailable,
+    codexCliAvailable,
+    geminiCliAvailable,
+    opencodeCliAvailable,
+  ] = await Promise.all([
+    isAgentsCliAvailable(),
+    getAgentsCliVersion(),
+    isAgentCliAvailable('claude'),
+    isAgentCliAvailable('codex'),
+    isAgentCliAvailable('gemini'),
+    isAgentCliAvailable('opencode'),
+  ]);
 
   // Run MCP checks in parallel (only for available CLIs)
   const [claudeMcp, codexMcp, geminiMcp, opencodeMcp] = await Promise.all([
@@ -199,6 +211,8 @@ export async function getSwarmStatus(): Promise<SwarmStatus> {
     (!opencodeCliAvailable || opencodeCmd);
 
   return {
+    agentsCliAvailable: agentsCliAvail,
+    agentsCliVersion: agentsCliVer,
     mcpEnabled,
     commandInstalled,
     agents: {
@@ -502,6 +516,38 @@ async function registerMcpForAgent(agent: AgentCli): Promise<boolean> {
   return false;
 }
 
+const AGENTS_CLI_PACKAGE = '@swarmify/agents-cli';
+
+// Install agents-cli if not present
+async function ensureAgentsCli(): Promise<boolean> {
+  if (await isAgentsCliAvailable()) {
+    return true;
+  }
+
+  try {
+    vscode.window.showInformationMessage('Installing agents CLI...');
+    await execAsync(`npm install -g ${AGENTS_CLI_PACKAGE}`);
+    return true;
+  } catch (err) {
+    const error = err as Error & { stderr?: string };
+    vscode.window.showErrorMessage(`Failed to install agents CLI: ${error.stderr || error.message}`);
+    return false;
+  }
+}
+
+// Setup agent using agents-cli pull command
+async function setupWithAgentsCli(agent: AgentCli): Promise<boolean> {
+  try {
+    // Run agents pull with --yes to auto-confirm
+    await execAsync(`agents pull ${agent} --yes`, { timeout: 120000 });
+    return true;
+  } catch (err) {
+    const error = err as Error & { stderr?: string };
+    vscode.window.showErrorMessage(`agents pull failed for ${agent}: ${error.stderr || error.message}`);
+    return false;
+  }
+}
+
 export async function setupSwarmIntegration(
   context: vscode.ExtensionContext,
   onUpdate?: (status: SwarmStatus) => void
@@ -536,6 +582,71 @@ async function setupSwarmIntegrationForAgents(
     }
   };
 
+  // Check if already enabled for all requested agents
+  const status = await getSwarmStatus();
+  const allReady = agents.every((a) => {
+    const s = status.agents[a];
+    return s.cliAvailable ? (s.mcpEnabled && s.commandInstalled) : false;
+  });
+  if (allReady) {
+    await sendStatus();
+    vscode.window.showInformationMessage('Swarm is already enabled.');
+    return;
+  }
+
+  // Ensure agents-cli is installed (auto-install if needed)
+  const agentsCliReady = await ensureAgentsCli();
+  if (!agentsCliReady) {
+    // Fallback to legacy setup if agents-cli install failed
+    await setupSwarmIntegrationLegacy(agents, context, onUpdate);
+    return;
+  }
+
+  // Use agents-cli to setup each agent
+  const configured: string[] = [];
+  const failed: string[] = [];
+
+  for (const agent of agents) {
+    // Skip agents without CLI installed
+    const agentStatus = status.agents[agent];
+    if (!agentStatus.cliAvailable) {
+      // Try to install the CLI first
+      const cliInstalled = await installCliIfMissing(agent);
+      if (!cliInstalled) {
+        continue;
+      }
+    }
+
+    const ok = await setupWithAgentsCli(agent);
+    if (ok) {
+      configured.push(agent.charAt(0).toUpperCase() + agent.slice(1));
+    } else {
+      failed.push(agent);
+    }
+    await sendStatus();
+  }
+
+  if (configured.length > 0) {
+    vscode.window.showInformationMessage(`Configured ${configured.join(', ')} via agents CLI. Reload your IDE agents.`);
+  }
+  if (failed.length > 0 && configured.length === 0) {
+    vscode.window.showWarningMessage('Setup failed. Check that agent CLIs are installed.');
+  }
+  await sendStatus();
+}
+
+// Legacy setup (fallback when agents-cli is not available)
+async function setupSwarmIntegrationLegacy(
+  agents: AgentCli[],
+  context: vscode.ExtensionContext,
+  onUpdate?: (status: SwarmStatus) => void
+): Promise<void> {
+  const sendStatus = async () => {
+    if (onUpdate) {
+      onUpdate(await getSwarmStatus());
+    }
+  };
+
   // Install /swarm slash commands for requested agents
   const installedCommands: string[] = [];
   for (const agent of agents) {
@@ -549,22 +660,6 @@ async function setupSwarmIntegrationForAgents(
     if (agent !== 'opencode') {
       await installPromptPacksForAgent(agent, context);
     }
-  }
-
-  // Check if already enabled for all requested agents
-  const status = await getSwarmStatus();
-  const allReady = agents.every((a) => {
-    const s = status.agents[a];
-    return s.cliAvailable ? (s.mcpEnabled && s.commandInstalled) : false;
-  });
-  if (allReady) {
-    await sendStatus();
-    if (installedCommands.length > 0) {
-      vscode.window.showInformationMessage(`Swarm commands updated for ${installedCommands.join(', ')}.`);
-    } else {
-      vscode.window.showInformationMessage('Swarm is already enabled.');
-    }
-    return;
   }
 
   // Install CLIs if missing

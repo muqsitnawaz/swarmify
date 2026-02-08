@@ -319,10 +319,10 @@ export function SettingsTab({
                           {swarmInstalling ? (
                             <span className="flex items-center gap-1.5">
                               <RefreshCw className="w-3 h-3 animate-spin" />
-                              Installing...
+                              Configuring...
                             </span>
                           ) : (
-                            'Enable `/swarm` in your IDE'
+                            'Configure Agent'
                           )}
                         </Button>
                       )}

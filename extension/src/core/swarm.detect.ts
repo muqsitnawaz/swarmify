@@ -89,3 +89,24 @@ export function isPromptPackInstalled(agent: PromptPackAgent, command: string = 
   const target = getPromptPackCommandPath(agent, command);
   return fs.existsSync(target);
 }
+
+// Detect whether the agents CLI (@swarmify/agents-cli) is available
+export async function isAgentsCliAvailable(): Promise<boolean> {
+  try {
+    await execAsync('agents --version');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Get the version of the agents CLI
+export async function getAgentsCliVersion(): Promise<string | null> {
+  try {
+    const { stdout } = await execAsync('agents --version');
+    const match = stdout.trim().match(/(\d+\.\d+\.\d+)/);
+    return match ? match[1] : stdout.trim();
+  } catch {
+    return null;
+  }
+}

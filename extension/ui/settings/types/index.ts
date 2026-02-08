@@ -179,6 +179,8 @@ export interface AgentInstallStatus {
 }
 
 export interface SwarmStatus {
+  agentsCliAvailable: boolean
+  agentsCliVersion: string | null
   mcpEnabled: boolean
   commandInstalled: boolean
   agents: {
