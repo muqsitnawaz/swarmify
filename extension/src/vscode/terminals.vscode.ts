@@ -456,9 +456,11 @@ export async function scanExisting(
 
     // Strategy 2: Try to match with persisted session by prefix
     // Use the most recently created persisted session for this prefix that hasn't been used yet
+    // Note: info.prefix is canonical (CC, CX), persisted uses config format (cl, cx)
     if (!sessionId && info.prefix) {
+      const configPrefix = canonicalToConfigPrefix(info.prefix);
       const matchingSessions = persistedSessions
-        .filter(p => p.prefix === info.prefix && p.sessionId && !usedPersistedIds.has(p.terminalId))
+        .filter(p => p.prefix === configPrefix && p.sessionId && !usedPersistedIds.has(p.terminalId))
         .sort((a, b) => b.createdAt - a.createdAt); // Most recent first
 
       if (matchingSessions.length > 0) {
