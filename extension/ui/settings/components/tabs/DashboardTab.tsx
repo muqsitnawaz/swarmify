@@ -12,7 +12,6 @@ import {
 import {
   deriveApprovalStatusFromTask,
   formatMixFromTask,
-  getRoleInfo,
 } from '../dashboard/helpers'
 import { DashboardIntro } from '../dashboard/DashboardIntro'
 import { ApprovalQueueSection } from '../dashboard/ApprovalQueueSection'
@@ -63,26 +62,15 @@ export function DashboardTab({
   onLoadMoreTasks,
 }: DashboardTabProps) {
   const [expandedTerminalIds, setExpandedTerminalIds] = useState<Set<string>>(new Set())
-  const [expandedSwarms, setExpandedSwarms] = useState<Set<string>>(new Set())
   const [approvalStates, setApprovalStates] = useState<Record<string, ApprovalStatus>>({})
   const [mixEdits, setMixEdits] = useState<Record<string, string>>({})
   const [editingTask, setEditingTask] = useState<string | null>(null)
-  const [roleEdits, setRoleEdits] = useState<Record<string, Record<string, string>>>({})
 
   const toggleExpanded = (terminalId: string) => {
     setExpandedTerminalIds(prev => {
       const next = new Set(prev)
       if (next.has(terminalId)) next.delete(terminalId)
       else next.add(terminalId)
-      return next
-    })
-  }
-
-  const toggleSwarmHierarchy = (taskName: string) => {
-    setExpandedSwarms(prev => {
-      const next = new Set(prev)
-      if (next.has(taskName)) next.delete(taskName)
-      else next.add(taskName)
       return next
     })
   }
@@ -103,22 +91,6 @@ export function DashboardTab({
       tasks.forEach(task => {
         if (!next[task.task_name]) {
           next[task.task_name] = formatMixFromTask(task)
-        }
-      })
-      return next
-    })
-
-    setRoleEdits(prev => {
-      const next = { ...prev }
-      tasks.forEach(task => {
-        if (!next[task.task_name]) {
-          const defaults: Record<string, string> = {}
-          task.agents.forEach(agent => {
-            const generatedKey = `${task.task_name}-${Object.keys(defaults).length}`
-            const key = agent.agent_id || agent.agent_type || agent.prompt || agent.last_messages?.[0] || generatedKey
-            defaults[key] = getRoleInfo(agent.agent_type || 'agent').role
-          })
-          next[task.task_name] = defaults
         }
       })
       return next
@@ -150,21 +122,13 @@ export function DashboardTab({
 
   const handleApplyEdits = (taskName: string) => {
     const mix = mixEdits[taskName]
-    const roles = roleEdits[taskName] || {}
-    postMessage({ type: 'updateSwarmPlan', taskName, mix, roles })
+    postMessage({ type: 'updateSwarmPlan', taskName, mix })
     setApprovalStates(prev => ({ ...prev, [taskName]: 'pending' }))
     setEditingTask(null)
   }
 
   const handleMixEditChange = (taskName: string, value: string) => {
     setMixEdits(prev => ({ ...prev, [taskName]: value }))
-  }
-
-  const handleRoleEditChange = (taskName: string, roleKey: string, value: string) => {
-    setRoleEdits(prev => ({
-      ...prev,
-      [taskName]: { ...(prev[taskName] || {}), [roleKey]: value }
-    }))
   }
 
   return (
@@ -181,13 +145,13 @@ export function DashboardTab({
         approvalStates={approvalStates}
         mixEdits={mixEdits}
         editingTask={editingTask}
-        roleEdits={roleEdits}
+        icons={icons}
+        isLightTheme={isLightTheme}
         onApprove={handleApprove}
         onReject={handleReject}
         onApplyEdits={handleApplyEdits}
         onCancelEdit={() => setEditingTask(null)}
         onMixEditChange={handleMixEditChange}
-        onRoleEditChange={handleRoleEditChange}
       />
 
       <RunningAgentsSection
@@ -217,11 +181,8 @@ export function DashboardTab({
         tasksLoading={tasksLoading}
         tasksDisplayCount={tasksDisplayCount}
         approvalStates={approvalStates}
-        mixEdits={mixEdits}
-        expandedSwarms={expandedSwarms}
         icons={icons}
         isLightTheme={isLightTheme}
-        onToggleSwarmHierarchy={toggleSwarmHierarchy}
         onApprove={handleApprove}
         onRefreshTasks={onRefreshTasks}
         onLoadMoreTasks={onLoadMoreTasks}

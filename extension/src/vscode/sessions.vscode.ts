@@ -376,34 +376,30 @@ export async function getSessionPathBySessionId(
 ): Promise<string | undefined> {
   switch (agentType) {
     case 'claude': {
-      const root = path.join(homedir(), '.claude', 'projects');
+      // We know the exact filename: {sessionId}.jsonl
+      // Just find it under ~/.claude/projects/*/ or shim paths
+      const filename = `${sessionId}.jsonl`;
 
-      // Helper to search a specific project folder
-      const searchProject = async (projectPath: string): Promise<string | undefined> => {
-        for (const ext of SESSION_EXTENSIONS) {
-          const directPath = path.join(projectPath, `${sessionId}${ext}`);
-          if (await safeStat(directPath)) return directPath;
-        }
-        return await findFileBySessionId(path.join(projectPath, 'sessions'), sessionId, 2);
-      };
+      // Collect all possible roots
+      const roots: string[] = [path.join(homedir(), '.claude', 'projects')];
 
-      // If workspace provided, try it first
-      if (workspacePath) {
-        const projectFolder = workspaceToClaudeFolder(workspacePath);
-        const projectPath = path.join(root, projectFolder);
-        const found = await searchProject(projectPath);
-        if (found) return found;
-        // Fallback: Claude CLI may use parent directory (e.g., git root)
-        // Continue to search all projects below
+      // Add shim-managed version roots: ~/.agents/versions/claude/*/home/.claude/projects/
+      const versionsDir = path.join(homedir(), '.agents', 'versions', 'claude');
+      const versions = await safeReaddir(versionsDir);
+      for (const ver of versions) {
+        if (!ver.isDirectory()) continue;
+        const shimRoot = path.join(versionsDir, ver.name, 'home', '.claude', 'projects');
+        roots.push(shimRoot);
       }
 
-      // Search all projects (fallback or no workspace)
-      const projects = await safeReaddir(root);
-      for (const project of projects) {
-        if (!project.isDirectory()) continue;
-        const projectPath = path.join(root, project.name);
-        const found = await searchProject(projectPath);
-        if (found) return found;
+      // Search each root's project subdirectories for the file
+      for (const root of roots) {
+        const projects = await safeReaddir(root);
+        for (const project of projects) {
+          if (!project.isDirectory()) continue;
+          const filePath = path.join(root, project.name, filename);
+          if (await safeStat(filePath)) return filePath;
+        }
       }
       return undefined;
     }
