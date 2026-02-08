@@ -100,7 +100,7 @@ When spawning sub-agents via Swarm:
 ## Related Packages
 
 - [@swarmify/agents-mcp](https://www.npmjs.com/package/@swarmify/agents-mcp) - MCP server for sub-agent spawning
-- [@swarmify/agents-cli](https://www.npmjs.com/package/@swarmify/agents-cli) - Sync prompts and skills across agents
+- [@swarmify/agents-cli](https://www.npmjs.com/package/@swarmify/agents-cli) - Moved to its own repository
 
 ## License
 
