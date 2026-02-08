@@ -86,7 +86,8 @@ function truncateMiddle(value: string, headChars: number, tailChars: number): st
 }
 
 function getTerminalPrompt(terminal: TerminalDetail): string {
-  const raw = terminal.lastUserMessage || terminal.label || terminal.autoLabel || ''
+  // Prefer firstUserMessage (initial task) over lastUserMessage (most recent)
+  const raw = terminal.firstUserMessage || terminal.lastUserMessage || terminal.label || terminal.autoLabel || ''
   return raw.trim() || 'Waiting for first message...'
 }
 
@@ -385,13 +386,12 @@ export function DashboardTab({
                       <div
                         key={`${task.task_name}-${node.label}`}
                         className="flex items-start gap-3 px-3 py-2 rounded-lg bg-[var(--background)] border border-[var(--border)]"
-                        style={{ marginLeft: node.isParent ? 0 : 16 }}
                         title={`${node.role} · ${node.hint}`}
                       >
                         <div className="flex flex-col">
                           <span className="text-xs font-semibold">{node.label}</span>
                           <span className="text-[11px] text-[var(--muted-foreground)]">
-                            {node.isParent ? 'Parent' : 'Child'} · {node.role} · {node.hint}
+                            {node.role} · {node.hint}
                           </span>
                         </div>
                         <div className="text-xs text-[var(--foreground)] flex-1">{node.reasoning}</div>
@@ -547,22 +547,20 @@ export function DashboardTab({
               const agentName = getAgentDisplayName(terminal.agentType)
               const prompt = getTerminalPrompt(terminal)
               const hasMessages = terminal.messageCount && terminal.messageCount > 0
-              const currentActivity = terminal.currentActivity || (hasMessages ? 'Thinking...' : 'Waiting for input')
+              const currentActivity = terminal.currentActivity || (hasMessages ? 'Working...' : 'Waiting for input')
               const activityLine = currentActivity.startsWith('>') ? currentActivity : `> ${currentActivity}`
               const isExpanded = expandedTerminalIds.has(terminal.id)
               const sessionId = terminal.sessionId || ''
               const filesChanged = getFilesChangedCount(sessionTasks[sessionId])
-              const approvalStatus = (terminal.approvalStatus || 'pending') as ApprovalStatus
-              const badgeStyle = APPROVAL_BADGE_STYLES[approvalStatus] || APPROVAL_BADGE_STYLES.pending
               const roleInfo = getRoleInfo(terminal.agentType)
-              const isChild = Boolean(terminal.parentId && !terminal.isParent)
+              const status = terminal.status || (hasMessages ? 'running' : 'idle')
 
               return (
                 <div
                   key={terminal.id}
                   onClick={() => toggleExpanded(terminal.id)}
-                  className={`px-4 py-3 rounded-xl bg-[var(--muted)] transition-colors cursor-pointer hover:bg-[var(--muted-foreground)]/10 ${isChild ? 'ml-6' : ''}`}
-                  title={terminal.isParent ? 'Parent terminal: Pending approval badge shown until execution starts' : `Child of ${terminal.parentLabel || 'parent'} · ${roleInfo.bestFor}`}
+                  className="px-4 py-3 rounded-xl bg-[var(--muted)] transition-colors cursor-pointer hover:bg-[var(--muted-foreground)]/10"
+                  title={roleInfo.bestFor}
                 >
                   <div className="flex items-center gap-3">
                     <img
@@ -572,17 +570,17 @@ export function DashboardTab({
                     />
                     <div className="min-w-0 flex-1">
                       <div className="text-sm font-medium truncate flex items-center gap-2">
-                        {agentName} # {terminal.index}
-                        {displayLabel && (
-                          <span className="text-[var(--muted-foreground)]"> - {displayLabel}</span>
-                        )}
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full ${badgeStyle}`}>
-                          {approvalLabel(approvalStatus)}
+                        {displayLabel || `${agentName} ${terminal.index}`}
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full ${
+                          status === 'running' ? 'bg-emerald-500/15 text-emerald-600 border border-emerald-500/40' :
+                          status === 'completed' ? 'bg-[var(--muted-foreground)]/15 text-[var(--muted-foreground)] border border-[var(--border)]' :
+                          'bg-amber-500/15 text-amber-600 border border-amber-500/40'
+                        }`}>
+                          {status === 'running' ? 'Running' : status === 'completed' ? 'Done' : 'Idle'}
                         </span>
                       </div>
-                      <div className="text-[11px] text-[var(--muted-foreground)]">
-                        {terminal.isParent ? 'Parent terminal · ' : 'Child terminal · '}
-                        {roleInfo.role} · {roleInfo.bestFor}
+                      <div className="text-[11px] text-[var(--muted-foreground)] truncate">
+                        {truncateText(prompt, 80)}
                       </div>
                     </div>
                     <span className="text-xs text-[var(--muted-foreground)] shrink-0">
@@ -590,59 +588,20 @@ export function DashboardTab({
                     </span>
                   </div>
 
-                  <div className="mt-2 ml-8 text-xs text-[var(--muted-foreground)]">
-                    {truncateText(prompt, PROMPT_PREVIEW_CHARS)}
-                  </div>
-
-                  <div className="mt-1 ml-8 text-xs font-mono text-[var(--foreground)]">
+                  <div className="mt-2 ml-8 text-xs font-mono text-[var(--foreground)]">
                     {activityLine}
                   </div>
 
                   {isExpanded && (
                     <div className="mt-3 ml-8 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-3 space-y-2">
-                      <div className="flex items-center gap-2 text-xs">
-                        <span className={`px-2 py-0.5 rounded-full ${badgeStyle}`}>{approvalLabel(approvalStatus)}</span>
-                        {terminal.isParent && terminal.children && terminal.children.length > 0 && (
-                          <span className="text-[var(--muted-foreground)]">
-                            Children: {terminal.children.length}
-                          </span>
-                        )}
-                        {!terminal.isParent && terminal.parentLabel && (
-                          <span className="text-[var(--muted-foreground)]">
-                            Parent: {terminal.parentLabel}
-                          </span>
-                        )}
-                      </div>
                       <div className="text-xs text-[var(--muted-foreground)]">Full prompt</div>
                       <div className="text-sm text-[var(--foreground)] whitespace-pre-wrap">{prompt}</div>
                       <div className="grid gap-1 text-xs text-[var(--muted-foreground)]">
-                        <div>
-                          Session ID: {sessionId ? truncateMiddle(sessionId, 6, 6) : 'unavailable'}
-                        </div>
+                        <div>Session: {sessionId ? truncateMiddle(sessionId, 6, 6) : 'not started'}</div>
                         <div>Messages: {terminal.messageCount ?? 0}</div>
-                        <div>Files changed: {filesChanged === null ? 'unknown' : filesChanged}</div>
-                      </div>
-                      <div className="flex flex-wrap gap-2 pt-2">
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          disabled
-                          onClick={(event) => {
-                            event.stopPropagation()
-                          }}
-                        >
-                          Focus Terminal
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled
-                          onClick={(event) => {
-                            event.stopPropagation()
-                          }}
-                        >
-                          Open Session Log
-                        </Button>
+                        {filesChanged !== null && filesChanged > 0 && (
+                          <div>Files changed: {filesChanged}</div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -743,7 +702,6 @@ export function DashboardTab({
                             <div
                               key={`${task.task_name}-${node.label}`}
                               className="flex items-start gap-3 px-3 py-2 rounded-lg bg-[var(--background)] border border-[var(--border)]"
-                              style={{ marginLeft: node.isParent ? 0 : 16 }}
                               title={node.reasoning}
                             >
                               <span className="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-[var(--muted-foreground)]/10">

@@ -345,6 +345,9 @@ async function findFileBySessionId(dir: string, sessionId: string, depth: number
   if (depth < 0) return undefined;
   const entries = await safeReaddir(dir);
 
+  // If sessionId is short (8 chars = session chunk), do prefix match
+  const isChunk = sessionId.length === 8;
+
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
@@ -355,7 +358,10 @@ async function findFileBySessionId(dir: string, sessionId: string, depth: number
     const ext = path.extname(entry.name).toLowerCase();
     if (SESSION_EXTENSIONS.has(ext)) {
       const fileSessionId = path.basename(entry.name, ext);
-      if (fileSessionId === sessionId) return fullPath;
+      // Exact match or prefix match for session chunks
+      if (fileSessionId === sessionId || (isChunk && fileSessionId.startsWith(sessionId))) {
+        return fullPath;
+      }
     }
   }
 

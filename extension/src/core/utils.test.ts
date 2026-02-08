@@ -243,7 +243,8 @@ describe('getTerminalDisplayInfo', () => {
       label: null,
       expandedName: 'Claude',
       statusBarText: 'Claude',
-      iconFilename: 'claude.png'
+      iconFilename: 'claude.png',
+      sessionChunk: null
     });
     expect(getTerminalDisplayInfo({ name: 'CX' })).toEqual({
       isAgent: true,
@@ -251,7 +252,8 @@ describe('getTerminalDisplayInfo', () => {
       label: null,
       expandedName: 'Codex',
       statusBarText: 'Codex',
-      iconFilename: 'chatgpt.png'
+      iconFilename: 'chatgpt.png',
+      sessionChunk: null
     });
     expect(getTerminalDisplayInfo({ name: 'CC - auth feature' })).toEqual({
       isAgent: true,
@@ -259,7 +261,8 @@ describe('getTerminalDisplayInfo', () => {
       label: 'auth feature',
       expandedName: 'Claude',
       statusBarText: 'Claude - auth feature',
-      iconFilename: 'claude.png'
+      iconFilename: 'claude.png',
+      sessionChunk: null
     });
   });
 
@@ -270,7 +273,8 @@ describe('getTerminalDisplayInfo', () => {
       label: 'auth feature',
       expandedName: 'Claude',
       statusBarText: 'Claude - auth feature',
-      iconFilename: 'claude.png'
+      iconFilename: 'claude.png',
+      sessionChunk: null
     });
   });
 
@@ -281,7 +285,8 @@ describe('getTerminalDisplayInfo', () => {
       label: 'auth feature',
       expandedName: 'Claude',
       statusBarText: 'Claude - auth feature',
-      iconFilename: 'claude.png'
+      iconFilename: 'claude.png',
+      sessionChunk: null
     });
   });
 
@@ -313,7 +318,8 @@ describe('getTerminalDisplayInfo', () => {
       label: null,
       expandedName: null,
       statusBarText: null,
-      iconFilename: null
+      iconFilename: null,
+      sessionChunk: null
     });
   });
 
@@ -324,7 +330,8 @@ describe('getTerminalDisplayInfo', () => {
       label: null,
       expandedName: 'Claude',
       statusBarText: 'Claude',
-      iconFilename: 'claude.png'
+      iconFilename: 'claude.png',
+      sessionChunk: null
     });
   });
 
