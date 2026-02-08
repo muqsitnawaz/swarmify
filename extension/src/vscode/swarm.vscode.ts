@@ -396,44 +396,6 @@ async function installPromptPacksForAgent(
   return installed;
 }
 
-// Install /swarm command for a specific agent
-function installSwarmCommandForAgent(agent: AgentCli, context: vscode.ExtensionContext): boolean {
-  const agentDir = agent === 'codex' ? 'prompts' : 'commands';
-  const sourcePath = path.join(context.extensionPath, '..', 'prompts', agent, agentDir, 'swarm.md');
-  if (!fs.existsSync(sourcePath)) {
-    return false;
-  }
-
-  const content = fs.readFileSync(sourcePath, 'utf-8');
-
-  try {
-    if (agent === 'claude') {
-      const dir = path.join(os.homedir(), '.claude', 'commands');
-      fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(path.join(dir, 'swarm.md'), content);
-      return true;
-    }
-
-    if (agent === 'codex') {
-      const dir = path.join(os.homedir(), '.codex', 'prompts');
-      fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(path.join(dir, 'swarm.md'), content);
-      return true;
-    }
-
-    if (agent === 'gemini') {
-      const dir = path.join(os.homedir(), '.gemini', 'commands');
-      fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(path.join(dir, 'swarm.toml'), buildGeminiToml(content));
-      return true;
-    }
-  } catch {
-    // ignore install failure per agent
-  }
-
-  return false;
-}
-
 function installSwarmCommandForPromptPackAgent(agent: PromptPackAgent, context: vscode.ExtensionContext): boolean {
   const agentDir = agent === 'codex' ? 'prompts' : 'commands';
   const extension = agent === 'gemini' ? 'toml' : 'md';
@@ -450,70 +412,6 @@ function installSwarmCommandForPromptPackAgent(agent: PromptPackAgent, context: 
   } catch {
     return false;
   }
-}
-
-const NPX_SWARM_CMD = `npx -y ${SWARM_PACKAGE}@latest`;
-
-const CLI_PACKAGES: Record<AgentCli, string> = {
-  claude: '@anthropic-ai/claude-code',
-  codex: '@openai/codex',
-  gemini: '@google/gemini-cli',
-  opencode: '',
-};
-
-// Install CLI globally if not present
-async function installCliIfMissing(agent: AgentCli): Promise<boolean> {
-  // Check if CLI is available
-  try {
-    await execAsync(`which ${agent}`);
-    return true; // Already installed
-  } catch {
-    // Not installed, proceed with installation
-  }
-
-  const pkg = CLI_PACKAGES[agent];
-  const agentName = agent.charAt(0).toUpperCase() + agent.slice(1);
-
-  // If no npm package available, can't auto-install
-  if (!pkg) {
-    vscode.window.showErrorMessage(`${agentName} CLI must be installed manually. Visit https://github.com/opencode-ai/opencode for instructions.`);
-    return false;
-  }
-
-  try {
-    vscode.window.showInformationMessage(`Installing ${agentName} CLI...`);
-    await execAsync(`npm install -g ${pkg}`);
-    vscode.window.showInformationMessage(`${agentName} CLI installed successfully.`);
-    return true;
-  } catch (err) {
-    const error = err as Error & { stderr?: string };
-    vscode.window.showErrorMessage(`Failed to install ${agentName} CLI: ${error.stderr || error.message}`);
-    return false;
-  }
-}
-
-async function registerMcpForAgent(agent: AgentCli): Promise<boolean> {
-  try {
-    if (agent === 'claude') {
-      await execAsync(`claude mcp add --scope user Swarm ${NPX_SWARM_CMD}`);
-      return true;
-    }
-    if (agent === 'codex') {
-      await execAsync(`codex mcp add Swarm ${NPX_SWARM_CMD}`);
-      return true;
-    }
-    if (agent === 'gemini') {
-      await execAsync(`gemini mcp add Swarm ${NPX_SWARM_CMD}`);
-      return true;
-    }
-    if (agent === 'opencode') {
-      await execAsync(`opencode mcp add Swarm ${NPX_SWARM_CMD}`);
-      return true;
-    }
-  } catch {
-    // fallthrough
-  }
-  return false;
 }
 
 const AGENTS_CLI_PACKAGE = '@swarmify/agents-cli';
@@ -606,14 +504,10 @@ async function setupSwarmIntegrationForAgents(
   const failed: string[] = [];
 
   for (const agent of agents) {
-    // Skip agents without CLI installed
+    // Skip agents without CLI installed (agents pull requires the CLI to be present)
     const agentStatus = status.agents[agent];
     if (!agentStatus.cliAvailable) {
-      // Try to install the CLI first
-      const cliInstalled = await installCliIfMissing(agent);
-      if (!cliInstalled) {
-        continue;
-      }
+      continue;
     }
 
     const ok = await setupWithAgentsCli(agent);

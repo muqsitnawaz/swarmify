@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { TodoFile, TodoItem, parseTodoMd } from '../core/todos';
 import { getBuiltInByTitle } from './agents.vscode';
 import { getBuiltInDefByTitle } from '../core/agents';
-import { CLAUDE_TITLE } from '../core/utils';
+import { CLAUDE_TITLE, SessionAgentType } from '../core/utils';
 import * as settings from './settings.vscode';
 import type { AgentSettings } from '../core/settings';
 import * as terminals from './terminals.vscode';
@@ -134,7 +134,7 @@ export async function spawnSwarmForTodo(
   // Track session ID for prewarmed sessions
   if (sessionId && supportsPrewarming(agentKey)) {
     terminals.setSessionId(terminal, sessionId);
-    terminals.setAgentType(terminal, agentKey as terminals.SessionAgentType);
+    terminals.setAgentType(terminal, agentKey as SessionAgentType);
     await prewarm.recordTerminalSession(context, terminalId, sessionId, agentKey, cwd);
   }
 
