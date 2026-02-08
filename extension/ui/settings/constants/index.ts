@@ -61,10 +61,14 @@ export const TAB_LABELS: Record<TabId, string> = {
 export const AGENT_INSTALL_INFO: Record<string, { command?: string; url?: string }> = {
   claude: { command: 'npm install -g @anthropic-ai/claude-code' },
   codex: { command: 'npm install -g @openai/codex' },
-  gemini: { command: 'npm install -g @anthropic-ai/claude-code', url: 'https://github.com/google-gemini/gemini-cli' },
+  gemini: { command: 'npm install -g @google/gemini-cli', url: 'https://github.com/google-gemini/gemini-cli' },
   opencode: { url: 'https://github.com/opencode-ai/opencode' },
   cursor: { url: 'https://cursor.com' },
 }
+
+// agents-cli package for managing agent configurations
+export const AGENTS_CLI_PACKAGE = '@swarmify/agents-cli'
+export const AGENTS_CLI_INSTALL_COMMAND = `npm install -g ${AGENTS_CLI_PACKAGE}`
 
 // Map from agent title (CL, CX, etc.) to key (claude, codex, etc.)
 export const AGENT_TITLE_TO_KEY: Record<string, string> = {
