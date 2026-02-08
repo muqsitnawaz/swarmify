@@ -377,27 +377,32 @@ export async function getSessionPathBySessionId(
   switch (agentType) {
     case 'claude': {
       const root = path.join(homedir(), '.claude', 'projects');
-      if (workspacePath) {
-        const projectFolder = workspaceToClaudeFolder(workspacePath);
-        const projectPath = path.join(root, projectFolder);
-        // Check direct file first, then sessions subfolder
+
+      // Helper to search a specific project folder
+      const searchProject = async (projectPath: string): Promise<string | undefined> => {
         for (const ext of SESSION_EXTENSIONS) {
           const directPath = path.join(projectPath, `${sessionId}${ext}`);
           if (await safeStat(directPath)) return directPath;
         }
-        // Search in sessions directory
         return await findFileBySessionId(path.join(projectPath, 'sessions'), sessionId, 2);
+      };
+
+      // If workspace provided, try it first
+      if (workspacePath) {
+        const projectFolder = workspaceToClaudeFolder(workspacePath);
+        const projectPath = path.join(root, projectFolder);
+        const found = await searchProject(projectPath);
+        if (found) return found;
+        // Fallback: Claude CLI may use parent directory (e.g., git root)
+        // Continue to search all projects below
       }
-      // No workspace - search all projects
+
+      // Search all projects (fallback or no workspace)
       const projects = await safeReaddir(root);
       for (const project of projects) {
         if (!project.isDirectory()) continue;
         const projectPath = path.join(root, project.name);
-        for (const ext of SESSION_EXTENSIONS) {
-          const directPath = path.join(projectPath, `${sessionId}${ext}`);
-          if (await safeStat(directPath)) return directPath;
-        }
-        const found = await findFileBySessionId(path.join(projectPath, 'sessions'), sessionId, 2);
+        const found = await searchProject(projectPath);
         if (found) return found;
       }
       return undefined;
