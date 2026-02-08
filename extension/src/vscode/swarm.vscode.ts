@@ -24,8 +24,8 @@ export type { PromptPackAgent } from '../core/swarm.detect';
 
 const execAsync = promisify(exec);
 
-// Agent swarm data directory
-const AGENT_SWARM_DIR = path.join(os.homedir(), '.swarmify', 'agents');
+// Agent swarm data directory (agents-mcp writes to ~/.agents/agents/)
+const AGENT_SWARM_DIR = path.join(os.homedir(), '.agents', 'agents');
 
 const SWARM_PACKAGE = '@swarmify/agents-mcp';
 

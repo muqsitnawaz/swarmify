@@ -227,6 +227,7 @@ export interface TerminalDetail {
   createdAt: number
   index: number
   sessionId: string | null
+  firstUserMessage?: string
   lastUserMessage?: string
   messageCount?: number
   firstMessageTimestamp?: string
