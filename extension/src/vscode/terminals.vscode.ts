@@ -17,7 +17,10 @@ import {
   CURSOR_TITLE,
   SHELL_TITLE,
   getTerminalDisplayInfo,
-  TerminalIdentificationOptions
+  TerminalIdentificationOptions,
+  prefixToAgentType,
+  canonicalToConfigPrefix,
+  SessionAgentType
 } from '../core/utils';
 
 /**
@@ -54,9 +57,6 @@ function extractTerminalIdentificationOptions(terminal: vscode.Terminal): Termin
 }
 
 export type TerminalApprovalStatus = 'pending' | 'approved' | 'running' | 'complete' | 'rejected';
-
-// Agent types that support session tracking
-export type SessionAgentType = 'claude' | 'codex' | 'gemini' | 'cursor' | 'opencode';
 
 // Terminal entry following API.md
 export interface EditorTerminal {
