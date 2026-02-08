@@ -573,18 +573,6 @@ const AGENT_KEY_TO_PREFIX: Record<string, string> = {
   shell: 'SH'
 };
 
-// Map from prefix to SessionAgentType (only for agents that support sessions)
-export function prefixToAgentType(prefix: string | null): SessionAgentType | null {
-  if (!prefix) return null;
-  switch (prefix) {
-    case 'CC': return 'claude';
-    case 'CX': return 'codex';
-    case 'GX': return 'gemini';
-    case 'CR': return 'cursor';
-    default: return null;
-  }
-}
-
 const AGENT_ROLE_HINTS: Record<string, { role: string; hint: string }> = {
   claude: { role: 'lead', hint: 'Strategy and orchestration' },
   codex: { role: 'fix', hint: 'Fast edits and implementation' },
