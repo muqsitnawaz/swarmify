@@ -22,7 +22,7 @@ export default {
 
     if (url.pathname === '/oauth/exchange' && request.method === 'POST') {
       try {
-        const { code, provider, client_id } = await request.json() as { code: string; provider: string; client_id?: string };
+        const { code, provider, client_id, uri_scheme } = await request.json() as { code: string; provider: string; client_id?: string; uri_scheme?: string };
 
         if (!code || !provider) {
           return Response.json({ error: 'Missing code or provider' }, { status: 400, headers: CORS_HEADERS });
@@ -51,7 +51,7 @@ export default {
               client_id,
               client_secret: clientSecret,
               code,
-              redirect_uri: 'vscode://swarm-ext/oauth/callback',
+              redirect_uri: `${uri_scheme || 'vscode'}://swarm-ext/oauth/callback`,
             }),
           });
 
@@ -74,7 +74,7 @@ export default {
               client_secret: env.LINEAR_CLIENT_SECRET,
               code,
               grant_type: 'authorization_code',
-              redirect_uri: `${client_id?.startsWith('Ov23lil7uKgqBdj9OhX4') ? 'cursor' : 'vscode'}://swarm-ext/oauth/callback`,
+              redirect_uri: `${uri_scheme || 'vscode'}://swarm-ext/oauth/callback`,
             }),
           });
 
