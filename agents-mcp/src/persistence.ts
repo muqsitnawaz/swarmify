@@ -165,7 +165,7 @@ function getDefaultAgentConfig(agentType: AgentType): AgentConfig {
     },
     cursor: {
       command: 'cursor-agent -p --output-format stream-json \'{prompt}\'',
-      enabled: false,
+      enabled: true,
       models: {
         fast: 'composer-1',
         default: 'composer-1',
@@ -175,7 +175,7 @@ function getDefaultAgentConfig(agentType: AgentType): AgentConfig {
     },
     opencode: {
       command: 'opencode run --format json \'{prompt}\'',
-      enabled: false,
+      enabled: true,
       models: {
         fast: 'zai-coding-plan/glm-4.7-flash',
         default: 'zai-coding-plan/glm-4.7',

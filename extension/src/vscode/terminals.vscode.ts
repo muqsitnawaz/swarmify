@@ -7,7 +7,7 @@ import * as fs from 'fs/promises';
 import { AgentConfig } from './agents.vscode';
 import { generateTerminalId, RunningCounts } from '../core/terminals';
 import * as sessionsPersist from '../core/sessions.persist';
-import { getSessionPathBySessionId, getSessionPreviewInfo, SessionPreviewInfo } from './sessions.vscode';
+import { getSessionPathBySessionId, getSessionPreviewInfo, getOpenCodeSessionPreviewInfo, getCursorSessionPreviewInfo, SessionPreviewInfo } from './sessions.vscode';
 import { extractCurrentActivity, formatActivity } from '../core/session.activity';
 import {
   CLAUDE_TITLE,
@@ -610,7 +610,7 @@ export async function getTerminalsByAgentType(
   const sessionPromises: Array<{
     index: number;
     sessionPath: Promise<string | undefined>;
-    agentType: 'claude' | 'codex' | 'gemini';
+    agentType: 'claude' | 'codex' | 'gemini' | 'opencode' | 'cursor';
   }> = [];
   let index = 0;
 
@@ -659,13 +659,12 @@ export async function getTerminalsByAgentType(
     // Queue session path lookup if session exists
     if (entry?.sessionId) {
       // Use agentType if available, otherwise infer from agentConfig.prefix
-      // Only include claude/codex/gemini for session path lookup (cursor not supported)
       const sessionAgentType = entry?.agentType || prefixToAgentType(entry?.agentConfig?.prefix ?? null);
-      if (sessionAgentType && sessionAgentType !== 'cursor') {
+      if (sessionAgentType) {
         sessionPromises.push({
           index: resultIndex,
-          sessionPath: getSessionPathBySessionId(entry.sessionId!, sessionAgentType as 'claude' | 'codex' | 'gemini', workspacePath),
-          agentType: sessionAgentType as 'claude' | 'codex' | 'gemini'
+          sessionPath: getSessionPathBySessionId(entry.sessionId!, sessionAgentType, workspacePath),
+          agentType: sessionAgentType
         });
       }
     }
@@ -677,15 +676,29 @@ export async function getTerminalsByAgentType(
   // Now fetch preview info and activity in parallel for each session
   const dataPromises = sessionPromises.map(async (p, i) => {
     const sessionPath = sessionPaths[i];
-    console.log(`[getTerminalsByAgentType] Session ${i}: path=${sessionPath || 'NOT FOUND'}`);
+    console.log(`[getTerminalsByAgentType] Session ${i}: path=${sessionPath || 'NOT FOUND'}, agentType=${p.agentType}`);
     if (!sessionPath) return { index: p.index, preview: null, activity: null };
 
+    // Use agent-specific preview function
+    let previewPromise: Promise<SessionPreviewInfo | null>;
+    if (p.agentType === 'opencode') {
+      previewPromise = getOpenCodeSessionPreviewInfo(sessionPath);
+    } else if (p.agentType === 'cursor') {
+      previewPromise = getCursorSessionPreviewInfo(sessionPath);
+    } else {
+      previewPromise = getSessionPreviewInfo(sessionPath);
+    }
+
+    // OpenCode and Cursor don't use JSONL tail for activity
+    const needsTail = p.agentType !== 'opencode' && p.agentType !== 'cursor';
     const [preview, tail] = await Promise.all([
-      getSessionPreviewInfo(sessionPath),
-      readSessionTail(sessionPath, 64 * 1024) // Read last 64KB for activity
+      previewPromise,
+      needsTail ? readSessionTail(sessionPath, 64 * 1024) : Promise.resolve(null)
     ]);
 
-    const activity = tail ? extractCurrentActivity(tail, p.agentType) : null;
+    // Activity extraction only works for JSONL agents
+    const activityAgentType = (p.agentType === 'claude' || p.agentType === 'codex' || p.agentType === 'gemini') ? p.agentType : null;
+    const activity = (tail && activityAgentType) ? extractCurrentActivity(tail, activityAgentType) : null;
 
     return {
       index: p.index,
