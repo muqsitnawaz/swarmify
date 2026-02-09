@@ -329,15 +329,9 @@ export async function runServer(): Promise<void> {
     .filter(([, status]) => status.installed)
     .map(([agent]) => agent as AgentType);
 
-  const requestedAgents = config.enabledAgents;
+  // Installed = enabled. If the CLI is on PATH, the agent is available.
+  enabledAgents = installedAgents;
 
-  // Prefer explicitly configured agents, filtered by what's installed.
-  // If no config exists, fall back to installed list.
-  enabledAgents = config.hasConfig
-    ? requestedAgents.filter(a => cliHealth[a]?.installed)
-    : installedAgents;
-
-  console.error('Requested agents:', requestedAgents.join(', '));
   console.error('Enabled agents (installed):', enabledAgents.join(', ') || 'none');
 
   // Initialize version check (non-blocking, with timeout)
@@ -363,8 +357,4 @@ export async function runServer(): Promise<void> {
     console.error('Missing agents (install CLIs to use):', missing.join(', '));
   }
 
-  const requestedMissing = requestedAgents.filter(a => missing.includes(a));
-  if (requestedMissing.length > 0) {
-    console.error('Requested but missing agents (spawn tool hidden):', requestedMissing.join(', '));
-  }
 }
