@@ -127,6 +127,7 @@ export interface EditorPreferences {
 export interface DisplayPreferences {
   showFullAgentNames: boolean
   showLabelsInTitles: boolean
+  autoLabelInTabTitles: boolean
   showSessionIdInTitles: boolean
   labelReplacesTitle: boolean
   showLabelOnlyOnFocus: boolean
@@ -220,6 +221,17 @@ export interface TaskSummary {
   mix?: string
 }
 
+export interface SessionQuickSummary {
+  filesEdited: number
+  filesRead: number
+  filesCreated: number
+  filesDeleted: number
+  toolCalls: number
+  webSearches: number
+  webFetches: number
+  mcpCalls: number
+}
+
 // Terminal types
 export interface TerminalDetail {
   id: string
@@ -231,9 +243,14 @@ export interface TerminalDetail {
   sessionId: string | null
   firstUserMessage?: string
   lastUserMessage?: string
+  status?: 'running' | 'completed' | 'idle'
   messageCount?: number
   firstMessageTimestamp?: string
   currentActivity?: string
+  quickSummary?: SessionQuickSummary
+  recentFiles?: string[]
+  recentTools?: string[]
+  lastFilePath?: string | null
   approvalStatus?: ApprovalStatus
   role?: string
   hint?: string

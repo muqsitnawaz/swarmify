@@ -3,7 +3,7 @@ import { Button } from '../ui/button'
 import { SectionHeader } from '../common'
 import { ApprovalStatus, IconConfig, TaskSummary } from '../../types'
 import { formatAgentCount, formatSessionTimestamp, formatTimeAgoSafe, getAgentDisplayName, getIcon, getTaskSummaryStatus } from '../../utils'
-import { APPROVAL_BADGE_STYLES, approvalLabel, deriveApprovalStatusFromTask, getAgentPromptSnippet } from './helpers'
+import { APPROVAL_BADGE_STYLES, approvalLabel, deriveApprovalStatusFromTask, getAgentPromptSnippet, titleize } from './helpers'
 
 interface RecentSwarmsSectionProps {
   tasks: TaskSummary[]
@@ -56,7 +56,7 @@ export function RecentSwarmsSection({
                   <div key={task.task_name} className="rounded-xl bg-[var(--muted)] p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="text-sm font-medium break-words">{task.task_name}</div>
+                        <div className="text-sm font-medium break-words">{titleize(task.task_name)}</div>
                         <div className="flex items-center gap-2 text-xs text-[var(--muted-foreground)] flex-wrap">
                           <span>{formatAgentCount(task.agent_count)} · {statusLabel}</span>
                           <span className={`px-2 py-0.5 rounded-full ${APPROVAL_BADGE_STYLES[approvalStatus]}`}>

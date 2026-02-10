@@ -4,7 +4,7 @@ import { Button } from '../ui/button'
 import { Checkbox } from '../ui/checkbox'
 import { Input } from '../ui/input'
 import { SectionHeader, WorkspaceConfigSection } from '../common'
-import { getIcon } from '../../utils'
+import { getIcon, formatPreviewTerminalTitle } from '../../utils'
 import {
   AgentSettings,
   SwarmStatus,
@@ -141,9 +141,38 @@ export function SettingsTab({
   const display = settings.display
   const showFullAgentNames = display?.showFullAgentNames ?? true
   const showLabelsInTitles = display?.showLabelsInTitles ?? true
+  const autoLabelInTabTitles = display?.autoLabelInTabTitles ?? true
   const showSessionIdInTitles = display?.showSessionIdInTitles ?? true
   const labelReplacesTitle = display?.labelReplacesTitle ?? false
   const showLabelOnlyOnFocus = display?.showLabelOnlyOnFocus ?? false
+  const previewPrefix = 'CX'
+  const previewSessionChunk = 'a1b2c3d4'
+  const previewAutoLabel = autoLabelInTabTitles ? 'Agent Terminals' : null
+  const previewManualLabel = 'Agent Terminals'
+  const previewDisplay = {
+    showFullAgentNames,
+    showLabelsInTitles,
+    autoLabelInTabTitles,
+    showSessionIdInTitles,
+    labelReplacesTitle,
+    showLabelOnlyOnFocus,
+  }
+  const previewFocusedAuto = formatPreviewTerminalTitle(previewPrefix, previewDisplay, {
+    label: previewAutoLabel,
+    sessionChunk: previewSessionChunk,
+    isFocused: true,
+  })
+  const previewUnfocusedAuto = formatPreviewTerminalTitle(previewPrefix, previewDisplay, {
+    label: previewAutoLabel,
+    sessionChunk: previewSessionChunk,
+    isFocused: false,
+  })
+  const previewManual = formatPreviewTerminalTitle(previewPrefix, previewDisplay, {
+    label: previewManualLabel,
+    sessionChunk: previewSessionChunk,
+    isFocused: true,
+  })
+  const previewIcon = getIcon(icons.codex, isLightTheme)
 
   const updateBuiltIn = (key: keyof AgentSettings['builtIn'], field: 'login' | 'instances', value: boolean | number) => {
     onSaveSettings({
@@ -659,6 +688,23 @@ export function SettingsTab({
               !showLabelsInTitles ? 'opacity-50' : ''
             }`}
           >
+            <span className="text-sm">Auto-label tabs from first message</span>
+            <button
+              className="toggle-switch disabled:cursor-not-allowed disabled:opacity-40"
+              data-state={autoLabelInTabTitles ? 'on' : 'off'}
+              role="switch"
+              aria-checked={autoLabelInTabTitles}
+              disabled={!showLabelsInTitles}
+              onClick={() => updateDisplay('autoLabelInTabTitles', !autoLabelInTabTitles)}
+            >
+              <span className="toggle-knob" />
+            </button>
+          </div>
+          <div
+            className={`flex items-center justify-between gap-4 px-4 py-3 rounded-xl bg-[var(--muted)] ${
+              !showLabelsInTitles ? 'opacity-50' : ''
+            }`}
+          >
             <span className="text-sm">Labels replace tab title</span>
             <button
               className="toggle-switch disabled:cursor-not-allowed disabled:opacity-40"
@@ -699,6 +745,28 @@ export function SettingsTab({
             >
               <span className="toggle-knob" />
             </button>
+          </div>
+          <div className="px-4 py-3 rounded-xl bg-[var(--muted)] space-y-2">
+            <div className="text-xs text-[var(--muted-foreground)]">Live example</div>
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-2">
+                <img src={previewIcon} alt="Codex" className="w-4 h-4" />
+                <span className="text-sm truncate">{previewFocusedAuto}</span>
+                <span className="ml-auto text-[10px] uppercase tracking-[0.08em] text-[var(--muted-foreground)]">Focused</span>
+              </div>
+              <div className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-2">
+                <img src={previewIcon} alt="Codex" className="w-4 h-4" />
+                <span className="text-sm truncate">{previewUnfocusedAuto}</span>
+                <span className="ml-auto text-[10px] uppercase tracking-[0.08em] text-[var(--muted-foreground)]">Unfocused</span>
+              </div>
+              {!autoLabelInTabTitles && (
+                <div className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-2">
+                  <img src={previewIcon} alt="Codex" className="w-4 h-4" />
+                  <span className="text-sm truncate">{previewManual}</span>
+                  <span className="ml-auto text-[10px] uppercase tracking-[0.08em] text-[var(--muted-foreground)]">Manual Label</span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </section>

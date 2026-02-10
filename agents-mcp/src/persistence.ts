@@ -7,11 +7,11 @@ import { AgentType } from './parsers.js';
 // All supported swarm agent types
 const ALL_AGENTS: AgentType[] = ['claude', 'codex', 'gemini', 'cursor', 'opencode'];
 
-// Config directory
-const AGENTS_CONFIG_DIR = path.join(homedir(), '.agents');
+// Swarm data lives under ~/.agents/swarm/
+const SWARM_DIR = path.join(homedir(), '.agents', 'swarm');
 
-// Preferred and legacy data roots (for agent data, not config)
-const PRIMARY_BASE_DIR = path.join(homedir(), '.agents');
+// Legacy paths (for migration)
+const LEGACY_CONFIG_DIR = path.join(homedir(), '.agents');
 const LEGACY_BASE_DIR = path.join(homedir(), '.swarmify');
 const TMP_FALLBACK_DIR = path.join(tmpdir(), 'agents');
 
