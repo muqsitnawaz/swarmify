@@ -241,7 +241,7 @@ Orchestrator                     SubAgent
      |                              |
      |                         writes to stdout
      |                              |
-     |                         ~/.agents/agents/{id}/stdout.log
+     |                         ~/.agents/swarm/agents/{id}/stdout.log
      |                              |
      +-- Status -----------------> reads log, parses events
      |                              |
@@ -253,7 +253,7 @@ Orchestrator                     SubAgent
 Each agent writes to its own log file (`stdout.log`). The Status tool reads these logs, normalizes events across different agent formats, and returns a summary. This design means:
 
 - **Persistence**: Agents survive IDE restarts. Reconnect via Status/Tasks.
-- **Debugging**: Full logs available at `~/.agents/agents/{id}/`
+- **Debugging**: Full logs available at `~/.agents/swarm/agents/{id}/`
 - **No shared state**: Agents don't talk to each other directly. The orchestrator coordinates.
 
 ### Storage
@@ -281,7 +281,7 @@ Data lives at `~/.agents/`:
 
 ## Configuration
 
-Config lives at `~/.agents/config.json`. See [AGENTS.md](./AGENTS.md) for full config reference.
+Config lives at `~/.agents/swarm/config.json`. See [AGENTS.md](./AGENTS.md) for full config reference.
 
 ## Environment Variables
 

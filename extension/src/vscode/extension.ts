@@ -1512,20 +1512,21 @@ async function getSessionPreviewForEntry(
   entry: terminals.EditorTerminal,
   workspacePath?: string
 ): Promise<{ firstUserMessage?: string; lastUserMessage?: string; messageCount: number } | null> {
-  if (!entry.sessionId || !entry.agentType) return null;
-  if (!['claude', 'codex', 'gemini', 'opencode', 'cursor'].includes(entry.agentType)) return null;
+  if (!entry.sessionId) return null;
+  const agentType = entry.agentType || prefixToAgentType(entry.agentConfig?.prefix ?? null);
+  if (!agentType) return null;
 
   const sessionPath = await getSessionPathBySessionId(
     entry.sessionId,
-    entry.agentType,
+    agentType,
     workspacePath
   );
   if (!sessionPath) return null;
 
-  if (entry.agentType === 'opencode') {
+  if (agentType === 'opencode') {
     return await getOpenCodeSessionPreviewInfo(sessionPath);
   }
-  if (entry.agentType === 'cursor') {
+  if (agentType === 'cursor') {
     return await getCursorSessionPreviewInfo(sessionPath);
   }
   return await getSessionPreviewInfo(sessionPath);
@@ -1552,7 +1553,7 @@ async function goToTerminal(context: vscode.ExtensionContext) {
       terminal: entry.terminal
     });
 
-    if (entry.sessionId && entry.agentType) {
+    if (entry.sessionId) {
       previewPromises.push({
         itemIndex,
         entry,
@@ -1766,9 +1767,6 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
  */
 async function fetchAndSetAutoLabel(terminal: vscode.Terminal, entry: terminals.EditorTerminal): Promise<string | undefined> {
   if (!entry.sessionId || entry.autoLabel) return entry.autoLabel;
-
-  const agentType = entry.agentType;
-  if (!agentType || !['claude', 'codex', 'gemini', 'opencode', 'cursor'].includes(agentType)) return undefined;
 
   try {
     const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;

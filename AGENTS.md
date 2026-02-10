@@ -163,9 +163,9 @@ Extracts both env vars from VS Code terminals at startup:
 | Item | Location |
 |------|----------|
 | Extension settings | VS Code globalState |
-| Swarm config | `~/.agents/config.json` |
+| Swarm config | `~/.agents/swarm/config.json` |
 | Agent prompts | `~/.swarmify/agents/prompts.json` |
-| Agent logs | `~/.agents/agents/{id}/stdout.log` |
+| Agent logs | `~/.agents/swarm/agents/{id}/stdout.log` |
 | Claude session files | `~/.claude/projects/{workspace}/*.jsonl` |
 | Codex session files | `~/.codex/sessions/{year}/{month}/{day}/*.jsonl` |
 | Gemini session files | `~/.gemini/sessions/*.jsonl` |
@@ -176,8 +176,8 @@ Extracts both env vars from VS Code terminals at startup:
 - MCP server for spawning agents (Spawn, Status, Stop, Tasks tools)
 - Auto-discovers which agent CLIs are installed at startup
 - Agents run as detached background processes (survive IDE restarts)
-- Storage: `~/.agents/`
-- Config: `~/.agents/config.json`
+- Storage: `~/.agents/swarm/`
+- Config: `~/.agents/swarm/config.json`
 
 ### extension (swarm-ext)
 - VS Code extension for managing agent terminals

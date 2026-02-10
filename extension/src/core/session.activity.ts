@@ -364,7 +364,7 @@ export function formatActivity(activity: CurrentActivity | null): string {
     case 'editing':
       return activity.summary ? `Editing ${activity.summary}` : 'Editing...';
     case 'running':
-      return activity.summary ? `Running: ${activity.summary}` : 'Running...';
+      return activity.summary || 'Running...';
     case 'thinking':
       return activity.summary || 'Thinking...';
     case 'waiting':
