@@ -1,6 +1,6 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { IconConfig, TaskSummary, TerminalDetail } from '../../types'
-import { getAgentDisplayName, getIcon, formatActualTime } from '../../utils'
+import { getAgentDisplayName, getIcon, formatTimeAgoSafe } from '../../utils'
 import { SectionHeader } from '../common'
 import { getFilesChangedCount, getTerminalPrompt, truncateText } from './helpers'
 
@@ -60,8 +60,16 @@ export function AgentTerminalsSection({
   onOpenTerminalFile,
   onToggleExpanded,
 }: AgentTerminalsSectionProps) {
+  const [, setRelativeTimeTick] = useState(0)
   const [expandedFileBadges, setExpandedFileBadges] = useState<Set<string>>(new Set())
   const [expandedToolBadges, setExpandedToolBadges] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    const timerId = window.setInterval(() => {
+      setRelativeTimeTick(prev => prev + 1)
+    }, 30_000)
+    return () => window.clearInterval(timerId)
+  }, [])
 
   if (!selectedAgentType) return null
 
@@ -136,7 +144,9 @@ export function AgentTerminalsSection({
                     </div>
                   </div>
                   <span className="text-xs text-[var(--muted-foreground)] shrink-0">
-                    {formatActualTime(terminal.firstMessageTimestamp)}
+                    {terminal.lastActivityTimestamp
+                      ? formatTimeAgoSafe(terminal.lastActivityTimestamp)
+                      : 'No updates yet'}
                   </span>
                 </div>
 
