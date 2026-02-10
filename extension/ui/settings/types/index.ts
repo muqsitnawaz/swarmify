@@ -246,6 +246,7 @@ export interface TerminalDetail {
   status?: 'running' | 'completed' | 'idle'
   messageCount?: number
   firstMessageTimestamp?: string
+  lastActivityTimestamp?: string
   currentActivity?: string
   quickSummary?: SessionQuickSummary
   recentFiles?: string[]

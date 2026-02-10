@@ -37,7 +37,6 @@ import {
   sanitizeLabel,
   formatTerminalTitle,
   getSessionChunk,
-  formatRelativeTime,
   truncateText,
   extractFirstNWords,
   TerminalIdentificationOptions,
@@ -742,6 +741,10 @@ export async function activate(context: vscode.ExtensionContext) {
   // Register commands
   context.subscriptions.push(
     vscode.commands.registerCommand('agents.open', () => openAgentTerminals(context))
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('agents.openAgent', () => goToTerminal(context))
   );
 
   context.subscriptions.push(
@@ -1505,41 +1508,55 @@ interface TerminalQuickPickItem extends vscode.QuickPickItem {
   terminal: vscode.Terminal;
 }
 
+async function getSessionPreviewForEntry(
+  entry: terminals.EditorTerminal,
+  workspacePath?: string
+): Promise<{ firstUserMessage?: string; lastUserMessage?: string; messageCount: number } | null> {
+  if (!entry.sessionId || !entry.agentType) return null;
+  if (!['claude', 'codex', 'gemini', 'opencode', 'cursor'].includes(entry.agentType)) return null;
+
+  const sessionPath = await getSessionPathBySessionId(
+    entry.sessionId,
+    entry.agentType,
+    workspacePath
+  );
+  if (!sessionPath) return null;
+
+  if (entry.agentType === 'opencode') {
+    return await getOpenCodeSessionPreviewInfo(sessionPath);
+  }
+  if (entry.agentType === 'cursor') {
+    return await getCursorSessionPreviewInfo(sessionPath);
+  }
+  return await getSessionPreviewInfo(sessionPath);
+}
+
 async function goToTerminal(context: vscode.ExtensionContext) {
-  // Use internal registry - each entry has unique ID, no ambiguous matching needed
   const allEntries = terminals.getAllTerminals();
   const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 
-  // Filter to agent terminals and build quick pick items
   const items: TerminalQuickPickItem[] = [];
-  const previewPromises: Array<{ itemIndex: number; promise: Promise<{ firstUserMessage?: string; lastUserMessage?: string; messageCount: number } | null> }> = [];
+  const previewPromises: Array<{ itemIndex: number; entry: terminals.EditorTerminal; promise: Promise<{ firstUserMessage?: string; lastUserMessage?: string; messageCount: number } | null> }> = [];
 
   for (const entry of allEntries) {
-    // Skip non-agent terminals
     if (!entry.agentConfig) continue;
 
     const expandedName = getExpandedAgentName(entry.agentConfig.prefix);
-    const sessionChunk = entry.sessionId ? `[${entry.sessionId.slice(0, 8)}]` : '';
-    const timeAgo = formatRelativeTime(entry.createdAt);
-    const labelParts = [expandedName, sessionChunk, timeAgo].filter(Boolean);
+    const effectiveTitle = entry.label || entry.autoLabel || 'Untitled';
+    const sessionSuffix = entry.sessionId ? ` (${entry.sessionId})` : '';
     const itemIndex = items.length;
 
     items.push({
-      label: labelParts.join(' '),
+      label: `${expandedName} - ${effectiveTitle}${sessionSuffix}`,
       description: '',
       terminal: entry.terminal
     });
 
-    // Queue preview fetch if session exists
     if (entry.sessionId && entry.agentType) {
-      const agentType = entry.agentType as 'claude' | 'codex' | 'gemini';
       previewPromises.push({
         itemIndex,
-        promise: (async () => {
-          const sessionPath = await getSessionPathBySessionId(entry.sessionId!, agentType, workspacePath);
-          if (!sessionPath) return null;
-          return await getSessionPreviewInfo(sessionPath);
-        })()
+        entry,
+        promise: getSessionPreviewForEntry(entry, workspacePath)
       });
     }
   }
@@ -1549,12 +1566,23 @@ async function goToTerminal(context: vscode.ExtensionContext) {
     return;
   }
 
-  // Resolve preview info in parallel
   const previewResults = await Promise.all(previewPromises.map(p => p.promise));
   for (let i = 0; i < previewPromises.length; i++) {
+    const previewPromise = previewPromises[i];
+    const entry = previewPromise.entry;
+    const idx = previewPromise.itemIndex;
     const info = previewResults[i];
     if (info) {
-      const idx = previewPromises[i].itemIndex;
+      if (!entry.label && !entry.autoLabel && info.firstUserMessage) {
+        const generatedTitle = extractFirstNWords(info.firstUserMessage, 5);
+        if (generatedTitle) {
+          terminals.setAutoLabel(entry.terminal, generatedTitle);
+          const expandedName = getExpandedAgentName(entry.agentConfig?.prefix || '');
+          const sessionSuffix = entry.sessionId ? ` (${entry.sessionId})` : '';
+          items[idx].label = `${expandedName} - ${generatedTitle}${sessionSuffix}`;
+        }
+      }
+
       const parts: string[] = [];
       if (info.firstUserMessage) parts.push(truncateText(info.firstUserMessage, 40));
       if (info.messageCount > 0) parts.push(`(${info.messageCount})`);
@@ -1744,22 +1772,8 @@ async function fetchAndSetAutoLabel(terminal: vscode.Terminal, entry: terminals.
 
   try {
     const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    const sessionPath = await getSessionPathBySessionId(
-      entry.sessionId,
-      agentType as 'claude' | 'codex' | 'gemini' | 'opencode' | 'cursor',
-      workspacePath
-    );
-    if (!sessionPath) return undefined;
-
-    // Each agent has different storage structure
-    let previewInfo;
-    if (agentType === 'opencode') {
-      previewInfo = await getOpenCodeSessionPreviewInfo(sessionPath);
-    } else if (agentType === 'cursor') {
-      previewInfo = await getCursorSessionPreviewInfo(sessionPath);
-    } else {
-      previewInfo = await getSessionPreviewInfo(sessionPath);
-    }
+    const previewInfo = await getSessionPreviewForEntry(entry, workspacePath);
+    if (!previewInfo) return undefined;
 
     if (!previewInfo.firstUserMessage) return undefined;
 
