@@ -15,8 +15,6 @@ const LEGACY_CONFIG_DIR = path.join(homedir(), '.agents');
 const LEGACY_BASE_DIR = path.join(homedir(), '.swarmify');
 const TMP_FALLBACK_DIR = path.join(tmpdir(), 'agents');
 
-let RESOLVED_BASE_DIR: string | null = null;
-
 async function pathExists(p: string): Promise<boolean> {
   try {
     await fs.access(p);
@@ -37,29 +35,16 @@ async function ensureWritableDir(p: string): Promise<boolean> {
 }
 
 export async function resolveBaseDir(): Promise<string> {
-  if (RESOLVED_BASE_DIR) return RESOLVED_BASE_DIR;
-
-  // Preferred location
-  if (await ensureWritableDir(PRIMARY_BASE_DIR)) {
-    RESOLVED_BASE_DIR = PRIMARY_BASE_DIR;
-    return RESOLVED_BASE_DIR;
+  if (await ensureWritableDir(SWARM_DIR)) {
+    return SWARM_DIR;
   }
 
-  // Legacy support if the old dir already exists or is the only writable spot
-  if ((await pathExists(LEGACY_BASE_DIR)) && await ensureWritableDir(LEGACY_BASE_DIR)) {
-    RESOLVED_BASE_DIR = LEGACY_BASE_DIR;
-    console.warn(`[agents-mcp] Migrating from legacy data dir at ${LEGACY_BASE_DIR} - data will be read from there`);
-    return RESOLVED_BASE_DIR;
-  }
-
-  // Writable tmp fallback
   if (await ensureWritableDir(TMP_FALLBACK_DIR)) {
-    RESOLVED_BASE_DIR = TMP_FALLBACK_DIR;
     console.warn(`[agents-mcp] Falling back to temp data dir at ${TMP_FALLBACK_DIR}`);
-    return RESOLVED_BASE_DIR;
+    return TMP_FALLBACK_DIR;
   }
 
-  throw new Error('Unable to determine writable data directory for agents');
+  throw new Error('Unable to determine writable data directory for swarm');
 }
 
 async function resolveAgentsPath(): Promise<string> {
@@ -68,13 +53,16 @@ async function resolveAgentsPath(): Promise<string> {
 }
 
 async function resolveConfigPath(): Promise<string> {
-  await fs.mkdir(AGENTS_CONFIG_DIR, { recursive: true });
-  return path.join(AGENTS_CONFIG_DIR, 'config.json');
+  await fs.mkdir(SWARM_DIR, { recursive: true });
+  return path.join(SWARM_DIR, 'config.json');
 }
 
 async function resolveLegacyConfigPath(): Promise<string> {
-  const base = await resolveBaseDir();
-  return path.join(base, 'agents', 'config.json');
+  return path.join(LEGACY_CONFIG_DIR, 'config.json');
+}
+
+async function resolveLegacySwarmifyConfigPath(): Promise<string> {
+  return path.join(LEGACY_BASE_DIR, 'agents', 'config.json');
 }
 
 export type EffortLevel = 'fast' | 'default' | 'detailed';
