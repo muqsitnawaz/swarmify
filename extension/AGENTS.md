@@ -27,7 +27,7 @@ bun test           # 166 tests, no mocks
 |------|----------|
 | Settings | VS Code globalState |
 | Prompts | `~/.swarmify/agents/prompts.yaml` |
-| Swarm config | `~/.agents/config.json` |
+| Swarm config | `~/.agents/swarm/config.json` |
 | Workspace config | `.swarmify/config.yaml` (workspace root) |
 | Claude sessions | `~/.claude/projects/{workspace}/*.jsonl` |
 | Codex sessions | `~/.codex/sessions/{year}/{month}/{day}/*.jsonl` |
