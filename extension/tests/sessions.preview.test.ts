@@ -239,6 +239,92 @@ describe('Session Preview - Critical Contract for Prompt Display', () => {
     });
   });
 
+  describe('Claude message extraction - must parse type:user message:content format', () => {
+    test('should extract firstUserMessage from Claude sessions with >50 lines', async () => {
+      const sessions = discoverSessionFiles('claude', 10);
+      const substantialSessions: string[] = [];
+      for (const sp of sessions) {
+        const content = fs.readFileSync(sp, 'utf-8');
+        const lines = content.split(/\r?\n/).filter(l => l.trim());
+        const hasUserLine = lines.some(l => {
+          try {
+            const obj = JSON.parse(l);
+            return obj.type === 'user' && obj.message?.role === 'user';
+          } catch { return false; }
+        });
+        if (lines.length > 50 && hasUserLine) substantialSessions.push(sp);
+      }
+
+      expect(substantialSessions.length).toBeGreaterThan(0);
+
+      for (const sp of substantialSessions.slice(0, 3)) {
+        const preview = await getSessionPreviewInfo(sp);
+        const sid = path.basename(sp, '.jsonl');
+        console.log(`[Claude extract] ${sid}: first="${preview.firstUserMessage?.slice(0, 80) || 'NONE'}", count=${preview.messageCount}`);
+        expect(preview.firstUserMessage).toBeDefined();
+        expect(preview.firstUserMessage!.length).toBeGreaterThan(0);
+      }
+    });
+
+    test('should extract lastUserMessage from Claude sessions with multiple user messages', async () => {
+      const sessions = discoverSessionFiles('claude', 10);
+      const multiUserSessions: string[] = [];
+      for (const sp of sessions) {
+        const content = fs.readFileSync(sp, 'utf-8');
+        const lines = content.split(/\r?\n/).filter(l => l.trim());
+        let userCount = 0;
+        for (const l of lines) {
+          try {
+            const obj = JSON.parse(l);
+            if (obj.type === 'user' && obj.message?.role === 'user') userCount++;
+          } catch {}
+        }
+        if (userCount >= 2) multiUserSessions.push(sp);
+      }
+
+      if (multiUserSessions.length === 0) {
+        console.warn('Skipping: no Claude sessions with 2+ user messages');
+        return;
+      }
+
+      for (const sp of multiUserSessions.slice(0, 3)) {
+        const preview = await getSessionPreviewInfo(sp);
+        const sid = path.basename(sp, '.jsonl');
+        console.log(`[Claude last] ${sid}: last="${preview.lastUserMessage?.slice(0, 80) || 'NONE'}"`);
+        expect(preview.lastUserMessage).toBeDefined();
+        expect(preview.lastUserMessage!.length).toBeGreaterThan(0);
+      }
+    });
+
+    test('should handle Claude event with array content (tool_results)', async () => {
+      const sessions = discoverSessionFiles('claude', 10);
+      const toolResultSessions: string[] = [];
+      for (const sp of sessions) {
+        const content = fs.readFileSync(sp, 'utf-8');
+        const lines = content.split(/\r?\n/).filter(l => l.trim());
+        for (const l of lines) {
+          try {
+            const obj = JSON.parse(l);
+            if (obj.type === 'user' && Array.isArray(obj.message?.content)) {
+              toolResultSessions.push(sp);
+              break;
+            }
+          } catch {}
+        }
+      }
+
+      if (toolResultSessions.length === 0) {
+        console.warn('Skipping: no Claude sessions with array content');
+        return;
+      }
+
+      const preview = await getSessionPreviewInfo(toolResultSessions[0]);
+      const sid = path.basename(toolResultSessions[0], '.jsonl');
+      console.log(`[Claude array] ${sid}: first="${preview.firstUserMessage?.slice(0, 80) || 'NONE'}", count=${preview.messageCount}`);
+      expect(preview.firstUserMessage).toBeDefined();
+    });
+  });
+
   describe('Critical Contract - Session ID Flow', () => {
     test('sessionId maps to session file location', () => {
       const claudeSessions = discoverSessionFiles('claude', 1);
