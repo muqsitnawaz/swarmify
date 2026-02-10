@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { IconConfig, TaskSummary, TerminalDetail } from '../../types'
-import { getAgentDisplayName, getIcon, formatTimeAgoSafe } from '../../utils'
+import { getAgentDisplayName, getIcon } from '../../utils'
 import { SectionHeader } from '../common'
 import { getFilesChangedCount, getTerminalPrompt, truncateText } from './helpers'
 
@@ -46,6 +46,28 @@ function getFilename(filePath: string): string {
 function formatToolLabel(toolName: string): string {
   if (toolName.length <= 18) return toolName
   return `${toolName.slice(0, 15)}...`
+}
+
+function formatTerminalUpdateTime(isoTimestamp?: string): string {
+  if (!isoTimestamp) return 'No updates yet'
+  const date = new Date(isoTimestamp)
+  if (Number.isNaN(date.getTime())) return 'No updates yet'
+
+  const diffMs = Math.max(0, Date.now() - date.getTime())
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMs / 3600000)
+  const diffDays = Math.floor(diffMs / 86400000)
+  const diffWeeks = Math.floor(diffDays / 7)
+
+  if (diffMins < 1) return 'Just now'
+  if (diffMins === 1) return '1 min ago'
+  if (diffMins < 60) return `${diffMins} mins ago`
+  if (diffHours === 1) return '1 hour ago'
+  if (diffHours < 24) return `${diffHours} hours ago`
+  if (diffDays === 1) return '1 day ago'
+  if (diffDays < 7) return `${diffDays} days ago`
+  if (diffWeeks === 1) return '1 week ago'
+  return `${diffWeeks} weeks ago`
 }
 
 export function AgentTerminalsSection({
@@ -144,9 +166,7 @@ export function AgentTerminalsSection({
                     </div>
                   </div>
                   <span className="text-xs text-[var(--muted-foreground)] shrink-0">
-                    {terminal.lastActivityTimestamp
-                      ? formatTimeAgoSafe(terminal.lastActivityTimestamp)
-                      : 'No updates yet'}
+                    {formatTerminalUpdateTime(terminal.lastActivityTimestamp)}
                   </span>
                 </div>
 

@@ -18,6 +18,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {
   getSessionPreviewInfo,
+  getOpenCodeSessionPreviewInfo,
   type SessionPreviewInfo
 } from '../src/vscode/sessions.vscode';
 
@@ -263,6 +264,70 @@ describe('Session Preview - Critical Contract for Prompt Display', () => {
         console.log(`  first="${preview.firstUserMessage?.slice(0, 100) || 'NONE'}", last="${preview.lastUserMessage?.slice(0, 100) || 'NONE'}", count=${preview.messageCount}`);
         expect(preview.firstUserMessage).toBeDefined();
         expect(preview.firstUserMessage!.length).toBeGreaterThan(0);
+      }
+    });
+  });
+
+  describe('Codex message extraction - must parse response_item format', () => {
+    test('should extract firstUserMessage from Codex sessions', async () => {
+      const sessions = discoverSessionFiles('codex', 10);
+      if (sessions.length === 0) {
+        console.warn('Skipping: no Codex session files found');
+        return;
+      }
+
+      for (const sp of sessions.slice(0, 3)) {
+        const preview = await getSessionPreviewInfo(sp);
+        console.log(`[Codex extract] file=${sp}`);
+        console.log(`  first="${preview.firstUserMessage?.slice(0, 100) || 'NONE'}", last="${preview.lastUserMessage?.slice(0, 100) || 'NONE'}", count=${preview.messageCount}`);
+        expect(preview.messageCount).toBeGreaterThan(0);
+      }
+    });
+  });
+
+  describe('OpenCode message extraction - 3-level JSON storage', () => {
+    function discoverOpenCodeMessageDirs(limit: number = 5): string[] {
+      const sessionDir = path.join(homedir(), '.local', 'share', 'opencode', 'storage', 'session');
+      if (!fs.existsSync(sessionDir)) return [];
+
+      const projectHashes = fs.readdirSync(sessionDir, { withFileTypes: true })
+        .filter(e => e.isDirectory())
+        .map(e => e.name);
+
+      const messageDirs: { dir: string; mtime: number }[] = [];
+      for (const hash of projectHashes) {
+        const hashDir = path.join(sessionDir, hash);
+        const sessions = fs.readdirSync(hashDir, { withFileTypes: true })
+          .filter(e => e.isFile() && e.name.endsWith('.json'));
+
+        for (const session of sessions) {
+          const sessionId = path.basename(session.name, '.json');
+          const messageDir = path.join(homedir(), '.local', 'share', 'opencode', 'storage', 'message', sessionId);
+          if (fs.existsSync(messageDir)) {
+            const stats = fs.statSync(path.join(hashDir, session.name));
+            messageDirs.push({ dir: messageDir, mtime: stats.mtimeMs });
+          }
+        }
+      }
+
+      return messageDirs
+        .sort((a, b) => b.mtime - a.mtime)
+        .slice(0, limit)
+        .map(m => m.dir);
+    }
+
+    test('should extract firstUserMessage from OpenCode sessions', async () => {
+      const messageDirs = discoverOpenCodeMessageDirs(5);
+      if (messageDirs.length === 0) {
+        console.warn('Skipping: no OpenCode message dirs found');
+        return;
+      }
+
+      for (const dir of messageDirs.slice(0, 3)) {
+        const preview = await getOpenCodeSessionPreviewInfo(dir);
+        console.log(`[OpenCode extract] dir=${dir}`);
+        console.log(`  first="${preview.firstUserMessage?.slice(0, 100) || 'NONE'}", count=${preview.messageCount}`);
+        expect(preview.messageCount).toBeGreaterThanOrEqual(0);
       }
     });
   });

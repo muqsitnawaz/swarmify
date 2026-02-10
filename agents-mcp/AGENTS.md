@@ -233,8 +233,8 @@ Checks which agent CLIs are installed using `checkCliAvailable()` in `agents.ts`
 
 ### Config Location
 
-**Primary:** `~/.agents/config.json`
-**Legacy fallback:** `~/.swarmify/agents/config.json`
+**Primary:** `~/.agents/swarm/config.json`
+**Legacy fallback:** `~/.agents/config.json`, `~/.swarmify/agents/config.json`
 **Temp fallback:** `/tmp/agents/` (if others not writable)
 
 ### Agent Config Structure
@@ -301,7 +301,7 @@ Checks which agent CLIs are installed using `checkCliAvailable()` in `agents.ts`
 ### Directory Structure
 
 ```
-~/.agents/
+~/.agents/swarm/
   config.json          # Agent configuration
   cache.json           # Version cache (12h TTL)
   agents/
@@ -314,7 +314,7 @@ Checks which agent CLIs are installed using `checkCliAvailable()` in `agents.ts`
 
 Located in `agents.ts`, called during AgentManager initialization:
 
-1. Reads all directories in `~/.agents/agents/`
+1. Reads all directories in `~/.agents/swarm/agents/`
 2. Loads `metadata.json` for each
 3. Filters by age (cleans up older than cleanupAgeDays, default 7)
 4. Filters by `cwd` if `filterByCwd` is set
@@ -428,7 +428,7 @@ bun test
 
 ### Version Cache
 
-Located at `~/.agents/cache.json`:
+Located at `~/.agents/swarm/cache.json`:
 ```json
 {
   "version": {
