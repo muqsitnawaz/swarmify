@@ -207,36 +207,57 @@ function getDefaultSwarmConfig(): SwarmConfig {
   };
 }
 
-// Migrate from legacy config format
-async function migrateLegacyConfig(): Promise<SwarmConfig | null> {
-  const legacyConfigPath = await resolveLegacyConfigPath();
+// Try to read a config file as either SwarmConfig or legacy format
+async function tryReadLegacyConfig(configPath: string): Promise<SwarmConfig | null> {
   try {
-    const data = await fs.readFile(legacyConfigPath, 'utf-8');
-    const legacyConfig = JSON.parse(data) as { enabledAgents?: string[] };
+    const data = await fs.readFile(configPath, 'utf-8');
+    const parsed = JSON.parse(data);
 
-    if (!legacyConfig.enabledAgents || legacyConfig.enabledAgents.length === 0) {
-      return null;
-    }
-
-    // Merge legacy enabled agents into default config
-    const defaultConfig = getDefaultSwarmConfig();
-    for (const agentType of legacyConfig.enabledAgents) {
-      if (ALL_AGENTS.includes(agentType as AgentType)) {
-        defaultConfig.agents[agentType as AgentType].enabled = true;
+    // New format: has agents object with nested configs
+    if (parsed.agents && typeof parsed.agents === 'object') {
+      const firstValue = Object.values(parsed.agents)[0];
+      if (firstValue && typeof firstValue === 'object' && 'models' in (firstValue as object)) {
+        return parsed as SwarmConfig;
       }
     }
 
-    // Write migrated config to new location
-    const newConfigPath = await ensureConfigPath();
-    await fs.writeFile(newConfigPath, JSON.stringify(defaultConfig, null, 2));
+    // Old format: { enabledAgents: string[] }
+    if (parsed.enabledAgents && Array.isArray(parsed.enabledAgents)) {
+      const defaultConfig = getDefaultSwarmConfig();
+      for (const agentType of parsed.enabledAgents) {
+        if (ALL_AGENTS.includes(agentType as AgentType)) {
+          defaultConfig.agents[agentType as AgentType].enabled = true;
+        }
+      }
+      return defaultConfig;
+    }
 
-    console.warn(`[agents-mcp] Migrated config from ${legacyConfigPath} to ${newConfigPath}`);
-
-    return defaultConfig;
+    return null;
   } catch {
-    // Legacy config doesn't exist or is invalid
     return null;
   }
+}
+
+// Migrate from legacy config locations
+async function migrateLegacyConfig(): Promise<SwarmConfig | null> {
+  // Try ~/.agents/config.json first (most recent legacy location)
+  const legacyConfigPath = await resolveLegacyConfigPath();
+  let config = await tryReadLegacyConfig(legacyConfigPath);
+
+  // Try ~/.swarmify/agents/config.json
+  if (!config) {
+    const swarmifyConfigPath = await resolveLegacySwarmifyConfigPath();
+    config = await tryReadLegacyConfig(swarmifyConfigPath);
+  }
+
+  if (!config) return null;
+
+  // Write migrated config to new location
+  const newConfigPath = await ensureConfigPath();
+  await fs.writeFile(newConfigPath, JSON.stringify(config, null, 2));
+  console.warn(`[agents-mcp] Migrated config to ${newConfigPath}`);
+
+  return config;
 }
 
 // Read swarm config, returns default config if file doesn't exist

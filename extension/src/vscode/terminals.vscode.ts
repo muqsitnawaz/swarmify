@@ -576,6 +576,7 @@ export interface TerminalDetail {
   status?: 'running' | 'completed' | 'idle';
   messageCount?: number; // Total message count in session
   firstMessageTimestamp?: string; // ISO-8601 timestamp of first user message
+  lastActivityTimestamp?: string; // ISO-8601 timestamp of latest session update
   currentActivity?: string; // Live activity (e.g., "Reading src/auth.ts", "Running npm test")
   quickSummary?: SessionQuickSummary;
   recentFiles?: string[];
@@ -588,6 +589,23 @@ export interface TerminalDetail {
   parentId?: string | null;
   parentLabel?: string | null;
   children?: string[];
+}
+
+function pickMostRecentTimestamp(...timestamps: Array<string | undefined>): string | undefined {
+  let newestMs = Number.NEGATIVE_INFINITY;
+  let newestIso: string | undefined;
+
+  for (const timestamp of timestamps) {
+    if (!timestamp) continue;
+    const ms = Date.parse(timestamp);
+    if (Number.isNaN(ms)) continue;
+    if (ms > newestMs) {
+      newestMs = ms;
+      newestIso = new Date(ms).toISOString();
+    }
+  }
+
+  return newestIso;
 }
 
 // Map from lowercase key (used in UI) to prefix (used in terminal names)
@@ -759,7 +777,14 @@ export async function getTerminalsByAgentType(
   const dataPromises = sessionPromises.map(async (p, i) => {
     const sessionPath = sessionPaths[i];
     console.log(`[getTerminalsByAgentType] Session ${i}: path=${sessionPath || 'NOT FOUND'}, agentType=${p.agentType}`);
-    if (!sessionPath) return { index: p.index, preview: null, activity: null, quickSummary: null };
+    if (!sessionPath) return {
+      index: p.index,
+      preview: null,
+      activity: null,
+      activityTimestamp: null,
+      sessionMtimeTimestamp: null,
+      quickDetails: null
+    };
 
     // Use agent-specific preview function
     let previewPromise: Promise<SessionPreviewInfo | null>;
@@ -774,9 +799,10 @@ export async function getTerminalsByAgentType(
     // OpenCode and Cursor don't use JSONL tail for activity
     const needsTail = p.agentType !== 'opencode' && p.agentType !== 'cursor';
     const summaryAgentType = (p.agentType === 'claude' || p.agentType === 'codex' || p.agentType === 'gemini') ? p.agentType : null;
-    const [preview, tail] = await Promise.all([
+    const [preview, tail, sessionStat] = await Promise.all([
       previewPromise,
-      needsTail ? readSessionTailLines(sessionPath, 20) : Promise.resolve(null)
+      needsTail ? readSessionTailLines(sessionPath, 20) : Promise.resolve(null),
+      fs.stat(sessionPath).catch(() => null)
     ]);
 
     // Activity extraction only works for JSONL agents
@@ -789,6 +815,8 @@ export async function getTerminalsByAgentType(
       index: p.index,
       preview,
       activity: activity ? formatActivity(activity) : null,
+      activityTimestamp: activity?.timestamp ? activity.timestamp.toISOString() : null,
+      sessionMtimeTimestamp: sessionStat?.mtime ? sessionStat.mtime.toISOString() : null,
       quickDetails
     };
   });
@@ -805,6 +833,14 @@ export async function getTerminalsByAgentType(
     }
     if (data.activity) {
       results[data.index].currentActivity = data.activity;
+    }
+    const mostRecentTimestamp = pickMostRecentTimestamp(
+      data.activityTimestamp || undefined,
+      data.sessionMtimeTimestamp || undefined,
+      data.preview?.firstUserMessageTimestamp
+    );
+    if (mostRecentTimestamp) {
+      results[data.index].lastActivityTimestamp = mostRecentTimestamp;
     }
     if (data.quickDetails) {
       results[data.index].quickSummary = data.quickDetails.summary;
