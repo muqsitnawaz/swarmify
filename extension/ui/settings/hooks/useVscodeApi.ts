@@ -52,6 +52,7 @@ export type VsCodeMessageType =
   | 'togglePrewarm'
   | 'getWorkspaceConfig'
   | 'openContextFile'
+  | 'openTerminalFile'
   | 'openSession'
   | 'spawnSwarmForTodo'
   | 'installSwarmAgent'

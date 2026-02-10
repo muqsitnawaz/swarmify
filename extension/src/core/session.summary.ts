@@ -1,0 +1,402 @@
+export type SessionSummaryAgentType = 'claude' | 'codex' | 'gemini';
+
+export interface SessionQuickSummary {
+  filesEdited: number;
+  filesRead: number;
+  filesCreated: number;
+  filesDeleted: number;
+  toolCalls: number;
+  webSearches: number;
+  webFetches: number;
+  mcpCalls: number;
+}
+
+export interface SessionQuickDetails {
+  summary: SessionQuickSummary;
+  recentFiles: string[];
+  recentTools: string[];
+  lastFilePath: string | null;
+}
+
+type MutableSessionQuickSummary = {
+  filesEdited: Set<string>;
+  filesRead: Set<string>;
+  filesCreated: Set<string>;
+  filesDeleted: Set<string>;
+  recentChangedFiles: string[];
+  recentTouchedFiles: string[];
+  recentTools: string[];
+  toolCalls: number;
+  webSearches: number;
+  webFetches: number;
+  mcpCalls: number;
+  maxWebSearchesFromUsage: number;
+  maxWebFetchesFromUsage: number;
+};
+
+function initMutableSummary(): MutableSessionQuickSummary {
+  return {
+    filesEdited: new Set<string>(),
+    filesRead: new Set<string>(),
+    filesCreated: new Set<string>(),
+    filesDeleted: new Set<string>(),
+    recentChangedFiles: [],
+    recentTouchedFiles: [],
+    recentTools: [],
+    toolCalls: 0,
+    webSearches: 0,
+    webFetches: 0,
+    mcpCalls: 0,
+    maxWebSearchesFromUsage: 0,
+    maxWebFetchesFromUsage: 0,
+  };
+}
+
+function toRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function toStringValue(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+function toNumberValue(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function parseArguments(value: unknown): Record<string, unknown> {
+  if (!value) return {};
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return toRecord(parsed) || {};
+    } catch {
+      return {};
+    }
+  }
+  return toRecord(value) || {};
+}
+
+function pathFromArgs(args: Record<string, unknown>): string {
+  const path = toStringValue(args.path);
+  if (path) return path;
+  const filePath = toStringValue(args.file_path);
+  if (filePath) return filePath;
+  return toStringValue(args.target_file);
+}
+
+function lower(value: string): string {
+  return value.toLowerCase();
+}
+
+function isWebSearchTool(toolName: string): boolean {
+  const value = lower(toolName);
+  return value.includes('web_search') || value.includes('websearch');
+}
+
+function isWebFetchTool(toolName: string): boolean {
+  const value = lower(toolName);
+  return value.includes('web_fetch') || value.includes('webfetch');
+}
+
+function isMcpTool(toolName: string): boolean {
+  const value = lower(toolName);
+  return value.startsWith('mcp__') || value.startsWith('mcp.');
+}
+
+function addRecentUnique(list: string[], value: string): void {
+  if (!value) return;
+  const idx = list.indexOf(value);
+  if (idx >= 0) list.splice(idx, 1);
+  list.unshift(value);
+}
+
+function addToolCounters(summary: MutableSessionQuickSummary, toolName: string): void {
+  addRecentUnique(summary.recentTools, toolName);
+  if (isWebSearchTool(toolName)) {
+    summary.webSearches++;
+  }
+  if (isWebFetchTool(toolName)) {
+    summary.webFetches++;
+  }
+  if (isMcpTool(toolName)) {
+    summary.mcpCalls++;
+  }
+}
+
+function addFileWrite(summary: MutableSessionQuickSummary, filePath: string): void {
+  if (!filePath) return;
+  summary.filesEdited.add(filePath);
+  addRecentUnique(summary.recentChangedFiles, filePath);
+  addRecentUnique(summary.recentTouchedFiles, filePath);
+}
+
+function addFileRead(summary: MutableSessionQuickSummary, filePath: string): void {
+  if (!filePath) return;
+  summary.filesRead.add(filePath);
+  addRecentUnique(summary.recentTouchedFiles, filePath);
+}
+
+function addFileCreate(summary: MutableSessionQuickSummary, filePath: string): void {
+  if (!filePath) return;
+  summary.filesCreated.add(filePath);
+  summary.filesEdited.add(filePath);
+  addRecentUnique(summary.recentChangedFiles, filePath);
+  addRecentUnique(summary.recentTouchedFiles, filePath);
+}
+
+function addFileDelete(summary: MutableSessionQuickSummary, filePath: string): void {
+  if (!filePath) return;
+  summary.filesDeleted.add(filePath);
+  summary.filesEdited.add(filePath);
+  addRecentUnique(summary.recentChangedFiles, filePath);
+  addRecentUnique(summary.recentTouchedFiles, filePath);
+}
+
+function applyClaudeEvent(summary: MutableSessionQuickSummary, event: Record<string, unknown>): void {
+  const eventType = toStringValue(event.type);
+
+  if (eventType === 'assistant') {
+    const message = toRecord(event.message);
+    const content = message?.content;
+    if (!Array.isArray(content)) return;
+
+    for (const block of content) {
+      const blockRecord = toRecord(block);
+      if (!blockRecord || toStringValue(blockRecord.type) !== 'tool_use') continue;
+
+      const toolName = toStringValue(blockRecord.name);
+      const toolInput = toRecord(blockRecord.input) || {};
+      summary.toolCalls++;
+      addToolCounters(summary, toolName);
+
+      if (toolName === 'Read' || toolName === 'Glob' || toolName === 'Grep') {
+        addFileRead(summary, pathFromArgs(toolInput));
+        continue;
+      }
+
+      if (toolName === 'Edit' || toolName === 'Write' || toolName === 'NotebookEdit') {
+        addFileWrite(summary, pathFromArgs(toolInput));
+        continue;
+      }
+
+      if (toolName === 'Delete') {
+        addFileDelete(summary, pathFromArgs(toolInput));
+      }
+    }
+
+    return;
+  }
+
+  if (eventType === 'user') {
+    const toolUseResult = toRecord(event.tool_use_result);
+    if (!toolUseResult) return;
+
+    const resultType = toStringValue(toolUseResult.type);
+    const resultPath = toStringValue(toolUseResult.filePath);
+    if (resultType === 'create' && resultPath) {
+      addFileCreate(summary, resultPath);
+    } else if (resultType === 'delete' && resultPath) {
+      addFileDelete(summary, resultPath);
+    }
+
+    const file = toRecord(toolUseResult.file);
+    if (file) {
+      const readPath = toStringValue(file.filePath);
+      if (readPath) {
+        addFileRead(summary, readPath);
+      }
+    }
+
+    return;
+  }
+
+  if (eventType === 'result') {
+    const usage = toRecord(event.usage);
+    const serverToolUse = usage ? toRecord(usage.server_tool_use) : null;
+    if (!serverToolUse) return;
+    summary.maxWebSearchesFromUsage = Math.max(
+      summary.maxWebSearchesFromUsage,
+      toNumberValue(serverToolUse.web_search_requests)
+    );
+    summary.maxWebFetchesFromUsage = Math.max(
+      summary.maxWebFetchesFromUsage,
+      toNumberValue(serverToolUse.web_fetch_requests)
+    );
+  }
+}
+
+function applyCodexToolCall(
+  summary: MutableSessionQuickSummary,
+  toolName: string,
+  args: Record<string, unknown>
+): void {
+  const name = lower(toolName);
+  const filePath = pathFromArgs(args);
+
+  summary.toolCalls++;
+  addToolCounters(summary, toolName);
+
+  if (name === 'create_file') {
+    addFileCreate(summary, filePath);
+    return;
+  }
+
+  if (name === 'write_file' || name === 'edit_file' || name === 'apply_diff') {
+    addFileWrite(summary, filePath);
+    return;
+  }
+
+  if (name === 'read_file' || name === 'view_file') {
+    addFileRead(summary, filePath);
+    return;
+  }
+
+  if (name === 'delete_file' || name === 'remove_file') {
+    addFileDelete(summary, filePath);
+  }
+}
+
+function applyCodexEvent(summary: MutableSessionQuickSummary, event: Record<string, unknown>): void {
+  const eventType = toStringValue(event.type);
+
+  if (eventType === 'function_call') {
+    const toolName = toStringValue(event.name);
+    const args = parseArguments(event.arguments);
+    if (toolName) {
+      applyCodexToolCall(summary, toolName, args);
+    }
+    return;
+  }
+
+  if (eventType !== 'response_item') return;
+
+  const payload = toRecord(event.payload);
+  if (!payload) return;
+  if (toStringValue(payload.type) !== 'function_call') return;
+  const toolName = toStringValue(payload.name);
+  const args = parseArguments(payload.arguments);
+  if (!toolName) return;
+  applyCodexToolCall(summary, toolName, args);
+}
+
+function applyGeminiEvent(summary: MutableSessionQuickSummary, event: Record<string, unknown>): void {
+  const eventType = toStringValue(event.type);
+  if (eventType !== 'tool_call' && eventType !== 'tool_use') return;
+
+  const toolName = toStringValue(event.tool_name) || toStringValue(event.name);
+  if (!toolName) return;
+
+  const args = parseArguments(event.parameters ?? event.args);
+  const name = lower(toolName);
+  const filePath = pathFromArgs(args);
+
+  summary.toolCalls++;
+  addToolCounters(summary, toolName);
+
+  if (
+    name === 'replace' ||
+    name === 'edit' ||
+    name === 'patch' ||
+    name === 'write_file' ||
+    name === 'edit_file' ||
+    name === 'update_file' ||
+    name === 'modify_file'
+  ) {
+    addFileWrite(summary, filePath);
+    return;
+  }
+
+  if (name === 'create_file') {
+    addFileCreate(summary, filePath);
+    return;
+  }
+
+  if (name === 'read_file' || name === 'view_file' || name === 'cat_file' || name === 'get_file') {
+    addFileRead(summary, filePath);
+    return;
+  }
+
+  if (name === 'delete_file' || name === 'remove_file' || name === 'rm_file') {
+    addFileDelete(summary, filePath);
+  }
+}
+
+function applyEvent(
+  summary: MutableSessionQuickSummary,
+  agentType: SessionSummaryAgentType,
+  event: Record<string, unknown>
+): void {
+  if (agentType === 'claude') {
+    applyClaudeEvent(summary, event);
+    return;
+  }
+  if (agentType === 'codex') {
+    applyCodexEvent(summary, event);
+    return;
+  }
+  applyGeminiEvent(summary, event);
+}
+
+function toQuickSummary(summary: MutableSessionQuickSummary): SessionQuickSummary {
+  return {
+    filesEdited: summary.filesEdited.size,
+    filesRead: summary.filesRead.size,
+    filesCreated: summary.filesCreated.size,
+    filesDeleted: summary.filesDeleted.size,
+    toolCalls: summary.toolCalls,
+    webSearches: Math.max(summary.webSearches, summary.maxWebSearchesFromUsage),
+    webFetches: Math.max(summary.webFetches, summary.maxWebFetchesFromUsage),
+    mcpCalls: summary.mcpCalls,
+  };
+}
+
+export function extractSessionQuickDetails(
+  sessionContent: string,
+  agentType: SessionSummaryAgentType
+): SessionQuickDetails {
+  const summary = initMutableSummary();
+  if (!sessionContent.trim()) {
+    return {
+      summary: toQuickSummary(summary),
+      recentFiles: [],
+      recentTools: [],
+      lastFilePath: null,
+    };
+  }
+
+  const lines = sessionContent.split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const parsed = JSON.parse(trimmed);
+      const record = toRecord(parsed);
+      if (!record) continue;
+      applyEvent(summary, agentType, record);
+    } catch {
+      continue;
+    }
+  }
+
+  const recentFilesSource = summary.recentChangedFiles.length > 0
+    ? summary.recentChangedFiles
+    : summary.recentTouchedFiles;
+  const recentFiles = recentFilesSource.slice(0, 32);
+  return {
+    summary: toQuickSummary(summary),
+    recentFiles,
+    recentTools: summary.recentTools.slice(0, 32),
+    lastFilePath: recentFilesSource[0] || null,
+  };
+}
+
+export function extractSessionQuickSummary(
+  sessionContent: string,
+  agentType: SessionSummaryAgentType
+): SessionQuickSummary {
+  return extractSessionQuickDetails(sessionContent, agentType).summary;
+}

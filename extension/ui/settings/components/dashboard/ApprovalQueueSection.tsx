@@ -3,7 +3,7 @@ import { Button } from '../ui/button'
 import { SectionHeader } from '../common'
 import { ApprovalStatus, IconConfig, TaskSummary } from '../../types'
 import { getAgentDisplayName, getIcon } from '../../utils'
-import { APPROVAL_BADGE_STYLES, approvalLabel, formatMixFromTask, getAgentPromptSnippet } from './helpers'
+import { APPROVAL_BADGE_STYLES, approvalLabel, formatMixFromTask, getAgentPromptSnippet, titleize } from './helpers'
 
 interface ApprovalQueueSectionProps {
   pendingApprovals: TaskSummary[]
@@ -53,7 +53,7 @@ export function ApprovalQueueSection({
               <div key={task.task_name} className="rounded-lg border border-[var(--border)] bg-[var(--muted)] p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-sm font-semibold break-words">{task.task_name}</div>
+                    <div className="text-sm font-semibold break-words">{titleize(task.task_name)}</div>
                     <div className="text-xs text-[var(--muted-foreground)]">
                       {mixValue}
                     </div>

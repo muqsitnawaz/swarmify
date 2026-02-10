@@ -82,6 +82,7 @@ export interface EditorPreferences {
 export interface DisplayPreferences {
   showFullAgentNames: boolean;
   showLabelsInTitles: boolean;
+  autoLabelInTabTitles: boolean;  // true = auto-label tab titles from first user message
   showSessionIdInTitles: boolean;
   labelReplacesTitle: boolean;  // true = label replaces title, false = append with dash
   showLabelOnlyOnFocus: boolean;  // true = hide label when terminal loses focus
@@ -117,6 +118,7 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
 export const DEFAULT_DISPLAY_PREFERENCES: DisplayPreferences = {
   showFullAgentNames: true,
   showLabelsInTitles: true,
+  autoLabelInTabTitles: true,
   showSessionIdInTitles: true,
   labelReplacesTitle: false,  // Default: append label (e.g., "Claude - label")
   showLabelOnlyOnFocus: false  // Default: always show label

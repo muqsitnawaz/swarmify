@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { IconConfig, TaskSummary, TerminalDetail } from '../../types'
 import { getAgentDisplayName, getIcon, formatActualTime } from '../../utils'
 import { SectionHeader } from '../common'
@@ -13,7 +13,39 @@ interface AgentTerminalsSectionProps {
   icons: IconConfig
   isLightTheme: boolean
   onCloseAgentTerminals: () => void
+  onOpenTerminalFile: (filePath: string) => void
   onToggleExpanded: (terminalId: string) => void
+}
+
+function formatQuickSummaryLine(terminal: TerminalDetail, filesChangedFromTasks: number | null): string | null {
+  const summary = terminal.quickSummary
+  const filesEdited = Math.max(summary?.filesEdited || 0, filesChangedFromTasks || 0)
+  const toolCalls = summary?.toolCalls || 0
+  const webCount = (summary?.webSearches || 0) + (summary?.webFetches || 0)
+  const mcpCalls = summary?.mcpCalls || 0
+
+  if (filesEdited === 0 && toolCalls === 0 && webCount === 0 && mcpCalls === 0) {
+    return null
+  }
+
+  const parts: string[] = []
+  if (filesEdited > 0) parts.push(`Files ${filesEdited}`)
+  parts.push(`Tools ${toolCalls}`)
+  if (webCount > 0) parts.push(`Web ${webCount}`)
+  if (mcpCalls > 0) parts.push(`MCP ${mcpCalls}`)
+  return parts.join(' | ')
+}
+
+function getFilename(filePath: string): string {
+  if (!filePath) return filePath
+  const normalized = filePath.replace(/\\/g, '/')
+  const parts = normalized.split('/')
+  return parts[parts.length - 1] || filePath
+}
+
+function formatToolLabel(toolName: string): string {
+  if (toolName.length <= 18) return toolName
+  return `${toolName.slice(0, 15)}...`
 }
 
 export function AgentTerminalsSection({
@@ -25,8 +57,12 @@ export function AgentTerminalsSection({
   icons,
   isLightTheme,
   onCloseAgentTerminals,
+  onOpenTerminalFile,
   onToggleExpanded,
 }: AgentTerminalsSectionProps) {
+  const [expandedFileBadges, setExpandedFileBadges] = useState<Set<string>>(new Set())
+  const [expandedToolBadges, setExpandedToolBadges] = useState<Set<string>>(new Set())
+
   if (!selectedAgentType) return null
 
   return (
@@ -60,6 +96,16 @@ export function AgentTerminalsSection({
             const isExpanded = expandedTerminalIds.has(terminal.id)
             const sessionId = terminal.sessionId || ''
             const filesChanged = getFilesChangedCount(sessionTasks[sessionId])
+            const quickSummaryLine = formatQuickSummaryLine(terminal, filesChanged)
+            const recentFiles = terminal.recentFiles || []
+            const fileBadgesExpanded = expandedFileBadges.has(terminal.id)
+            const visibleFiles = fileBadgesExpanded ? recentFiles : recentFiles.slice(0, 4)
+            const hiddenFilesCount = Math.max(0, recentFiles.length - 4)
+            const recentTools = terminal.recentTools || []
+            const toolBadgesExpanded = expandedToolBadges.has(terminal.id)
+            const visibleTools = toolBadgesExpanded ? recentTools : recentTools.slice(0, 4)
+            const hiddenToolsCount = Math.max(0, recentTools.length - 4)
+            const lastFilePath = terminal.lastFilePath || null
             const status = terminal.status || (hasMessages ? 'running' : 'idle')
 
             return (
@@ -97,6 +143,73 @@ export function AgentTerminalsSection({
                 <div className="mt-2 ml-8 text-xs font-mono text-[var(--foreground)]">
                   {activityLine}
                 </div>
+                {quickSummaryLine && (
+                  <div className="mt-1 ml-8 text-[11px] text-[var(--muted-foreground)]">
+                    {quickSummaryLine}
+                  </div>
+                )}
+                {visibleFiles.length > 0 && (
+                  <div className="mt-1 ml-8 flex flex-wrap gap-1.5">
+                    {visibleFiles.map(filePath => (
+                      <button
+                        key={filePath}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          onOpenTerminalFile(filePath)
+                        }}
+                        className="rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-0.5 text-[11px] text-[var(--foreground)] hover:border-[var(--primary)]/50"
+                        title={filePath}
+                      >
+                        {getFilename(filePath)}
+                      </button>
+                    ))}
+                    {hiddenFilesCount > 0 && (
+                      <button
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          setExpandedFileBadges(prev => {
+                            const next = new Set(prev)
+                            if (next.has(terminal.id)) next.delete(terminal.id)
+                            else next.add(terminal.id)
+                            return next
+                          })
+                        }}
+                        className="rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-0.5 text-[11px] text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                      >
+                        {fileBadgesExpanded ? 'Show less' : `+${hiddenFilesCount} more`}
+                      </button>
+                    )}
+                  </div>
+                )}
+                {visibleTools.length > 0 && (
+                  <div className="mt-1 ml-8 flex flex-wrap gap-1.5">
+                    {visibleTools.map(toolName => (
+                      <span
+                        key={toolName}
+                        className="rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-0.5 text-[11px] text-[var(--muted-foreground)]"
+                        title={toolName}
+                      >
+                        {formatToolLabel(toolName)}
+                      </span>
+                    ))}
+                    {hiddenToolsCount > 0 && (
+                      <button
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          setExpandedToolBadges(prev => {
+                            const next = new Set(prev)
+                            if (next.has(terminal.id)) next.delete(terminal.id)
+                            else next.add(terminal.id)
+                            return next
+                          })
+                        }}
+                        className="rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-0.5 text-[11px] text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                      >
+                        {toolBadgesExpanded ? 'Show less' : `+${hiddenToolsCount} more`}
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 {isExpanded && (
                   <div className="mt-3 ml-8 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-3 space-y-2">
@@ -105,9 +218,18 @@ export function AgentTerminalsSection({
                     <div className="grid gap-1 text-xs text-[var(--muted-foreground)]">
                       <div className="font-mono break-all">Session: {sessionId || 'not started'}</div>
                       <div>Messages: {terminal.messageCount ?? 0}</div>
-                      {filesChanged !== null && filesChanged > 0 && (
-                        <div>Files changed: {filesChanged}</div>
+                      {lastFilePath && (
+                        <div
+                          className="cursor-pointer hover:text-[var(--foreground)]"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            onOpenTerminalFile(lastFilePath)
+                          }}
+                        >
+                          Last file: {getFilename(lastFilePath)}
+                        </div>
                       )}
+                      {quickSummaryLine && <div>{quickSummaryLine}</div>}
                     </div>
                   </div>
                 )}
