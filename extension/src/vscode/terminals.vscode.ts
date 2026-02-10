@@ -542,6 +542,25 @@ export function countRunning(): RunningCounts {
   return counts;
 }
 
+// Accurate running counts that verify terminals have active sessions with messages.
+// Falls back to countRunning() for shell terminals and unknown terminals.
+export async function countActive(workspacePath?: string): Promise<RunningCounts> {
+  const openCounts = countRunning();
+  const activeCounts: RunningCounts = { ...openCounts, custom: { ...openCounts.custom } };
+
+  const agentKeys = ['claude', 'codex', 'gemini', 'opencode', 'cursor'] as const;
+  const checks = agentKeys
+    .filter(key => openCounts[key] > 0)
+    .map(async (key) => {
+      const details = await getTerminalsByAgentType(key, workspacePath);
+      const active = details.filter(d => d.messageCount && d.messageCount > 0).length;
+      activeCounts[key] = active;
+    });
+
+  await Promise.all(checks);
+  return activeCounts;
+}
+
 // Terminal detail for UI display
 export interface TerminalDetail {
   id: string;
