@@ -136,7 +136,6 @@ export function DashboardTab({
       <DashboardIntro
         showIntegrationCallout={showIntegrationCallout}
         icons={icons}
-        currentMix={currentMix}
         onNavigateToSettings={onNavigateToSettings}
       />
 
