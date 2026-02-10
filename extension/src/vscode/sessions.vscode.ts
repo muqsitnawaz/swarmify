@@ -350,7 +350,7 @@ export async function getSessionContent(session: AgentSession): Promise<string> 
 
 // --- Session path resolution by sessionId ---
 
-async function findFileBySessionId(dir: string, sessionId: string, depth: number): Promise<string | undefined> {
+export async function findFileBySessionId(dir: string, sessionId: string, depth: number): Promise<string | undefined> {
   if (depth < 0) return undefined;
   const entries = await safeReaddir(dir);
 
@@ -368,7 +368,7 @@ async function findFileBySessionId(dir: string, sessionId: string, depth: number
     if (SESSION_EXTENSIONS.has(ext)) {
       const fileSessionId = path.basename(entry.name, ext);
       // Exact match or prefix match for session chunks
-      if (fileSessionId === sessionId || (isChunk && fileSessionId.startsWith(sessionId))) {
+      if (fileSessionId === sessionId || fileSessionId.endsWith(sessionId) || (isChunk && fileSessionId.startsWith(sessionId))) {
         return fullPath;
       }
     }
