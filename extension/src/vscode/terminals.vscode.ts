@@ -603,16 +603,12 @@ const AGENT_ROLE_HINTS: Record<string, { role: string; hint: string }> = {
   shell: { role: 'shell', hint: 'Command execution' }
 };
 
-// Helper to read tail of session file for activity extraction
-async function readSessionTail(filePath: string, maxBytes: number = 32 * 1024): Promise<string> {
+// Read last N lines of a session file for activity extraction
+async function readSessionTailLines(filePath: string, maxLines: number = 20): Promise<string> {
   try {
-    const stats = await fs.stat(filePath);
-    const start = Math.max(0, stats.size - maxBytes);
-    const handle = await fs.open(filePath, 'r');
-    const buffer = Buffer.alloc(Math.min(maxBytes, stats.size));
-    await handle.read(buffer, 0, buffer.length, start);
-    await handle.close();
-    return buffer.toString('utf-8');
+    const content = await fs.readFile(filePath, 'utf-8');
+    const lines = content.split(/\r?\n/).filter(l => l.trim());
+    return lines.slice(-maxLines).join('\n');
   } catch {
     return '';
   }
@@ -712,7 +708,7 @@ export async function getTerminalsByAgentType(
     const needsTail = p.agentType !== 'opencode' && p.agentType !== 'cursor';
     const [preview, tail] = await Promise.all([
       previewPromise,
-      needsTail ? readSessionTail(sessionPath, 64 * 1024) : Promise.resolve(null)
+      needsTail ? readSessionTailLines(sessionPath, 20) : Promise.resolve(null)
     ]);
 
     // Activity extraction only works for JSONL agents

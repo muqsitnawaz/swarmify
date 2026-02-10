@@ -452,20 +452,6 @@ export interface SessionPreviewInfo {
   messageCount: number;
 }
 
-async function readFileTail(filePath: string, maxBytes: number): Promise<string> {
-  const stats = await safeStat(filePath);
-  if (!stats) return '';
-  const start = Math.max(0, stats.size - maxBytes);
-  const handle = await fs.open(filePath, 'r');
-  try {
-    const readSize = Math.min(maxBytes, stats.size);
-    const buffer = Buffer.alloc(readSize);
-    const { bytesRead } = await handle.read(buffer, 0, readSize, start);
-    return buffer.subarray(0, bytesRead).toString('utf-8');
-  } finally {
-    await handle.close();
-  }
-}
 
 function extractLastUserMessage(tail: string): string | undefined {
   const lines = tail.split(/\r?\n/).filter(l => l.trim()).reverse();
