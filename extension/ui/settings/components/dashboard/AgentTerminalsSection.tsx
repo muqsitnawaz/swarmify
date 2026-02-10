@@ -2,7 +2,7 @@ import React from 'react'
 import { IconConfig, TaskSummary, TerminalDetail } from '../../types'
 import { getAgentDisplayName, getIcon, formatActualTime } from '../../utils'
 import { SectionHeader } from '../common'
-import { getFilesChangedCount, getTerminalPrompt, truncateMiddle, truncateText } from './helpers'
+import { getFilesChangedCount, getTerminalPrompt, truncateText } from './helpers'
 
 interface AgentTerminalsSectionProps {
   selectedAgentType: string | null
@@ -103,7 +103,7 @@ export function AgentTerminalsSection({
                     <div className="text-xs text-[var(--muted-foreground)]">Full prompt</div>
                     <div className="text-sm text-[var(--foreground)] whitespace-pre-wrap">{prompt}</div>
                     <div className="grid gap-1 text-xs text-[var(--muted-foreground)]">
-                      <div>Session: {sessionId ? truncateMiddle(sessionId, 6, 6) : 'not started'}</div>
+                      <div className="font-mono break-all">Session: {sessionId || 'not started'}</div>
                       <div>Messages: {terminal.messageCount ?? 0}</div>
                       {filesChanged !== null && filesChanged > 0 && (
                         <div>Files changed: {filesChanged}</div>

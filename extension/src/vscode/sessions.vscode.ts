@@ -107,8 +107,17 @@ function extractCandidatesFromValue(value: unknown): Array<{ role?: string; text
     return extractCandidatesFromValue(obj.messages);
   }
 
+  if (obj.message && typeof obj.message === 'object' && !Array.isArray(obj.message)) {
+    return extractCandidatesFromValue(obj.message);
+  }
+
   if (Array.isArray(obj.content)) {
-    return extractCandidatesFromValue(obj.content);
+    const candidates = extractCandidatesFromValue(obj.content);
+    const parentRole = typeof obj.role === 'string' ? obj.role : undefined;
+    if (parentRole) {
+      return candidates.map(c => ({ ...c, role: c.role || parentRole }));
+    }
+    return candidates;
   }
 
   const text = extractTextFromJson(obj);

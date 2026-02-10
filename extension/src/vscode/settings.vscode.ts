@@ -442,10 +442,11 @@ export function openPanel(context: vscode.ExtensionContext): void {
     });
 
     // PHASE 2: Fetch heavy data in parallel, send when ready
-    const [swarmStatus, skillsStatus, githubRepo] = await Promise.all([
+    const [swarmStatus, skillsStatus, githubRepo, activeCounts] = await Promise.all([
       swarm.getSwarmStatus(),
       swarm.getSkillsStatus(),
       workspacePath ? getGitHubRepo(workspacePath) : Promise.resolve(null),
+      terminals.countActive(workspacePath || undefined),
     ]);
 
     if (!settingsPanel) return; // Panel may have closed during fetch
@@ -454,6 +455,12 @@ export function openPanel(context: vscode.ExtensionContext): void {
       swarmStatus,
       skillsStatus,
       githubRepo,
+    });
+
+    // Send accurate running counts (verified against session activity)
+    settingsPanel.webview.postMessage({
+      type: 'updateRunningCounts',
+      counts: activeCounts,
     });
   };
 
@@ -786,12 +793,16 @@ export function openPanel(context: vscode.ExtensionContext): void {
   let terminalUpdateTimeout: ReturnType<typeof setTimeout> | undefined;
   const debouncedTerminalUpdate = () => {
     if (terminalUpdateTimeout) clearTimeout(terminalUpdateTimeout);
-    terminalUpdateTimeout = setTimeout(() => {
+    terminalUpdateTimeout = setTimeout(async () => {
       if (settingsPanel) {
-        settingsPanel.webview.postMessage({
-          type: 'updateRunningCounts',
-          counts: terminals.countRunning()
-        });
+        const wsPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        const counts = await terminals.countActive(wsPath);
+        if (settingsPanel) {
+          settingsPanel.webview.postMessage({
+            type: 'updateRunningCounts',
+            counts,
+          });
+        }
       }
     }, 500);
   };
