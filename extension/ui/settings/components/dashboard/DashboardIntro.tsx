@@ -5,11 +5,10 @@ import { Button } from '../ui/button'
 interface DashboardIntroProps {
   showIntegrationCallout: boolean
   icons: IconConfig
-  currentMix: string | null
   onNavigateToSettings: () => void
 }
 
-export function DashboardIntro({ showIntegrationCallout, icons, currentMix, onNavigateToSettings }: DashboardIntroProps) {
+export function DashboardIntro({ showIntegrationCallout, icons, onNavigateToSettings }: DashboardIntroProps) {
   return (
     <>
       {showIntegrationCallout && (
@@ -31,19 +30,6 @@ export function DashboardIntro({ showIntegrationCallout, icons, currentMix, onNa
         </section>
       )}
 
-      <section className="px-4 py-4 rounded-xl bg-[var(--muted)] border border-[var(--border)]">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-semibold">Describe your task, orchestrator assembles your Mix of Agents</p>
-            <p className="text-xs text-[var(--muted-foreground)]">Plan → Approval → Execution. You stay in control at every step.</p>
-          </div>
-          {currentMix && (
-            <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-[var(--background)] border border-[var(--border)]">
-              Current mix: {currentMix}
-            </span>
-          )}
-        </div>
-      </section>
     </>
   )
 }
