@@ -23,7 +23,6 @@ async function getSqlJs(): Promise<SqlJsStatic | null> {
 }
 
 const SESSION_EXTENSIONS = new Set(['.jsonl', '.json', '.txt']);
-const MAX_PREVIEW_BYTES = 12 * 1024;
 const MAX_PREVIEW_CHARS = 240;
 
 async function safeReaddir(dir: string): Promise<Dirent[]> {
@@ -42,15 +41,15 @@ async function safeStat(filePath: string): Promise<Stats | null> {
   }
 }
 
-async function readFileHead(filePath: string, maxBytes: number): Promise<string> {
-  const handle = await fs.open(filePath, 'r');
-  try {
-    const buffer = Buffer.alloc(maxBytes);
-    const { bytesRead } = await handle.read(buffer, 0, maxBytes, 0);
-    return buffer.subarray(0, bytesRead).toString('utf-8');
-  } finally {
-    await handle.close();
-  }
+async function readHeadLines(filePath: string, maxLines: number): Promise<string[]> {
+  const content = await fs.readFile(filePath, 'utf-8');
+  return content.split(/\r?\n/).filter(l => l.trim()).slice(0, maxLines);
+}
+
+async function readTailLines(filePath: string, maxLines: number): Promise<string[]> {
+  const content = await fs.readFile(filePath, 'utf-8');
+  const lines = content.split(/\r?\n/).filter(l => l.trim());
+  return lines.slice(-maxLines);
 }
 
 function normalizePreview(text: string): string | undefined {
@@ -179,8 +178,8 @@ function extractPreviewLines(head: string): ExtractedPreview {
 
 async function getPreview(filePath: string): Promise<string | undefined> {
   try {
-    const head = await readFileHead(filePath, MAX_PREVIEW_BYTES);
-    return extractPreviewLines(head).text;
+    const lines = await readHeadLines(filePath, 20);
+    return extractPreviewLines(lines.join('\n')).text;
   } catch {
     return undefined;
   }
@@ -500,21 +499,7 @@ function extractLastUserMessage(tail: string): string | undefined {
 }
 
 async function countNonEmptyLines(filePath: string): Promise<number> {
-  const MAX_FULL_READ_BYTES = 512 * 1024; // 512KB - read fully below this
-  const SAMPLE_BYTES = 64 * 1024; // 64KB sample for large files
   try {
-    const stats = await safeStat(filePath);
-    if (!stats) return 0;
-
-    // For large files, sample and extrapolate to avoid loading entire file
-    if (stats.size > MAX_FULL_READ_BYTES) {
-      const sample = await readFileHead(filePath, SAMPLE_BYTES);
-      const sampleLines = sample.split(/\r?\n/).filter(l => l.trim()).length;
-      const ratio = stats.size / SAMPLE_BYTES;
-      return Math.round(sampleLines * ratio);
-    }
-
-    // Small files - read fully
     const content = await fs.readFile(filePath, 'utf-8');
     return content.split(/\r?\n/).filter(line => line.trim()).length;
   } catch {
@@ -523,14 +508,14 @@ async function countNonEmptyLines(filePath: string): Promise<number> {
 }
 
 export async function getSessionPreviewInfo(filePath: string): Promise<SessionPreviewInfo> {
-  const [head, tail, messageCount] = await Promise.all([
-    readFileHead(filePath, MAX_PREVIEW_BYTES),
-    readFileTail(filePath, MAX_PREVIEW_BYTES),
+  const [headLines, tailLines, messageCount] = await Promise.all([
+    readHeadLines(filePath, 20),
+    readTailLines(filePath, 20),
     countNonEmptyLines(filePath)
   ]);
 
-  const extracted = extractPreviewLines(head);
-  const lastUserMessage = extractLastUserMessage(tail);
+  const extracted = extractPreviewLines(headLines.join('\n'));
+  const lastUserMessage = extractLastUserMessage(tailLines.join('\n'));
 
   return {
     firstUserMessage: extracted.text,
