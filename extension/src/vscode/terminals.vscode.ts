@@ -9,6 +9,7 @@ import { generateTerminalId, RunningCounts } from '../core/terminals';
 import * as sessionsPersist from '../core/sessions.persist';
 import { getSessionPathBySessionId, getSessionPreviewInfo, getOpenCodeSessionPreviewInfo, getCursorSessionPreviewInfo, SessionPreviewInfo } from './sessions.vscode';
 import { extractCurrentActivity, formatActivity } from '../core/session.activity';
+import { extractSessionQuickDetails, SessionQuickDetails, SessionQuickSummary, SessionSummaryAgentType } from '../core/session.summary';
 import {
   CLAUDE_TITLE,
   CODEX_TITLE,
@@ -572,9 +573,14 @@ export interface TerminalDetail {
   sessionId: string | null; // CLI session ID
   firstUserMessage?: string; // First user message (initial task/prompt)
   lastUserMessage?: string; // Last user message from session
+  status?: 'running' | 'completed' | 'idle';
   messageCount?: number; // Total message count in session
   firstMessageTimestamp?: string; // ISO-8601 timestamp of first user message
   currentActivity?: string; // Live activity (e.g., "Reading src/auth.ts", "Running npm test")
+  quickSummary?: SessionQuickSummary;
+  recentFiles?: string[];
+  recentTools?: string[];
+  lastFilePath?: string | null;
   approvalStatus?: TerminalApprovalStatus;
   role?: string;
   hint?: string;
@@ -603,6 +609,14 @@ const AGENT_ROLE_HINTS: Record<string, { role: string; hint: string }> = {
   shell: { role: 'shell', hint: 'Command execution' }
 };
 
+const SESSION_SUMMARY_CACHE_MAX = 200;
+type SessionSummaryCacheEntry = {
+  mtimeMs: number;
+  size: number;
+  details: SessionQuickDetails;
+};
+const sessionSummaryCache = new Map<string, SessionSummaryCacheEntry>();
+
 // Read last N lines of a session file for activity extraction
 async function readSessionTailLines(filePath: string, maxLines: number = 20): Promise<string> {
   try {
@@ -612,6 +626,59 @@ async function readSessionTailLines(filePath: string, maxLines: number = 20): Pr
   } catch {
     return '';
   }
+}
+
+async function readSessionContent(filePath: string): Promise<string> {
+  try {
+    return await fs.readFile(filePath, 'utf-8');
+  } catch {
+    return '';
+  }
+}
+
+function makeSessionSummaryCacheKey(filePath: string, agentType: SessionSummaryAgentType): string {
+  return `${agentType}:${filePath}`;
+}
+
+function cacheSessionSummaryEntry(key: string, entry: SessionSummaryCacheEntry): void {
+  if (sessionSummaryCache.has(key)) {
+    sessionSummaryCache.delete(key);
+  }
+  sessionSummaryCache.set(key, entry);
+  if (sessionSummaryCache.size <= SESSION_SUMMARY_CACHE_MAX) return;
+  const oldestKey = sessionSummaryCache.keys().next().value;
+  if (oldestKey) {
+    sessionSummaryCache.delete(oldestKey);
+  }
+}
+
+async function getSessionQuickDetailsCached(
+  filePath: string,
+  agentType: SessionSummaryAgentType
+): Promise<SessionQuickDetails | null> {
+  let stats: { mtimeMs: number; size: number };
+  try {
+    const stat = await fs.stat(filePath);
+    stats = { mtimeMs: stat.mtimeMs, size: stat.size };
+  } catch {
+    return null;
+  }
+
+  const cacheKey = makeSessionSummaryCacheKey(filePath, agentType);
+  const cached = sessionSummaryCache.get(cacheKey);
+  if (cached && cached.mtimeMs === stats.mtimeMs && cached.size === stats.size) {
+    return cached.details;
+  }
+
+  const sessionContent = await readSessionContent(filePath);
+  if (!sessionContent) return null;
+
+  const details = extractSessionQuickDetails(sessionContent, agentType);
+  cacheSessionSummaryEntry(cacheKey, {
+    ...stats,
+    details,
+  });
+  return details;
 }
 
 // Get terminals filtered by agent type with display details
@@ -692,7 +759,7 @@ export async function getTerminalsByAgentType(
   const dataPromises = sessionPromises.map(async (p, i) => {
     const sessionPath = sessionPaths[i];
     console.log(`[getTerminalsByAgentType] Session ${i}: path=${sessionPath || 'NOT FOUND'}, agentType=${p.agentType}`);
-    if (!sessionPath) return { index: p.index, preview: null, activity: null };
+    if (!sessionPath) return { index: p.index, preview: null, activity: null, quickSummary: null };
 
     // Use agent-specific preview function
     let previewPromise: Promise<SessionPreviewInfo | null>;
@@ -706,19 +773,23 @@ export async function getTerminalsByAgentType(
 
     // OpenCode and Cursor don't use JSONL tail for activity
     const needsTail = p.agentType !== 'opencode' && p.agentType !== 'cursor';
+    const summaryAgentType = (p.agentType === 'claude' || p.agentType === 'codex' || p.agentType === 'gemini') ? p.agentType : null;
     const [preview, tail] = await Promise.all([
       previewPromise,
       needsTail ? readSessionTailLines(sessionPath, 20) : Promise.resolve(null)
     ]);
 
     // Activity extraction only works for JSONL agents
-    const activityAgentType = (p.agentType === 'claude' || p.agentType === 'codex' || p.agentType === 'gemini') ? p.agentType : null;
-    const activity = (tail && activityAgentType) ? extractCurrentActivity(tail, activityAgentType) : null;
+    const activity = (tail && summaryAgentType) ? extractCurrentActivity(tail, summaryAgentType) : null;
+    const quickDetails = summaryAgentType
+      ? await getSessionQuickDetailsCached(sessionPath, summaryAgentType)
+      : null;
 
     return {
       index: p.index,
       preview,
-      activity: activity ? formatActivity(activity) : null
+      activity: activity ? formatActivity(activity) : null,
+      quickDetails
     };
   });
 
@@ -735,12 +806,21 @@ export async function getTerminalsByAgentType(
     if (data.activity) {
       results[data.index].currentActivity = data.activity;
     }
+    if (data.quickDetails) {
+      results[data.index].quickSummary = data.quickDetails.summary;
+      results[data.index].recentFiles = data.quickDetails.recentFiles;
+      results[data.index].recentTools = data.quickDetails.recentTools;
+      results[data.index].lastFilePath = data.quickDetails.lastFilePath;
+    }
 
     const currentStatus = results[data.index].approvalStatus;
-    if (results[data.index].currentActivity) {
+    const currentActivity = results[data.index].currentActivity;
+    if (currentActivity) {
       results[data.index].approvalStatus = 'running';
+      results[data.index].status = currentActivity.startsWith('Completed') ? 'completed' : 'running';
     } else if (results[data.index].sessionId && currentStatus === 'pending') {
       results[data.index].approvalStatus = 'approved';
+      results[data.index].status = 'idle';
     }
   }
 
@@ -750,6 +830,14 @@ export async function getTerminalsByAgentType(
     if (!result.approvalStatus) {
       result.approvalStatus = result.currentActivity ? 'running' : 'pending';
     }
+    if (!result.status) {
+      result.status = result.currentActivity ? 'running' : 'idle';
+    }
+  }
+
+  results.sort((a, b) => a.createdAt - b.createdAt);
+  for (let i = 0; i < results.length; i++) {
+    results[i].index = i + 1;
   }
 
   return results;
@@ -759,6 +847,7 @@ export async function getTerminalsByAgentType(
 export function clear(): void {
   editorTerminals.clear();
   terminalIdCounter = 0;
+  sessionSummaryCache.clear();
 }
 
 // Session persistence for restore across VS Code restarts

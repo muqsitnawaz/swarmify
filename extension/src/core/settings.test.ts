@@ -34,6 +34,7 @@ describe('getDefaultSettings', () => {
     const settings = getDefaultSettings();
     expect(settings.display.showFullAgentNames).toBe(true);
     expect(settings.display.showLabelsInTitles).toBe(true);
+    expect(settings.display.autoLabelInTabTitles).toBe(true);
     expect(settings.display.showSessionIdInTitles).toBe(true);
   });
 

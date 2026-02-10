@@ -40,6 +40,28 @@ const vscode = getVsCodeApi()
 const icons = getIcons() as IconConfig
 const BUILT_IN_AGENTS = createBuiltInAgents(icons)
 
+function getAgentWithHighestRunningCount(runningCounts: RunningCounts): string | null {
+  const candidates: Array<[string, number]> = [
+    ['claude', runningCounts.claude],
+    ['codex', runningCounts.codex],
+    ['gemini', runningCounts.gemini],
+    ['opencode', runningCounts.opencode],
+    ['cursor', runningCounts.cursor],
+    ['shell', runningCounts.shell],
+    ...Object.entries(runningCounts.custom),
+  ]
+
+  let best: string | null = null
+  let bestCount = 0
+  for (const [agentKey, count] of candidates) {
+    if (count > bestCount) {
+      best = agentKey
+      bestCount = count
+    }
+  }
+  return bestCount > 0 ? best : null
+}
+
 export default function App() {
   const isLightTheme = useSystemTheme()
 
@@ -95,6 +117,7 @@ export default function App() {
   const [selectedAgentType, setSelectedAgentType] = useState<string | null>(null)
   const [agentTerminals, setAgentTerminals] = useState<TerminalDetail[]>([])
   const [agentTerminalsLoading, setAgentTerminalsLoading] = useState(false)
+  const [dashboardAutoSelected, setDashboardAutoSelected] = useState(false)
 
   // Default agent and installed agents
   const [defaultAgent, setDefaultAgent] = useState<string>('CC')
@@ -279,6 +302,33 @@ export default function App() {
     }
   }, [selectedAgentType, agentTerminals, sessionTasks, sessionTasksLoading])
 
+  useEffect(() => {
+    if (activeTab !== 'dashboard') {
+      if (dashboardAutoSelected) {
+        setDashboardAutoSelected(false)
+      }
+      return
+    }
+
+    if (selectedAgentType) {
+      if (!dashboardAutoSelected) {
+        setDashboardAutoSelected(true)
+      }
+      return
+    }
+
+    if (dashboardAutoSelected) return
+
+    const autoAgentType = getAgentWithHighestRunningCount(runningCounts)
+    if (!autoAgentType) return
+
+    setDashboardAutoSelected(true)
+    setSelectedAgentType(autoAgentType)
+    setAgentTerminalsLoading(true)
+    vscode.postMessage({ type: 'fetchAgentTerminals', agentType: autoAgentType })
+    vscode.postMessage({ type: 'subscribeAgentTerminals', agentType: autoAgentType })
+  }, [activeTab, selectedAgentType, dashboardAutoSelected, runningCounts])
+
   // Data fetching functions
   const fetchTasks = () => {
     setTasksLoading(true)
@@ -343,6 +393,16 @@ export default function App() {
       // Subscribe to live updates for this agent type
       vscode.postMessage({ type: 'subscribeAgentTerminals', agentType: agentKey })
     }
+  }
+
+  const handleCloseAgentTerminals = () => {
+    setSelectedAgentType(null)
+    setAgentTerminals([])
+    vscode.postMessage({ type: 'unsubscribeAgentTerminals' })
+  }
+
+  const handleOpenTerminalFile = (filePath: string) => {
+    vscode.postMessage({ type: 'openTerminalFile', path: filePath })
   }
 
   const handleSpawnTodo = (item: TodoItem, filePath: string) => {
@@ -575,7 +635,8 @@ export default function App() {
           icons={icons}
           isLightTheme={isLightTheme}
           onAgentClick={handleAgentClick}
-          onCloseAgentTerminals={() => { setSelectedAgentType(null); setAgentTerminals([]) }}
+          onCloseAgentTerminals={handleCloseAgentTerminals}
+          onOpenTerminalFile={handleOpenTerminalFile}
           onNavigateToSettings={() => setActiveTab('settings')}
           onRefreshTasks={fetchTasks}
           onLoadMoreTasks={handleLoadMoreTasks}
@@ -672,7 +733,7 @@ export default function App() {
       {/* Footer */}
       <footer className="pt-6 mt-8 border-t border-[var(--border)]">
         <div className="flex items-center justify-between text-xs text-[var(--muted-foreground)]">
-          <span>From Swarmify</span>
+          <span>From <a href="https://swarmify.co" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--foreground)] transition-colors">Swarmify</a></span>
           <div className="flex items-center gap-4">
             <a
               href="https://github.com/muqsitnawaz/swarmify"
@@ -682,12 +743,6 @@ export default function App() {
             >
               GitHub
             </a>
-            <button
-              onClick={() => setShowGuide(true)}
-              className="hover:text-[var(--foreground)] transition-colors"
-            >
-              Docs
-            </button>
           </div>
         </div>
       </footer>

@@ -79,6 +79,12 @@ export function getAgentPromptSnippet(agent: AgentDetail): string {
   return 'No prompt'
 }
 
+export function titleize(name: string): string {
+  return name
+    .replace(/[-_]/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
 export function approvalLabel(status: ApprovalStatus): string {
   switch (status) {
     case 'approved':

@@ -36,6 +36,7 @@ interface DashboardTabProps {
   isLightTheme: boolean
   onAgentClick: (agentKey: string) => void
   onCloseAgentTerminals: () => void
+  onOpenTerminalFile: (filePath: string) => void
   onNavigateToSettings: () => void
   onRefreshTasks: () => void
   onLoadMoreTasks: () => void
@@ -57,6 +58,7 @@ export function DashboardTab({
   isLightTheme,
   onAgentClick,
   onCloseAgentTerminals,
+  onOpenTerminalFile,
   onNavigateToSettings,
   onRefreshTasks,
   onLoadMoreTasks,
@@ -172,6 +174,7 @@ export function DashboardTab({
         icons={icons}
         isLightTheme={isLightTheme}
         onCloseAgentTerminals={onCloseAgentTerminals}
+        onOpenTerminalFile={onOpenTerminalFile}
         onToggleExpanded={toggleExpanded}
       />
 

@@ -53,6 +53,35 @@ function getGitHubRepo(workspacePath: string): Promise<string | null> {
   });
 }
 
+function resolveEditorPath(pathValue: string): string | null {
+  if (!pathValue) return null;
+  if (path.isAbsolute(pathValue)) return pathValue;
+  const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  if (!workspacePath) return null;
+  return path.join(workspacePath, pathValue);
+}
+
+async function openFileOrDiffInEditor(pathValue: string): Promise<void> {
+  const resolvedPath = resolveEditorPath(pathValue);
+  if (!resolvedPath || !fs.existsSync(resolvedPath)) return;
+  const fileUri = vscode.Uri.file(resolvedPath);
+  const previousActiveUri = vscode.window.activeTextEditor?.document.uri;
+
+  try {
+    await vscode.commands.executeCommand('git.openChange', fileUri);
+    const currentActiveUri = vscode.window.activeTextEditor?.document.uri;
+    const openedDiff = Boolean(currentActiveUri && currentActiveUri.scheme === 'git');
+    const openedTarget = Boolean(currentActiveUri && currentActiveUri.fsPath === fileUri.fsPath);
+    const hadNoActiveEditor = !previousActiveUri && Boolean(currentActiveUri);
+    if (openedDiff || openedTarget || hadNoActiveEditor) {
+      return;
+    }
+  } catch {
+  }
+
+  await vscode.window.showTextDocument(fileUri, { preview: true });
+}
+
 // Check which agents are installed
 export async function checkInstalledAgents(): Promise<Record<string, boolean>> {
   const agents = [
@@ -142,6 +171,22 @@ async function subscribeToAgentSessions(agentType: string, workspacePath?: strin
   }
 }
 
+async function pushSubscribedAgentTerminalUpdate(workspacePath?: string): Promise<void> {
+  if (!settingsPanel || !currentlySubscribedAgentType) return;
+
+  const subscribedAgentType = currentlySubscribedAgentType;
+  const terminalDetails = await terminals.getTerminalsByAgentType(subscribedAgentType, workspacePath);
+  if (!settingsPanel || currentlySubscribedAgentType !== subscribedAgentType) return;
+
+  settingsPanel.webview.postMessage({
+    type: 'agentTerminalsData',
+    agentType: subscribedAgentType,
+    terminals: terminalDetails
+  });
+
+  await subscribeToAgentSessions(subscribedAgentType, workspacePath);
+}
+
 // Data directory: ~/.agents/
 const AGENTS_CONFIG_DIR = path.join(homedir(), '.agents');
 const AGENTS_CONFIG_PATH = path.join(AGENTS_CONFIG_DIR, 'config.json');
@@ -222,6 +267,9 @@ export function getSettings(context: vscode.ExtensionContext): AgentSettings {
       }
       if (stored.display.showLabelsInTitles === undefined) {
         stored.display.showLabelsInTitles = DEFAULT_DISPLAY_PREFERENCES.showLabelsInTitles;
+      }
+      if (stored.display.autoLabelInTabTitles === undefined) {
+        stored.display.autoLabelInTabTitles = DEFAULT_DISPLAY_PREFERENCES.autoLabelInTabTitles;
       }
       if (stored.display.showSessionIdInTitles === undefined) {
         stored.display.showSessionIdInTitles = DEFAULT_DISPLAY_PREFERENCES.showSessionIdInTitles;
@@ -442,11 +490,10 @@ export function openPanel(context: vscode.ExtensionContext): void {
     });
 
     // PHASE 2: Fetch heavy data in parallel, send when ready
-    const [swarmStatus, skillsStatus, githubRepo, activeCounts] = await Promise.all([
+    const [swarmStatus, skillsStatus, githubRepo] = await Promise.all([
       swarm.getSwarmStatus(),
       swarm.getSkillsStatus(),
       workspacePath ? getGitHubRepo(workspacePath) : Promise.resolve(null),
-      terminals.countActive(workspacePath || undefined),
     ]);
 
     if (!settingsPanel) return; // Panel may have closed during fetch
@@ -457,10 +504,10 @@ export function openPanel(context: vscode.ExtensionContext): void {
       githubRepo,
     });
 
-    // Send accurate running counts (verified against session activity)
+    // Keep top-card counts aligned with open terminal cards in dashboard
     settingsPanel.webview.postMessage({
       type: 'updateRunningCounts',
-      counts: activeCounts,
+      counts: terminals.countRunning(),
     });
   };
 
@@ -778,6 +825,11 @@ export function openPanel(context: vscode.ExtensionContext): void {
           }
         }
         break;
+      case 'openTerminalFile':
+        if (message.path) {
+          await openFileOrDiffInEditor(message.path);
+        }
+        break;
       case 'dismissTask':
         if (message.taskId) {
           const currentDismissed = context.globalState.get<string[]>('agents.dismissedTaskIds', []);
@@ -796,13 +848,14 @@ export function openPanel(context: vscode.ExtensionContext): void {
     terminalUpdateTimeout = setTimeout(async () => {
       if (settingsPanel) {
         const wsPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        const counts = await terminals.countActive(wsPath);
+        const counts = terminals.countRunning();
         if (settingsPanel) {
           settingsPanel.webview.postMessage({
             type: 'updateRunningCounts',
             counts,
           });
         }
+        await pushSubscribedAgentTerminalUpdate(wsPath);
       }
     }, 500);
   };
@@ -874,6 +927,7 @@ function maybeUpdateTerminalTitles(oldSettings: AgentSettings, newSettings: Agen
   const changed =
     oldDisplay.showFullAgentNames !== newDisplay.showFullAgentNames ||
     oldDisplay.showLabelsInTitles !== newDisplay.showLabelsInTitles ||
+    oldDisplay.autoLabelInTabTitles !== newDisplay.autoLabelInTabTitles ||
     oldDisplay.showSessionIdInTitles !== newDisplay.showSessionIdInTitles ||
     oldDisplay.labelReplacesTitle !== newDisplay.labelReplacesTitle;
 
@@ -884,7 +938,9 @@ function maybeUpdateTerminalTitles(oldSettings: AgentSettings, newSettings: Agen
     const prefix = entry.agentConfig?.title || parseTerminalName(entry.terminal.name).prefix;
     if (!prefix) continue;
 
-    const label = newDisplay.showLabelsInTitles ? (entry.label || entry.autoLabel) : null;
+    const label = newDisplay.showLabelsInTitles
+      ? (entry.label || (newDisplay.autoLabelInTabTitles ? entry.autoLabel : null))
+      : null;
     const sessionChunk = newDisplay.showSessionIdInTitles ? getSessionChunk(entry.sessionId) : null;
     const newTitle = formatTerminalTitle(prefix, {
       label,
