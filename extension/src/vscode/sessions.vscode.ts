@@ -110,6 +110,10 @@ function extractCandidatesFromValue(value: unknown): Array<{ role?: string; text
     return extractCandidatesFromValue(obj.message);
   }
 
+  if (obj.payload && typeof obj.payload === 'object' && !Array.isArray(obj.payload)) {
+    return extractCandidatesFromValue(obj.payload);
+  }
+
   if (Array.isArray(obj.content)) {
     const candidates = extractCandidatesFromValue(obj.content);
     const parentRole = typeof obj.role === 'string' ? obj.role : undefined;
