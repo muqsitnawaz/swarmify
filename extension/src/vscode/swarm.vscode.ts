@@ -881,8 +881,8 @@ export async function fetchTasks(limit?: number, filterCwd?: string): Promise<Ta
       const metaContent = fs.readFileSync(metaPath, 'utf-8');
       const meta: AgentMeta = JSON.parse(metaContent);
 
-      // Filter by workspace cwd if specified
-      if (filterCwd && meta.cwd !== filterCwd) continue;
+      // Filter by workspace cwd if specified (allow null cwd through)
+      if (filterCwd && meta.cwd && meta.cwd !== filterCwd) continue;
 
       const startedAt = new Date(meta.started_at);
       const completedAt = meta.completed_at ? new Date(meta.completed_at) : null;
