@@ -1,6 +1,6 @@
 {
   "name": "@swarmify/agents-mcp",
-  "version": "0.2.12",
+  "version": "0.2.13",
   "description": "True multi-agent coding in your IDE. Spawn Claude, Codex, Gemini, and Cursor agents from a single MCP server.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -25,7 +25,7 @@
     "prepublishOnly": "tsc",
     "start": "node dist/index.js",
     "test": "bun test",
-    "hello": "bun run src/hello.ts"
+    "hello": "bun run src/hello-world.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0"
