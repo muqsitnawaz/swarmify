@@ -192,7 +192,7 @@ const CLAUDE_PLAN_MODE_PREFIX = `You are running in HEADLESS PLAN MODE. This mod
 
 `;
 
-const VALID_MODES = ['plan', 'edit', 'ralph'] as const;
+const VALID_MODES = ['plan', 'edit', 'ralph', 'cloud'] as const;
 type Mode = typeof VALID_MODES[number];
 
 function normalizeModeValue(modeValue: string | null | undefined): Mode | null {
@@ -334,6 +334,9 @@ export class AgentProcess {
   startedAt: Date = new Date();
   completedAt: Date | null = null;
   parentSessionId: string | null = null;
+  cloudSessionId: string | null = null;
+  cloudProvider: string | null = null;
+  prUrl: string | null = null;
   private eventsCache: any[] = [];
   private lastReadPos: number = 0;
   private baseDir: string | null = null;
@@ -351,7 +354,10 @@ export class AgentProcess {
     completedAt: Date | null = null,
     baseDir: string | null = null,
     parentSessionId: string | null = null,
-    workspaceDir: string | null = null
+    workspaceDir: string | null = null,
+    cloudSessionId: string | null = null,
+    cloudProvider: string | null = null,
+    prUrl: string | null = null
   ) {
     this.agentId = agentId;
     this.taskName = taskName;
@@ -366,10 +372,13 @@ export class AgentProcess {
     this.completedAt = completedAt;
     this.baseDir = baseDir;
     this.parentSessionId = parentSessionId;
+    this.cloudSessionId = cloudSessionId;
+    this.cloudProvider = cloudProvider;
+    this.prUrl = prUrl;
   }
 
   get isEditMode(): boolean {
-    return this.mode === 'edit';
+    return this.mode === 'edit' || this.mode === 'cloud';
   }
 
   async getAgentDir(): Promise<string> {
@@ -398,6 +407,9 @@ export class AgentProcess {
       mode: this.mode,
       parent_session_id: this.parentSessionId,
       workspace_dir: this.workspaceDir,
+      cloud_session_id: this.cloudSessionId,
+      cloud_provider: this.cloudProvider,
+      pr_url: this.prUrl,
     };
   }
 
@@ -510,6 +522,9 @@ export class AgentProcess {
       started_at: this.startedAt.toISOString(),
       completed_at: this.completedAt?.toISOString() || null,
       parent_session_id: this.parentSessionId,
+      cloud_session_id: this.cloudSessionId,
+      cloud_provider: this.cloudProvider,
+      pr_url: this.prUrl,
     };
     const metaPath = await this.getMetaPath();
     await fs.writeFile(metaPath, JSON.stringify(meta, null, 2));
@@ -530,20 +545,26 @@ export class AgentProcess {
       const metaContent = await fs.readFile(metaPath, 'utf-8');
       const meta = JSON.parse(metaContent);
 
+      const modeMap: Record<string, Mode> = { edit: 'edit', ralph: 'ralph', cloud: 'cloud' };
+      const resolvedMode: Mode = modeMap[meta.mode] || 'plan';
+
       const agent = new AgentProcess(
         meta.agent_id,
         meta.task_name || 'default',
         meta.agent_type,
         meta.prompt,
         meta.cwd || null,
-        meta.mode === 'edit' ? 'edit' : 'plan',
+        resolvedMode,
         meta.pid || null,
         AgentStatus[meta.status as keyof typeof AgentStatus] || AgentStatus.RUNNING,
         new Date(meta.started_at),
         meta.completed_at ? new Date(meta.completed_at) : null,
         baseDir,
         meta.parent_session_id || null,
-        meta.workspace_dir || null
+        meta.workspace_dir || null,
+        meta.cloud_session_id || null,
+        meta.cloud_provider || null,
+        meta.pr_url || null
       );
       return agent;
     } catch {
@@ -562,6 +583,11 @@ export class AgentProcess {
   }
 
   async updateStatusFromProcess(): Promise<void> {
+    if (this.mode === 'cloud') {
+      await this.readNewEvents();
+      return;
+    }
+
     if (!this.pid) return;
 
     if (this.isProcessAlive()) {
@@ -664,6 +690,10 @@ export class AgentProcess {
   setModelOverrides(agentConfigs: Record<AgentType, AgentConfig>): void {
     this.agentConfigs = agentConfigs;
     this.effortModelMap = resolveEffortModelMap(agentConfigs);
+  }
+
+  registerAgent(agent: AgentProcess): void {
+    this.agents.set(agent.agentId, agent);
   }
 
   private async loadExistingAgents(): Promise<void> {

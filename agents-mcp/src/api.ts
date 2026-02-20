@@ -9,6 +9,7 @@ import { AgentManager, AgentStatus, resolveMode } from './agents.js';
 import { AgentType } from './parsers.js';
 import { getDelta } from './summarizer.js';
 import { readConfig } from './persistence.js';
+import { spawnCloudAgent, isCloudSupported, extractPrUrl } from './cloud.js';
 
 /**
  * Truncate a bash command for status output.
@@ -48,6 +49,10 @@ export interface AgentStatusDetail {
   tool_count: number;
   has_errors: boolean;
   cursor: string;  // ISO timestamp - send back in next request for delta
+  mode?: string;
+  cloud_session_id?: string | null;
+  cloud_provider?: string | null;
+  pr_url?: string | null;
 }
 
 export interface TaskStatusResult {
@@ -151,6 +156,41 @@ export async function handleSpawn(
     };
   }
 
+  // Cloud mode special handling
+  if (resolvedMode === 'cloud') {
+    if (!isCloudSupported(agentType)) {
+      throw new Error(
+        `Cloud mode is not supported for ${agentType}. Supported agents: claude, codex.`
+      );
+    }
+
+    const config = await readConfig();
+    const agentConfig = config.agentConfigs[agentType];
+    const resolvedModel = agentConfig.models[resolvedEffort];
+
+    const agent = await spawnCloudAgent(
+      taskName,
+      agentType,
+      prompt,
+      cwd,
+      resolvedModel,
+      parentSessionId,
+      workspaceDir
+    );
+
+    manager.registerAgent(agent);
+
+    console.error(`[cloud] Spawned ${agentType} cloud agent ${agent.agentId} for task "${taskName}"`);
+
+    return {
+      task_name: taskName,
+      agent_id: agent.agentId,
+      agent_type: agent.agentType,
+      status: agent.status,
+      started_at: agent.startedAt.toISOString(),
+    };
+  }
+
   // Regular spawn logic (plan/edit modes)
 
   const agent = await manager.spawn(
@@ -240,7 +280,16 @@ export async function handleStatus(
       maxTimestamp = agentTimestamp;
     }
 
-    agentStatuses.push({
+    let prUrl = agent.prUrl;
+    if (agent.mode === 'cloud' && !prUrl) {
+      prUrl = extractPrUrl(events);
+      if (prUrl) {
+        agent.prUrl = prUrl;
+        await agent.saveMeta();
+      }
+    }
+
+    const detail: AgentStatusDetail = {
       agent_id: agent.agentId,
       agent_type: agent.agentType,
       status: agent.status,
@@ -253,8 +302,17 @@ export async function handleStatus(
       last_messages: delta.new_messages,
       tool_count: delta.new_tool_count,
       has_errors: delta.new_errors.length > 0,
-      cursor: agentTimestamp,  // Return latest timestamp for this agent
-    });
+      cursor: agentTimestamp,
+    };
+
+    if (agent.mode === 'cloud') {
+      detail.mode = 'cloud';
+      detail.cloud_session_id = agent.cloudSessionId;
+      detail.cloud_provider = agent.cloudProvider;
+      detail.pr_url = prUrl;
+    }
+
+    agentStatuses.push(detail);
   }
 
   console.error(`[status] ${lookupLabel}: returning ${agents.length}/${allAgents.length} agents (running=${counts.running}, completed=${counts.completed}, failed=${counts.failed}, stopped=${counts.stopped})`);

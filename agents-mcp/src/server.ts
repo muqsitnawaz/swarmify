@@ -74,8 +74,11 @@ MODE PARAMETER (required for writes):
 - mode='edit' - Agent CAN modify files (use this for implementation tasks)
 - mode='plan' - Agent is READ-ONLY (default, use for research/exploration)
 - mode='ralph' - YOLO mode: Agent autonomously works through all tasks in RALPH.md until done. Requires cwd and RALPH.md file.
+- mode='cloud' - Run agent on cloud infrastructure (Claude remote, Codex cloud). Agent creates a PR when done. Supported: claude, codex. NOT supported: gemini, cursor, opencode.
 
 RALPH MODE: Spawns ONE agent with full permissions and instructions to work through RALPH.md. The agent reads the task file, understands the system, picks tasks logically, completes them, marks checkboxes, and continues until all tasks are checked. The orchestrator can spawn multiple ralph agents in parallel for different directories/task files.
+
+CLOUD MODE: Runs the agent on the platform's cloud infrastructure instead of locally. Enables long-running tasks that survive laptop sleep/shutdown. The agent automatically creates a PR with its changes when done. Poll with Status to track progress and get the PR URL.
 
 WAIT BEFORE CHECKING STATUS: After spawning all agents for this task, sleep for at least 2 minutes before checking status. Use: Bash(sleep 120 && echo "Done waiting on Swarm agents. Let's check status") timeout: 2m 30s
 
@@ -146,8 +149,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             mode: {
               type: 'string',
-              enum: ['plan', 'edit', 'ralph'],
-              description: "'edit' allows file modifications, 'plan' is read-only (default), 'ralph' is autonomous execution through RALPH.md tasks.",
+              enum: ['plan', 'edit', 'ralph', 'cloud'],
+              description: "'edit' allows file modifications, 'plan' is read-only (default), 'ralph' is autonomous execution through RALPH.md tasks, 'cloud' runs on cloud infrastructure (claude/codex only).",
             },
             effort: {
               type: 'string',
