@@ -541,6 +541,9 @@ export interface AgentMeta {
   status: string;
   started_at: string;
   completed_at: string | null;
+  cloud_session_id?: string | null;
+  cloud_provider?: string | null;
+  pr_url?: string | null;
 }
 
 export interface AgentDetail {
@@ -552,11 +555,15 @@ export interface AgentDetail {
   completed_at: string | null;
   prompt: string;
   cwd: string | null;
+  mode?: string;
   files_created: string[];
   files_modified: string[];
   files_deleted: string[];
   bash_commands: string[];
   last_messages: string[];
+  cloud_session_id?: string | null;
+  cloud_provider?: string | null;
+  pr_url?: string | null;
 }
 
 export interface TaskSummary {
@@ -897,11 +904,15 @@ export async function fetchTasks(limit?: number, filterCwd?: string): Promise<Ta
         completed_at: meta.completed_at,
         prompt: meta.prompt.length > 150 ? meta.prompt.substring(0, 147) + '...' : meta.prompt,
         cwd: meta.cwd,
+        mode: meta.mode,
         files_created: [...new Set(logData.filesCreated)],
         files_modified: [...new Set(logData.filesModified)],
         files_deleted: [...new Set(logData.filesDeleted)],
         bash_commands: logData.bashCommands.slice(-10),
         last_messages: logData.lastMessages,
+        cloud_session_id: meta.cloud_session_id || null,
+        cloud_provider: meta.cloud_provider || null,
+        pr_url: meta.pr_url || null,
       };
 
       const existing = taskMap.get(meta.task_name) || [];
