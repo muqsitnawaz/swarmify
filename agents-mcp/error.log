@@ -1,0 +1,10 @@
+[2026-02-16T09:44:13.659952+00:00] startup: base_url=https://chatgpt.com/backend-api path_style=wham
+[2026-02-16T09:44:13.702405+00:00] auth: mode=ChatGPT account_id=0c77e007-4755-4b2d-bc9d-efa021307563
+[2026-02-16T09:44:13.702454+00:00] auth: set ChatGPT-Account-Id header: 0c77e007-4755-4b2d-bc9d-efa021307563
+[2026-02-16T09:44:13.735797+00:00] env: parsed SSH GitHub origin => muqsitnawaz/swarmify
+[2026-02-16T09:44:14.931246+00:00] env: status=200 OK content-type=application/json
+[2026-02-16T09:44:15.170213+00:00] env: status=200 OK content-type=application/json
+[2026-02-16T09:44:17.670939+00:00] new_task: created id=task_e_6992e6f0b13083318025faf7d4d37524 env=68ffe02e16a88191919cec0df7adf6ca prompt_chars=15
+[2026-02-16T09:44:59.059319+00:00] startup: base_url=https://chatgpt.com/backend-api path_style=wham
+[2026-02-16T09:44:59.106564+00:00] auth: mode=ChatGPT account_id=0c77e007-4755-4b2d-bc9d-efa021307563
+[2026-02-16T09:44:59.106614+00:00] auth: set ChatGPT-Account-Id header: 0c77e007-4755-4b2d-bc9d-efa021307563
