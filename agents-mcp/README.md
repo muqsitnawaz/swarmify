@@ -70,6 +70,29 @@ You control the cost tradeoffs. Expensive models for planning, fast models for e
 ## Quick Start
 
 ```bash
+npm install -g @swarmify/agents-mcp
+```
+
+That's it. The installer auto-detects Claude, Codex, and Gemini CLIs and registers with each:
+
+```
+@swarmify/agents-mcp - Auto-registering with detected agents...
+
+  Registered with:
+    + Claude Code
+    + Codex
+    + Gemini CLI
+
+  Restart your agent to use Swarm tools.
+```
+
+Uninstalling (`npm uninstall -g @swarmify/agents-mcp`) automatically unregisters from all agents.
+
+### Manual Registration
+
+If auto-registration doesn't work or you need to register with a specific agent:
+
+```bash
 # Claude Code
 claude mcp add --scope user Swarm -- npx -y @swarmify/agents-mcp
 
@@ -77,14 +100,11 @@ claude mcp add --scope user Swarm -- npx -y @swarmify/agents-mcp
 codex mcp add swarm -- npx -y @swarmify/agents-mcp@latest
 
 # Gemini CLI
-gemini mcp add Swarm -- npx -y @swarmify/agents-mcp
+gemini mcp add Swarm "npx -y @swarmify/agents-mcp@latest"
 
-# OpenCode
-opencode mcp add
-# Name: Swarm, Command: npx -y @swarmify/agents-mcp
+# Cursor / OpenCode
+# Add manually via their MCP config - Name: Swarm, Command: npx -y @swarmify/agents-mcp
 ```
-
-The server auto-discovers which agent CLIs you have installed. Once connected, your agent gains the ability to spawn and coordinate other agents.
 
 ## What It Costs
 
