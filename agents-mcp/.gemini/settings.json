@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "Swarm": {
+      "command": "npx -y @swarmify/agents-mcp@latest",
+      "args": []
+    }
+  }
+}
