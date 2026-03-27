@@ -126,8 +126,8 @@ function getDefaultAgentConfig(agentType: AgentType): AgentConfig {
       enabled: true,
       models: {
         fast: 'claude-haiku-4-5-20251001',
-        default: 'claude-sonnet-4-5',
-        detailed: 'claude-opus-4-5'
+        default: 'claude-sonnet-4-6',
+        detailed: 'claude-opus-4-6'
       },
       provider: 'anthropic'
     },

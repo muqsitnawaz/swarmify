@@ -15,9 +15,9 @@ const plexMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Swarmify | Ship with a team of agents",
+  title: "Swarmify — The Integrated Agents Environment",
   description:
-    "Multi-agent orchestration in your IDE. Specify your Mix of Agents, approve the plan, and ship without new infrastructure.",
+    "Your IDE is now an IAE. Orchestrate Claude, Codex, Gemini, and Cursor as parallel agents with full visibility. Open source.",
 };
 
 export default function RootLayout({
