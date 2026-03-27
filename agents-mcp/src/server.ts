@@ -5,7 +5,7 @@ import {
   InitializeRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import { AgentManager, checkAllClis } from './agents.js';
+import { AgentManager, checkAllClis, ensureGeminiPlanMode } from './agents.js';
 import { AgentType } from './parsers.js';
 import { handleSpawn, handleStatus, handleStop, handleTasks } from './api.js';
 import { readConfig, type AgentConfig } from './persistence.js';
@@ -336,6 +336,10 @@ export async function runServer(): Promise<void> {
   enabledAgents = installedAgents;
 
   console.error('Enabled agents (installed):', enabledAgents.join(', ') || 'none');
+
+  if (enabledAgents.includes('gemini')) {
+    await ensureGeminiPlanMode();
+  }
 
   // Initialize version check (non-blocking, with timeout)
   initVersionCheck().catch(err => {

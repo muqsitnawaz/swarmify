@@ -1,25 +1,24 @@
 # Agents
 
-You don't need a coding agent. You need a team.
+Meet the future of IDEs: the Integrated Agents Environment.
 
-Run Claude, Codex, Gemini, and Cursor side-by-side in your IDE. Each agent becomes a tech lead that can spawn sub-agents. You become the engineering manager - approving plans, watching execution, shipping faster.
+Turn your editor into a command center for orchestrating Claude, Codex, Gemini, and Cursor in parallel. Each agent runs as a full-screen editor tab. Each agent can spawn sub-agents. You orchestrate — approving plans, monitoring execution, shipping faster.
 
 Homepage: https://swarmify.co/#agents-ext
 Marketplace: https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext
 MCP Server: [@swarmify/agents-mcp](https://www.npmjs.com/package/@swarmify/agents-mcp) - enables sub-agent spawning
 
-## The Problem
+## Why an IAE?
 
-CLI agents like Claude Code, Codex, and Gemini are powerful - but one agent can't juggle research, implementation, testing, and debugging in one pass. Context windows force awkward batching. Running agents in separate terminals means constant context-switching.
+Text editors became IDEs when coding got complex. Now that AI agents do the coding, your environment needs to evolve again. When you're running 10+ orchestrators each spinning 10+ agents, terminals and TUIs collapse. You need an environment built for that scale.
 
-## The Solution
-
-This extension turns your IDE into a command center:
+This extension turns your IDE into an IAE:
 
 - **Full-screen terminals** - Agents run as editor tabs, not buried panels. See your code and agent side-by-side.
 - **Session persistence** - Close VS Code, reopen it, your agent tabs come back exactly where you left off.
-- **Sub-agent spawning** - With Swarm MCP enabled, each agent can delegate to other agents. Claude researches while Codex implements while Cursor debugs - in parallel.
+- **Sub-agent spawning** - With Swarm MCP enabled, each agent can delegate to other agents. Claude researches while Codex implements while Cursor debugs — in parallel.
 - **Approval gates** - You approve plans before agents execute. Control without bottleneck.
+- **Keyboard-first** - 12+ shortcuts for spawning, switching, labeling, and reviewing agents. No mouse needed.
 
 ## Workflow: Task, Plan, Approve
 

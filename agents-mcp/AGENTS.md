@@ -171,7 +171,7 @@ For research, exploration, code review. Agent cannot write files.
 |-------|----------------|
 | Claude | `--permission-mode plan` |
 | Codex | sandboxed (no `--full-auto`) |
-| Gemini | no auto-approve flags |
+| Gemini | `--approval-mode plan` (requires `experimental.plan: true` in settings, auto-configured at startup) |
 | Cursor | no auto-approve flags |
 | OpenCode | no write permissions |
 
