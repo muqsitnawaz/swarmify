@@ -1,92 +1,113 @@
-const diagram = String.raw`
-/swarm "70% Claude, 30% Cursor"
-└─ Lead (Claude) drafts plan
-   ├─ Claude 70% — strategy, approvals
-   └─ Cursor 30% — trace + fixes
-      └─ Shell actions pinned to session
-[Approval Gate] ➜ Execute in your IDE
-`;
-
-const problemPoints = [
-  "One model cannot juggle research, implementation, testing, and debugging in one pass.",
-  "Context windows force awkward batching and missed details.",
-  "Manual coordination between tools and terminals kills velocity.",
-  "Context-switching across terminals breaks flow and focus.",
-];
-
-const solutionPoints = [
-  "Swarmify orchestrates Claude, Codex, Gemini, and Cursor with shared context.",
-  "Hierarchical agent spawning keeps plans delegated and auditable.",
-  "Terminal pinning per session — agents survive IDE restarts.",
-  "Approval gates keep you in control before code executes.",
-];
-
-const steps = [
+const evolutionCards = [
   {
-    title: "Run `/swarm`",
-    body: "Describe the task and how you want the mix to behave. No dashboards, just your IDE.",
+    era: "1970s-1990s",
+    title: "Text Editors",
+    desc: "Vim, Emacs, Notepad. You wrote every line. You compiled manually. You debugged with print statements.",
+    current: false,
   },
   {
-    title: "Swarm plans",
-    body: "Lead agent proposes a distribution plan, assigns Mix of Agents, and shows the tree.",
+    era: "2000s-2020s",
+    title: "IDEs",
+    desc: "VS Code, IntelliJ, Xcode. Autocomplete, debugging, version control, extensions. You still wrote every line — just faster.",
+    current: false,
   },
   {
-    title: "You approve",
-    body: "Review the plan, gate risky actions, then agents execute in parallel with live updates.",
+    era: "Now",
+    title: "IAEs",
+    desc: "Swarmify. AI agents write the code. You orchestrate the swarm — plan, delegate, review, ship. 10 orchestrators, each spawning 10 more.",
+    current: true,
   },
 ];
 
-const mixExamples = [
+const features = [
   {
-    title: "Bug triage sprint",
-    mix: "40% Gemini research + 60% Cursor debugging",
-    detail: "Gemini sweeps logs while Cursor traces and patches the failing paths.",
+    title: "Agents as Editor Tabs",
+    desc: "Every agent runs in a full-screen editor tab — not a buried terminal panel. See diffs, output, and context in real time.",
+    icon: "monitor",
   },
   {
-    title: "Feature implementation",
-    mix: "50% Claude planning + 30% Codex coding + 20% Gemini research",
-    detail: "Claude sequences the work, Codex ships the code, Gemini keeps context filled.",
+    title: "Swarm Orchestration",
+    desc: "One command, multiple agents. /swarm decomposes your task, assigns the right model to each slice, and executes in parallel.",
+    icon: "zap",
   },
   {
-    title: "Emergency refactor",
-    mix: "70% Codex + 30% Cursor tracing",
-    detail: "Codex handles bulk edits while Cursor watches regressions in real time.",
+    title: "Sub-agent Spawning",
+    desc: "Any agent can spawn sub-agents via MCP. Research, debug, test — without blowing up the parent's context window.",
+    icon: "users",
   },
   {
-    title: "Architecture review",
-    mix: "60% Claude + 40% Gemini",
-    detail: "Claude synthesizes patterns, Gemini hunts edge cases and alternatives.",
+    title: "Keyboard-first",
+    desc: "12+ shortcuts for spawning, switching, labeling, and reviewing agents. Cycle through your swarm without touching the mouse.",
+    icon: "terminal",
+  },
+  {
+    title: "Task Management",
+    desc: "Pull tasks from TODO.md, Linear, or GitHub Issues. Assign them to agents directly. Track what's running, what's done.",
+    icon: "file",
+  },
+  {
+    title: "Approval Gates",
+    desc: "Agents propose a plan. You approve before they execute. Stay in control of every change hitting your codebase.",
+    icon: "shield",
+  },
+  {
+    title: "Context Sync",
+    desc: "AGENTS.md, CLAUDE.md, GEMINI.md — synced automatically. Every agent sees the same ground truth.",
+    icon: "globe",
+  },
+  {
+    title: "Session Persistence",
+    desc: "Close VS Code, crash, restart. Every agent session is auto-saved and restored. Zero data loss.",
+    icon: "save",
+  },
+  {
+    title: "Config Sync",
+    desc: "agents push / agents pull. Your entire multi-agent setup — MCPs, commands, hooks — synced via GitHub. New machine in seconds.",
+    icon: "upload",
   },
 ];
 
-const agentStrengths = [
-  { name: "Claude", strengths: "Planning, synthesis, multi-step reasoning." },
-  { name: "Gemini", strengths: "Research depth, multi-modal analysis, broad coverage." },
-  { name: "Codex", strengths: "Fast implementation, syntax-heavy tasks, refactors." },
-  { name: "Cursor", strengths: "Debugging, tracing, surgical edits inside your repo." },
+const workflowSteps = [
+  {
+    num: "01",
+    title: "Describe the mission",
+    desc: "Use /swarm to describe what you need. Specify the agent mix — 70% Claude for planning, 30% Codex for implementation.",
+  },
+  {
+    num: "02",
+    title: "Approve the plan",
+    desc: "The lead agent decomposes the task and proposes a distribution. You review, adjust, approve.",
+  },
+  {
+    num: "03",
+    title: "Monitor and ship",
+    desc: "Agents work in parallel. Switch between tabs to review diffs, unblock agents, and merge when ready.",
+  },
 ];
 
-const useCases = [
-  { title: "Bug triage sprint (overnight)", body: "Parallel log sweeps, reproduction, and targeted fixes while you sleep." },
-  { title: "Refactor across services", body: "Divide services by agent, keep a lead agent coordinating patterns." },
-  { title: "Incident deep-dive", body: "Research + tracing + remediation in parallel with approvals at every step." },
-  { title: "Feature spike", body: "Mix research with implementation without leaving the IDE." },
+const agentRows = [
+  { name: "Claude", cli: "claude", best: "Planning, synthesis, multi-step reasoning", color: "#c67a4e" },
+  { name: "Codex", cli: "codex", best: "Fast implementation, surgical edits", color: "#3ba55d" },
+  { name: "Gemini", cli: "gemini", best: "Research, multi-system changes", color: "#4285f4" },
+  { name: "Cursor", cli: "cursor-agent", best: "Debugging, tracing through codebases", color: "#b47ee5" },
 ];
 
 const pricingPlans = [
   {
     name: "Solo",
-    price: "$X/mo",
+    price: "Free",
     target: "Individual developers",
-    points: ["Run `/swarm` unlimited", "Local approvals", "Session restore"],
-    cta: "Start with Solo",
+    points: ["Run /swarm unlimited", "Local approvals", "Session restore", "All agents supported"],
+    cta: "Install now",
+    href: "https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext",
   },
   {
     name: "Team",
-    price: "$X/mo",
+    price: "Coming soon",
     target: "Shared orchestration",
     points: ["Shared sessions + logs", "Session restoration", "Approval controls"],
-    cta: "Book team demo",
+    cta: "Join waitlist",
+    href: "#demo",
   },
   {
     name: "Org",
@@ -94,6 +115,7 @@ const pricingPlans = [
     target: "Security & scale",
     points: ["SSO", "Cost controls", "Dedicated support"],
     cta: "Talk with us",
+    href: "#demo",
   },
 ];
 
@@ -101,231 +123,399 @@ const resourceLinks = [
   { label: "Docs", href: "https://github.com/muqsitnawaz/swarmify#readme" },
   { label: "Changelog", href: "https://github.com/muqsitnawaz/swarmify/commits/main" },
   { label: "GitHub", href: "https://github.com/muqsitnawaz/swarmify" },
-  { label: "Security", href: "https://github.com/muqsitnawaz/swarmify#security" },
 ];
+
+function FeatureIcon({ type }: { type: string }) {
+  const cls = "w-5 h-5";
+  switch (type) {
+    case "monitor":
+      return (
+        <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="2" y="3" width="20" height="14" rx="2" />
+          <line x1="8" y1="21" x2="16" y2="21" />
+          <line x1="12" y1="17" x2="12" y2="21" />
+        </svg>
+      );
+    case "zap":
+      return (
+        <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="5" />
+          <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+        </svg>
+      );
+    case "users":
+      return (
+        <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+          <circle cx="9" cy="7" r="4" />
+          <path d="M23 21v-2a4 4 0 00-3-3.87" />
+          <path d="M16 3.13a4 4 0 010 7.75" />
+        </svg>
+      );
+    case "terminal":
+      return (
+        <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="4 17 10 11 4 5" />
+          <line x1="12" y1="19" x2="20" y2="19" />
+        </svg>
+      );
+    case "file":
+      return (
+        <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+          <polyline points="14 2 14 8 20 8" />
+          <line x1="16" y1="13" x2="8" y2="13" />
+          <line x1="16" y1="17" x2="8" y2="17" />
+        </svg>
+      );
+    case "shield":
+      return (
+        <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+        </svg>
+      );
+    case "globe":
+      return (
+        <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.66 0 3-4.03 3-9s-1.34-9-3-9m0 18c-1.66 0-3-4.03-3-9s1.34-9 3-9" />
+        </svg>
+      );
+    case "save":
+      return (
+        <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z" />
+          <polyline points="17 21 17 13 7 13 7 21" />
+          <polyline points="7 3 7 8 15 8" />
+        </svg>
+      );
+    case "upload":
+      return (
+        <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="10" />
+          <polyline points="16 12 12 8 8 12" />
+          <line x1="12" y1="16" x2="12" y2="8" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+}
 
 export default function Home() {
   return (
-    <div className="relative isolate">
-      <div className="pointer-events-none absolute inset-0 opacity-80" />
-      <main className="relative mx-auto max-w-6xl px-6 pb-20 pt-12 sm:pt-16">
-        <header className="grid items-center gap-10 lg:grid-cols-[1.1fr_0.9fr]">
+    <div className="relative">
+      <main className="relative mx-auto max-w-[1200px] px-6 pb-20">
+
+        {/* ── Hero ── */}
+        <header className="pt-16 sm:pt-24 pb-8">
           <div className="space-y-6">
-            <div className="flex flex-wrap gap-2">
-              <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs uppercase tracking-wide text-slate-200">
-                Mix of Agents
-              </span>
-              <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs uppercase tracking-wide text-slate-200">
-                For developers
-              </span>
-              <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs uppercase tracking-wide text-slate-200">
-                For teams
-              </span>
+            <div className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-1.5 font-mono text-xs text-[var(--muted)]">
+              <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent)]" style={{ boxShadow: "0 0 6px var(--accent)" }} />
+              Open source · Free forever
             </div>
-            <div className="space-y-4">
-              <h1 className="text-4xl font-semibold leading-tight text-white sm:text-5xl">
-                Ship with a team of agents, from one command.
-              </h1>
-              <p className="text-lg text-slate-200">
-                Specify your Mix of Agents. Get results faster. No new infra. Swarmify runs in your IDE with approvals before anything executes.
-              </p>
-            </div>
+
+            <h1 className="text-5xl font-bold tracking-tight leading-[1.05] sm:text-7xl" style={{ letterSpacing: "-0.03em" }}>
+              The first <em className="not-italic text-[var(--accent)]">IAE.</em>
+            </h1>
+
+            <p className="text-lg leading-relaxed text-[var(--muted)]" style={{ maxWidth: "48ch" }}>
+              Integrated Agents Environment. Your IDE becomes a command center for orchestrating
+              Claude, Codex, Gemini, and Cursor in parallel — with full visibility into every
+              agent&apos;s work.
+            </p>
+
             <div className="flex flex-col gap-3 sm:flex-row">
               <a
-                className="inline-flex items-center justify-center rounded-full bg-emerald-400 px-5 py-3 text-sm font-semibold text-slate-900 transition hover:bg-emerald-300"
-                href="#pricing"
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-[var(--accent)] px-5 py-3 text-sm font-semibold text-[#0a0a0b] transition hover:bg-[var(--accent-hover)] hover:shadow-[0_0_20px_rgba(0,232,123,0.2)]"
+                href="https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext"
+                target="_blank"
+                rel="noreferrer"
               >
-                Run `/swarm` now
+                Install for VS Code
               </a>
               <a
-                className="inline-flex items-center justify-center rounded-full border border-white/20 bg-white/5 px-5 py-3 text-sm font-semibold text-white transition hover:border-emerald-300/70 hover:bg-white/10"
-                href="#demo"
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-5 py-3 text-sm font-semibold text-white transition hover:border-[var(--muted)] hover:bg-[var(--surface-2)]"
+                href="https://github.com/muqsitnawaz/swarmify"
+                target="_blank"
+                rel="noreferrer"
               >
-                Book team demo
+                View on GitHub
+              </a>
+              <a
+                className="inline-flex items-center justify-center gap-2 rounded-lg px-5 py-3 text-sm font-semibold text-[var(--muted)] transition hover:text-white"
+                href="https://www.youtube.com/watch?v=rbeoKhDxK8E"
+                target="_blank"
+                rel="noreferrer"
+              >
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+                Watch it in action
               </a>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                <p className="text-sm font-semibold text-white">For developers</p>
-                <p className="text-sm text-slate-200">
-                  Keep everything in the IDE. Agents pin to your terminals and survive restarts.
-                </p>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                <p className="text-sm font-semibold text-white">For teams</p>
-                <p className="text-sm text-slate-200">
-                  Approval gates, session logs, and reproducible Mix of Agents for every task.
-                </p>
-              </div>
+
+            <div className="flex items-center gap-3 text-xs text-[var(--faint)]">
+              Works in
+              <span className="flex items-center gap-2 text-[var(--muted)]">
+                <span>VS Code</span>
+                <span className="text-[var(--faint)]">·</span>
+                <span>Cursor</span>
+                <span className="text-[var(--faint)]">·</span>
+                <span>SSH Remotes</span>
+              </span>
             </div>
-            <p className="text-sm text-slate-300">No dashboards. No new infra. Just `/swarm` in your IDE.</p>
           </div>
 
-          <div className="space-y-4 rounded-3xl border border-white/10 bg-white/5 p-5 shadow-[0_20px_80px_rgba(0,0,0,0.45)] backdrop-blur">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold text-white">Agent tree (text-first)</p>
-              <span className="rounded-full border border-emerald-200/50 bg-emerald-400/10 px-3 py-1 text-xs font-semibold text-emerald-200">
-                Approval Gate
-              </span>
+          {/* Terminal Demo */}
+          <div className="mt-12 max-w-3xl overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)] font-mono text-xs" style={{ boxShadow: "0 12px 32px rgba(0,0,0,0.5), 0 0 60px rgba(0,232,123,0.03)" }}>
+            <div className="flex" style={{ gap: "1px", background: "var(--border)" }}>
+              {[
+                { name: "Claude · auth-system", active: true, running: true },
+                { name: "Codex · api-tests", active: false, running: true },
+                { name: "Gemini · db-migration", active: false, running: true },
+                { name: "Shell", active: false, running: false },
+              ].map((tab) => (
+                <div
+                  key={tab.name}
+                  className={`flex flex-1 items-center justify-center gap-2 px-4 py-2 ${
+                    tab.active
+                      ? "border-t-2 border-[var(--accent)] bg-[var(--surface)] text-white"
+                      : "bg-[var(--surface-2)] text-[var(--faint)]"
+                  }`}
+                  style={{ minWidth: 0 }}
+                >
+                  <span
+                    className="h-1.5 w-1.5 shrink-0 rounded-full"
+                    style={{ background: tab.running ? "var(--accent)" : "var(--faint)" }}
+                  />
+                  <span className="truncate">{tab.name}</span>
+                </div>
+              ))}
             </div>
-            <pre className="overflow-x-auto rounded-2xl bg-slate-900/70 p-4 text-sm leading-relaxed text-emerald-100">
-{diagram}
-            </pre>
-            <div className="flex flex-wrap gap-2">
-              <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-200">
-                Session pinned to IDE
-              </span>
-              <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-200">
-                Live parallel updates
-              </span>
+            <div className="space-y-0 p-5 leading-7 text-[var(--muted)]">
+              <div><span className="text-[var(--accent)]">$ </span><span className="text-white">/swarm Ship user auth — 50% Claude, 30% Codex, 20% Gemini</span></div>
+              <div>&nbsp;</div>
+              <div><span className="text-[var(--accent)]">Swarm:Plan</span> Decomposing into 4 parallel tasks...</div>
+              <div>&nbsp;</div>
+              <div><span className="text-[var(--accent)]">Swarm:Spawn</span> task=&quot;oauth-google&quot;{" "}<span className="text-[var(--faint)]">agent=claude{" "} mode=edit</span></div>
+              <div><span className="text-[var(--accent)]">Swarm:Spawn</span> task=&quot;oauth-github&quot;{" "}<span className="text-[var(--faint)]">agent=codex{" "}  mode=edit</span></div>
+              <div><span className="text-[var(--accent)]">Swarm:Spawn</span> task=&quot;session-mgmt&quot;{" "}<span className="text-[var(--faint)]">agent=gemini{" "} mode=edit</span></div>
+              <div><span className="text-[var(--accent)]">Swarm:Spawn</span> task=&quot;auth-tests&quot;{"  "}<span className="text-[var(--faint)]">agent=codex{" "}  mode=plan</span></div>
+              <div>&nbsp;</div>
+              <div className="text-[var(--faint)]">4 agents running in parallel. Switch tabs to monitor.</div>
             </div>
           </div>
         </header>
 
-        <section className="mt-14 space-y-6">
-          <p className="text-sm uppercase tracking-[0.2em] text-slate-400">
-            Trusted by distributed teams shipping with agent swarms.
+        {/* ── Concept ── */}
+        <section className="border-y border-[var(--border)] bg-[var(--surface)] -mx-6 px-6 py-20 text-center" style={{ marginTop: "4rem" }}>
+          <p className="mb-4 font-mono text-xs uppercase tracking-widest text-[var(--accent)]">The Paradigm Shift</p>
+          <h2 className="mx-auto mb-6 text-3xl font-bold sm:text-4xl" style={{ letterSpacing: "-0.02em", maxWidth: "24ch" }}>
+            Text Editors became IDEs. Now IDEs become IAEs.
+          </h2>
+          <p className="mx-auto text-base leading-relaxed text-[var(--muted)]" style={{ maxWidth: "56ch" }}>
+            When coding got complex, text editors evolved into Integrated Development Environments.
+            Now that AI agents do the coding, your environment needs to evolve again —
+            into an Integrated Agents Environment where you orchestrate, not type.
           </p>
-          <div className="grid gap-3 sm:grid-cols-3">
-            {["Product squads", "Platform teams", "Security responders"].map((label) => (
+        </section>
+
+        {/* ── Evolution ── */}
+        <section className="py-20">
+          <p className="mb-4 font-mono text-xs uppercase tracking-widest text-[var(--accent)]">Evolution</p>
+          <h2 className="mb-4 text-3xl font-bold sm:text-4xl" style={{ letterSpacing: "-0.02em" }}>
+            From typing code to orchestrating agents
+          </h2>
+          <p className="text-base text-[var(--muted)]">Every era had its environment. This is the next one.</p>
+
+          <div className="mt-12 grid gap-6 md:grid-cols-3">
+            {evolutionCards.map((card) => (
               <div
-                key={label}
-                className="flex items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-100"
+                key={card.title}
+                className={`rounded-lg border p-8 ${
+                  card.current
+                    ? "border-[var(--accent)] bg-[var(--surface)]"
+                    : "border-[var(--border)] bg-[var(--surface)] opacity-50"
+                }`}
+                style={card.current ? { boxShadow: "0 0 30px rgba(0,232,123,0.06)" } : undefined}
               >
-                {label}
+                <p className={`mb-3 font-mono text-xs uppercase tracking-wide ${card.current ? "text-[var(--accent)]" : "text-[var(--faint)]"}`}>
+                  {card.era}
+                </p>
+                <h3 className="mb-3 text-xl font-bold" style={{ letterSpacing: "-0.02em" }}>{card.title}</h3>
+                <p className="text-sm leading-relaxed text-[var(--muted)]">{card.desc}</p>
               </div>
             ))}
           </div>
         </section>
 
-        <section className="mt-16 grid gap-8 lg:grid-cols-2">
-          <div className="space-y-4 rounded-3xl border border-white/10 bg-white/5 p-6">
-            <h2 className="text-2xl font-semibold text-white">Single agents aren&apos;t enough.</h2>
-            <ul className="space-y-3 text-sm text-slate-200">
-              {problemPoints.map((point) => (
-                <li key={point} className="flex gap-3">
-                  <span className="mt-1 h-2 w-2 rounded-full bg-emerald-400" />
-                  <span>{point}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div className="space-y-4 rounded-3xl border border-emerald-300/40 bg-emerald-300/5 p-6">
-            <h2 className="text-2xl font-semibold text-white">Multi-agent orchestration in your IDE.</h2>
-            <ul className="space-y-3 text-sm text-slate-200">
-              {solutionPoints.map((point) => (
-                <li key={point} className="flex gap-3">
-                  <span className="mt-1 h-2 w-2 rounded-full bg-emerald-300" />
-                  <span>{point}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </section>
+        {/* ── Features ── */}
+        <section className="py-20">
+          <p className="mb-4 font-mono text-xs uppercase tracking-widest text-[var(--accent)]">Capabilities</p>
+          <h2 className="mb-4 text-3xl font-bold sm:text-4xl" style={{ letterSpacing: "-0.02em" }}>
+            Everything you need to manage an agent swarm
+          </h2>
+          <p className="text-base text-[var(--muted)]">Not just tabs in a terminal. A full orchestration layer inside your editor.</p>
 
-        <section className="mt-16 space-y-8">
-          <div className="flex items-center gap-3">
-            <h3 className="text-xl font-semibold text-white">How it works</h3>
-            <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-200">
-              Plan → Approve → Execute
-            </span>
-          </div>
-          <div className="grid gap-6 md:grid-cols-3">
-            {steps.map((step, idx) => (
-              <div key={step.title} className="rounded-2xl border border-white/10 bg-white/5 p-5">
-                <div className="mb-4 flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-400/15 text-sm font-semibold text-emerald-200">
-                    {idx + 1}
-                  </div>
-                  <p className="text-base font-semibold text-white">{step.title}</p>
+          <div className="mt-12 grid gap-6 md:grid-cols-3">
+            {features.map((f) => (
+              <div
+                key={f.title}
+                className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-6 transition hover:border-[var(--muted)]"
+              >
+                <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg text-[var(--accent)]" style={{ background: "rgba(0,232,123,0.08)" }}>
+                  <FeatureIcon type={f.icon} />
                 </div>
-                <p className="text-sm text-slate-200">{step.body}</p>
+                <h3 className="mb-2 text-base font-semibold">{f.title}</h3>
+                <p className="text-sm leading-relaxed text-[var(--muted)]">{f.desc}</p>
               </div>
             ))}
           </div>
         </section>
 
-        <section className="mt-16 space-y-8">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <p className="text-sm uppercase tracking-[0.2em] text-slate-400">Mix of Agents</p>
-              <h3 className="text-2xl font-semibold text-white">Compose the right team for every task.</h3>
-              <p className="text-sm text-slate-200">
-                Describe what you need in the task. The orchestrator assembles the optimal mix and shows the tree before execution.
+        {/* ── Workflow ── */}
+        <section className="py-20">
+          <p className="mb-4 font-mono text-xs uppercase tracking-widest text-[var(--accent)]">Workflow</p>
+          <h2 className="mb-4 text-3xl font-bold sm:text-4xl" style={{ letterSpacing: "-0.02em" }}>
+            You&apos;re the engineering manager
+          </h2>
+          <p className="text-base text-[var(--muted)]">Each agent is a tech lead. You set the vision, they execute.</p>
+
+          <div className="mt-12 grid gap-8 md:grid-cols-3">
+            {workflowSteps.map((step) => (
+              <div key={step.num}>
+                <p className="mb-3 font-mono text-xs text-[var(--accent)]">{step.num}</p>
+                <h3 className="mb-2 text-lg font-semibold">{step.title}</h3>
+                <p className="text-sm leading-relaxed text-[var(--muted)]">{step.desc}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* ── Agents ── */}
+        <section className="py-20">
+          <p className="mb-4 font-mono text-xs uppercase tracking-widest text-[var(--accent)]">Agent Fleet</p>
+          <h2 className="mb-4 text-3xl font-bold sm:text-4xl" style={{ letterSpacing: "-0.02em" }}>
+            The right model for the right job
+          </h2>
+          <p className="text-base text-[var(--muted)]">Different models have different strengths. Swarmify lets you use them all.</p>
+
+          <div className="mt-12 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[var(--border)]">
+                  <th className="px-4 py-3 text-left font-mono text-xs font-medium uppercase tracking-wide text-[var(--faint)]">Agent</th>
+                  <th className="px-4 py-3 text-left font-mono text-xs font-medium uppercase tracking-wide text-[var(--faint)]">CLI</th>
+                  <th className="px-4 py-3 text-left font-mono text-xs font-medium uppercase tracking-wide text-[var(--faint)]">Best For</th>
+                </tr>
+              </thead>
+              <tbody>
+                {agentRows.map((agent) => (
+                  <tr key={agent.name} className="border-b border-[var(--border)]">
+                    <td className="px-4 py-4 font-medium text-white">
+                      <span className="mr-2 inline-block h-2 w-2 rounded-full" style={{ background: agent.color }} />
+                      {agent.name}
+                    </td>
+                    <td className="px-4 py-4 font-mono text-xs text-[var(--muted)]">{agent.cli}</td>
+                    <td className="px-4 py-4 text-[var(--muted)]">{agent.best}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {/* ── Video ── */}
+        <section className="py-20">
+          <p className="mb-4 font-mono text-xs uppercase tracking-widest text-[var(--accent)]">See it in action</p>
+          <h2 className="mb-8 text-3xl font-bold sm:text-4xl" style={{ letterSpacing: "-0.02em" }}>
+            Watch the workflow
+          </h2>
+          <a
+            href="https://www.youtube.com/watch?v=rbeoKhDxK8E"
+            target="_blank"
+            rel="noreferrer"
+            className="group relative block max-w-3xl overflow-hidden rounded-lg border border-[var(--border)] transition hover:border-[var(--muted)]"
+          >
+            <img
+              src="https://img.youtube.com/vi/rbeoKhDxK8E/maxresdefault.jpg"
+              alt="Swarmify demo"
+              className="w-full transition group-hover:opacity-90"
+            />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[var(--accent)] text-[#0a0a0b] shadow-lg transition group-hover:scale-110">
+                <svg className="ml-1 h-6 w-6" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+              </div>
+            </div>
+          </a>
+        </section>
+
+        {/* ── Install ── */}
+        <section id="install" className="border-y border-[var(--border)] bg-[var(--surface)] -mx-6 px-6 py-20 text-center">
+          <p className="mb-4 font-mono text-xs uppercase tracking-widest text-[var(--accent)]">Get Started</p>
+          <h2 className="mb-4 text-3xl font-bold sm:text-4xl" style={{ letterSpacing: "-0.02em" }}>
+            Two steps. Five minutes.
+          </h2>
+          <p className="mx-auto mb-10 text-base text-[var(--muted)]" style={{ maxWidth: "56ch" }}>
+            Install the extension, add the MCP server. Run your first swarm.
+          </p>
+
+          <div className="mx-auto grid max-w-3xl gap-6 text-left sm:grid-cols-2">
+            <div className="rounded-lg border border-[var(--border)] bg-[var(--background)] p-5">
+              <p className="mb-3 font-mono text-xs uppercase tracking-wide text-[var(--faint)]">1. Extension</p>
+              <p className="font-mono text-xs leading-relaxed">
+                Install <span className="text-[var(--accent)]">Agents</span> from the<br />
+                VS Code / Cursor Marketplace
               </p>
             </div>
-            <span className="rounded-full border border-emerald-300/50 bg-emerald-300/10 px-4 py-2 text-xs font-semibold text-emerald-200">
-              Text-first, IDE-native
-            </span>
+            <div className="rounded-lg border border-[var(--border)] bg-[var(--background)] p-5">
+              <p className="mb-3 font-mono text-xs uppercase tracking-wide text-[var(--faint)]">2. MCP Server</p>
+              <p className="font-mono text-xs leading-relaxed">
+                <span className="text-[var(--accent)]">$</span> claude mcp add Swarm -- \<br />
+                {"  "}npx -y @swarmify/agents-mcp
+              </p>
+            </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            {mixExamples.map((mix) => (
-              <div key={mix.title} className="rounded-2xl border border-white/10 bg-white/5 p-5">
-                <p className="text-sm font-semibold text-white">{mix.title}</p>
-                <p className="text-sm font-semibold text-emerald-200">{mix.mix}</p>
-                <p className="mt-2 text-sm text-slate-200">{mix.detail}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-4">
-            {agentStrengths.map((agent) => (
-              <div key={agent.name} className="rounded-xl border border-white/10 bg-white/5 p-4">
-                <p className="text-sm font-semibold text-white">{agent.name}</p>
-                <p className="text-xs text-slate-200">{agent.strengths}</p>
-              </div>
-            ))}
+          <div className="mt-10">
+            <p className="mb-4 font-mono text-xs text-[var(--faint)]">Then run your first swarm</p>
+            <div className="inline-block rounded-lg border border-[var(--border)] bg-[var(--background)] px-6 py-3 font-mono text-xs">
+              <span className="text-[var(--accent)]">/swarm</span>{" "}
+              <span className="text-white">Ship billing — 70% Claude, 30% Codex</span>
+            </div>
           </div>
         </section>
 
-        <section className="mt-16 space-y-6">
-          <div className="flex items-center gap-3">
-            <h3 className="text-xl font-semibold text-white">Use cases</h3>
-            <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-200">
-              Built for speed + control
-            </span>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            {useCases.map((item) => (
-              <div key={item.title} className="rounded-2xl border border-white/10 bg-white/5 p-5">
-                <p className="text-sm font-semibold text-white">{item.title}</p>
-                <p className="mt-2 text-sm text-slate-200">{item.body}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section id="pricing" className="mt-16 space-y-6">
+        {/* ── Pricing ── */}
+        <section id="pricing" className="py-20">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm uppercase tracking-[0.2em] text-slate-400">Pricing</p>
-              <h3 className="text-2xl font-semibold text-white">Pick your starting point.</h3>
-              <p className="text-sm text-slate-200">Swap tiers when you are ready. Approvals stay the same.</p>
+              <p className="mb-4 font-mono text-xs uppercase tracking-widest text-[var(--accent)]">Pricing</p>
+              <h2 className="mb-4 text-3xl font-bold sm:text-4xl" style={{ letterSpacing: "-0.02em" }}>
+                Pick your starting point.
+              </h2>
+              <p className="text-base text-[var(--muted)]">Your agents, your API keys. No hidden fees.</p>
             </div>
-            <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-200">
-              No new infra
-            </span>
           </div>
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="mt-12 grid gap-6 md:grid-cols-3">
             {pricingPlans.map((plan) => (
-              <div key={plan.name} className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/5 p-5">
+              <div key={plan.name} className="flex flex-col gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-6">
                 <div className="flex items-baseline justify-between">
                   <p className="text-sm font-semibold text-white">{plan.name}</p>
-                  <p className="text-base font-semibold text-emerald-200">{plan.price}</p>
+                  <p className="text-base font-semibold text-[var(--accent)]">{plan.price}</p>
                 </div>
-                <p className="text-xs text-slate-300">{plan.target}</p>
-                <ul className="space-y-2 text-sm text-slate-200">
+                <p className="text-xs text-[var(--faint)]">{plan.target}</p>
+                <ul className="space-y-2 text-sm text-[var(--muted)]">
                   {plan.points.map((point) => (
                     <li key={point} className="flex gap-2">
-                      <span className="mt-1 h-1.5 w-1.5 rounded-full bg-emerald-300" />
+                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent)]" />
                       <span>{point}</span>
                     </li>
                   ))}
                 </ul>
                 <a
-                  className="mt-auto inline-flex items-center justify-center rounded-full border border-white/20 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition hover:border-emerald-300/70 hover:bg-white/10"
-                  href={plan.name === "Solo" ? "#pricing" : "#demo"}
+                  className="mt-auto inline-flex items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-4 py-2 text-sm font-semibold text-white transition hover:border-[var(--muted)] hover:bg-[var(--border)]"
+                  href={plan.href}
                 >
                   {plan.cta}
                 </a>
@@ -334,69 +524,54 @@ export default function Home() {
           </div>
         </section>
 
-        <section id="demo" className="mt-16 grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
-          <div className="space-y-3 rounded-3xl border border-white/10 bg-white/5 p-6">
-            <h3 className="text-xl font-semibold text-white">
-              Run `/swarm` in your IDE. No dashboards. No new infra.
-            </h3>
-            <p className="text-sm text-slate-200">
-              Describe your task, set the Mix of Agents, approve the plan, and let the swarm ship. Keep the approvals and logs in your session.
-            </p>
-            <div className="flex flex-wrap gap-3">
-              {resourceLinks.map((resource) => (
-                <a
-                  key={resource.label}
-                  className="inline-flex items-center rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-semibold text-white transition hover:border-emerald-300/70 hover:bg-white/10"
-                  href={resource.href}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  {resource.label}
-                </a>
-              ))}
-            </div>
+        {/* ── CTA ── */}
+        <section id="demo" className="py-20 text-center">
+          <div className="relative">
+            <div className="pointer-events-none absolute -top-px left-1/2 h-px w-2/5 -translate-x-1/2 bg-gradient-to-r from-transparent via-[var(--accent)] to-transparent opacity-30" />
           </div>
-          <div className="space-y-4 rounded-3xl border border-emerald-300/30 bg-emerald-300/5 p-6">
-            <p className="text-sm font-semibold text-white">Approval workflow</p>
-            <p className="text-sm text-slate-200">
-              Plans, shell actions, and file edits are staged for review. You approve once, and the swarm executes with session-pinned terminals.
-            </p>
-            <div className="grid gap-2 text-xs text-slate-200">
-              <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-4 py-3">
-                <span>Plan preview</span>
-                <span className="rounded-full bg-emerald-400/15 px-3 py-1 font-semibold text-emerald-200">Approve</span>
-              </div>
-              <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-4 py-3">
-                <span>Shell commands</span>
-                <span className="rounded-full bg-emerald-400/15 px-3 py-1 font-semibold text-emerald-200">Gate</span>
-              </div>
-              <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-4 py-3">
-                <span>File edits</span>
-                <span className="rounded-full bg-emerald-400/15 px-3 py-1 font-semibold text-emerald-200">Review</span>
-              </div>
-            </div>
+          <h2 className="mb-4 text-3xl font-bold sm:text-4xl" style={{ letterSpacing: "-0.02em" }}>
+            Your IDE just evolved.
+          </h2>
+          <p className="mx-auto mb-8 text-base leading-relaxed text-[var(--muted)]" style={{ maxWidth: "48ch" }}>
+            Swarmify turns your editor into an Integrated Agents Environment.
+            Free, open source, and ready for your first swarm.
+          </p>
+          <div className="flex flex-wrap justify-center gap-4">
+            <a
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-[var(--accent)] px-5 py-3 text-sm font-semibold text-[#0a0a0b] transition hover:bg-[var(--accent-hover)] hover:shadow-[0_0_20px_rgba(0,232,123,0.2)]"
+              href="https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Get Swarmify
+            </a>
+            <a
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-5 py-3 text-sm font-semibold text-white transition hover:border-[var(--muted)] hover:bg-[var(--surface-2)]"
+              href="https://github.com/muqsitnawaz/swarmify"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Star on GitHub
+            </a>
           </div>
         </section>
       </main>
 
-      <footer className="border-t border-white/10 bg-black/40">
-        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-6 py-6 text-sm text-slate-300 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="font-semibold text-white">Swarmify</p>
-            <p className="text-xs text-slate-400">Multi-agent orchestration in your IDE.</p>
+      {/* ── Footer ── */}
+      <footer className="border-t border-[var(--border)]">
+        <div className="mx-auto flex max-w-[1200px] flex-col gap-4 px-6 py-8 text-xs text-[var(--faint)] sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-6">
+            <span className="font-semibold text-white">Swarmify</span>
+            <span>The Integrated Agents Environment</span>
           </div>
-          <div className="flex flex-wrap gap-3">
-            <a className="hover:text-white" href="#pricing">
-              Pricing
-            </a>
-            <a className="hover:text-white" href="#demo">
-              Demo
-            </a>
-            <a className="hover:text-white" href="https://github.com/muqsitnawaz/swarmify">
-              GitHub
-            </a>
+          <div className="flex flex-wrap gap-4">
+            {resourceLinks.map((link) => (
+              <a key={link.label} className="transition hover:text-[var(--muted)]" href={link.href} target="_blank" rel="noreferrer">
+                {link.label}
+              </a>
+            ))}
           </div>
-          <p className="text-xs text-slate-500">© {new Date().getFullYear()} Swarmify. All rights reserved.</p>
+          <p className="text-[var(--faint)]">&copy; {new Date().getFullYear()} Swarmify</p>
         </div>
       </footer>
     </div>

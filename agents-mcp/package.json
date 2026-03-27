@@ -1,7 +1,7 @@
 {
   "name": "@swarmify/agents-mcp",
   "version": "0.2.13",
-  "description": "True multi-agent coding in your IDE. Spawn Claude, Codex, Gemini, and Cursor agents from a single MCP server.",
+  "description": "MCP server for the Integrated Agents Environment. Spawn and orchestrate Claude, Codex, Gemini, and Cursor agents at scale.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {

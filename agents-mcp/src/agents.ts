@@ -58,7 +58,7 @@ export type { AgentType } from './parsers.js';
 export const AGENT_COMMANDS: Record<AgentType, string[]> = {
   codex: ['codex', 'exec', '--sandbox', 'workspace-write', '{prompt}', '--json'],
   cursor: ['cursor-agent', '-p', '--output-format', 'stream-json', '{prompt}'],
-  gemini: ['gemini', '{prompt}', '--output-format', 'stream-json'],
+  gemini: ['gemini', '{prompt}', '--output-format', 'stream-json', '--approval-mode', 'plan'],
   claude: ['claude', '-p', '--verbose', '{prompt}', '--output-format', 'stream-json', '--permission-mode', 'plan'],
   opencode: ['opencode', 'run', '--format', 'json', '{prompt}'],
 };
@@ -282,6 +282,28 @@ export function resolveMode(
   }
 
   return normalizedDefault;
+}
+
+export async function ensureGeminiPlanMode(): Promise<void> {
+  const settingsPath = path.join(os.homedir(), '.gemini', 'settings.json');
+  try {
+    let settings: Record<string, any> = {};
+    try {
+      const raw = await fs.readFile(settingsPath, 'utf-8');
+      settings = JSON.parse(raw);
+    } catch {
+      // No settings file or invalid JSON
+    }
+
+    if (settings.experimental?.plan === true) return;
+
+    settings.experimental = { ...settings.experimental, plan: true };
+    await fs.mkdir(path.dirname(settingsPath), { recursive: true });
+    await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2) + '\n');
+    console.error('[Swarm] Enabled Gemini experimental.plan in', settingsPath);
+  } catch (err) {
+    console.warn('[Swarm] Could not enable Gemini plan mode:', err);
+  }
 }
 
 export function checkCliAvailable(agentType: AgentType): [boolean, string | null] {
@@ -926,10 +948,14 @@ export class AgentProcess {
         editCmd.push('-f');
         break;
 
-      case 'gemini':
-        // Gemini CLI uses --yolo flag for auto-approve
+      case 'gemini': {
+        const approvalIndex = editCmd.indexOf('--approval-mode');
+        if (approvalIndex !== -1) {
+          editCmd.splice(approvalIndex, 2);
+        }
         editCmd.push('--yolo');
         break;
+      }
 
       case 'claude':
         const permModeIndex = editCmd.indexOf('--permission-mode');
@@ -954,9 +980,14 @@ export class AgentProcess {
         ralphCmd.push('-f');
         break;
 
-      case 'gemini':
+      case 'gemini': {
+        const approvalIndex = ralphCmd.indexOf('--approval-mode');
+        if (approvalIndex !== -1) {
+          ralphCmd.splice(approvalIndex, 2);
+        }
         ralphCmd.push('--yolo');
         break;
+      }
 
       case 'claude':
         // Replace --permission-mode plan with --dangerously-skip-permissions

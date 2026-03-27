@@ -51,9 +51,9 @@ describe('Cursor Live E2E', () => {
 
     console.log('Running cursor-agent with prompt:', prompt);
 
-    const spawnResult = await handleSpawn(manager, 'test-cursor', 'cursor', prompt, null, null, null);
+    const spawnResult = await handleSpawn(manager, 'test-cursor', 'cursor', prompt, null, 'edit', null);
     console.log('Spawned agent:', spawnResult.agent_id);
-    
+
     const statusResult = await pollUntilComplete(manager, 'test-cursor', spawnResult.agent_id, 90, 2000);
     
     console.log('Final status:', statusResult.status);
@@ -125,7 +125,7 @@ describe('Cursor Live E2E', () => {
 
       console.log('Running comprehensive test with prompt:', prompt);
       
-      const spawnResult = await handleSpawn(manager, 'test-cursor', 'cursor', prompt, testDataPath, null, null);
+      const spawnResult = await handleSpawn(manager, 'test-cursor', 'cursor', prompt, testDataPath, 'edit', null);
       console.log('Spawned agent:', spawnResult.agent_id);
       
       const statusResult = await pollUntilComplete(manager, 'test-cursor', spawnResult.agent_id, 180, 2000);

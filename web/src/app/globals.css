@@ -1,11 +1,15 @@
 @import "tailwindcss";
 
 :root {
-  --background: #050915;
-  --foreground: #e5e7eb;
-  --accent: #7cf7d4;
-  --muted: #94a3b8;
-  --surface: rgba(255, 255, 255, 0.04);
+  --background: #0a0a0b;
+  --foreground: #e8e8ec;
+  --accent: #00e87b;
+  --accent-hover: #00cc6b;
+  --muted: #8b8b92;
+  --faint: #52525a;
+  --surface: #111113;
+  --surface-2: #18181b;
+  --border: #2a2a2e;
 }
 
 @theme inline {
@@ -16,20 +20,25 @@
 }
 
 body {
-  background: radial-gradient(circle at 10% 20%, #0f172a 0, transparent 25%),
-    radial-gradient(circle at 90% 10%, #0a7a5c 0, transparent 28%),
-    radial-gradient(circle at 50% 70%, #0b1731 0, transparent 35%),
+  background: radial-gradient(ellipse at 15% 0%, rgba(0, 232, 123, 0.04) 0, transparent 50%),
     var(--background);
   color: var(--foreground);
   font-family: var(--font-grotesk), "Helvetica Neue", sans-serif;
   min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 a {
   color: inherit;
+  transition: color 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+a:hover {
+  color: var(--accent);
 }
 
 ::selection {
-  background: color-mix(in srgb, var(--accent) 30%, #ffffff 10%);
-  color: #0b1020;
+  background: color-mix(in srgb, var(--accent) 25%, transparent);
+  color: var(--foreground);
 }

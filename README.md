@@ -5,11 +5,11 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue)](https://www.typescriptlang.org/)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](./LICENSE)
 
-You don't need a coding agent. You need a team.
+Meet the future of IDEs: the Integrated Agents Environment.
 
 [Homepage](https://swarmify.co) | [Agents Extension](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext) | [Agents MCP](https://www.npmjs.com/package/@swarmify/agents-mcp)
 
-Run Claude, Codex, Gemini, and Cursor as a team. Orchestrate through `/swarm` with approvals before execution.
+Text editors became IDEs. Now IDEs become IAEs. Swarmify turns your editor into a command center for orchestrating Claude, Codex, Gemini, and Cursor in parallel — with full visibility into every agent's work.
 
 [![Watch the demo](https://img.youtube.com/vi/rbeoKhDxK8E/maxresdefault.jpg)](https://www.youtube.com/watch?v=rbeoKhDxK8E)
 
@@ -42,22 +42,22 @@ gemini mcp add Swarm -- npx -y @swarmify/agents-mcp
 | 2 | Lead agent creates a plan and assembles the team |
 | 3 | You review and approve; agents execute in parallel |
 
-## Why Multiple CLI Agents?
+## Why an IAE?
 
-One model can't juggle research, implementation, testing, and debugging in one pass. Context windows force awkward batching. Different models have different strengths:
+When you're running 10+ orchestrators each spinning 10+ agents, terminals and TUIs collapse. You need an environment built for that scale:
 
 | Agent | CLI | Best For |
 | --- | --- | --- |
 | Claude | `claude` | Planning, synthesis, multi-step reasoning |
-| Codex | `codex` | Fast implementation, syntax-heavy tasks |
+| Codex | `codex` | Fast implementation, surgical edits |
 | Gemini | `gemini` | Research depth, multi-system changes |
 | Cursor | `cursor-agent` | Debugging, tracing through codebases |
 
-Swarmify lets them work together. Claude plans while Codex implements while Cursor debugs - in parallel.
+Different models have different strengths. Swarmify lets you use them all — Claude plans while Codex implements while Cursor debugs, in parallel.
 
-## Why CLI Agents in an IDE?
+## From Terminal to Environment
 
-CLI agents like Claude Code, Codex, and Gemini are powerful - but running them in separate terminal windows means constant context-switching. You lose sight of your code while talking to agents.
+CLI agents are powerful — but running them in separate terminal windows means constant context-switching. You lose sight of your code, your agents, and what each one is doing.
 
 The [Agents Extension](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext) gives you:
 
@@ -65,10 +65,11 @@ The [Agents Extension](https://marketplace.visualstudio.com/items?itemName=swarm
 - **Session persistence** - Close VS Code, reopen, your agent tabs come back
 - **Sub-agent spawning** - Any agent can delegate to other agents via [Agents MCP](https://www.npmjs.com/package/@swarmify/agents-mcp)
 - **Approval gates** - You approve plans before agents execute
+- **Keyboard-first** - 12+ shortcuts for spawning, switching, labeling agents
 
 ## Agents Extension
 
-Full-screen agent terminals in your IDE. Each agent becomes a tech lead that can spawn sub-agents. You become the engineering manager.
+Your IDE becomes an IAE. Each agent runs as a full-screen editor tab. Each agent can spawn sub-agents. You orchestrate.
 
 [Get it on VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext)
 
@@ -84,7 +85,7 @@ Full-screen agent terminals in your IDE. Each agent becomes a tech lead that can
 
 ## Agents MCP
 
-MCP server that turns any agent into a tech lead. Spawn sub-agents from Claude, Codex, Gemini, or any MCP client.
+MCP server that enables sub-agent spawning. Any agent can spawn any other agent — Claude can spawn Codex, Gemini can spawn Claude.
 
 [Get it on npm](https://www.npmjs.com/package/@swarmify/agents-mcp)
 
@@ -107,12 +108,6 @@ MCP server that turns any agent into a tech lead. Spawn sub-agents from Claude, 
 | `/debug` / `/sdebug` | Root cause / parallel investigation |
 | `/test` / `/stest` | Critical paths / parallel testing |
 | `/ship` / `/sship` | Pre-launch / parallel verification |
-
-**For Teams:**
-
-- Shared dashboard keeps approvals visible
-- Session logs for auditability
-- Approval gates before code runs
 
 ## Common Workflows
 

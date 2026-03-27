@@ -1,6 +1,6 @@
-# Swarmify - Multi-Agent Coding Framework
+# Swarmify - The Integrated Agents Environment
 
-True multi-agent coding in your IDE. Run Claude, Codex, Gemini, and Cursor agents side-by-side with your code.
+Meet the future of IDEs. Swarmify turns your editor into an IAE — orchestrate Claude, Codex, Gemini, and Cursor in parallel with full visibility.
 
 ## Architecture
 
