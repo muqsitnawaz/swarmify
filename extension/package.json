@@ -437,6 +437,11 @@
         "command": "agents.reload",
         "key": "ctrl+shift+r",
         "mac": "cmd+shift+r"
+      },
+      {
+        "command": "agents.reopenLastSession",
+        "key": "ctrl+shift+t",
+        "mac": "cmd+shift+t"
       }
     ]
   },
