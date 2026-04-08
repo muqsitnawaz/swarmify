@@ -914,6 +914,10 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('agents.handoff', () => handoffToAgent(context))
   );
 
+  context.subscriptions.push(
+    vscode.commands.registerCommand('agents.continueInNew', () => continueInNewSession(context))
+  );
+
   interface TerminalQuickPickItem extends vscode.QuickPickItem {
     terminal: vscode.Terminal;
   }
@@ -1519,6 +1523,57 @@ async function handoffToAgent(context: vscode.ExtensionContext) {
   const prompt = handoff.formatHandoffPrompt(handoffContext);
 
   await openSingleAgentWithQueue(context, selectedAgent.agentConfig, [prompt]);
+}
+
+async function continueInNewSession(context: vscode.ExtensionContext) {
+  const activeTerminal = vscode.window.activeTerminal;
+
+  if (!activeTerminal) {
+    vscode.window.showInformationMessage('No active terminal to continue from');
+    return;
+  }
+
+  const terminalEntry = terminals.getByTerminal(activeTerminal);
+
+  if (!terminalEntry || !terminalEntry.agentConfig) {
+    vscode.window.showInformationMessage('Active terminal is not an agent terminal');
+    return;
+  }
+
+  const fromAgent = getExpandedAgentName(terminalEntry.agentConfig.prefix);
+  const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+
+  let messages: handoff.HandoffMessage[] = [];
+  let planInfo: { path: string; content: string } | null = null;
+
+  if (terminalEntry.sessionId && terminalEntry.agentType) {
+    const agentType = terminalEntry.agentType as 'claude' | 'codex' | 'gemini';
+    const sessionPath = await getSessionPathBySessionId(terminalEntry.sessionId, agentType, workspacePath);
+
+    if (sessionPath) {
+      messages = await handoff.getSessionMessages(sessionPath, 10);
+
+      if (agentType === 'claude') {
+        planInfo = await handoff.findRecentClaudePlan();
+      }
+    }
+  }
+
+  if (messages.length === 0 && !planInfo) {
+    vscode.window.showInformationMessage('No session history available to continue from');
+    return;
+  }
+
+  const continueContext: handoff.HandoffContext = {
+    fromAgent,
+    messages,
+    planContent: planInfo?.content,
+    planPath: planInfo?.path
+  };
+
+  const prompt = handoff.formatContinuePrompt(continueContext);
+
+  await openSingleAgentWithQueue(context, terminalEntry.agentConfig, [prompt]);
 }
 
 interface TerminalQuickPickItem extends vscode.QuickPickItem {
