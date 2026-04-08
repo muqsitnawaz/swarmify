@@ -111,6 +111,35 @@ export async function removeStatusBarLabel(
   await context.globalState.update(STATUS_BAR_LABELS_KEY, stored);
 }
 
+// Recently closed session info for "reopen last session"
+export interface ClosedSession {
+  terminalId: string;
+  prefix: string;
+  sessionId?: string;
+  label?: string;
+  agentType?: SessionAgentType;
+  agentConfig: Omit<AgentConfig, 'count'> | null;
+  closedAt: number;
+}
+
+const MAX_CLOSED_SESSIONS = 10;
+const recentlyClosedSessions: ClosedSession[] = [];
+
+export function pushClosedSession(session: ClosedSession): void {
+  recentlyClosedSessions.unshift(session);
+  if (recentlyClosedSessions.length > MAX_CLOSED_SESSIONS) {
+    recentlyClosedSessions.length = MAX_CLOSED_SESSIONS;
+  }
+}
+
+export function popClosedSession(): ClosedSession | undefined {
+  return recentlyClosedSessions.shift();
+}
+
+export function getRecentlyClosedSessions(): readonly ClosedSession[] {
+  return recentlyClosedSessions;
+}
+
 // Two-map architecture (API.md)
 const editorTerminals = new Map<string, EditorTerminal>();
 const terminalToId = new WeakMap<vscode.Terminal, string>();
