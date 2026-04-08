@@ -272,7 +272,7 @@ describe('session activity parsing - real data', () => {
       .toBe('Editing package.json');
 
     expect(formatActivity({ type: 'running', summary: 'npm test', timestamp: new Date() }))
-      .toBe('Running: npm test');
+      .toBe('npm test');
 
     expect(formatActivity({ type: 'thinking', summary: '', timestamp: new Date() }))
       .toBe('Thinking...');
