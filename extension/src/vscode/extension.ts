@@ -748,6 +748,10 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
+    vscode.commands.registerCommand('agents.reopenLastSession', () => reopenLastClosedSession(context))
+  );
+
+  context.subscriptions.push(
     vscode.commands.registerCommand('agents.configure', () => settings.openPanel(context))
   );
 
@@ -1081,8 +1085,21 @@ export async function activate(context: vscode.ExtensionContext) {
   // Listen for terminal closures to update our tracking
   context.subscriptions.push(
     vscode.window.onDidCloseTerminal((terminal) => {
-      // Remove prewarm session mapping if exists
+      // Capture session info before unregistering (for reopen)
       const entry = terminals.getByTerminal(terminal);
+      if (entry?.agentConfig && entry.sessionId) {
+        terminals.pushClosedSession({
+          terminalId: entry.id,
+          prefix: entry.agentConfig.prefix,
+          sessionId: entry.sessionId,
+          label: entry.label,
+          agentType: entry.agentType,
+          agentConfig: entry.agentConfig,
+          closedAt: Date.now()
+        });
+      }
+
+      // Remove prewarm session mapping if exists
       if (entry?.id) {
         prewarm.removeTerminalSession(context, entry.id);
       }
@@ -2251,6 +2268,58 @@ async function restoreAgentTerminals(context: vscode.ExtensionContext): Promise<
 
   terminals.clearPersistedSessions(workspacePath);
   console.log(`[RESTORE] Restored ${toRestore.length} agent terminal(s)`);
+}
+
+async function reopenLastClosedSession(context: vscode.ExtensionContext): Promise<void> {
+  const closed = terminals.popClosedSession();
+  if (!closed) {
+    vscode.window.showInformationMessage('No recently closed sessions to reopen.');
+    return;
+  }
+
+  if (!closed.agentConfig || !closed.sessionId) {
+    vscode.window.showInformationMessage('Last closed session has no resumable session.');
+    return;
+  }
+
+  const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
+  const title = buildTerminalTitle(
+    closed.agentConfig.title,
+    closed.label,
+    context,
+    closed.sessionId
+  );
+
+  const terminalId = terminals.nextId(closed.prefix);
+  const terminal = vscode.window.createTerminal({
+    iconPath: closed.agentConfig.iconPath,
+    location: { viewColumn: vscode.ViewColumn.Active },
+    name: title,
+    env: buildAgentTerminalEnv(terminalId, closed.sessionId, workspacePath),
+    isTransient: true
+  });
+
+  const pid = await terminal.processId;
+  terminals.register(terminal, terminalId, closed.agentConfig, pid, context, closed.label);
+
+  if (closed.sessionId && closed.agentType) {
+    terminals.setSessionId(terminal, closed.sessionId);
+    terminals.setAgentType(terminal, closed.agentType);
+    startAutoLabelPollerForTerminal(terminal, context);
+
+    if (supportsPrewarming(closed.agentType)) {
+      const resumeCmd = PREWARM_CONFIGS[closed.agentType].resumeCommand(closed.sessionId);
+      const shellReady = await waitForShellReady(terminal);
+      if (shellReady && terminal.shellIntegration) {
+        terminal.shellIntegration.executeCommand(resumeCmd);
+      } else {
+        terminal.sendText(resumeCmd);
+      }
+    }
+  }
+
+  terminal.show();
+  console.log(`[REOPEN] Reopened session: ${closed.sessionId} (${closed.agentType})`);
 }
 
 export async function deactivate(): Promise<void> {
