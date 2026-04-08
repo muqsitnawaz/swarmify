@@ -233,6 +233,10 @@
       {
         "command": "agents.reopenLastSession",
         "title": "Agents: Reopen Last Session"
+      },
+      {
+        "command": "agents.continueInNew",
+        "title": "Agents: Continue in New Session"
       }
     ],
     "configuration": {
@@ -442,6 +446,11 @@
         "command": "agents.reopenLastSession",
         "key": "ctrl+shift+t",
         "mac": "cmd+shift+t"
+      },
+      {
+        "command": "agents.continueInNew",
+        "key": "ctrl+shift+y",
+        "mac": "cmd+shift+y"
       }
     ]
   },

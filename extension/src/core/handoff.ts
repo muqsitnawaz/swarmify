@@ -194,6 +194,30 @@ function extractMessageFromLine(parsed: any): HandoffMessage | null {
   return null;
 }
 
+export function formatContinuePrompt(context: HandoffContext): string {
+  const parts: string[] = [];
+
+  parts.push(`Continue working on this task. Here is the context from the previous session.`);
+
+  if (context.messages.length > 0) {
+    parts.push('\n\n<previous_session>');
+    for (const msg of context.messages) {
+      const roleName = msg.role === 'user' ? 'User' : 'Assistant';
+      const truncated = msg.content.length > 500 ? msg.content.slice(0, 500) + '...' : msg.content;
+      parts.push(`${roleName}: ${truncated}`);
+    }
+    parts.push('</previous_session>');
+  }
+
+  if (context.planContent) {
+    parts.push('\n\n<current_plan>');
+    parts.push(context.planContent);
+    parts.push('</current_plan>');
+  }
+
+  return parts.join('\n');
+}
+
 export function formatHandoffPrompt(context: HandoffContext): string {
   const parts: string[] = [];
 
