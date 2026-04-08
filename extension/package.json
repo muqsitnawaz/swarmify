@@ -229,6 +229,10 @@
       {
         "command": "agents.reload",
         "title": "Agents: Reload"
+      },
+      {
+        "command": "agents.reopenLastSession",
+        "title": "Agents: Reopen Last Session"
       }
     ],
     "configuration": {
