@@ -194,28 +194,38 @@ function extractMessageFromLine(parsed: any): HandoffMessage | null {
   return null;
 }
 
-export function formatContinuePrompt(context: HandoffContext): string {
-  const parts: string[] = [];
+export async function getLastAssistantMessage(
+  sessionPath: string
+): Promise<string | null> {
+  try {
+    const content = await fs.readFile(sessionPath, 'utf-8');
+    const lines = content.split(/\r?\n/).filter(l => l.trim());
 
-  parts.push(`Continue working on this task. Here is the context from the previous session.`);
-
-  if (context.messages.length > 0) {
-    parts.push('\n\n<previous_session>');
-    for (const msg of context.messages) {
-      const roleName = msg.role === 'user' ? 'User' : 'Assistant';
-      const truncated = msg.content.length > 500 ? msg.content.slice(0, 500) + '...' : msg.content;
-      parts.push(`${roleName}: ${truncated}`);
+    for (let i = lines.length - 1; i >= 0; i--) {
+      try {
+        const parsed = JSON.parse(lines[i]);
+        const message = extractMessageFromLine(parsed);
+        if (message && message.role === 'assistant') {
+          return message.content;
+        }
+      } catch {
+        continue;
+      }
     }
-    parts.push('</previous_session>');
+  } catch {
+    // ignore
   }
+  return null;
+}
 
-  if (context.planContent) {
-    parts.push('\n\n<current_plan>');
-    parts.push(context.planContent);
-    parts.push('</current_plan>');
-  }
-
-  return parts.join('\n');
+export function formatContinuePrompt(recap: string): string {
+  return [
+    'Continue working on this task. Here is the recap from the previous session.',
+    '',
+    '<previous_session_recap>',
+    recap,
+    '</previous_session_recap>'
+  ].join('\n');
 }
 
 export function formatHandoffPrompt(context: HandoffContext): string {
