@@ -3,6 +3,7 @@ import {
   generateTerminalId,
   countRunningFromNames
 } from '../src/core/terminals';
+import { formatTerminalTitle } from '../src/core/utils';
 
 describe('terminals core functions', () => {
   describe('buildAgentTerminalEnv', () => {
@@ -142,6 +143,30 @@ describe('terminals core functions', () => {
       expect(counts.cursor).toBe(0);
       expect(counts.shell).toBe(0);
       expect(counts.opencode).toBe(0);
+    });
+  });
+
+  describe('formatTerminalTitle strips XML tags', () => {
+    const display = { showFullAgentNames: true, showLabelsInTitles: true, labelReplacesTitle: false };
+
+    test('strips XML tags from label', () => {
+      const title = formatTerminalTitle('CC', { label: '<local-command-caveat>Caveat: The messages below', display });
+      expect(title).toBe('Claude - Caveat: The messages below');
+    });
+
+    test('strips nested XML tags', () => {
+      const title = formatTerminalTitle('CC', { label: '<outer><inner>Clean text</inner></outer>', display });
+      expect(title).toBe('Claude - Clean text');
+    });
+
+    test('passes through labels without XML tags', () => {
+      const title = formatTerminalTitle('CC', { label: 'auth feature', display });
+      expect(title).toBe('Claude - auth feature');
+    });
+
+    test('handles label that is entirely XML tags', () => {
+      const title = formatTerminalTitle('CC', { label: '<tag></tag>', display });
+      expect(title).toBe('Claude');
     });
   });
 });
