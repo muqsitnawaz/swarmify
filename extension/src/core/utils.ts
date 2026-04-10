@@ -263,7 +263,7 @@ export function formatTerminalTitle(prefix: string, options?: TerminalTitleOptio
   const base = display?.showFullAgentNames ? getExpandedAgentName(prefix) : prefix;
   const sessionChunk = display?.showSessionIdInTitles ? options?.sessionChunk?.trim() : null;
 
-  const label = options?.label?.trim();
+  const label = options?.label?.trim()?.replace(/<[^>]*>/g, '').trim() || null;
   if (sessionChunk) {
     if (display?.showLabelsInTitles && label) {
       return `${base} ${sessionChunk} - ${label}`;

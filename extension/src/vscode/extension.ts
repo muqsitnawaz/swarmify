@@ -1924,7 +1924,8 @@ function updateStatusBarForTerminal(terminal: vscode.Terminal, extensionPath: st
     const sessionId = entry?.sessionId;
 
     // Show immediate status bar with current data
-    const displayLabel = entry?.label || entry?.autoLabel;
+    const rawLabel = entry?.label || entry?.autoLabel;
+    const displayLabel = rawLabel ? rawLabel.replace(/<[^>]*>/g, '').trim() : null;
     let text = `Agents: ${expandedName}`;
     if (displayLabel) {
       text += ` - ${displayLabel}`;
@@ -1938,9 +1939,9 @@ function updateStatusBarForTerminal(terminal: vscode.Terminal, extensionPath: st
     if (!displayLabel && entry?.sessionId && entry.agentType) {
       fetchAndSetAutoLabel(terminal, entry).then(autoLabel => {
         if (autoLabel && agentStatusBarItem && vscode.window.activeTerminal === terminal) {
-          // Re-render status bar with auto-label
+          const cleanAutoLabel = autoLabel.replace(/<[^>]*>/g, '').trim();
           let updatedText = `Agents: ${expandedName}`;
-          updatedText += ` - ${autoLabel}`;
+          updatedText += ` - ${cleanAutoLabel}`;
           if (sessionId) {
             updatedText += ` (${sessionId})`;
           }
