@@ -1542,23 +1542,44 @@ async function continueInNewSession(context: vscode.ExtensionContext) {
 
   const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 
-  let recap: string | null = null;
-
-  if (terminalEntry.sessionId && terminalEntry.agentType) {
-    const agentType = terminalEntry.agentType as 'claude' | 'codex' | 'gemini';
-    const sessionPath = await getSessionPathBySessionId(terminalEntry.sessionId, agentType, workspacePath);
-
-    if (sessionPath) {
-      recap = await handoff.getLastAssistantMessage(sessionPath);
-    }
-  }
-
-  if (!recap) {
-    vscode.window.showInformationMessage('No recap found. Run /recap in the current session first, then try again.');
+  if (!terminalEntry.sessionId || !terminalEntry.agentType) {
+    vscode.window.showInformationMessage('No session data available to continue from');
     return;
   }
 
-  const prompt = handoff.formatContinuePrompt(recap);
+  const agentType = terminalEntry.agentType as 'claude' | 'codex' | 'gemini';
+  const sessionPath = await getSessionPathBySessionId(terminalEntry.sessionId, agentType, workspacePath);
+
+  if (!sessionPath) {
+    vscode.window.showInformationMessage('Session file not found');
+    return;
+  }
+
+  const { extractSessionQuickDetails } = await import('../core/session.summary');
+  const fs = await import('fs/promises');
+  const sessionContent = await fs.readFile(sessionPath, 'utf-8').catch(() => '');
+
+  const [originalTask, lastResponse, details] = await Promise.all([
+    handoff.getFirstUserMessage(sessionPath),
+    handoff.getLastAssistantMessage(sessionPath),
+    Promise.resolve(extractSessionQuickDetails(sessionContent, agentType))
+  ]);
+
+  if (!originalTask && !lastResponse) {
+    vscode.window.showInformationMessage('No session history available to continue from');
+    return;
+  }
+
+  const continueCtx: handoff.ContinueContext = {
+    originalTask,
+    lastResponse,
+    filesEdited: details.recentFiles.slice(0, 20),
+    filesRead: details.recentFiles,
+    recentTools: details.recentTools,
+    toolCalls: details.summary.toolCalls
+  };
+
+  const prompt = handoff.formatContinuePrompt(continueCtx);
 
   await openSingleAgentWithQueue(context, terminalEntry.agentConfig, [prompt]);
 }
