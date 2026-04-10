@@ -40,15 +40,9 @@ export function getPromptPackCommandPath(agent: PromptPackAgent, command: string
 
 // Detect whether a CLI binary is available
 export async function isAgentCliAvailable(agent: AgentCli): Promise<boolean> {
-  const commands: Record<AgentCli, string> = {
-    claude: 'claude --version',
-    codex: 'codex --version',
-    gemini: 'gemini --version',
-    opencode: 'opencode --version',
-  };
-
+  const which = process.platform === 'win32' ? 'where' : 'which';
   try {
-    await execAsync(commands[agent]);
+    await execAsync(`${which} ${agent}`);
     return true;
   } catch {
     return false;
@@ -65,7 +59,7 @@ export async function isAgentMcpEnabled(agent: AgentCli): Promise<boolean> {
   };
 
   try {
-    const { stdout } = await execAsync(commands[agent]);
+    const { stdout } = await execAsync(commands[agent], { timeout: 5000 });
     return /swarm/i.test(stdout) || /swarmify-agents/i.test(stdout);
   } catch {
     return false;
