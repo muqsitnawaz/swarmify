@@ -194,6 +194,30 @@ function extractMessageFromLine(parsed: any): HandoffMessage | null {
   return null;
 }
 
+export async function getFirstUserMessage(
+  sessionPath: string
+): Promise<string | null> {
+  try {
+    const content = await fs.readFile(sessionPath, 'utf-8');
+    const lines = content.split(/\r?\n/).filter(l => l.trim());
+
+    for (const line of lines) {
+      try {
+        const parsed = JSON.parse(line);
+        const message = extractMessageFromLine(parsed);
+        if (message && message.role === 'user') {
+          return message.content;
+        }
+      } catch {
+        continue;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
 export async function getLastAssistantMessage(
   sessionPath: string
 ): Promise<string | null> {
@@ -218,14 +242,60 @@ export async function getLastAssistantMessage(
   return null;
 }
 
-export function formatContinuePrompt(recap: string): string {
-  return [
-    'Continue working on this task. Here is the recap from the previous session.',
-    '',
-    '<previous_session_recap>',
-    recap,
-    '</previous_session_recap>'
-  ].join('\n');
+export interface ContinueContext {
+  originalTask: string | null;
+  lastResponse: string | null;
+  filesEdited: string[];
+  filesRead: string[];
+  recentTools: string[];
+  toolCalls: number;
+}
+
+export function formatContinuePrompt(ctx: ContinueContext): string {
+  const parts: string[] = [];
+
+  parts.push('Continue working on this task from a previous session.');
+
+  if (ctx.originalTask) {
+    const task = ctx.originalTask.length > 500
+      ? ctx.originalTask.slice(0, 500) + '...'
+      : ctx.originalTask;
+    parts.push('');
+    parts.push('<original_task>');
+    parts.push(task);
+    parts.push('</original_task>');
+  }
+
+  if (ctx.filesEdited.length > 0 || ctx.filesRead.length > 0 || ctx.toolCalls > 0) {
+    parts.push('');
+    parts.push('<session_activity>');
+    if (ctx.filesEdited.length > 0) {
+      parts.push(`Files edited: ${ctx.filesEdited.join(', ')}`);
+    }
+    if (ctx.filesRead.length > 0) {
+      const readOnly = ctx.filesRead.filter(f => !ctx.filesEdited.includes(f));
+      if (readOnly.length > 0) {
+        parts.push(`Files read: ${readOnly.slice(0, 15).join(', ')}`);
+      }
+    }
+    parts.push(`Tool calls: ${ctx.toolCalls}`);
+    parts.push('</session_activity>');
+  }
+
+  if (ctx.lastResponse) {
+    const response = ctx.lastResponse.length > 2000
+      ? ctx.lastResponse.slice(0, 2000) + '...'
+      : ctx.lastResponse;
+    parts.push('');
+    parts.push('<last_response>');
+    parts.push(response);
+    parts.push('</last_response>');
+  }
+
+  parts.push('');
+  parts.push('Read the files that were edited to understand current state, then continue where the previous session left off.');
+
+  return parts.join('\n');
 }
 
 export function formatHandoffPrompt(context: HandoffContext): string {
