@@ -245,10 +245,10 @@ export async function getLastAssistantMessage(
 export interface ContinueContext {
   originalTask: string | null;
   lastResponse: string | null;
-  filesEdited: string[];
-  filesRead: string[];
-  recentTools: string[];
+  recentFiles: string[];
   toolCalls: number;
+  filesEdited: number;
+  filesRead: number;
 }
 
 export function formatContinuePrompt(ctx: ContinueContext): string {
@@ -266,19 +266,13 @@ export function formatContinuePrompt(ctx: ContinueContext): string {
     parts.push('</original_task>');
   }
 
-  if (ctx.filesEdited.length > 0 || ctx.filesRead.length > 0 || ctx.toolCalls > 0) {
+  if (ctx.recentFiles.length > 0 || ctx.toolCalls > 0) {
     parts.push('');
     parts.push('<session_activity>');
-    if (ctx.filesEdited.length > 0) {
-      parts.push(`Files edited: ${ctx.filesEdited.join(', ')}`);
+    parts.push(`${ctx.filesEdited} files edited, ${ctx.filesRead} files read, ${ctx.toolCalls} tool calls`);
+    if (ctx.recentFiles.length > 0) {
+      parts.push(`Recent files: ${ctx.recentFiles.slice(0, 20).join(', ')}`);
     }
-    if (ctx.filesRead.length > 0) {
-      const readOnly = ctx.filesRead.filter(f => !ctx.filesEdited.includes(f));
-      if (readOnly.length > 0) {
-        parts.push(`Files read: ${readOnly.slice(0, 15).join(', ')}`);
-      }
-    }
-    parts.push(`Tool calls: ${ctx.toolCalls}`);
     parts.push('</session_activity>');
   }
 
@@ -293,7 +287,7 @@ export function formatContinuePrompt(ctx: ContinueContext): string {
   }
 
   parts.push('');
-  parts.push('Read the files that were edited to understand current state, then continue where the previous session left off.');
+  parts.push('Read the recently edited files to understand current state, then continue where the previous session left off.');
 
   return parts.join('\n');
 }
