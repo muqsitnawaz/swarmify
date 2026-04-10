@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { IconConfig, TaskSummary, TerminalDetail } from '../../types'
 import { getAgentDisplayName, getIcon } from '../../utils'
 import { SectionHeader } from '../common'
-import { getFilesChangedCount, getTerminalPrompt, truncateText } from './helpers'
+import { getFilesChangedCount, getTerminalPrompt, stripXmlTags, truncateText } from './helpers'
 
 interface AgentTerminalsSectionProps {
   selectedAgentType: string | null
