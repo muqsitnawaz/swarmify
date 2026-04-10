@@ -1540,38 +1540,25 @@ async function continueInNewSession(context: vscode.ExtensionContext) {
     return;
   }
 
-  const fromAgent = getExpandedAgentName(terminalEntry.agentConfig.prefix);
   const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 
-  let messages: handoff.HandoffMessage[] = [];
-  let planInfo: { path: string; content: string } | null = null;
+  let recap: string | null = null;
 
   if (terminalEntry.sessionId && terminalEntry.agentType) {
     const agentType = terminalEntry.agentType as 'claude' | 'codex' | 'gemini';
     const sessionPath = await getSessionPathBySessionId(terminalEntry.sessionId, agentType, workspacePath);
 
     if (sessionPath) {
-      messages = await handoff.getSessionMessages(sessionPath, 10);
-
-      if (agentType === 'claude') {
-        planInfo = await handoff.findRecentClaudePlan();
-      }
+      recap = await handoff.getLastAssistantMessage(sessionPath);
     }
   }
 
-  if (messages.length === 0 && !planInfo) {
-    vscode.window.showInformationMessage('No session history available to continue from');
+  if (!recap) {
+    vscode.window.showInformationMessage('No recap found. Run /recap in the current session first, then try again.');
     return;
   }
 
-  const continueContext: handoff.HandoffContext = {
-    fromAgent,
-    messages,
-    planContent: planInfo?.content,
-    planPath: planInfo?.path
-  };
-
-  const prompt = handoff.formatContinuePrompt(continueContext);
+  const prompt = handoff.formatContinuePrompt(recap);
 
   await openSingleAgentWithQueue(context, terminalEntry.agentConfig, [prompt]);
 }
