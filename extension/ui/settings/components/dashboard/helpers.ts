@@ -32,9 +32,14 @@ export function truncateMiddle(value: string, headChars: number, tailChars: numb
   return `${value.slice(0, headChars)}...${value.slice(-tailChars)}`
 }
 
+export function stripXmlTags(text: string): string {
+  return text.replace(/<[^>]*>/g, '').trim()
+}
+
 export function getTerminalPrompt(terminal: TerminalDetail): string {
   const raw = terminal.firstUserMessage || terminal.lastUserMessage || terminal.label || terminal.autoLabel || ''
-  return raw.trim() || 'Waiting for first message...'
+  const cleaned = stripXmlTags(raw.trim())
+  return cleaned || 'Waiting for first message...'
 }
 
 export function getFilesChangedCount(tasksForSession?: TaskSummary[]): number | null {
