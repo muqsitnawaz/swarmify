@@ -1573,10 +1573,10 @@ async function continueInNewSession(context: vscode.ExtensionContext) {
   const continueCtx: handoff.ContinueContext = {
     originalTask,
     lastResponse,
-    filesEdited: details.recentFiles.slice(0, 20),
-    filesRead: details.recentFiles,
-    recentTools: details.recentTools,
-    toolCalls: details.summary.toolCalls
+    recentFiles: details.recentFiles,
+    toolCalls: details.summary.toolCalls,
+    filesEdited: details.summary.filesEdited,
+    filesRead: details.summary.filesRead
   };
 
   const prompt = handoff.formatContinuePrompt(continueCtx);
