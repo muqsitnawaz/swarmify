@@ -117,7 +117,8 @@ export function AgentTerminalsSection({
       ) : (
         <div className="space-y-3">
           {agentTerminals.map(terminal => {
-            const displayLabel = terminal.label || terminal.autoLabel
+            const rawLabel = terminal.label || terminal.autoLabel
+            const displayLabel = rawLabel ? stripXmlTags(rawLabel) : null
             const agentName = getAgentDisplayName(terminal.agentType)
             const prompt = getTerminalPrompt(terminal)
             const hasMessages = terminal.messageCount && terminal.messageCount > 0
