@@ -273,7 +273,12 @@ export async function generateCommitMessage(sourceControl?: { rootUri?: vscode.U
             vscode.window.showInformationMessage(`Pushed (after rebase): ${commitMessage}`);
           } catch (rebaseError: unknown) {
             const msg = rebaseError instanceof Error ? rebaseError.message : String(rebaseError);
-            vscode.window.showErrorMessage(`Committed but push failed after rebase: ${msg}`);
+            const hasConflicts = msg.includes('conflict') || msg.includes('CONFLICT') || msg.includes('rebase');
+            if (hasConflicts) {
+              vscode.window.showErrorMessage('Rebase has conflicts. Resolve them manually, then run `git rebase --continue` and push.');
+            } else {
+              vscode.window.showErrorMessage(`Committed but push failed after rebase: ${msg}`);
+            }
           }
         }
       } catch (commitError: unknown) {
