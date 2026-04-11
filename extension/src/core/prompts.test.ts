@@ -313,10 +313,11 @@ describe('prompts I/O', () => {
   });
 
   describe('DEFAULT_PROMPTS', () => {
-    test('contains rethink and debugit prompts', () => {
-      expect(DEFAULT_PROMPTS.length).toBe(2);
+    test('contains rethink, debugit, and yousure prompts', () => {
+      expect(DEFAULT_PROMPTS.length).toBe(3);
       expect(DEFAULT_PROMPTS.find(p => p.id === 'builtin-rethink')).toBeDefined();
       expect(DEFAULT_PROMPTS.find(p => p.id === 'builtin-debugit')).toBeDefined();
+      expect(DEFAULT_PROMPTS.find(p => p.id === 'builtin-yousure')).toBeDefined();
     });
 
     test('all default prompts are valid', () => {
