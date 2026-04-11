@@ -266,8 +266,15 @@ export async function generateCommitMessage(sourceControl?: { rootUri?: vscode.U
           await repo.push();
           vscode.window.showInformationMessage(`Pushed: ${commitMessage}`);
         } catch (pushError: unknown) {
-          const msg = pushError instanceof Error ? pushError.message : String(pushError);
-          vscode.window.showErrorMessage(`Committed but push failed: ${msg}`);
+          // Push failed, try pull --rebase then push again
+          try {
+            await repo.pull(true);
+            await repo.push();
+            vscode.window.showInformationMessage(`Pushed (after rebase): ${commitMessage}`);
+          } catch (rebaseError: unknown) {
+            const msg = rebaseError instanceof Error ? rebaseError.message : String(rebaseError);
+            vscode.window.showErrorMessage(`Committed but push failed after rebase: ${msg}`);
+          }
         }
       } catch (commitError: unknown) {
         const msg = commitError instanceof Error ? commitError.message : String(commitError);
