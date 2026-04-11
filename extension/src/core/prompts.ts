@@ -23,6 +23,15 @@ export const DEFAULT_PROMPTS: PromptEntry[] = [
     createdAt: 0,
     updatedAt: 0,
     accessedAt: 0
+  },
+  {
+    id: 'builtin-yousure',
+    title: 'yousure',
+    content: 'Stop and verify what you just claimed. Three-step process:\n\nSTEP 1 — SELF-REFLECT (now, before spawning anything):\nReread your last response. List every factual claim you made. For each one, read the actual code right now and verify it. Be brutally honest — mark each claim as VERIFIED (with file:line proof) or WRONG (with what the code actually says). Do not defend your prior answer — investigate it like someone else wrote it.\n\nSTEP 2 — SWARM VERIFY (after step 1):\nSpawn codex and gemini agents via swarm. Give them the full context: what the user asked, what you claimed, and the relevant file paths. Do NOT share your step 1 results or your conclusions — we don\'t want to bias their analysis. Ask them to independently verify the claims by reading the code themselves and arriving at their own conclusions.\n\nSTEP 3 — SYNTHESIZE (after swarm returns):\nCompare your self-reflection (step 1) with the independent swarm results (step 2). Where all three agree, that\'s the answer. Where they disagree, read the disputed code one more time and resolve with evidence, not majority vote. Present the final verified answer with file:line citations for every claim.',
+    isFavorite: true,
+    createdAt: 0,
+    updatedAt: 0,
+    accessedAt: 0
   }
 ];
 
