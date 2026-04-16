@@ -76,6 +76,9 @@ interface SettingsTabProps {
   // Workspace config
   onInitWorkspaceConfig: () => void
   onSaveWorkspaceConfig: (config: WorkspaceConfig) => void
+  // Integration connect
+  onConnectLinear: () => void
+  onConnectGitHub: () => void
 }
 
 export function SettingsTab({
@@ -119,6 +122,8 @@ export function SettingsTab({
   onAliasFlagsChange,
   onInitWorkspaceConfig,
   onSaveWorkspaceConfig,
+  onConnectLinear,
+  onConnectGitHub,
 }: SettingsTabProps) {
   const skillCommands = skillsStatus?.commands ?? []
   const commandPackNames: string[] = ['swarm', ...skillCommands.map((skill) => skill.name)]

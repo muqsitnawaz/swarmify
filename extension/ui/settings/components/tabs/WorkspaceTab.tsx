@@ -3,7 +3,7 @@ import { ChevronDown, ChevronRight, RefreshCw, ExternalLink, X, FileText } from 
 import { Button } from '../ui/button'
 import { Checkbox } from '../ui/checkbox'
 import { SectionHeader, WorkspaceConfigSection } from '../common'
-import { OauthDialog } from '../common/OAuthDialog'
+import { ApiKeyDialog } from '../common/OAuthDialog'
 import { renderTodoDescription } from '../../utils'
 import { getAgentIcon } from '../../utils'
 import { SOURCE_BADGES } from '../../constants'
@@ -580,7 +580,7 @@ export function WorkspaceTab(props: WorkspaceTabProps) {
       </section>
 
       {showLinearAuth && (
-        <OauthDialog
+        <ApiKeyDialog
           provider="linear"
           onAuthComplete={onLinearAuthComplete}
           onClose={onLinearAuthCancel}
@@ -588,7 +588,7 @@ export function WorkspaceTab(props: WorkspaceTabProps) {
       )}
 
       {showGitHubAuth && (
-        <OauthDialog
+        <ApiKeyDialog
           provider="github"
           onAuthComplete={onGitHubAuthComplete}
           onClose={onGitHubAuthCancel}
