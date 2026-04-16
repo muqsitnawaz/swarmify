@@ -1,101 +1,110 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { postMessage } from '../../hooks';
 
-interface OauthDialogProps {
+interface ApiKeyDialogProps {
   provider: 'linear' | 'github';
   onAuthComplete: () => void;
   onClose: () => void;
 }
 
-export function OauthDialog({ provider, onAuthComplete, onClose }: OauthDialogProps) {
-  const [status, setStatus] = useState<'idle' | 'waiting' | 'success' | 'error'>('idle');
-  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+export function ApiKeyDialog({ provider, onAuthComplete, onClose }: ApiKeyDialogProps) {
+  const [apiKey, setApiKey] = useState('');
+  const [status, setStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
+  const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       const message = event.data;
-      if (message.type === 'oauthStarted' && message.provider === provider) {
-        // OAuth URL opened successfully, start polling
-        pollIntervalRef.current = setInterval(() => {
-          postMessage({ type: 'checkOAuthStatus', provider });
-        }, 1000);
-
-        // Timeout after 120 seconds
-        setTimeout(() => {
-          if (pollIntervalRef.current) {
-            clearInterval(pollIntervalRef.current);
-            pollIntervalRef.current = null;
-          }
-          if (status === 'waiting') {
-            setStatus('error');
-          }
-        }, 120000);
-      } else if (message.type === 'oauthToken' && message.provider === provider) {
-        if (message.token) {
-          if (pollIntervalRef.current) {
-            clearInterval(pollIntervalRef.current);
-            pollIntervalRef.current = null;
-          }
+      if (message.type === 'integrationStatus' && message.provider === provider) {
+        if (message.connected) {
           setStatus('success');
           onAuthComplete();
+        } else if (message.error) {
+          setStatus('error');
+          setErrorMessage(message.error);
         }
       }
     };
 
     window.addEventListener('message', handleMessage);
-    return () => {
-      window.removeEventListener('message', handleMessage);
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-      }
-    };
+
+    if (provider === 'github') {
+      postMessage({ type: 'checkGitHubAuth' });
+    }
+
+    return () => window.removeEventListener('message', handleMessage);
   }, [provider, onAuthComplete]);
 
-  const handleOAuthStart = () => {
-    setStatus('waiting');
-    postMessage({ type: 'startOAuth', provider });
+  const handleSaveLinearKey = () => {
+    if (!apiKey.trim()) return;
+    setStatus('saving');
+    postMessage({ type: 'saveLinearApiKey', key: apiKey.trim() });
+  };
+
+  const handleCheckGitHub = () => {
+    setStatus('saving');
+    postMessage({ type: 'checkGitHubAuth' });
   };
 
   return (
     <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50">
-      <div className="bg-white rounded-lg p-6 max-w-md shadow-xl">
-        <h2 className="text-lg font-semibold mb-2">Connect {provider}</h2>
-        
-        {status === 'idle' && (
-          <button
-            onClick={handleOAuthStart}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            Connect with {provider}
-          </button>
-        )}
-        
-        {status === 'waiting' && (
-          <div className="flex items-center gap-2">
-            <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-600 border-t-transparent border-t-blue-600" />
-            <span className="text-sm text-gray-600">
-              {provider === 'linear' 
-                ? 'Waiting for Linear authorization...' 
-                : 'Waiting for GitHub authorization...'}
-            </span>
+      <div className="bg-[var(--background)] border border-[var(--border)] rounded-lg p-6 max-w-md shadow-xl">
+        <h2 className="text-lg font-semibold mb-4 text-[var(--foreground)]">
+          {provider === 'linear' ? 'Connect Linear' : 'Connect GitHub'}
+        </h2>
+
+        {provider === 'linear' ? (
+          <div className="space-y-3">
+            <p className="text-sm text-[var(--muted-foreground)]">
+              Paste your Linear API key. You can create one at linear.app/settings/api.
+            </p>
+            <input
+              type="password"
+              value={apiKey}
+              onChange={e => setApiKey(e.target.value)}
+              placeholder="lin_api_..."
+              className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--ring)]"
+              onKeyDown={e => e.key === 'Enter' && handleSaveLinearKey()}
+            />
+            <button
+              onClick={handleSaveLinearKey}
+              disabled={!apiKey.trim() || status === 'saving'}
+              className="px-4 py-2 text-sm bg-[var(--primary)] text-[var(--primary-foreground)] rounded-lg hover:opacity-90 disabled:opacity-50"
+            >
+              {status === 'saving' ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-sm text-[var(--muted-foreground)]">
+              GitHub uses the gh CLI for authentication. Run this in your terminal:
+            </p>
+            <code className="block px-3 py-2 text-sm rounded-lg bg-[var(--muted)] text-[var(--foreground)] font-mono">
+              gh auth login
+            </code>
+            <button
+              onClick={handleCheckGitHub}
+              disabled={status === 'saving'}
+              className="px-4 py-2 text-sm bg-[var(--primary)] text-[var(--primary-foreground)] rounded-lg hover:opacity-90 disabled:opacity-50"
+            >
+              {status === 'saving' ? 'Checking...' : 'Check connection'}
+            </button>
           </div>
         )}
-        
+
         {status === 'success' && (
-          <div className="text-green-600 text-sm font-medium">
-            Connected! You can close this dialog.
-          </div>
+          <p className="mt-3 text-sm text-green-600">Connected</p>
         )}
-        
+
         {status === 'error' && (
-          <div className="text-red-600 text-sm mb-4">
-            Authorization failed. Please try again.
-          </div>
+          <p className="mt-3 text-sm text-red-600">
+            {errorMessage || 'Connection failed. Please try again.'}
+          </p>
         )}
-        
+
         <button
           onClick={onClose}
-          className="text-sm text-gray-500 hover:text-gray-700 mt-4"
+          className="block mt-4 text-sm text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
         >
           Cancel
         </button>
