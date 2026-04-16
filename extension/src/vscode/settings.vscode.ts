@@ -109,9 +109,9 @@ const sessionWatchers = new Map<string, fs.FSWatcher>();
 let sessionUpdateTimeout: NodeJS.Timeout | undefined;
 let currentlySubscribedAgentType: string | null = null;
 
-// Notify settings panel when OAuth completes (called from extension.ts URI handler)
-export function notifyOAuthComplete(provider: string, token: string): void {
-  settingsPanel?.webview.postMessage({ type: 'oauthToken', provider, token });
+// Notify settings panel when integration status changes
+export function notifyIntegrationStatus(provider: string, connected: boolean): void {
+  settingsPanel?.webview.postMessage({ type: 'integrationStatus', provider, connected });
 }
 
 // Clean up all session file watchers
@@ -655,44 +655,28 @@ export function openPanel(context: vscode.ExtensionContext): void {
           settingsPanel?.webview.postMessage({ type: 'unifiedTasksData', tasks: [] });
         }
         break;
-      case 'startOAuth': {
-        const { provider: oauthProvider } = message;
-
-        if (oauthProvider === 'github') {
-          // GitHub OAuth - separate apps per IDE (each needs its own callback URL)
-          const uriScheme = vscode.env.uriScheme;
-          const githubClientIds: Record<string, string> = {
-            'vscode': 'Ov23liKYaRnJ5DqzmPYO',
-            'cursor': 'Ov23lil7uKgqBdj9OhX4',
-            'vscode-insiders': 'Ov23liKYaRnJ5DqzmPYO',
-          };
-          const clientId = githubClientIds[uriScheme] || githubClientIds['vscode'];
-          const redirectUri = encodeURIComponent(`${uriScheme}://swarm-ext/oauth/callback`);
-          const state = 'github';
-          const scope = 'repo,read:user';
-
-          const oauthUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scope}&state=${state}`;
-          vscode.env.openExternal(vscode.Uri.parse(oauthUrl));
-          settingsPanel?.webview.postMessage({ type: 'oauthStarted', provider: oauthProvider });
-        } else if (oauthProvider === 'linear') {
-          // Linear OAuth
-          const clientId = '2e9e7d9e5c0f';
-          const redirectUri = encodeURIComponent(`${vscode.env.uriScheme}://swarm-ext/oauth/callback`);
-          const state = 'linear';
-
-          const oauthUrl = `https://linear.app/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=read&state=${state}`;
-          vscode.env.openExternal(vscode.Uri.parse(oauthUrl));
-          settingsPanel?.webview.postMessage({ type: 'oauthStarted', provider: oauthProvider });
-        } else {
-          console.error(`[OAUTH] Unknown provider: ${oauthProvider}`);
+      case 'saveLinearApiKey': {
+        try {
+          const { saveLinearApiKey } = await import('./linear.vscode');
+          await saveLinearApiKey(message.key);
+          settingsPanel?.webview.postMessage({ type: 'integrationStatus', provider: 'linear', connected: true });
+        } catch (err) {
+          console.error('[SETTINGS] Error saving Linear API key:', err);
+          settingsPanel?.webview.postMessage({ type: 'integrationStatus', provider: 'linear', connected: false, error: 'Failed to save API key' });
         }
         break;
       }
 
-      case 'checkOAuthStatus':
-        const token = context.globalState.get<string>(`${message.provider}_mcp_token`);
-        settingsPanel?.webview.postMessage({ type: 'oauthToken', provider: message.provider, token: token || null });
+      case 'checkGitHubAuth': {
+        try {
+          const { isGitHubAvailable } = await import('./github.vscode');
+          const connected = await isGitHubAvailable(context);
+          settingsPanel?.webview.postMessage({ type: 'integrationStatus', provider: 'github', connected });
+        } catch {
+          settingsPanel?.webview.postMessage({ type: 'integrationStatus', provider: 'github', connected: false });
+        }
         break;
+      }
 
 
       case 'detectTaskSources':
@@ -720,18 +704,16 @@ export function openPanel(context: vscode.ExtensionContext): void {
           vscode.window.showTextDocument(sessionUri, { preview: true });
         }
         break;
-      case 'exchangeCodeForToken':
-        const { provider, code } = message;
-
-        // Exchange authorization code for access token
-        // For MVP: simulate token exchange (in production, this would make actual API calls)
-        const mockToken = `${provider}_mock_token_${Date.now()}`;
-
-        await context.globalState.update(`${provider}_mcp_token`, mockToken);
-        console.log(`[OAUTH] Stored token for ${provider}`);
-
-        settingsPanel?.webview.postMessage({ type: 'oauthToken', provider, token: mockToken });
+      case 'checkLinearAuth': {
+        try {
+          const { isLinearAvailable } = await import('./linear.vscode');
+          const connected = await isLinearAvailable(context);
+          settingsPanel?.webview.postMessage({ type: 'integrationStatus', provider: 'linear', connected });
+        } catch {
+          settingsPanel?.webview.postMessage({ type: 'integrationStatus', provider: 'linear', connected: false });
+        }
         break;
+      }
 
 
       case 'getPrewarmStatus':
