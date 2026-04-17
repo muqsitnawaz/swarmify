@@ -42,7 +42,7 @@ export async function fetchLinearTasks(context: vscode.ExtensionContext): Promis
       description: issue.description,
       state: issue.state,
       priority: issue.priority,
-      url: issue.url || '',
+      url: issue.url || `https://linear.app/issue/${issue.identifier}`,
       labels: issue.labels,
       assignee: issue.assignee,
     }));
