@@ -35,6 +35,7 @@ import { DashboardTab } from './components/tabs/DashboardTab'
 import { WorkspaceTab } from './components/tabs/WorkspaceTab'
 import { SettingsTab } from './components/tabs/SettingsTab'
 import { GuideTab } from './components/tabs/GuideTab'
+import { ApiKeyDialog } from './components/common/OAuthDialog'
 
 const vscode = getVsCodeApi()
 const icons = getIcons() as IconConfig
@@ -508,6 +509,7 @@ export default function App() {
   const handleLinearAuthComplete = () => {
     setShowLinearAuth(false)
     handleUpdateTaskSources({ linear: true })
+    detectTaskSources()
     fetchUnifiedTasks()
   }
 
@@ -518,6 +520,7 @@ export default function App() {
   const handleGitHubAuthComplete = () => {
     setShowGitHubAuth(false)
     handleUpdateTaskSources({ github: true })
+    detectTaskSources()
     fetchUnifiedTasks()
   }
 
@@ -664,8 +667,6 @@ export default function App() {
           dismissedTaskIds={dismissedTaskIds}
           icons={icons}
           isLightTheme={isLightTheme}
-          showLinearAuth={showLinearAuth}
-          showGitHubAuth={showGitHubAuth}
           onToggleSource={toggleSourceExpanded}
           onSpawnTodo={handleSpawnTodo}
           onRefreshTasks={() => { fetchTodoFiles(); fetchUnifiedTasks() }}
@@ -678,10 +679,6 @@ export default function App() {
           onDismissTask={handleDismissTask}
           onConnectLinear={handleConnectLinear}
           onConnectGitHub={handleConnectGitHub}
-          onLinearAuthComplete={handleLinearAuthComplete}
-          onLinearAuthCancel={handleLinearAuthCancel}
-          onGitHubAuthComplete={handleGitHubAuthComplete}
-          onGitHubAuthCancel={handleGitHubAuthCancel}
         />
       )}
 
@@ -727,6 +724,24 @@ export default function App() {
           onAliasFlagsChange={setNewAliasFlags}
           onInitWorkspaceConfig={handleInitWorkspaceConfig}
           onSaveWorkspaceConfig={handleSaveWorkspaceConfig}
+          onConnectLinear={handleConnectLinear}
+          onConnectGitHub={handleConnectGitHub}
+        />
+      )}
+
+      {showLinearAuth && (
+        <ApiKeyDialog
+          provider="linear"
+          onAuthComplete={handleLinearAuthComplete}
+          onClose={handleLinearAuthCancel}
+        />
+      )}
+
+      {showGitHubAuth && (
+        <ApiKeyDialog
+          provider="github"
+          onAuthComplete={handleGitHubAuthComplete}
+          onClose={handleGitHubAuthCancel}
         />
       )}
 
