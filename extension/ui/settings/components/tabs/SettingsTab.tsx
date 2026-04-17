@@ -840,22 +840,42 @@ export function SettingsTab({
               />
               Markdown
             </label>
-            <label className={`flex items-center gap-2 text-sm ${!availableSources.linear ? 'opacity-50' : 'cursor-pointer'}`}>
-              <Checkbox
-                checked={settings.taskSources?.linear ?? false}
-                disabled={!availableSources.linear}
-                onCheckedChange={(checked) => onUpdateTaskSources({ linear: Boolean(checked) })}
-              />
-              Linear {!availableSources.linear && <span className="text-xs text-[var(--muted-foreground)]">(MCP not configured)</span>}
-            </label>
-            <label className={`flex items-center gap-2 text-sm ${!availableSources.github ? 'opacity-50' : 'cursor-pointer'}`}>
-              <Checkbox
-                checked={settings.taskSources?.github ?? false}
-                disabled={!availableSources.github}
-                onCheckedChange={(checked) => onUpdateTaskSources({ github: Boolean(checked) })}
-              />
-              GitHub {!availableSources.github && <span className="text-xs text-[var(--muted-foreground)]">(MCP not configured)</span>}
-            </label>
+            <div className="flex items-center gap-2 text-sm">
+              {availableSources.linear ? (
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox
+                    checked={settings.taskSources?.linear ?? false}
+                    onCheckedChange={(checked) => onUpdateTaskSources({ linear: Boolean(checked) })}
+                  />
+                  Linear
+                </label>
+              ) : (
+                <button
+                  onClick={onConnectLinear}
+                  className="text-[var(--primary)] hover:underline text-sm"
+                >
+                  Connect Linear
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              {availableSources.github ? (
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox
+                    checked={settings.taskSources?.github ?? false}
+                    onCheckedChange={(checked) => onUpdateTaskSources({ github: Boolean(checked) })}
+                  />
+                  GitHub
+                </label>
+              ) : (
+                <button
+                  onClick={onConnectGitHub}
+                  className="text-[var(--primary)] hover:underline text-sm"
+                >
+                  Connect GitHub
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </section>
