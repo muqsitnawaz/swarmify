@@ -59,6 +59,35 @@ function normalizePreview(text: string): string | undefined {
   return `${trimmed.slice(0, MAX_PREVIEW_CHARS - 3)}...`;
 }
 
+const SYNTHETIC_TAG_PREFIXES = [
+  '<local-command-caveat',
+  '<local-command-stdout',
+  '<local-command-stderr',
+  '<command-name',
+  '<command-message',
+  '<command-args',
+  '<bash-input',
+  '<bash-stdout',
+  '<bash-stderr',
+  '<system-reminder',
+  '<user-prompt-submit-hook',
+  '<task-notification',
+  '<persisted-output',
+];
+
+function isSyntheticCommandText(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return true;
+  const lower = trimmed.toLowerCase();
+  for (const prefix of SYNTHETIC_TAG_PREFIXES) {
+    if (lower.startsWith(prefix)) return true;
+  }
+  const stripped = trimmed.replace(/<[^>]*>/g, '').trim();
+  if (!stripped) return true;
+  if (lower.startsWith('caveat: the messages below')) return true;
+  return false;
+}
+
 function extractTextFromJson(value: unknown): string | null {
   if (!value) return null;
   if (typeof value === 'string') return value;
@@ -146,12 +175,15 @@ function extractPreviewLines(head: string): ExtractedPreview {
     if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
       try {
         const parsed = JSON.parse(trimmed);
+        if (parsed && typeof parsed === 'object' && (parsed as { isMeta?: unknown }).isMeta === true) {
+          continue;
+        }
         candidates = extractCandidatesFromValue(parsed);
 
         // Extract timestamp from the parsed event for user messages
         // Claude: event.timestamp, Codex: event.timestamp, Gemini: event.timestamp
         if (parsed && typeof parsed === 'object') {
-          const eventTimestamp = parsed.timestamp;
+          const eventTimestamp = (parsed as { timestamp?: unknown }).timestamp;
           if (eventTimestamp && typeof eventTimestamp === 'string') {
             for (const candidate of candidates) {
               candidate.timestamp = eventTimestamp;
@@ -168,6 +200,7 @@ function extractPreviewLines(head: string): ExtractedPreview {
     for (const candidate of candidates) {
       const text = candidate.text?.trim();
       if (!text) continue;
+      if (isSyntheticCommandText(text)) continue;
       const role = candidate.role?.toLowerCase();
       if (role === 'user' || role === 'human') {
         return { text: normalizePreview(text), timestamp: candidate.timestamp };
@@ -182,7 +215,7 @@ function extractPreviewLines(head: string): ExtractedPreview {
 
 async function getPreview(filePath: string): Promise<string | undefined> {
   try {
-    const lines = await readHeadLines(filePath, 20);
+    const lines = await readHeadLines(filePath, 60);
     return extractPreviewLines(lines.join('\n')).text;
   } catch {
     return undefined;
@@ -467,6 +500,9 @@ function extractLastUserMessage(tail: string): string | undefined {
     if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
       try {
         const parsed = JSON.parse(trimmed);
+        if (parsed && typeof parsed === 'object' && (parsed as { isMeta?: unknown }).isMeta === true) {
+          continue;
+        }
         candidates = extractCandidatesFromValue(parsed);
       } catch {
         candidates = [];
@@ -478,6 +514,7 @@ function extractLastUserMessage(tail: string): string | undefined {
     for (const candidate of candidates) {
       const text = candidate.text?.trim();
       if (!text) continue;
+      if (isSyntheticCommandText(text)) continue;
       const role = candidate.role?.toLowerCase();
       if (role === 'user' || role === 'human') {
         return normalizePreview(text);
@@ -499,7 +536,7 @@ async function countNonEmptyLines(filePath: string): Promise<number> {
 
 export async function getSessionPreviewInfo(filePath: string): Promise<SessionPreviewInfo> {
   const [headLines, tailLines, messageCount] = await Promise.all([
-    readHeadLines(filePath, 20),
+    readHeadLines(filePath, 60),
     readTailLines(filePath, 20),
     countNonEmptyLines(filePath)
   ]);

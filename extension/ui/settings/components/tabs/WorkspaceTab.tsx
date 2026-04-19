@@ -63,10 +63,45 @@ interface WorkspaceTask {
   metadata?: UnifiedTask['metadata']
 }
 
+interface TaskMetadataBadgesProps {
+  task: WorkspaceTask
+}
+
 const SOURCE_ORDER: Record<TaskSource, number> = {
   markdown: 0,
   linear: 1,
   github: 2,
+}
+
+function TaskMetadataBadges({ task }: TaskMetadataBadgesProps) {
+  const identifier = task.metadata?.identifier
+  const assignee = task.metadata?.assignee?.trim()
+  const labels = task.metadata?.labels?.filter(Boolean) ?? []
+
+  if (!identifier && !assignee && labels.length === 0) return null
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+      {identifier && (
+        <span className="rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-0.5 font-mono text-[10px] text-[var(--muted-foreground)]">
+          {identifier}
+        </span>
+      )}
+      {assignee && (
+        <span className="rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-0.5 text-[11px] text-[var(--foreground)]">
+          Owner: {assignee}
+        </span>
+      )}
+      {labels.map(label => (
+        <span
+          key={`${task.id}-${label}`}
+          className="rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-0.5 text-[11px] text-[var(--muted-foreground)]"
+        >
+          {label}
+        </span>
+      ))}
+    </div>
+  )
 }
 
 export function WorkspaceTab(props: WorkspaceTabProps) {
@@ -418,7 +453,10 @@ export function WorkspaceTab(props: WorkspaceTabProps) {
                     : undefined
                   : task.metadata?.identifier
                 const canRun = task.source === 'markdown' && task.todoItem && task.filePath && !task.completed
-                const hasDescription = task.description && task.source === 'markdown'
+                const hasDescription = !!task.description
+                const hasLabels = task.metadata?.labels && task.metadata.labels.length > 0
+                const hasAssignee = !!task.metadata?.assignee
+                const showTaskMetadata = task.source !== 'markdown' && (task.metadata?.identifier || hasLabels || hasAssignee)
 
                 return (
                   <div
@@ -450,6 +488,7 @@ export function WorkspaceTab(props: WorkspaceTabProps) {
                             {renderTodoDescription(task.description!, true)}
                           </div>
                         )}
+                        {showTaskMetadata && <TaskMetadataBadges task={task} />}
                       </button>
                       <div className="flex items-center gap-1 ml-auto flex-shrink-0">
                         {canRun && (
@@ -501,7 +540,7 @@ export function WorkspaceTab(props: WorkspaceTabProps) {
                           <div className="text-xs text-[var(--muted-foreground)]">
                             {renderTodoDescription(task.description!, false)}
                           </div>
-                          {taskMeta && (
+                          {task.source === 'markdown' && taskMeta && (
                             <div className="text-[10px] text-[var(--muted-foreground)] mt-2 font-mono">
                               {taskMeta}
                             </div>
