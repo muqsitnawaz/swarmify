@@ -2,3 +2,105 @@
 [2026-02-16T08:18:22.050391+00:00] auth: mode=ChatGPT account_id=0c77e007-4755-4b2d-bc9d-efa021307563
 [2026-02-16T08:18:22.050443+00:00] auth: set ChatGPT-Account-Id header: 0c77e007-4755-4b2d-bc9d-efa021307563
 [2026-02-16T08:18:22.531685+00:00] http.list_tasks: env=<all> limit=20 cursor_in=<none> cursor_out=<none> items=1
+[2026-04-19T14:58:16.431987+00:00] startup: base_url=https://chatgpt.com/backend-api path_style=wham
+[2026-04-19T14:58:16.455291+00:00] auth: mode=ChatGPT account_id=0c77e007-4755-4b2d-bc9d-efa021307563
+[2026-04-19T14:58:16.455352+00:00] auth: set ChatGPT-Account-Id header: 0c77e007-4755-4b2d-bc9d-efa021307563
+[2026-04-19T14:58:16.456640+00:00] startup: wham_force_internal=false ua=codex_cli_rs/0.113.0 (Mac OS 15.4.1; arm64) vscode/1.112.01907 (codex_cloud_tasks_tui)
+[2026-04-19T14:58:16.469439+00:00] env: parsed SSH GitHub origin => muqsitnawaz/swarm
+[2026-04-19T14:58:16.469608+00:00] env: git origins: ["git@github.com:muqsitnawaz/swarm.git"]
+[2026-04-19T14:58:16.469640+00:00] env: parsed SSH GitHub origin => muqsitnawaz/swarm
+[2026-04-19T14:58:16.469680+00:00] env: GET https://chatgpt.com/backend-api/wham/environments/by-repo/github/muqsitnawaz/swarm
+[2026-04-19T14:58:17.199229+00:00] http.list_tasks: env=<all> limit=20 cursor_in=<none> cursor_out=<none> items=4
+[2026-04-19T14:58:17.199828+00:00] refresh.apply: env=<all> count=3
+[2026-04-19T14:58:18.096605+00:00] [2026-04-19T14:58:18.096625+00:00] env: status=200 OK content-type=application/jsonenv: status=200 OK content-type=application/json
+
+[2026-04-19T14:58:18.097834+00:00] env: by-repo returned 0 env(s) for muqsitnawaz/swarm
+[2026-04-19T14:58:18.098353+00:00] env: GET https://chatgpt.com/backend-api/wham/environments
+[2026-04-19T14:58:18.265311+00:00] env: status=200 OK content-type=application/json
+[2026-04-19T14:58:18.268339+00:00] env: /environments JSON (pretty):
+[
+  {
+    "id": "68ffe02e16a88191919cec0df7adf6ca",
+    "machine_id": "wham-public/wham-universal",
+    "label": "agents",
+    "is_pinned": false,
+    "description": "",
+    "workspace_dir": "/workspace",
+    "agent_network_access": {
+      "mode": "off",
+      "preset_allowlist": null,
+      "allowlist_domains": null,
+      "denylist_domains": null,
+      "safe_methods_only": null
+    },
+    "codex_github_direct": null,
+    "repos": [
+      "github-1007018456"
+    ],
+    "setup": "",
+    "maintenance_setup": "",
+    "repo_map": {
+      "github-1007018456": {
+        "id": "1007018456",
+        "name": "agents",
+        "owner": {
+          "login": "muqsitnawaz",
+          "id": 13007401,
+          "type": "User",
+          "avatar_url": "https://avatars.githubusercontent.com/u/13007401?v=4",
+          "url": "https://api.github.com/users/muqsitnawaz"
+        },
+        "repository_full_name": "muqsitnawaz/agents",
+        "clone_url": "https://github.com/muqsitnawaz/agents.git",
+        "default_branch": "main",
+        "git_commits_url": "https://api.github.com/repos/muqsitnawaz/agents/git/commits{/sha}",
+        "git_refs_url": "https://api.github.com/repos/muqsitnawaz/agents/git/refs{/sha}",
+        "git_url": "git://github.com/muqsitnawaz/agents.git",
+        "visibility": "private",
+        "archived": null,
+        "allow_auto_merge": false,
+        "allow_merge_commit": true,
+        "allow_rebase_merge": true,
+        "allow_squash_merge": true,
+        "allow_update_branch": false,
+        "language": null,
+        "size": 3816106,
+        "master_branch": null,
+        "permissions": {
+          "admin": true,
+          "push": true,
+          "pull": true
+        }
+      }
+    },
+    "env_vars": {},
+    "secrets": {},
+    "secrets_with_domains": null,
+    "task_count": 5,
+    "creator_id": "user-WkoXQgjttNrnivhVXDxavIt7",
+    "share_settings": "workspace",
+    "share_targets": [],
+    "permissions": {
+      "can_write": true,
+      "can_delete": true
+    },
+    "created_at": 1761599534.089063,
+    "auto_setup_settings": {
+      "use_auto_setup": true
+    },
+    "cache_settings": {
+      "post_setup_cache_enabled": true,
+      "cache_invalidation_key": ""
+    },
+    "etag": "\"1a031136-0000-0200-0000-69c5c2ff0000\"",
+    "enable_authtranslator": false
+  }
+]
+[2026-04-19T14:58:18.269011+00:00] env: single environment available; selecting it
+[2026-04-19T14:58:18.269196+00:00] env.select: autodetected id=68ffe02e16a88191919cec0df7adf6ca label=agents
+[2026-04-19T14:58:18.270947+00:00] env: status=200 OK content-type=application/json
+[2026-04-19T14:58:18.288081+00:00] env: parsed SSH GitHub origin => muqsitnawaz/swarm
+[2026-04-19T14:58:18.577981+00:00] http.list_tasks: env=68ffe02e16a88191919cec0df7adf6ca limit=20 cursor_in=<none> cursor_out=<none> items=4
+[2026-04-19T14:58:18.578653+00:00] refresh.apply: env=68ffe02e16a88191919cec0df7adf6ca count=3
+[2026-04-19T14:58:19.206982+00:00] env: status=200 OK content-type=application/json
+[2026-04-19T14:58:19.372790+00:00] env: status=200 OK content-type=application/json
