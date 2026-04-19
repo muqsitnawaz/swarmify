@@ -55,7 +55,7 @@ import {
 } from './tmux';
 import { DEFAULT_DISPLAY_PREFERENCES } from '../core/settings';
 import * as prewarm from './prewarm.vscode';
-import { supportsPrewarming, buildResumeCommand, PREWARM_CONFIGS } from '../core/prewarm';
+import { supportsPrewarming, buildResumeCommand, PREWARM_CONFIGS, PrewarmAgentType } from '../core/prewarm';
 import { needsPrewarming, generateClaudeSessionId, buildClaudeOpenCommand, listOpencodeSessions } from '../core/prewarm.simple';
 import { getSessionPathBySessionId, getSessionPreviewInfo, getOpenCodeSessionPreviewInfo, getCursorSessionPreviewInfo } from './sessions.vscode';
 import * as tasksImport from './tasks.vscode';
@@ -871,6 +871,18 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('agents.continueInNew', () => continueInNewSession(context))
   );
 
+  context.subscriptions.push(
+    vscode.commands.registerCommand('agents.sessionTrace', () => copySessionTrace(context))
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('agents.sessionId', () => copySessionId())
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('agents.sessionResume', () => resumeSession(context))
+  );
+
   interface TerminalQuickPickItem extends vscode.QuickPickItem {
     terminal: vscode.Terminal;
   }
@@ -1535,6 +1547,270 @@ async function continueInNewSession(context: vscode.ExtensionContext) {
   const prompt = handoff.formatContinuePrompt(continueCtx);
 
   await openSingleAgentWithQueue(context, terminalEntry.agentConfig, [prompt]);
+}
+
+interface CliSessionItem {
+  id: string;
+  shortId: string;
+  agent: 'claude' | 'codex' | 'gemini' | 'opencode' | 'openclaw' | 'cursor';
+  timestamp: string;
+  version?: string;
+  account?: string;
+  project?: string;
+  cwd?: string;
+  filePath?: string;
+  topic?: string;
+  messageCount?: number;
+  tokenCount?: number;
+}
+
+async function listSessionsViaCli(limit = 30): Promise<CliSessionItem[]> {
+  const { exec } = await import('child_process');
+  const { promisify } = await import('util');
+  const execAsync = promisify(exec);
+  const { stdout } = await execAsync(`agents sessions list --all -n ${limit} --json`, {
+    maxBuffer: 10 * 1024 * 1024,
+  });
+  const parsed = JSON.parse(stdout);
+  if (!Array.isArray(parsed)) return [];
+  return parsed as CliSessionItem[];
+}
+
+function formatSessionWhen(timestamp: string): string {
+  const ts = Date.parse(timestamp);
+  if (!Number.isFinite(ts)) return '';
+  const diffMs = Date.now() - ts;
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? '' : 's'} ago`;
+}
+
+function cleanSessionTopic(topic: string | undefined): string {
+  if (!topic) return '(no topic)';
+  return topic.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() || '(no topic)';
+}
+
+interface SessionPickerOptions {
+  title: string;
+  placeholder: string;
+  pinShortId?: string | null;
+  pinLabel?: string;
+}
+
+async function pickSession(opts: SessionPickerOptions): Promise<CliSessionItem | null> {
+  let sessions: CliSessionItem[];
+  try {
+    sessions = await listSessionsViaCli(30);
+  } catch (err: any) {
+    const msg = err?.stderr || err?.message || String(err);
+    if (msg.includes('ENOENT') || msg.includes('not found')) {
+      vscode.window.showInformationMessage('agents CLI not found. Install with: npm i -g @swarmify/agents-cli');
+    } else {
+      vscode.window.showInformationMessage(`Failed to list sessions: ${msg.slice(0, 120)}`);
+    }
+    return null;
+  }
+
+  if (sessions.length === 0) {
+    vscode.window.showInformationMessage('No sessions found');
+    return null;
+  }
+
+  if (opts.pinShortId) {
+    const idx = sessions.findIndex(s => s.shortId === opts.pinShortId || s.id === opts.pinShortId);
+    if (idx > 0) {
+      const [pinned] = sessions.splice(idx, 1);
+      sessions.unshift(pinned);
+    }
+  }
+
+  interface SessionQuickPickItem extends vscode.QuickPickItem {
+    session: CliSessionItem;
+  }
+
+  const items: SessionQuickPickItem[] = sessions.map((s, idx) => {
+    const agentLabel = s.version ? `${s.agent}@${s.version}` : s.agent;
+    const when = formatSessionWhen(s.timestamp);
+    const topic = cleanSessionTopic(s.topic);
+    const isPinned = idx === 0 && opts.pinShortId &&
+      (s.shortId === opts.pinShortId || s.id === opts.pinShortId);
+    const pinTag = isPinned && opts.pinLabel ? `$(pinned) ${opts.pinLabel} · ` : '';
+    return {
+      label: `${pinTag}${s.shortId}  ${topic}`,
+      description: `${agentLabel} · ${when}${s.account ? ` · ${s.account}` : ''}`,
+      detail: `${s.project || '-'}${s.cwd ? `  ${s.cwd}` : ''}`,
+      session: s,
+    };
+  });
+
+  const picked = await vscode.window.showQuickPick<SessionQuickPickItem>(items, {
+    title: opts.title,
+    placeHolder: opts.placeholder,
+    matchOnDescription: true,
+    matchOnDetail: true,
+  });
+
+  return picked?.session ?? null;
+}
+
+async function copySessionTrace(_context: vscode.ExtensionContext) {
+  const activeTerminal = vscode.window.activeTerminal;
+  const terminalEntry = activeTerminal ? terminals.getByTerminal(activeTerminal) : null;
+  const currentSessionId = terminalEntry?.sessionId ?? null;
+  const currentShortId = currentSessionId ? currentSessionId.slice(0, 8) : null;
+
+  const session = await pickSession({
+    title: 'Agents: Session Trace',
+    placeholder: 'Pick a session to copy its trace to clipboard',
+    pinShortId: currentShortId,
+    pinLabel: 'Current',
+  });
+  if (!session) return;
+
+  const { exec } = await import('child_process');
+  const { promisify } = await import('util');
+  const execAsync = promisify(exec);
+  const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+
+  try {
+    const { stdout } = await execAsync(`agents sessions view ${session.id} --trace`, {
+      maxBuffer: 10 * 1024 * 1024,
+      cwd: workspacePath,
+    });
+
+    const lines = stdout.split('\n');
+    const headerEnd = lines.findIndex(l => l.startsWith('# '));
+    const trace = headerEnd >= 0 ? lines.slice(headerEnd).join('\n') : stdout;
+
+    const agentLabel = session.version ? `${session.agent}@${session.version}` : session.agent;
+    const header = [
+      `## Session`,
+      `- Agent: ${agentLabel}`,
+      `- Session ID: ${session.id}`,
+      session.cwd ? `- Directory: ${session.cwd}` : '',
+      session.account ? `- Account: ${session.account}` : '',
+    ].filter(Boolean).join('\n');
+
+    const fullTrace = `${header}\n\n${trace}`;
+    await vscode.env.clipboard.writeText(fullTrace);
+    vscode.window.setStatusBarMessage(`Session trace copied (${session.shortId})`, 3000);
+  } catch (err: any) {
+    const msg = err?.message || 'Unknown error';
+    vscode.window.showInformationMessage(`Failed to get session trace: ${msg.slice(0, 120)}`);
+  }
+}
+
+async function copySessionId() {
+  const activeTerminal = vscode.window.activeTerminal;
+
+  if (!activeTerminal) {
+    vscode.window.showInformationMessage('No active terminal');
+    return;
+  }
+
+  const terminalEntry = terminals.getByTerminal(activeTerminal);
+
+  if (!terminalEntry || !terminalEntry.agentConfig) {
+    vscode.window.showInformationMessage('Active terminal is not an agent terminal');
+    return;
+  }
+
+  if (!terminalEntry.sessionId) {
+    vscode.window.showInformationMessage('No session ID available');
+    return;
+  }
+
+  await vscode.env.clipboard.writeText(terminalEntry.sessionId);
+  vscode.window.setStatusBarMessage(`Session ID copied: ${terminalEntry.sessionId.slice(0, 8)}...`, 3000);
+}
+
+function buildVersionedResumeCommand(
+  agentType: PrewarmAgentType,
+  sessionId: string,
+  version?: string,
+): string {
+  const config = PREWARM_CONFIGS[agentType];
+  const baseCmd = config.resumeCommand(sessionId);
+  if (!version) return baseCmd;
+  const cmdName = config.command;
+  const prefix = new RegExp(`^${cmdName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
+  return baseCmd.replace(prefix, `${cmdName}@${version}`);
+}
+
+function agentKeyFromSession(agent: CliSessionItem['agent']): PrewarmAgentType | null {
+  if (agent === 'claude' || agent === 'codex' || agent === 'gemini' ||
+      agent === 'opencode' || agent === 'cursor') {
+    return agent;
+  }
+  return null;
+}
+
+async function resumeSession(context: vscode.ExtensionContext) {
+  const activeTerminal = vscode.window.activeTerminal;
+  const terminalEntry = activeTerminal ? terminals.getByTerminal(activeTerminal) : null;
+  const currentSessionId = terminalEntry?.sessionId ?? null;
+  const currentShortId = currentSessionId ? currentSessionId.slice(0, 8) : null;
+
+  const session = await pickSession({
+    title: 'Agents: Session Resume',
+    placeholder: 'Pick a session to resume in a new terminal',
+    pinShortId: currentShortId,
+    pinLabel: 'Current',
+  });
+  if (!session) return;
+
+  const agentKey = agentKeyFromSession(session.agent);
+  if (!agentKey) {
+    vscode.window.showInformationMessage(`Cannot resume sessions of type ${session.agent}`);
+    return;
+  }
+
+  const builtIn = BUILT_IN_AGENTS.find(a => a.key === agentKey);
+  if (!builtIn) {
+    vscode.window.showInformationMessage(`No built-in agent config for ${agentKey}`);
+    return;
+  }
+
+  const agentConfig = createAgentConfig(
+    context.extensionPath,
+    builtIn.title,
+    builtIn.command,
+    builtIn.icon,
+    builtIn.prefix,
+  );
+
+  const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
+  const resumeCmd = buildVersionedResumeCommand(agentKey, session.id, session.version);
+
+  const terminalId = terminals.nextId(builtIn.prefix);
+  const title = buildTerminalTitle(agentConfig.title, undefined, context, session.id);
+  const terminal = vscode.window.createTerminal({
+    iconPath: agentConfig.iconPath,
+    location: { viewColumn: vscode.ViewColumn.Active },
+    name: title,
+    env: buildAgentTerminalEnv(terminalId, session.id, workspacePath),
+    isTransient: true,
+  });
+
+  const pid = await terminal.processId;
+  terminals.register(terminal, terminalId, agentConfig, pid, context);
+  terminals.setSessionId(terminal, session.id);
+  terminals.setAgentType(terminal, agentKey);
+  startAutoLabelPollerForTerminal(terminal, context);
+
+  const shellReady = await waitForShellReady(terminal);
+  if (shellReady && terminal.shellIntegration) {
+    terminal.shellIntegration.executeCommand(resumeCmd);
+  } else {
+    terminal.sendText(resumeCmd);
+  }
+
+  terminal.show();
+  vscode.window.setStatusBarMessage(`Resuming ${agentKey}${session.version ? `@${session.version}` : ''} · ${session.shortId}`, 3000);
 }
 
 interface TerminalQuickPickItem extends vscode.QuickPickItem {
