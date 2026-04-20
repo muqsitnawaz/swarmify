@@ -14,17 +14,17 @@
 }
 
 .sw-panel-grid-top {
-  grid-template-columns: minmax(340px, 1.15fr) minmax(420px, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   align-items: start;
 }
 
 .sw-panel-grid-main {
-  grid-template-columns: minmax(460px, 1.35fr) minmax(320px, 0.9fr);
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
   align-items: start;
 }
 
 .sw-panel-grid-bottom {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: start;
 }
 
@@ -206,8 +206,18 @@
   width: 86px;
 }
 
-.sw-panel-agent-stack,
-.sw-panel-toggle-list,
+.sw-panel-agent-stack {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.sw-panel-toggle-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+}
+
 .sw-panel-alias-list,
 .sw-panel-pool-list,
 .sw-panel-quicklaunch,
@@ -324,6 +334,89 @@
   padding: 6px;
 }
 
+/* Vertical fader -- mixing console channel strip */
+.sw-panel-fader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.sw-panel-fader > span {
+  font-size: 10px;
+  color: var(--ds-text-dim);
+  font-family: "Geist Mono", monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.sw-fader-track {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 100px;
+}
+
+.sw-fader-input {
+  -webkit-appearance: slider-vertical;
+  appearance: slider-vertical;
+  writing-mode: vertical-lr;
+  direction: rtl;
+  width: 24px;
+  height: 90px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.sw-fader-input::-webkit-slider-runnable-track {
+  width: 6px;
+  height: 100%;
+  background: var(--ds-bg-recessed);
+  border-radius: 3px;
+  border: 1px solid var(--ds-border-strong);
+  box-shadow: var(--shadow-inset);
+}
+
+.sw-fader-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 10px;
+  background: linear-gradient(180deg, var(--ds-bg-panel) 0%, #ccc 100%);
+  border: 1px solid var(--ds-border-strong);
+  border-radius: 2px;
+  box-shadow: var(--shadow-raised), inset 0 1px 0 rgba(255,255,255,0.4);
+  cursor: grab;
+  margin-left: -6px;
+}
+
+.sw-fader-input:active::-webkit-slider-thumb {
+  cursor: grabbing;
+  box-shadow: var(--shadow-inset);
+  background: var(--brand);
+}
+
+.sw-fader-labels {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 90px;
+  gap: 0;
+}
+
+.sw-fader-mark {
+  font-family: "Geist Mono", monospace;
+  font-size: 9px;
+  color: var(--ds-text-faint);
+  line-height: 1;
+  width: 12px;
+  text-align: right;
+}
+
+.sw-fader-mark.lit {
+  color: var(--led-running);
+  text-shadow: 0 0 6px var(--led-running-glow);
+}
+
 .sw-panel-stepper {
   display: grid;
   gap: 8px;
@@ -433,9 +526,44 @@
   cursor: text;
 }
 
-@media (max-width: 1200px) {
+/* Dial sizing for tighter layouts */
+.sw-agent-dial-ring {
+  width: 200px;
+  height: 200px;
+}
+
+.sw-agent-dial-core {
+  width: 100px;
+  height: 100px;
+  margin-left: -50px;
+  margin-top: -50px;
+}
+
+.sw-agent-dial-card {
+  min-height: 280px;
+}
+
+.sw-agent-dial-stop {
+  width: 58px;
+  height: 34px;
+  margin-left: -29px;
+  margin-top: -17px;
+  font-size: 9px;
+}
+
+.sw-agent-dial-pointer {
+  height: 42px;
+  top: 16px;
+  width: 8px;
+  margin-left: -4px;
+}
+
+@media (max-width: 640px) {
   .sw-panel-grid-top,
-  .sw-panel-grid-main,
+  .sw-panel-grid-main {
+    grid-template-columns: 1fr;
+  }
+
   .sw-panel-grid-bottom {
     grid-template-columns: 1fr;
   }
@@ -443,32 +571,12 @@
   .sw-panel-dials {
     grid-template-columns: 1fr;
   }
-}
-
-@media (max-width: 760px) {
-  .sw-panel-tab {
-    padding: 12px;
-  }
-
-  .sw-agent-dial-ring {
-    width: 216px;
-    height: 216px;
-  }
-
-  .sw-agent-dial-core {
-    width: 108px;
-    height: 108px;
-    margin-left: -54px;
-    margin-top: -54px;
-  }
-
-  .sw-panel-agent-controls,
-  .sw-panel-launch-row,
-  .sw-status-bank-row {
-    grid-template-columns: 1fr;
-  }
 
   .sw-panel-skill-grid {
     grid-template-columns: 1fr;
+  }
+
+  .sw-panel-tab {
+    padding: 12px;
   }
 }
