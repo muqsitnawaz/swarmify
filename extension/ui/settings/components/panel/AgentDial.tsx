@@ -26,7 +26,7 @@ export function AgentDial({ title, value, options, onChange }: AgentDialProps) {
         <div className="sw-agent-dial-ring">
           {options.map((option, index) => {
             const angle = (-90 + (360 / options.length) * index) * (Math.PI / 180)
-            const radius = 88
+            const radius = 72
             const x = Math.cos(angle) * radius
             const y = Math.sin(angle) * radius
             return (
