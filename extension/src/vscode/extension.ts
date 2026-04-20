@@ -1517,23 +1517,13 @@ async function continueInNewSession(context: vscode.ExtensionContext) {
     return;
   }
 
-  const agentType = terminalEntry.agentType as 'claude' | 'codex' | 'gemini';
-  const sessionPath = await getSessionPathBySessionId(terminalEntry.sessionId, agentType, workspacePath);
-
-  if (!sessionPath) {
-    vscode.window.showInformationMessage('Session file not found');
-    return;
-  }
-
-  const { extractSessionQuickDetails } = await import('../core/session.summary');
-  const fs = await import('fs/promises');
-  const sessionContent = await fs.readFile(sessionPath, 'utf-8').catch(() => '');
-
-  const [originalTask, lastResponse, details] = await Promise.all([
-    handoff.getFirstUserMessage(sessionPath),
-    handoff.getLastAssistantMessage(sessionPath),
-    Promise.resolve(extractSessionQuickDetails(sessionContent, agentType))
+  const [messages, toolStats] = await Promise.all([
+    handoff.getSessionMessagesViaAgentsCli(terminalEntry.sessionId, 999, workspacePath),
+    handoff.getSessionToolStatsViaAgentsCli(terminalEntry.sessionId, workspacePath)
   ]);
+
+  const originalTask = messages.find(m => m.role === 'user')?.content ?? null;
+  const lastResponse = [...messages].reverse().find(m => m.role === 'assistant')?.content ?? null;
 
   if (!originalTask && !lastResponse) {
     vscode.window.showInformationMessage('No session history available to continue from');
@@ -1543,10 +1533,10 @@ async function continueInNewSession(context: vscode.ExtensionContext) {
   const continueCtx: handoff.ContinueContext = {
     originalTask,
     lastResponse,
-    recentFiles: details.recentFiles,
-    toolCalls: details.summary.toolCalls,
-    filesEdited: details.summary.filesEdited,
-    filesRead: details.summary.filesRead
+    recentFiles: toolStats.recentFiles,
+    toolCalls: toolStats.toolCalls,
+    filesEdited: toolStats.filesEdited,
+    filesRead: toolStats.filesRead
   };
 
   const prompt = handoff.formatContinuePrompt(continueCtx);

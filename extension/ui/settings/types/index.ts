@@ -284,7 +284,7 @@ export interface ContextFile {
 }
 
 // UI types
-export type TabId = 'dashboard' | 'workspace' | 'settings'
+export type TabId = 'floor' | 'bench' | 'panel'
 
 export type ThemedIcon = { dark: string; light: string }
 
