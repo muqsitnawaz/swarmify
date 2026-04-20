@@ -3,6 +3,13 @@ import * as path from 'path';
 import { homedir } from 'os';
 import { execFile } from 'child_process';
 
+export interface SessionToolStats {
+  toolCalls: number;
+  filesEdited: number;
+  filesRead: number;
+  recentFiles: string[];
+}
+
 export interface HandoffMessage {
   role: 'user' | 'assistant';
   content: string;
@@ -26,41 +33,6 @@ async function safeReaddir(dir: string): Promise<string[]> {
   } catch {
     return [];
   }
-}
-
-async function findFileInProjects(sessionId: string): Promise<string | null> {
-  const projectsDir = path.join(homedir(), '.claude', 'projects');
-
-  try {
-    const projects = await fs.readdir(projectsDir, { withFileTypes: true });
-
-    for (const project of projects) {
-      if (!project.isDirectory()) continue;
-
-      const projectPath = path.join(projectsDir, project.name);
-
-      try {
-        const files = await fs.readdir(projectPath, { withFileTypes: true });
-
-        for (const file of files) {
-          if (!file.isFile()) continue;
-
-          const ext = path.extname(file.name);
-          const fileSessionId = path.basename(file.name, ext);
-
-          if (fileSessionId === sessionId) {
-            return path.join(projectPath, file.name);
-          }
-        }
-      } catch {
-        continue;
-      }
-    }
-  } catch {
-    return null;
-  }
-
-  return null;
 }
 
 async function getFileStats(filePath: string): Promise<{ path: string; mtime: Date } | null> {
@@ -134,124 +106,45 @@ export async function getSessionMessagesViaAgentsCli(
   }
 }
 
-function extractMessageFromLine(parsed: any): HandoffMessage | null {
-  if (!parsed) return null;
+const FILE_EDIT_TOOLS = new Set(['Edit', 'Write', 'NotebookEdit', 'apply_diff', 'write_file', 'edit_file']);
+const FILE_READ_TOOLS = new Set(['Read', 'read_file', 'ReadFile']);
 
-  const eventType = parsed?.type;
-
-  if (eventType === 'user') {
-    const message = parsed?.message || {};
-    const contentBlocks = message?.content || [];
-
-    for (const block of contentBlocks) {
-      if (block?.type === 'text' && block?.text?.trim()) {
-        return { role: 'user', content: block.text };
-      }
-    }
-
-    if (typeof message?.text === 'string' && message.text.trim()) {
-      return { role: 'user', content: message.text };
-    }
-
-    if (typeof parsed?.content === 'string' && parsed.content.trim()) {
-      return { role: 'user', content: parsed.content };
-    }
-  }
-
-  if (eventType === 'assistant') {
-    const message = parsed?.message || {};
-    const contentBlocks = message?.content || [];
-
-    for (const block of contentBlocks) {
-      if (block?.type === 'text' && block?.text?.trim()) {
-        return { role: 'assistant', content: block.text };
-      }
-    }
-
-    if (typeof message?.text === 'string' && message.text.trim()) {
-      return { role: 'assistant', content: message.text };
-    }
-
-    if (typeof parsed?.content === 'string' && parsed.content.trim()) {
-      return { role: 'assistant', content: parsed.content };
-    }
-  }
-
-  if (eventType === 'user_message' || eventType === 'human_message') {
-    const content = parsed?.message?.text || parsed?.content || parsed?.text || '';
-    if (content) {
-      return { role: 'user', content };
-    }
-  }
-
-  if (eventType === 'assistant_message') {
-    const message = parsed?.message || {};
-    const contentBlocks = message?.content || [];
-
-    for (const block of contentBlocks) {
-      if (block?.type === 'text' && block?.text?.trim()) {
-        return { role: 'assistant', content: block.text };
-      }
-    }
-
-    if (typeof message?.text === 'string' && message.text.trim()) {
-      return { role: 'assistant', content: message.text };
-    }
-
-    if (typeof parsed?.content === 'string' && parsed.content.trim()) {
-      return { role: 'assistant', content: parsed.content };
-    }
-  }
-
-  return null;
-}
-
-export async function getFirstUserMessage(
-  sessionPath: string
-): Promise<string | null> {
+export async function getSessionToolStatsViaAgentsCli(
+  sessionId: string,
+  cwd?: string
+): Promise<SessionToolStats> {
   try {
-    const content = await fs.readFile(sessionPath, 'utf-8');
-    const lines = content.split(/\r?\n/).filter(l => l.trim());
+    const stdout = await runAgentsSessions(
+      ['sessions', sessionId, '--json', '--include', 'tools'],
+      cwd
+    );
+    const events: Array<{ type: string; tool?: string; args?: Record<string, unknown> }> = JSON.parse(stdout);
+    const toolUses = events.filter(ev => ev.type === 'tool_use');
+    const editedFiles = new Set<string>();
+    const readFiles = new Set<string>();
+    const recentFiles: string[] = [];
 
-    for (const line of lines) {
-      try {
-        const parsed = JSON.parse(line);
-        const message = extractMessageFromLine(parsed);
-        if (message && message.role === 'user') {
-          return message.content;
-        }
-      } catch {
-        continue;
+    for (const ev of toolUses) {
+      if (!ev.tool || !ev.args) continue;
+      const filePath = (ev.args.file_path ?? ev.args.path ?? ev.args.filePath) as string | undefined;
+      if (typeof filePath !== 'string') continue;
+      if (FILE_EDIT_TOOLS.has(ev.tool)) {
+        editedFiles.add(filePath);
+      } else if (FILE_READ_TOOLS.has(ev.tool)) {
+        readFiles.add(filePath);
       }
+      if (!recentFiles.includes(filePath)) recentFiles.push(filePath);
     }
-  } catch {
-    // ignore
-  }
-  return null;
-}
 
-export async function getLastAssistantMessage(
-  sessionPath: string
-): Promise<string | null> {
-  try {
-    const content = await fs.readFile(sessionPath, 'utf-8');
-    const lines = content.split(/\r?\n/).filter(l => l.trim());
-
-    for (let i = lines.length - 1; i >= 0; i--) {
-      try {
-        const parsed = JSON.parse(lines[i]);
-        const message = extractMessageFromLine(parsed);
-        if (message && message.role === 'assistant') {
-          return message.content;
-        }
-      } catch {
-        continue;
-      }
-    }
+    return {
+      toolCalls: toolUses.length,
+      filesEdited: editedFiles.size,
+      filesRead: readFiles.size,
+      recentFiles: recentFiles.slice(-20),
+    };
   } catch {
-    // ignore
+    return { toolCalls: 0, filesEdited: 0, filesRead: 0, recentFiles: [] };
   }
-  return null;
 }
 
 export interface ContinueContext {
