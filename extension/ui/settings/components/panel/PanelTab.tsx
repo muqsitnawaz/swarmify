@@ -17,6 +17,7 @@ import type {
   WorkspaceConfig,
   PrewarmPool,
   QuickLaunchSlot,
+  RunningCounts,
 } from '../../types'
 import {
   ALL_SWARM_AGENTS,
@@ -32,6 +33,7 @@ import { getIcon, formatPreviewTerminalTitle } from '../../utils'
 export interface PanelTabProps {
   settings: AgentSettings
   swarmStatus: SwarmStatus
+  runningCounts: RunningCounts
   skillsStatus: SkillsStatus | null
   builtInAgents: BuiltInAgentConfig[]
   defaultAgent: string
@@ -87,6 +89,7 @@ function skillGauge(total: number, installed: number) {
 export function PanelTab({
   settings,
   swarmStatus,
+  runningCounts,
   skillsStatus,
   builtInAgents,
   defaultAgent,
@@ -174,13 +177,11 @@ export function PanelTab({
 
   const getAgentStatus = (agent: SwarmAgentType) => {
     const agentStatus = swarmStatus.agents[agent]
-    const skillSummary = getSkillSummary(agent)
+    const count = (runningCounts as Record<string, number>)[agent] ?? 0
     if (!agentStatus?.cliAvailable) return { label: 'CLI Missing', level: 'failed' as const }
+    if (count > 0) return { label: `${count} running`, level: 'running' as const }
     if (!agentStatus?.mcpEnabled || !agentStatus?.commandInstalled) return { label: 'Setup', level: 'pending' as const }
-    if (skillSummary.total > 0 && skillSummary.installed < skillSummary.total) {
-      return { label: `${skillSummary.installed}/${skillSummary.total} skills`, level: 'pending' as const }
-    }
-    return { label: 'Online', level: 'running' as const }
+    return { label: 'Standby', level: 'idle' as const }
   }
 
   const updateBuiltIn = (
