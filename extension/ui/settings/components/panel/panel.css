@@ -84,7 +84,7 @@
 .sw-agent-dial {
   display: grid;
   justify-items: center;
-  gap: 14px;
+  gap: 6px;
 }
 
 .sw-agent-dial-ring {
@@ -184,7 +184,6 @@
   padding: 8px 10px;
   display: grid;
   gap: 5px;
-  margin-top: 2px;
 }
 
 .sw-dial-deck-row {
