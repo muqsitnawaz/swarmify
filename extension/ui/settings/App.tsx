@@ -684,6 +684,7 @@ export default function App() {
         <PanelTab
           settings={settings}
           swarmStatus={swarmStatus}
+          runningCounts={runningCounts}
           skillsStatus={skillsStatus}
           builtInAgents={BUILT_IN_AGENTS}
           defaultAgent={defaultAgent}

@@ -26,16 +26,15 @@ export function MissionControlTab({ tasks, tasksLoading, terminals, onDispatch }
   const { active, completed } = useMemo(() => splitSwarms(tasks), [tasks])
   const [selectedTaskName, setSelectedTaskName] = useState<string | null>(null)
 
-  // Auto-select the first active swarm if none is selected
+  // Auto-select: prefer first active, fall back to first completed
   useEffect(() => {
-    if (!selectedTaskName && active.length > 0) {
+    if (selectedTaskName) return
+    if (active.length > 0) {
       setSelectedTaskName(active[0].task_name)
-      return
+    } else if (completed.length > 0) {
+      setSelectedTaskName(completed[0].task_name)
     }
-    if (selectedTaskName && !active.some((s) => s.task_name === selectedTaskName)) {
-      // Currently selected swarm finished; fall through to completed list for detail
-    }
-  }, [active, selectedTaskName])
+  }, [active, completed, selectedTaskName])
 
   const selectedSwarm =
     [...active, ...completed].find((s) => s.task_name === selectedTaskName) ?? null
