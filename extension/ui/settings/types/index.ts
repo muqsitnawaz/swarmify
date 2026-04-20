@@ -22,6 +22,7 @@ export interface CommandAlias {
 export interface QuickLaunchSlot {
   agent: string
   model?: string
+  modelAlias?: string
   label?: string
 }
 

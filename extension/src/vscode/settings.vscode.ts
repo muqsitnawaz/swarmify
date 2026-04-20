@@ -6,7 +6,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { homedir } from 'os';
 import { exec } from 'child_process';
-import { AgentSettings, getDefaultSettings, CustomAgentConfig, SwarmAgentType, ALL_SWARM_AGENTS, PromptEntry, DEFAULT_DISPLAY_PREFERENCES, DEFAULT_NOTIFICATION_SETTINGS, DEFAULT_TASK_SOURCE_SETTINGS, DEFAULT_QUICK_LAUNCH } from '../core/settings';
+import { AgentSettings, getDefaultSettings, CustomAgentConfig, SwarmAgentType, ALL_SWARM_AGENTS, PromptEntry, DEFAULT_DISPLAY_PREFERENCES, DEFAULT_NOTIFICATION_SETTINGS, DEFAULT_TASK_SOURCE_SETTINGS, DEFAULT_QUICK_LAUNCH, QuickLaunchSlot, migrateStaleClaudeQuickLaunch } from '../core/settings';
 import { readPromptsFromPath, writePromptsToPath, DEFAULT_PROMPTS } from '../core/prompts';
 import * as terminals from './terminals.vscode';
 import * as swarm from './swarm.vscode';
@@ -19,18 +19,9 @@ import * as prewarm from './prewarm.vscode';
 import * as workspaceConfig from './swarmifyConfig.vscode';
 import { createSymlinksCodebaseWide } from './agentlinks.vscode';
 import { scanMemoryFiles } from './contextFiles';
+import { fetchAllAgentModels, checkInstalledAgentsViaCli, resolveAlias } from '../core/agentModels';
 import * as workbench from './workbench.vscode';
 import * as theme from './theme.vscode';
-
-// Check if a CLI command exists on the system
-function commandExists(cmd: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    const whichCmd = process.platform === 'win32' ? 'where' : 'which';
-    exec(`${whichCmd} ${cmd}`, (err) => {
-      resolve(!err);
-    });
-  });
-}
 
 // Get GitHub repo from git remote (returns "username/repo" or null)
 function getGitHubRepo(workspacePath: string): Promise<string | null> {
@@ -84,21 +75,31 @@ async function openFileOrDiffInEditor(pathValue: string): Promise<void> {
 
 // Check which agents are installed
 export async function checkInstalledAgents(): Promise<Record<string, boolean>> {
-  const agents = [
-    { key: 'claude', command: 'claude' },
-    { key: 'codex', command: 'codex' },
-    { key: 'gemini', command: 'gemini' },
-    { key: 'opencode', command: 'opencode' },
-    { key: 'cursor', command: 'cursor-agent' },
-  ];
+  return checkInstalledAgentsViaCli();
+}
 
-  const results: Record<string, boolean> = {};
-  for (const agent of agents) {
-    results[agent.key] = await commandExists(agent.command);
+async function resolveSlotAlias(slot: QuickLaunchSlot | undefined): Promise<boolean> {
+  if (!slot || slot.model || !slot.modelAlias) return false;
+  const resolved = await resolveAlias(slot.agent, slot.modelAlias);
+  if (!resolved) return false;
+  slot.model = resolved;
+  return true;
+}
+
+export async function resolveQuickLaunchAliases(
+  context: vscode.ExtensionContext,
+  settings: AgentSettings,
+): Promise<AgentSettings> {
+  if (!settings.quickLaunch) return settings;
+  const changes = await Promise.all([
+    resolveSlotAlias(settings.quickLaunch.slot1),
+    resolveSlotAlias(settings.quickLaunch.slot2),
+    resolveSlotAlias(settings.quickLaunch.slot3),
+  ]);
+  if (changes.some(Boolean)) {
+    await context.globalState.update('agentSettings', settings);
   }
-  // Shell is always available
-  results['shell'] = true;
-  return results;
+  return settings;
 }
 
 // Module state
@@ -333,6 +334,8 @@ export function getSettings(context: vscode.ExtensionContext): AgentSettings {
     if (!stored.quickLaunch) {
       stored.quickLaunch = { ...DEFAULT_QUICK_LAUNCH };
       context.globalState.update('agentSettings', stored);
+    } else if (migrateStaleClaudeQuickLaunch(stored.quickLaunch)) {
+      context.globalState.update('agentSettings', stored);
     }
     return stored;
   }
@@ -477,9 +480,10 @@ export function openPanel(context: vscode.ExtensionContext): void {
     const workspacePath = wsFolder?.uri.fsPath || null;
 
     // PHASE 1: Send instant data immediately - UI renders right away
+    const initialSettings = await resolveQuickLaunchAliases(context, getSettings(context));
     settingsPanel.webview.postMessage({
       type: 'init',
-      settings: getSettings(context),
+      settings: initialSettings,
       runningCounts: terminals.countRunning(),
       workspacePath,
       dismissedTaskIds: context.globalState.get<string[]>('agents.dismissedTaskIds', []),
@@ -597,6 +601,13 @@ export function openPanel(context: vscode.ExtensionContext): void {
         settingsPanel?.webview.postMessage({
           type: 'installedAgentsData',
           installedAgents
+        });
+        break;
+      case 'fetchAgentModels':
+        const agentModels = await fetchAllAgentModels();
+        settingsPanel?.webview.postMessage({
+          type: 'agentModelsData',
+          agentModels
         });
         break;
       case 'getDefaultAgent':

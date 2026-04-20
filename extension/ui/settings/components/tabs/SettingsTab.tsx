@@ -22,7 +22,6 @@ import {
 import {
   ALL_SWARM_AGENTS,
   SWARM_AGENT_LABELS,
-  AGENT_MODELS,
   AGENT_TITLE_TO_KEY,
   AGENT_KEY_TO_TITLE,
   AGENT_INSTALL_INFO,
@@ -39,6 +38,7 @@ interface SettingsTabProps {
   defaultAgent: string
   secondaryAgent: string
   installedAgents: Record<string, boolean>
+  agentModels: Record<string, string[]>
   icons: IconConfig
   isLightTheme: boolean
   swarmInstalling: boolean
@@ -89,6 +89,7 @@ export function SettingsTab({
   defaultAgent,
   secondaryAgent,
   installedAgents,
+  agentModels,
   icons,
   isLightTheme,
   swarmInstalling,
@@ -274,7 +275,7 @@ export function SettingsTab({
             const isExpanded = expandedAgents.has(agent)
             const skillSummary = getSkillSummary(agent)
             const config = settings.builtIn[agent as keyof AgentSettings['builtIn']]
-            const modelOptions = AGENT_MODELS[agent] || []
+            const modelOptions = agentModels[agent] || []
 
             return (
               <div key={agent} className="rounded-xl bg-[var(--muted)] overflow-hidden">
@@ -523,7 +524,7 @@ export function SettingsTab({
           ] as const).map(({ key, shortcut }) => {
             const slot = settings.quickLaunch?.[key]
             const agentInfo = slot ? builtInAgents.find(a => a.key === slot.agent) : null
-            const modelOptions = slot?.agent ? (AGENT_MODELS[slot.agent] || []) : []
+            const modelOptions = slot?.agent ? (agentModels[slot.agent] || []) : []
 
             return (
               <div key={key} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)]">

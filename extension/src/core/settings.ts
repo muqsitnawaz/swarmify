@@ -26,7 +26,8 @@ export interface CommandAlias {
 // Quick launch slot for keyboard shortcuts (Cmd+Shift+1/2/3)
 export interface QuickLaunchSlot {
   agent: string;          // Built-in agent key: "claude" | "codex" | "gemini" | etc.
-  model?: string;         // Model name (e.g., "claude-opus-4-5", "claude-haiku-4-5")
+  model?: string;         // Concrete model id (e.g., "claude-opus-4-7-20260115")
+  modelAlias?: string;    // Agents-cli alias (e.g., "opus", "haiku") — resolved to a concrete id on first launch
   label?: string;         // Display label for dashboard
 }
 
@@ -134,10 +135,35 @@ export const AGENT_MODELS: Record<string, string[]> = {
 };
 
 export const DEFAULT_QUICK_LAUNCH: QuickLaunchConfig = {
-  slot1: { agent: 'claude', model: 'claude-opus-4-5', label: 'Claude Opus' },
-  slot2: { agent: 'claude', model: 'claude-haiku-4-5', label: 'Claude Haiku' },
+  slot1: { agent: 'claude', modelAlias: 'opus', label: 'Claude Opus' },
+  slot2: { agent: 'claude', modelAlias: 'haiku', label: 'Claude Haiku' },
   // slot3 intentionally undefined
 };
+
+// Model ids shipped as hardcoded defaults in earlier extension versions.
+// Map them to aliases so agents-cli can resolve the current concrete model on launch.
+const STALE_CLAUDE_MODEL_TO_ALIAS: Record<string, string> = {
+  'claude-opus-4-5': 'opus',
+  'claude-sonnet-4-5': 'sonnet',
+  'claude-haiku-4-5': 'haiku',
+};
+
+function migrateStaleSlot(slot: QuickLaunchSlot | undefined): boolean {
+  if (!slot || slot.agent !== 'claude' || !slot.model) return false;
+  const alias = STALE_CLAUDE_MODEL_TO_ALIAS[slot.model];
+  if (!alias) return false;
+  slot.model = undefined;
+  slot.modelAlias = alias;
+  return true;
+}
+
+export function migrateStaleClaudeQuickLaunch(quickLaunch: QuickLaunchConfig): boolean {
+  let changed = false;
+  if (migrateStaleSlot(quickLaunch.slot1)) changed = true;
+  if (migrateStaleSlot(quickLaunch.slot2)) changed = true;
+  if (migrateStaleSlot(quickLaunch.slot3)) changed = true;
+  return changed;
+}
 
 // Default settings (pure function)
 export function getDefaultSettings(): AgentSettings {

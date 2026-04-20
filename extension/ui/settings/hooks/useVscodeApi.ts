@@ -44,6 +44,7 @@ export type VsCodeMessageType =
   | 'fetchContextFiles'
   | 'fetchAgentTerminals'
   | 'checkInstalledAgents'
+  | 'fetchAgentModels'
   | 'getDefaultAgent'
   | 'getSecondaryAgent'
   | 'setDefaultAgent'

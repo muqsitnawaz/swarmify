@@ -8,16 +8,6 @@ import type {
   BuiltInAgentConfig,
 } from '../types'
 
-// Agent models available for each agent type
-export const AGENT_MODELS: Record<string, string[]> = {
-  claude: ['claude-sonnet-4-5', 'claude-opus-4-5', 'claude-haiku-4-5'],
-  codex: ['gpt-5.2-codex', 'gpt-5.1-codex-max'],
-  gemini: ['gemini-3-flash', 'gemini-3-pro'],
-  cursor: ['composer-1'],
-  opencode: [],
-  shell: []
-}
-
 // All swarm-capable agents
 export const ALL_SWARM_AGENTS: SwarmAgentType[] = ['claude', 'codex', 'gemini', 'opencode']
 
