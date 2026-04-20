@@ -16,6 +16,8 @@ interface AgentDialProps {
 
 export function AgentDial({ title, value, options, onChange }: AgentDialProps) {
   const selected = options.find(option => option.key === value) ?? options[0]
+  const selectedIndex = options.findIndex(option => option.key === value)
+  const pointerAngle = selectedIndex >= 0 ? -90 + (360 / options.length) * selectedIndex : -90
 
   return (
     <section className="sw-panel-section sw-agent-dial-card">
@@ -44,7 +46,7 @@ export function AgentDial({ title, value, options, onChange }: AgentDialProps) {
               </button>
             )
           })}
-          <div className="sw-agent-dial-core">
+          <div className="sw-agent-dial-core" style={{ transform: `rotate(${pointerAngle + 90}deg)`, transition: 'transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)' }}>
             <div className="sw-agent-dial-core-cap" />
             <div className="sw-agent-dial-pointer" />
           </div>
