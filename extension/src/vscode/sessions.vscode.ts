@@ -1,4 +1,6 @@
 import * as fs from 'fs/promises';
+import { createReadStream } from 'fs';
+import * as readline from 'readline';
 import * as path from 'path';
 import { homedir } from 'os';
 import type { Dirent, Stats } from 'fs';
@@ -42,14 +44,52 @@ async function safeStat(filePath: string): Promise<Stats | null> {
 }
 
 async function readHeadLines(filePath: string, maxLines: number): Promise<string[]> {
-  const content = await fs.readFile(filePath, 'utf-8');
-  return content.split(/\r?\n/).filter(l => l.trim()).slice(0, maxLines);
+  const lines: string[] = [];
+  const stream = createReadStream(filePath, { encoding: 'utf-8' });
+  const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+  try {
+    for await (const line of rl) {
+      if (line.trim()) {
+        lines.push(line);
+        if (lines.length >= maxLines) break;
+      }
+    }
+  } finally {
+    rl.close();
+    stream.destroy();
+  }
+  return lines;
 }
 
+// Read the last `maxLines` non-empty lines without loading the whole file.
+// Opens the file, seeks backward in 64KB chunks from EOF until enough lines collected.
 async function readTailLines(filePath: string, maxLines: number): Promise<string[]> {
-  const content = await fs.readFile(filePath, 'utf-8');
-  const lines = content.split(/\r?\n/).filter(l => l.trim());
-  return lines.slice(-maxLines);
+  const CHUNK_SIZE = 64 * 1024;
+  let handle: Awaited<ReturnType<typeof fs.open>> | undefined;
+  try {
+    handle = await fs.open(filePath, 'r');
+    const { size: fileSize } = await handle.stat();
+    if (fileSize === 0) return [];
+
+    let position = fileSize;
+    let buffer = '';
+    let collected: string[] = [];
+
+    while (position > 0 && collected.length <= maxLines) {
+      const readSize = Math.min(CHUNK_SIZE, position);
+      position -= readSize;
+      const chunk = Buffer.alloc(readSize);
+      await handle.read(chunk, 0, readSize, position);
+      buffer = chunk.toString('utf-8') + buffer;
+      collected = buffer.split(/\r?\n/).filter(l => l.trim());
+    }
+
+    return collected.slice(-maxLines);
+  } catch {
+    return [];
+  } finally {
+    await handle?.close().catch(() => {});
+  }
 }
 
 function normalizePreview(text: string): string | undefined {
@@ -527,29 +567,88 @@ function extractLastUserMessage(tail: string): string | undefined {
 
 async function countNonEmptyLines(filePath: string): Promise<number> {
   try {
-    const content = await fs.readFile(filePath, 'utf-8');
-    return content.split(/\r?\n/).filter(line => line.trim()).length;
+    const stream = createReadStream(filePath, { encoding: 'utf-8' });
+    const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+    let count = 0;
+    for await (const line of rl) {
+      if (line.trim()) count++;
+    }
+    return count;
   } catch {
     return 0;
   }
 }
 
+// Cache of full SessionPreviewInfo, invalidated by file mtime/size.
+interface PreviewCacheEntry {
+  mtimeMs: number;
+  size: number;
+  preview: SessionPreviewInfo;
+}
+const PREVIEW_CACHE = new Map<string, PreviewCacheEntry>();
+const PREVIEW_CACHE_MAX = 200;
+
+// The first user message of a session file is immutable once written.
+// Cache it permanently (per filePath) so the hot "fetch label on focus"
+// path never re-reads the file once the label has been extracted.
+interface FirstMessageCacheEntry {
+  text?: string;
+  timestamp?: string;
+}
+const FIRST_MSG_CACHE = new Map<string, FirstMessageCacheEntry>();
+const FIRST_MSG_CACHE_MAX = 500;
+
+function evictLRU<K, V>(map: Map<K, V>, max: number): void {
+  while (map.size > max) {
+    const oldest = map.keys().next().value;
+    if (oldest === undefined) break;
+    map.delete(oldest);
+  }
+}
+
 export async function getSessionPreviewInfo(filePath: string): Promise<SessionPreviewInfo> {
+  let stat: Stats;
+  try {
+    stat = await fs.stat(filePath);
+  } catch {
+    return { messageCount: 0 };
+  }
+
+  const cached = PREVIEW_CACHE.get(filePath);
+  if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+    PREVIEW_CACHE.delete(filePath);
+    PREVIEW_CACHE.set(filePath, cached);
+    return cached.preview;
+  }
+
+  let firstMsgEntry = FIRST_MSG_CACHE.get(filePath);
+
   const [headLines, tailLines, messageCount] = await Promise.all([
-    readHeadLines(filePath, 60),
+    firstMsgEntry ? Promise.resolve<string[]>([]) : readHeadLines(filePath, 60),
     readTailLines(filePath, 20),
-    countNonEmptyLines(filePath)
+    countNonEmptyLines(filePath),
   ]);
 
-  const extracted = extractPreviewLines(headLines.join('\n'));
+  if (!firstMsgEntry) {
+    const extracted = extractPreviewLines(headLines.join('\n'));
+    firstMsgEntry = { text: extracted.text, timestamp: extracted.timestamp };
+    FIRST_MSG_CACHE.set(filePath, firstMsgEntry);
+    evictLRU(FIRST_MSG_CACHE, FIRST_MSG_CACHE_MAX);
+  }
+
   const lastUserMessage = extractLastUserMessage(tailLines.join('\n'));
 
-  return {
-    firstUserMessage: extracted.text,
-    firstUserMessageTimestamp: extracted.timestamp,
+  const preview: SessionPreviewInfo = {
+    firstUserMessage: firstMsgEntry.text,
+    firstUserMessageTimestamp: firstMsgEntry.timestamp,
     lastUserMessage,
-    messageCount
+    messageCount,
   };
+
+  PREVIEW_CACHE.set(filePath, { mtimeMs: stat.mtimeMs, size: stat.size, preview });
+  evictLRU(PREVIEW_CACHE, PREVIEW_CACHE_MAX);
+
+  return preview;
 }
 
 /**
