@@ -148,13 +148,26 @@ export function SwarmDetailPane({ swarm, onRetry, onKill, onCopyId }: SwarmDetai
   )
 }
 
+function stripMd(s: string): string {
+  return s
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/^[-*+]\s/gm, '')
+    .replace(/\n{2,}/g, ' ')
+    .replace(/\n/g, ' ')
+    .trim()
+}
+
 function summarizeAgent(a: Swarm['agents'][number]): string {
   if (a.bash_commands?.length) return `$ ${a.bash_commands[a.bash_commands.length - 1]}`
   if (a.files_modified?.length) return `Edit ${a.files_modified[a.files_modified.length - 1]}`
   if (a.files_created?.length) return `Create ${a.files_created[a.files_created.length - 1]}`
   if (a.files_deleted?.length) return `Delete ${a.files_deleted[a.files_deleted.length - 1]}`
-  if (a.last_messages?.length) return a.last_messages[a.last_messages.length - 1].slice(0, 160)
-  return a.prompt?.slice(0, 160) ?? 'waiting…'
+  if (a.last_messages?.length) return stripMd(a.last_messages[a.last_messages.length - 1]).slice(0, 160)
+  return a.prompt ? stripMd(a.prompt).slice(0, 160) : 'waiting…'
 }
 
 interface Event {
@@ -182,7 +195,7 @@ function buildEvents(swarm: Swarm): Event[] {
     })
     const msgs = a.last_messages ?? []
     msgs.slice(-2).forEach((m) => {
-      events.push({ t: '', agent: a.agent_type.toLowerCase(), kind: 'msg', text: m.slice(0, 240) })
+      events.push({ t: '', agent: a.agent_type.toLowerCase(), kind: 'msg', text: stripMd(m).slice(0, 240) })
     })
   }
   return events.slice(-20).reverse()

@@ -1,7 +1,7 @@
 import React from 'react'
 import { Icon } from './icons'
 
-export type TabKey = 'mission' | 'workspace' | 'settings'
+export type TabKey = 'floor' | 'bench' | 'panel'
 
 interface TopBarProps {
   version?: string
@@ -40,23 +40,23 @@ export function TopBar({
       <div className="divider-v" />
       <div className="sw-tabs">
         <button
-          className={`sw-tab ${activeTab === 'mission' ? 'active' : ''}`}
-          onClick={() => onTabChange('mission')}
+          className={`sw-tab ${activeTab === 'floor' ? 'active' : ''}`}
+          onClick={() => onTabChange('floor')}
         >
-          Mission Control
+          Floor
           {activeSwarmCount > 0 && <span className="sw-tab-badge">{activeSwarmCount}</span>}
         </button>
         <button
-          className={`sw-tab ${activeTab === 'workspace' ? 'active' : ''}`}
-          onClick={() => onTabChange('workspace')}
+          className={`sw-tab ${activeTab === 'bench' ? 'active' : ''}`}
+          onClick={() => onTabChange('bench')}
         >
-          Workspace
+          Bench
         </button>
         <button
-          className={`sw-tab ${activeTab === 'settings' ? 'active' : ''}`}
-          onClick={() => onTabChange('settings')}
+          className={`sw-tab ${activeTab === 'panel' ? 'active' : ''}`}
+          onClick={() => onTabChange('panel')}
         >
-          Settings
+          Panel
         </button>
       </div>
       <div className="sw-topbar-right">
