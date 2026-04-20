@@ -123,6 +123,7 @@ export default function App() {
   // Default agent and installed agents
   const [defaultAgent, setDefaultAgent] = useState<string>('CC')
   const [secondaryAgent, setSecondaryAgent] = useState<string>('CX')
+  const [agentModels, setAgentModels] = useState<Record<string, string[]>>({})
   const [installedAgents, setInstalledAgents] = useState<Record<string, boolean>>({
     claude: true, codex: true, gemini: true, opencode: true, cursor: true, shell: true
   })
@@ -204,6 +205,11 @@ export default function App() {
         case 'installedAgentsData':
           setInstalledAgents(message.installedAgents)
           break
+        case 'agentModelsData':
+          if (message.agentModels && typeof message.agentModels === 'object') {
+            setAgentModels((prev) => ({ ...prev, ...message.agentModels }))
+          }
+          break
         case 'defaultAgentData':
           setDefaultAgent(message.defaultAgent)
           break
@@ -268,6 +274,7 @@ export default function App() {
     window.addEventListener('message', handleMessage)
     vscode.postMessage({ type: 'ready' })
     vscode.postMessage({ type: 'checkInstalledAgents' })
+    vscode.postMessage({ type: 'fetchAgentModels' })
     vscode.postMessage({ type: 'getDefaultAgent' })
     vscode.postMessage({ type: 'getSecondaryAgent' })
     vscode.postMessage({ type: 'getPrewarmStatus' })
@@ -691,6 +698,7 @@ export default function App() {
           defaultAgent={defaultAgent}
           secondaryAgent={secondaryAgent}
           installedAgents={installedAgents}
+          agentModels={agentModels}
           icons={icons}
           isLightTheme={isLightTheme}
           swarmInstalling={swarmInstalling}

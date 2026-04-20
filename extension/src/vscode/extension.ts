@@ -55,6 +55,7 @@ import {
 } from './tmux';
 import { DEFAULT_DISPLAY_PREFERENCES } from '../core/settings';
 import * as prewarm from './prewarm.vscode';
+import { resolveAlias, isAgentInstalled } from '../core/agentModels';
 import { supportsPrewarming, buildResumeCommand, PREWARM_CONFIGS, PrewarmAgentType } from '../core/prewarm';
 import { needsPrewarming, generateClaudeSessionId, buildClaudeOpenCommand, listOpencodeSessions } from '../core/prewarm.simple';
 import { getSessionPathBySessionId, getSessionPreviewInfo, getOpenCodeSessionPreviewInfo, getCursorSessionPreviewInfo } from './sessions.vscode';
@@ -727,8 +728,9 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand('agents.newSecondaryAgent', async () => {
       const targetTitle = secondaryAgentTitle || defaultAgentTitle;
+      const targetDef = getBuiltInDefByTitle(targetTitle);
       let agentConfig: Omit<AgentConfig, 'count'> | null = getBuiltInByTitle(context.extensionPath, targetTitle);
-      if (agentConfig?.command && !(await commandExists(agentConfig.command))) {
+      if (targetDef?.key && !(await isAgentInstalled(targetDef.key))) {
         agentConfig = null;
       }
       if (!agentConfig) {
@@ -1035,18 +1037,21 @@ export async function activate(context: vscode.ExtensionContext) {
 
   for (const { command, slot } of quickLaunchSlots) {
     context.subscriptions.push(
-      vscode.commands.registerCommand(command, () => {
+      vscode.commands.registerCommand(command, async () => {
         if (!slot) return; // Unconfigured = do nothing (silent)
 
         const builtInDef = getBuiltInByKey(slot.agent);
         if (!builtInDef) return;
 
         const agentConfig = getBuiltInByTitle(context.extensionPath, builtInDef.title);
-        if (agentConfig) {
-          // Build flags with model if specified
-          const flags = slot.model ? `--model ${slot.model}` : undefined;
-          openSingleAgent(context, agentConfig, flags);
+        if (!agentConfig) return;
+
+        let modelId = slot.model;
+        if (!modelId && slot.modelAlias) {
+          modelId = (await resolveAlias(slot.agent, slot.modelAlias)) ?? undefined;
         }
+        const flags = modelId ? `--model ${modelId}` : undefined;
+        openSingleAgent(context, agentConfig, flags);
       })
     );
   }
@@ -2414,25 +2419,15 @@ async function updateContextKeys(context: vscode.ExtensionContext): Promise<void
   await vscode.commands.executeCommand('setContext', 'agents.warmingEnabled', warmingEnabled);
 }
 
-function commandExists(cmd: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    const whichCmd = process.platform === 'win32' ? 'where' : 'which';
-    const child = require('child_process').exec(`${whichCmd} ${cmd}`, (err: Error | null) => {
-      resolve(!err);
-    });
-    if (!child) resolve(false);
-  });
-}
-
 async function detectDefaultAgentTitle(): Promise<string> {
   const candidates = [
-    { title: CLAUDE_TITLE, command: 'claude' },
-    { title: CODEX_TITLE, command: 'codex' },
-    { title: GEMINI_TITLE, command: 'gemini' }
+    { title: CLAUDE_TITLE, key: 'claude' },
+    { title: CODEX_TITLE, key: 'codex' },
+    { title: GEMINI_TITLE, key: 'gemini' }
   ];
 
   for (const candidate of candidates) {
-    if (await commandExists(candidate.command)) {
+    if (await isAgentInstalled(candidate.key)) {
       return candidate.title;
     }
   }
