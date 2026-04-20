@@ -1,5 +1,5 @@
 import React from 'react'
-import { RefreshCw, Plus, Minus, Cpu, Radio, Waypoints } from 'lucide-react'
+import { RefreshCw, Cpu, Radio, Waypoints } from 'lucide-react'
 import { Input } from '../ui/input'
 import { WorkspaceConfigSection } from '../common'
 import { AgentDial } from './AgentDial'
@@ -280,13 +280,6 @@ export function PanelTab({
       level: swarmStatus.commandInstalled ? 'running' : 'pending',
       gauge: swarmStatus.commandInstalled ? 100 : 48,
     },
-    {
-      key: 'prewarm',
-      label: 'Session Warming',
-      value: prewarmEnabled ? `${prewarmPools.reduce((sum, pool) => sum + pool.available, 0)} ready` : 'standby',
-      level: prewarmEnabled ? 'running' : 'idle',
-      gauge: prewarmEnabled ? 78 : 12,
-    },
   ]
 
   const agentRows = (['claude', 'codex', 'gemini', 'opencode'] as SwarmAgentType[]).map(agent => {
@@ -411,25 +404,25 @@ export function PanelTab({
                       <span className="toggle-knob" />
                     </button>
                   </label>
-                  <div className="sw-panel-stepper">
+                  <div className="sw-panel-fader">
                     <span>Instances</span>
-                    <div className="sw-panel-stepper-controls">
-                      <button
-                        type="button"
-                        className="sw-icon-btn"
-                        onClick={() => updateBuiltIn(agent, 'instances', Math.max(1, config.instances - 1))}
-                      >
-                        <Minus size={12} />
-                      </button>
-                      <div className="sw-readout">{config.instances}</div>
-                      <button
-                        type="button"
-                        className="sw-icon-btn"
-                        onClick={() => updateBuiltIn(agent, 'instances', Math.min(10, config.instances + 1))}
-                      >
-                        <Plus size={12} />
-                      </button>
+                    <div className="sw-fader-track">
+                      <input
+                        type="range"
+                        min={1}
+                        max={8}
+                        value={config.instances}
+                        onChange={(e) => updateBuiltIn(agent, 'instances', Number(e.target.value))}
+                        className="sw-fader-input"
+                        orient="vertical"
+                      />
+                      <div className="sw-fader-labels">
+                        {[8,6,4,2].map(n => (
+                          <span key={n} className={`sw-fader-mark${config.instances >= n ? ' lit' : ''}`}>{n}</span>
+                        ))}
+                      </div>
                     </div>
+                    <div className="sw-readout" style={{ textAlign: 'center', marginTop: 4 }}>{config.instances}</div>
                   </div>
                   <label className="sw-panel-select">
                     <span>Default Model</span>
@@ -677,70 +670,6 @@ export function PanelTab({
       </div>
 
       <div className="sw-panel-grid sw-panel-grid-bottom">
-        <section className="sw-panel-section">
-          <div className="sw-panel-section-head">Alias Rack</div>
-          <div className="sw-panel-alias-list">
-            {settings.aliases.map((alias, index) => (
-              <div key={`${alias.name}-${index}`} className="sw-panel-alias-row">
-                <div className="sw-panel-alias-head">
-                  <span className="sw-readout glow">{alias.name}</span>
-                  <span className="sw-pill">{alias.agent}</span>
-                </div>
-                <div className="sw-panel-alias-flags sw-readout">{alias.flags || 'No flags'}</div>
-                <button type="button" className="sw-btn danger sm" onClick={() => onRemoveAlias(index)}>
-                  Remove
-                </button>
-              </div>
-            ))}
-            {settings.aliases.length === 0 && !isAddingAlias && (
-              <div className="sw-empty">
-                <span className="sw-empty-title">Alias rack empty</span>
-                <span className="sw-empty-sub">Add shortcuts for common launch profiles.</span>
-              </div>
-            )}
-            {isAddingAlias ? (
-              <div className="sw-panel-alias-form">
-                <label className="sw-panel-select">
-                  <span>Name</span>
-                  <Input value={newAliasName} onChange={(event) => onAliasNameChange(event.target.value)} placeholder="Fast" />
-                </label>
-                <label className="sw-panel-select">
-                  <span>Agent</span>
-                  <select value={newAliasAgent} onChange={(event) => onAliasAgentChange(event.target.value)}>
-                    {dialOptions.map(option => (
-                      <option key={option.key} value={option.key}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="sw-panel-select">
-                  <span>Flags</span>
-                  <Input
-                    value={newAliasFlags}
-                    onChange={(event) => onAliasFlagsChange(event.target.value)}
-                    placeholder="--model gpt-5.4"
-                  />
-                </label>
-                {aliasError && <div className="sw-panel-error">{aliasError}</div>}
-                <div className="sw-panel-inline-actions">
-                  <button type="button" className="sw-btn secondary sm" onClick={onCancelAddAlias}>
-                    Cancel
-                  </button>
-                  <button type="button" className="sw-btn primary sm" onClick={onSaveAlias}>
-                    Save Alias
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <button type="button" className="sw-btn secondary" onClick={onAddAliasClick}>
-                <Waypoints size={12} />
-                Add Alias
-              </button>
-            )}
-          </div>
-        </section>
-
         <section className="sw-panel-section">
           <div className="sw-panel-section-head">Command Pack</div>
           <div className="sw-panel-command-pack">
