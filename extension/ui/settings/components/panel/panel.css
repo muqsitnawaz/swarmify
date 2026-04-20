@@ -1,0 +1,454 @@
+.sw-panel-tab {
+  height: 100%;
+  overflow-y: auto;
+  padding: 18px;
+  background:
+    radial-gradient(circle at top left, rgba(242, 109, 91, 0.08), transparent 22%),
+    linear-gradient(180deg, var(--ds-bg) 0%, var(--ds-bg-sunken) 100%);
+}
+
+.sw-panel-grid {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.sw-panel-grid-top {
+  grid-template-columns: minmax(340px, 1.15fr) minmax(420px, 1fr);
+  align-items: start;
+}
+
+.sw-panel-grid-main {
+  grid-template-columns: minmax(460px, 1.35fr) minmax(320px, 0.9fr);
+  align-items: start;
+}
+
+.sw-panel-grid-bottom {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+}
+
+.sw-panel-summary-stack,
+.sw-panel-column,
+.sw-panel-dials {
+  display: grid;
+  gap: 16px;
+}
+
+.sw-panel-dials {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.sw-panel-readouts {
+  display: grid;
+  gap: 10px;
+}
+
+.sw-panel-readout-block {
+  display: grid;
+  gap: 6px;
+}
+
+.sw-panel-preview-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ds-border-subtle);
+}
+
+.sw-panel-preview-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.sw-panel-preview-caption {
+  font-size: 11px;
+  color: var(--ds-text-dim);
+  font-family: "Geist Mono", monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.sw-agent-dial-card {
+  min-height: 320px;
+}
+
+.sw-agent-dial {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+}
+
+.sw-agent-dial-ring {
+  position: relative;
+  width: 248px;
+  height: 248px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 32% 28%, var(--ds-bevel-light), transparent 34%),
+    radial-gradient(circle, var(--ds-bg-panel) 0%, var(--ds-bg-inset) 58%, var(--ds-bg-recessed) 100%);
+  border: 2px solid var(--ds-border-strong);
+  box-shadow: var(--shadow-raised), inset 0 0 0 10px rgba(0, 0, 0, 0.05), inset 0 0 0 1px var(--ds-border);
+}
+
+.sw-agent-dial-core {
+  position: absolute;
+  inset: 50%;
+  width: 126px;
+  height: 126px;
+  margin-left: -63px;
+  margin-top: -63px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, var(--ds-bg-panel) 0%, var(--ds-bg-recessed) 100%);
+  border: 2px solid var(--ds-border-strong);
+  box-shadow: var(--shadow-inset), inset 0 0 0 1px var(--ds-border-subtle);
+}
+
+.sw-agent-dial-core-cap {
+  position: absolute;
+  inset: 50%;
+  width: 28px;
+  height: 28px;
+  margin-left: -14px;
+  margin-top: -14px;
+  border-radius: 50%;
+  background: var(--brand);
+  box-shadow: 0 0 12px var(--brand-ring), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+.sw-agent-dial-pointer {
+  position: absolute;
+  left: 50%;
+  top: 18px;
+  width: 10px;
+  height: 54px;
+  margin-left: -5px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #fff 0%, var(--brand) 50%, var(--brand-700) 100%);
+  box-shadow: 0 0 10px var(--brand-ring);
+}
+
+.sw-agent-dial-stop {
+  position: absolute;
+  width: 68px;
+  height: 40px;
+  margin-left: -34px;
+  margin-top: -20px;
+  border-radius: 999px;
+  border: 1px solid var(--ds-border-strong);
+  background: var(--ds-bg-panel);
+  color: var(--ds-text-dim);
+  font-family: "Geist Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  box-shadow: var(--shadow-raised);
+  cursor: pointer;
+}
+
+.sw-agent-dial-stop:hover {
+  color: var(--ds-text);
+}
+
+.sw-agent-dial-stop.active {
+  border-color: var(--brand);
+  color: var(--brand);
+  box-shadow: var(--shadow-inset), 0 0 10px var(--brand-ring);
+}
+
+.sw-agent-dial-stop:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.sw-agent-dial-stop-label {
+  display: block;
+  transform: translateY(1px);
+}
+
+.sw-agent-dial-readout {
+  min-width: 210px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sw-agent-dial-selected {
+  color: var(--ds-text);
+}
+
+.sw-status-bank {
+  display: grid;
+  gap: 10px;
+}
+
+.sw-status-bank-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(140px, 200px);
+  align-items: center;
+  gap: 14px;
+}
+
+.sw-status-bank-label,
+.sw-status-bank-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sw-status-bank-meta {
+  justify-content: flex-end;
+}
+
+.sw-status-bank-meta .sw-gauge {
+  width: 86px;
+}
+
+.sw-panel-agent-stack,
+.sw-panel-toggle-list,
+.sw-panel-alias-list,
+.sw-panel-pool-list,
+.sw-panel-quicklaunch,
+.sw-panel-command-pack,
+.sw-panel-skill-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.sw-panel-agent-card {
+  padding: 12px;
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg, var(--ds-bg-panel) 0%, var(--ds-bg-inset) 100%);
+  border: 1px solid var(--ds-border);
+  box-shadow: var(--shadow-emboss);
+}
+
+.sw-panel-agent-head,
+.sw-panel-agent-ident,
+.sw-panel-agent-actions,
+.sw-panel-stepper-controls,
+.sw-panel-gauge-meta,
+.sw-panel-command-line,
+.sw-panel-command-metrics,
+.sw-panel-alias-head,
+.sw-panel-inline-actions,
+.sw-panel-pool-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sw-panel-agent-head,
+.sw-panel-agent-foot {
+  display: grid;
+  gap: 10px;
+}
+
+.sw-panel-agent-head {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.sw-panel-agent-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.sw-panel-agent-sub {
+  font-size: 11px;
+  color: var(--ds-text-dim);
+  font-family: "Geist Mono", monospace;
+}
+
+.sw-panel-agent-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.sw-panel-agent-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+  margin: 12px 0;
+}
+
+.sw-panel-rocker,
+.sw-panel-select {
+  display: grid;
+  gap: 8px;
+}
+
+.sw-panel-rocker > span,
+.sw-panel-select > span,
+.sw-panel-stepper > span {
+  font-size: 10px;
+  color: var(--ds-text-dim);
+  font-family: "Geist Mono", monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.sw-panel-select select,
+.sw-panel-launch-row select {
+  width: 100%;
+  height: 30px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--ds-border-strong);
+  background: var(--ds-bg-recessed);
+  color: var(--ds-text);
+  padding: 0 9px;
+  box-shadow: var(--shadow-inset);
+  font-size: 12px;
+}
+
+.sw-panel-stepper {
+  display: grid;
+  gap: 8px;
+}
+
+.sw-panel-stepper-controls .sw-readout {
+  min-width: 44px;
+  text-align: center;
+}
+
+.sw-panel-agent-foot {
+  margin-top: 10px;
+}
+
+.sw-panel-inline-hint {
+  margin-top: 10px;
+  font-size: 10.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sw-panel-launch-row {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.sw-panel-command-card,
+.sw-panel-skill-cell,
+.sw-panel-alias-row,
+.sw-panel-alias-form {
+  padding: 12px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--ds-border);
+  background: var(--ds-bg-inset);
+  box-shadow: var(--shadow-emboss);
+}
+
+.sw-panel-command-card {
+  display: grid;
+  gap: 12px;
+}
+
+.sw-panel-command-line {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sw-panel-command-metrics {
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.sw-panel-skill-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.sw-panel-skill-cell {
+  display: grid;
+  gap: 8px;
+}
+
+.sw-panel-skill-agents {
+  display: flex;
+  gap: 8px;
+}
+
+.sw-panel-alias-row,
+.sw-panel-alias-form {
+  display: grid;
+  gap: 10px;
+}
+
+.sw-panel-alias-flags {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sw-panel-error {
+  color: var(--status-failed);
+  font-size: 11px;
+  font-family: "Geist Mono", monospace;
+}
+
+.sw-panel-pool-row {
+  justify-content: space-between;
+}
+
+.sw-panel-grid-bottom .sw-panel-section {
+  min-height: 100%;
+}
+
+.sw-panel-tab .toggle-switch {
+  justify-self: end;
+}
+
+.sw-panel-tab .toggle-switch,
+.sw-panel-tab .sw-btn,
+.sw-panel-tab .sw-icon-btn,
+.sw-panel-tab select,
+.sw-panel-tab input {
+  cursor: pointer;
+}
+
+.sw-panel-tab input {
+  cursor: text;
+}
+
+@media (max-width: 1200px) {
+  .sw-panel-grid-top,
+  .sw-panel-grid-main,
+  .sw-panel-grid-bottom {
+    grid-template-columns: 1fr;
+  }
+
+  .sw-panel-dials {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .sw-panel-tab {
+    padding: 12px;
+  }
+
+  .sw-agent-dial-ring {
+    width: 216px;
+    height: 216px;
+  }
+
+  .sw-agent-dial-core {
+    width: 108px;
+    height: 108px;
+    margin-left: -54px;
+    margin-top: -54px;
+  }
+
+  .sw-panel-agent-controls,
+  .sw-panel-launch-row,
+  .sw-status-bank-row {
+    grid-template-columns: 1fr;
+  }
+
+  .sw-panel-skill-grid {
+    grid-template-columns: 1fr;
+  }
+}
