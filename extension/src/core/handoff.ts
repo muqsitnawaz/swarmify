@@ -1,6 +1,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { homedir } from 'os';
+import { execFile } from 'child_process';
 
 export interface HandoffMessage {
   role: 'user' | 'assistant';
@@ -91,32 +92,43 @@ export async function findRecentClaudePlan(): Promise<{ path: string; content: s
   }
 }
 
-export async function getSessionMessages(
-  sessionPath: string,
-  maxMessages: number = 10
+interface AgentsCliSessionEvent {
+  type: string;
+  role?: string;
+  content?: string;
+  text?: string;
+}
+
+function runAgentsSessions(args: string[], cwd?: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile('agents', args, { cwd, maxBuffer: 8 * 1024 * 1024 }, (err, stdout) => {
+      if (err) reject(err);
+      else resolve(stdout);
+    });
+  });
+}
+
+export async function getSessionMessagesViaAgentsCli(
+  sessionId: string,
+  maxMessages: number = 10,
+  cwd?: string
 ): Promise<HandoffMessage[]> {
   try {
-    const content = await fs.readFile(sessionPath, 'utf-8');
-    const lines = content.split(/\r?\n/).filter(l => l.trim());
+    const turns = Math.max(1, Math.ceil(maxMessages / 2));
+    const stdout = await runAgentsSessions(
+      ['sessions', sessionId, '--json', '--last', String(turns), '--include', 'user,assistant'],
+      cwd
+    );
+    const events: AgentsCliSessionEvent[] = JSON.parse(stdout);
     const messages: HandoffMessage[] = [];
-
-    for (let i = lines.length - 1; i >= 0; i--) {
-      if (messages.length >= maxMessages) break;
-
-      try {
-        const line = lines[i];
-        const parsed = JSON.parse(line);
-
-        const message = extractMessageFromLine(parsed);
-        if (message) {
-          messages.unshift(message);
-        }
-      } catch {
-        continue;
-      }
+    for (const ev of events) {
+      if (ev.type !== 'message') continue;
+      if (ev.role !== 'user' && ev.role !== 'assistant') continue;
+      const content = typeof ev.content === 'string' ? ev.content : ev.text;
+      if (!content || !content.trim()) continue;
+      messages.push({ role: ev.role, content });
     }
-
-    return messages;
+    return messages.slice(-maxMessages);
   } catch {
     return [];
   }

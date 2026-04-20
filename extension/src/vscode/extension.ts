@@ -1138,36 +1138,39 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // Listen for tab changes to catch editor-area terminal switches
   // (onDidChangeActiveTerminal doesn't fire reliably for terminal editor tabs)
+  // Debounced because onDidChangeTabs fires in rapid bursts during workspace restore,
+  // tab drag, etc. — each fire used to trigger a full session-file read.
+  let tabChangeTimer: ReturnType<typeof setTimeout> | undefined;
   context.subscriptions.push(
     vscode.window.tabGroups.onDidChangeTabs(() => {
       if (!agentStatusBarItem) return;
+      if (tabChangeTimer) clearTimeout(tabChangeTimer);
+      tabChangeTimer = setTimeout(() => {
+        tabChangeTimer = undefined;
+        const activeGroup = vscode.window.tabGroups.activeTabGroup;
+        const activeTab = activeGroup?.activeTab;
 
-      // Check if the active tab in the active group is a terminal
-      const activeGroup = vscode.window.tabGroups.activeTabGroup;
-      const activeTab = activeGroup?.activeTab;
-
-      if (!activeTab || !(activeTab.input instanceof vscode.TabInputTerminal)) {
-        // Not a terminal tab - already handled by onDidChangeActiveTextEditor
-        return;
-      }
-
-      // Find the terminal that matches this tab by name
-      const terminalNames = vscode.window.terminals.map(t => t.name);
-      const matchedName = findTerminalNameByTabLabel(terminalNames, activeTab.label);
-      if (matchedName) {
-        const matchedTerminal = vscode.window.terminals.find(t => t.name === matchedName);
-        if (matchedTerminal) {
-          // Try to fetch label on focus if not already set
-          tryFetchLabelOnFocus(matchedTerminal, context);
-
-          updateStatusBarForTerminal(matchedTerminal, context.extensionPath);
-
-          // Update terminal titles based on focus state (for showLabelOnlyOnFocus feature)
-          updateTerminalTitleOnFocus(matchedTerminal, context);
+        if (!activeTab || !(activeTab.input instanceof vscode.TabInputTerminal)) {
+          return;
         }
-      }
+
+        const terminalNames = vscode.window.terminals.map(t => t.name);
+        const matchedName = findTerminalNameByTabLabel(terminalNames, activeTab.label);
+        if (!matchedName) return;
+        const matchedTerminal = vscode.window.terminals.find(t => t.name === matchedName);
+        if (!matchedTerminal) return;
+
+        tryFetchLabelOnFocus(matchedTerminal, context);
+        updateStatusBarForTerminal(matchedTerminal, context.extensionPath);
+        updateTerminalTitleOnFocus(matchedTerminal, context);
+      }, 120);
     })
   );
+  context.subscriptions.push({
+    dispose: () => {
+      if (tabChangeTimer) clearTimeout(tabChangeTimer);
+    },
+  });
 
   // Auto-open terminals on startup if any agents have login enabled
   const startupSettings = settings.getSettings(context);
@@ -1420,14 +1423,11 @@ async function handoffToAgent(context: vscode.ExtensionContext) {
 
   if (terminalEntry.sessionId && terminalEntry.agentType) {
     const agentType = terminalEntry.agentType as 'claude' | 'codex' | 'gemini';
-    const sessionPath = await getSessionPathBySessionId(terminalEntry.sessionId, agentType, workspacePath);
 
-    if (sessionPath) {
-      messages = await handoff.getSessionMessages(sessionPath, 10);
+    messages = await handoff.getSessionMessagesViaAgentsCli(terminalEntry.sessionId, 10, workspacePath);
 
-      if (agentType === 'claude') {
-        planInfo = await handoff.findRecentClaudePlan();
-      }
+    if (agentType === 'claude') {
+      planInfo = await handoff.findRecentClaudePlan();
     }
   }
 
@@ -2189,7 +2189,7 @@ function updateStatusBarForTerminal(terminal: vscode.Terminal, extensionPath: st
           }
           agentStatusBarItem.text = updatedText;
         }
-      });
+      }).catch(() => { /* swallow to prevent unhandled rejection */ });
     }
     return;
   }
