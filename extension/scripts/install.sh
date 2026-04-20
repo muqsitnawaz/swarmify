@@ -28,18 +28,21 @@ if [ ! -f "$VSIX_FILE" ]; then
 fi
 
 echo "Installing extension..."
-if ! command -v cursor >/dev/null 2>&1; then
-    echo "Error: cursor CLI not found on PATH"
+
+INSTALLED=0
+
+for CLI in cursor code codium; do
+    if command -v "$CLI" >/dev/null 2>&1; then
+        echo "  -> $CLI"
+        "$CLI" --install-extension "$VSIX_FILE" --force
+        INSTALLED=$((INSTALLED + 1))
+    fi
+done
+
+if [ "$INSTALLED" -eq 0 ]; then
+    echo "Error: no editor CLI found (tried cursor, code, codium)"
     exit 1
 fi
 
-if ! command -v code >/dev/null 2>&1; then
-    echo "Error: VS Code CLI (code) not found on PATH"
-    exit 1
-fi
-
-cursor --install-extension "$VSIX_FILE" --force
-code --install-extension "$VSIX_FILE" --force
-
-echo "Extension installed successfully!"
-echo "Restart Cursor and VS Code to activate the extension."
+echo "Extension installed to $INSTALLED editor(s)."
+echo "Restart your editors to activate."

@@ -30,9 +30,13 @@ import {
 import { useSystemTheme, getVsCodeApi, getIcons, postMessage } from './hooks'
 import { validateAliasName } from './utils'
 
-// Tab components
-import { DashboardTab } from './components/tabs/DashboardTab'
+// New layout shell
+import { TopBar, StatusBar, MissionControlTab } from './components/mission-control'
+import type { TabKey } from './components/mission-control'
+
+// Tab components (legacy, for Bench and Panel)
 import { WorkspaceTab } from './components/tabs/WorkspaceTab'
+import { BenchTab } from './components/bench'
 import { SettingsTab } from './components/tabs/SettingsTab'
 import { GuideTab } from './components/tabs/GuideTab'
 import { ApiKeyDialog } from './components/common/OAuthDialog'
@@ -83,7 +87,7 @@ export default function App() {
 
   // Skills and tab state
   const [skillsStatus, setSkillsStatus] = useState<SkillsStatus | null>(null)
-  const [activeTab, setActiveTab] = useState<TabId>('dashboard')
+  const [activeTab, setActiveTab] = useState<TabKey>('floor')
   const [showGuide, setShowGuide] = useState(false)
   const [tasks, setTasks] = useState<TaskSummary[]>([])
   const [tasksLoading, setTasksLoading] = useState(false)
@@ -119,6 +123,9 @@ export default function App() {
   const [agentTerminals, setAgentTerminals] = useState<TerminalDetail[]>([])
   const [agentTerminalsLoading, setAgentTerminalsLoading] = useState(false)
   const [dashboardAutoSelected, setDashboardAutoSelected] = useState(false)
+
+  // All terminals (for Floor tab)
+  const [allTerminals, setAllTerminals] = useState<TerminalDetail[]>([])
 
   // Default agent and installed agents
   const [defaultAgent, setDefaultAgent] = useState<string>('CC')
@@ -202,6 +209,9 @@ export default function App() {
           setAgentTerminals(message.terminals || [])
           setAgentTerminalsLoading(false)
           break
+        case 'allTerminalsData':
+          setAllTerminals(message.terminals || [])
+          break
         case 'installedAgentsData':
           setInstalledAgents(message.installedAgents)
           break
@@ -279,23 +289,24 @@ export default function App() {
     vscode.postMessage({ type: 'getSecondaryAgent' })
     vscode.postMessage({ type: 'getPrewarmStatus' })
     vscode.postMessage({ type: 'getWorkspaceConfig' })
+    vscode.postMessage({ type: 'fetchAllTerminals' })
 
     return () => window.removeEventListener('message', handleMessage)
   }, [])
 
   // Tab-specific data loading
   useEffect(() => {
-    if (activeTab === 'dashboard' && !tasksLoaded && !tasksLoading) {
+    if (activeTab === 'floor' && !tasksLoaded && !tasksLoading) {
       fetchTasks()
     }
-    if (activeTab === 'workspace' && !todoLoaded && !todoLoading) {
+    if (activeTab === 'bench' && !todoLoaded && !todoLoading) {
       fetchTodoFiles()
     }
-    if (activeTab === 'workspace' && !unifiedTasksLoaded && !unifiedTasksLoading) {
+    if (activeTab === 'bench' && !unifiedTasksLoaded && !unifiedTasksLoading) {
       fetchUnifiedTasks()
       detectTaskSources()
     }
-    if (activeTab === 'workspace' && !contextLoaded && !contextLoading) {
+    if (activeTab === 'bench' && !contextLoaded && !contextLoading) {
       fetchContextFiles()
     }
   }, [activeTab, tasksLoaded, tasksLoading, todoLoaded, todoLoading, unifiedTasksLoaded, unifiedTasksLoading, contextLoaded, contextLoading])
@@ -311,7 +322,7 @@ export default function App() {
   }, [selectedAgentType, agentTerminals, sessionTasks, sessionTasksLoading])
 
   useEffect(() => {
-    if (activeTab !== 'dashboard') {
+    if (activeTab !== 'floor') {
       if (dashboardAutoSelected) {
         setDashboardAutoSelected(false)
       }
@@ -414,7 +425,7 @@ export default function App() {
   }
 
   const handleSpawnTodo = (item: TodoItem, filePath: string) => {
-    setActiveTab('dashboard')
+    setActiveTab('floor')
     vscode.postMessage({ type: 'spawnSwarmForTodo', item, filePath })
   }
 
@@ -570,91 +581,70 @@ export default function App() {
     vscode.postMessage({ type: 'saveWorkspaceConfig', config })
   }
 
+  const totalRunning = runningCounts.claude + runningCounts.codex + runningCounts.gemini
+    + runningCounts.opencode + runningCounts.cursor + runningCounts.shell
+    + Object.values(runningCounts.custom).reduce((a, b) => a + b, 0)
+
+  const { active: activeSwarms } = (() => {
+    const a: TaskSummary[] = []
+    for (const t of tasks) { if (t.status_counts.running > 0) a.push(t) }
+    return { active: a }
+  })()
+
+  const handleDispatchSwarm = () => {
+    vscode.postMessage({ type: 'dispatchSwarm' })
+  }
+
   if (!settings) {
-    return <div className="text-[var(--muted-foreground)]">Loading...</div>
+    return (
+      <div className={`swarmify-root ${isLightTheme ? 'theme-light' : 'theme-dark'} sw-app`}>
+        <div style={{ display: 'grid', placeItems: 'center', height: '100vh', color: 'var(--ds-text-muted)' }}>
+          Loading...
+        </div>
+      </div>
+    )
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header with tabs */}
-      <header className="pb-4 border-b border-[var(--border)]">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <img src={icons.agents} alt="Agents" className="w-8 h-8" />
-            <h1 className="text-lg font-semibold tracking-tight">Agents</h1>
-          </div>
-          <button
-            onClick={() => setShowGuide(!showGuide)}
-            className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${
-              showGuide
-                ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
-                : 'text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:bg-[var(--muted)]'
-            }`}
-            title="Help & Guide"
-          >
-            ?
-          </button>
-        </div>
-        <div className="flex gap-1">
-          {(['dashboard', 'workspace', 'settings'] as TabId[]).map(tab => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-                activeTab === tab
-                  ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
-                  : 'text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:bg-[var(--muted)]'
-              }`}
-            >
-              {TAB_LABELS[tab]}
-            </button>
-          ))}
-        </div>
-      </header>
+    <div className={`swarmify-root ${isLightTheme ? 'theme-light' : 'theme-dark'} sw-app`}>
+      <TopBar
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        activeSwarmCount={activeSwarms.length}
+        isLightTheme={isLightTheme}
+        onOpenSearch={() => vscode.postMessage({ type: 'executeCommand', command: 'workbench.action.quickOpen' })}
+        onOpenSettings={() => setActiveTab('panel')}
+        onToggleTheme={() => vscode.postMessage({ type: 'executeCommand', command: 'workbench.action.toggleLightDarkThemes' })}
+      />
 
-      {/* Guide panel (shown when ? is clicked) */}
+      {/* Guide overlay */}
       {showGuide && (
-        <div className="px-4 py-4 rounded-xl bg-[var(--muted)] border border-[var(--border)]">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold">Quick Guide</h2>
-            <button
-              onClick={() => setShowGuide(false)}
-              className="text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-            >
-              Close
-            </button>
+        <div style={{ position: 'absolute', inset: 0, zIndex: 30, background: 'rgba(0,0,0,0.5)', display: 'grid', placeItems: 'center' }}>
+          <div style={{ background: 'var(--ds-bg-panel)', border: '1px solid var(--ds-border)', borderRadius: 'var(--r-lg)', padding: 20, maxWidth: 520, width: '90%', maxHeight: '80vh', overflow: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+              <span style={{ fontWeight: 600, fontSize: 13 }}>Quick Guide</span>
+              <button className="sw-icon-btn" onClick={() => setShowGuide(false)} style={{ width: 24, height: 24 }}>
+                x
+              </button>
+            </div>
+            <GuideTab />
           </div>
-          <GuideTab />
         </div>
       )}
 
-      {/* Tab content */}
-      {activeTab === 'dashboard' && (
-        <DashboardTab
-          showIntegrationCallout={showIntegrationCallout}
-          runningCounts={runningCounts}
-          builtInAgents={BUILT_IN_AGENTS}
-          selectedAgentType={selectedAgentType}
-          agentTerminals={agentTerminals}
-          agentTerminalsLoading={agentTerminalsLoading}
-          sessionTasks={sessionTasks}
-          sessionTasksLoading={sessionTasksLoading}
+      {/* Floor (main 3-pane view) */}
+      {activeTab === 'floor' && (
+        <MissionControlTab
           tasks={tasks}
           tasksLoading={tasksLoading}
-          tasksDisplayCount={tasksDisplayCount}
-          icons={icons}
-          isLightTheme={isLightTheme}
-          onAgentClick={handleAgentClick}
-          onCloseAgentTerminals={handleCloseAgentTerminals}
-          onOpenTerminalFile={handleOpenTerminalFile}
-          onNavigateToSettings={() => setActiveTab('settings')}
-          onRefreshTasks={fetchTasks}
-          onLoadMoreTasks={handleLoadMoreTasks}
+          terminals={allTerminals}
+          onDispatch={handleDispatchSwarm}
         />
       )}
 
-      {activeTab === 'workspace' && (
-        <WorkspaceTab
+      {/* Bench (2-column work queue) */}
+      {activeTab === 'bench' && (
+        <BenchTab
           todoFiles={todoFiles}
           unifiedTasks={unifiedTasks}
           todoLoading={todoLoading}
@@ -689,52 +679,57 @@ export default function App() {
         />
       )}
 
-      {activeTab === 'settings' && (
-        <SettingsTab
-          settings={settings}
-          swarmStatus={swarmStatus}
-          skillsStatus={skillsStatus}
-          builtInAgents={BUILT_IN_AGENTS}
-          defaultAgent={defaultAgent}
-          secondaryAgent={secondaryAgent}
-          installedAgents={installedAgents}
-          agentModels={agentModels}
-          icons={icons}
-          isLightTheme={isLightTheme}
-          swarmInstalling={swarmInstalling}
-          commandPackInstalling={commandPackInstalling}
-          prewarmEnabled={prewarmEnabled}
-          prewarmLoaded={prewarmLoaded}
-          prewarmPools={prewarmPools}
-          workspaceConfig={workspaceConfig}
-          workspaceConfigLoaded={workspaceConfigLoaded}
-          workspaceConfigExists={workspaceConfigExists}
-          userConfigExists={userConfigExists}
-          availableSources={availableSources}
-          isAddingAlias={isAddingAlias}
-          newAliasName={newAliasName}
-          newAliasAgent={newAliasAgent}
-          newAliasFlags={newAliasFlags}
-          aliasError={aliasError}
-          onSaveSettings={saveSettings}
-          onInstallSwarmAgent={handleInstallSwarmAgent}
-          onInstallCommandPack={handleInstallCommandPack}
-          onSetDefaultAgent={handleSetDefaultAgent}
-          onSetSecondaryAgent={handleSetSecondaryAgent}
-          onTogglePrewarm={togglePrewarm}
-          onUpdateTaskSources={handleUpdateTaskSources}
-          onAddAliasClick={handleAddAliasClick}
-          onCancelAddAlias={handleCancelAddAlias}
-          onSaveAlias={handleSaveAlias}
-          onRemoveAlias={handleRemoveAlias}
-          onAliasNameChange={handleAliasNameChange}
-          onAliasAgentChange={setNewAliasAgent}
-          onAliasFlagsChange={setNewAliasFlags}
-          onInitWorkspaceConfig={handleInitWorkspaceConfig}
-          onSaveWorkspaceConfig={handleSaveWorkspaceConfig}
-          onConnectLinear={handleConnectLinear}
-          onConnectGitHub={handleConnectGitHub}
-        />
+      {/* Panel (settings - legacy scroll layout) */}
+      {activeTab === 'panel' && (
+        <div className="sw-legacy-scroll">
+          <div className="sw-legacy-inner">
+            <SettingsTab
+              settings={settings}
+              swarmStatus={swarmStatus}
+              skillsStatus={skillsStatus}
+              builtInAgents={BUILT_IN_AGENTS}
+              defaultAgent={defaultAgent}
+              secondaryAgent={secondaryAgent}
+              installedAgents={installedAgents}
+              agentModels={agentModels}
+              icons={icons}
+              isLightTheme={isLightTheme}
+              swarmInstalling={swarmInstalling}
+              commandPackInstalling={commandPackInstalling}
+              prewarmEnabled={prewarmEnabled}
+              prewarmLoaded={prewarmLoaded}
+              prewarmPools={prewarmPools}
+              workspaceConfig={workspaceConfig}
+              workspaceConfigLoaded={workspaceConfigLoaded}
+              workspaceConfigExists={workspaceConfigExists}
+              userConfigExists={userConfigExists}
+              availableSources={availableSources}
+              isAddingAlias={isAddingAlias}
+              newAliasName={newAliasName}
+              newAliasAgent={newAliasAgent}
+              newAliasFlags={newAliasFlags}
+              aliasError={aliasError}
+              onSaveSettings={saveSettings}
+              onInstallSwarmAgent={handleInstallSwarmAgent}
+              onInstallCommandPack={handleInstallCommandPack}
+              onSetDefaultAgent={handleSetDefaultAgent}
+              onSetSecondaryAgent={handleSetSecondaryAgent}
+              onTogglePrewarm={togglePrewarm}
+              onUpdateTaskSources={handleUpdateTaskSources}
+              onAddAliasClick={handleAddAliasClick}
+              onCancelAddAlias={handleCancelAddAlias}
+              onSaveAlias={handleSaveAlias}
+              onRemoveAlias={handleRemoveAlias}
+              onAliasNameChange={handleAliasNameChange}
+              onAliasAgentChange={setNewAliasAgent}
+              onAliasFlagsChange={setNewAliasFlags}
+              onInitWorkspaceConfig={handleInitWorkspaceConfig}
+              onSaveWorkspaceConfig={handleSaveWorkspaceConfig}
+              onConnectLinear={handleConnectLinear}
+              onConnectGitHub={handleConnectGitHub}
+            />
+          </div>
+        </div>
       )}
 
       {showLinearAuth && (
@@ -753,22 +748,10 @@ export default function App() {
         />
       )}
 
-      {/* Footer */}
-      <footer className="pt-6 mt-8 border-t border-[var(--border)]">
-        <div className="flex items-center justify-between text-xs text-[var(--muted-foreground)]">
-          <span>From <a href="https://swarmify.co" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--foreground)] transition-colors">Swarmify</a></span>
-          <div className="flex items-center gap-4">
-            <a
-              href="https://github.com/muqsitnawaz/swarmify"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:text-[var(--foreground)] transition-colors"
-            >
-              GitHub
-            </a>
-          </div>
-        </div>
-      </footer>
+      <StatusBar
+        activeSwarmCount={activeSwarms.length}
+        runningAgentCount={totalRunning}
+      />
     </div>
   )
 }
