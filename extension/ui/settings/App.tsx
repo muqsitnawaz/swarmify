@@ -37,7 +37,7 @@ import type { TabKey } from './components/mission-control'
 // Tab components (legacy, for Bench and Panel)
 import { WorkspaceTab } from './components/tabs/WorkspaceTab'
 import { BenchTab } from './components/bench'
-import { SettingsTab } from './components/tabs/SettingsTab'
+import { PanelTab } from './components/panel'
 import { GuideTab } from './components/tabs/GuideTab'
 import { ApiKeyDialog } from './components/common/OAuthDialog'
 
@@ -679,57 +679,53 @@ export default function App() {
         />
       )}
 
-      {/* Panel (settings - legacy scroll layout) */}
+      {/* Panel (settings - 2-column sidebar layout) */}
       {activeTab === 'panel' && (
-        <div className="sw-legacy-scroll">
-          <div className="sw-legacy-inner">
-            <SettingsTab
-              settings={settings}
-              swarmStatus={swarmStatus}
-              skillsStatus={skillsStatus}
-              builtInAgents={BUILT_IN_AGENTS}
-              defaultAgent={defaultAgent}
-              secondaryAgent={secondaryAgent}
-              installedAgents={installedAgents}
-              agentModels={agentModels}
-              icons={icons}
-              isLightTheme={isLightTheme}
-              swarmInstalling={swarmInstalling}
-              commandPackInstalling={commandPackInstalling}
-              prewarmEnabled={prewarmEnabled}
-              prewarmLoaded={prewarmLoaded}
-              prewarmPools={prewarmPools}
-              workspaceConfig={workspaceConfig}
-              workspaceConfigLoaded={workspaceConfigLoaded}
-              workspaceConfigExists={workspaceConfigExists}
-              userConfigExists={userConfigExists}
-              availableSources={availableSources}
-              isAddingAlias={isAddingAlias}
-              newAliasName={newAliasName}
-              newAliasAgent={newAliasAgent}
-              newAliasFlags={newAliasFlags}
-              aliasError={aliasError}
-              onSaveSettings={saveSettings}
-              onInstallSwarmAgent={handleInstallSwarmAgent}
-              onInstallCommandPack={handleInstallCommandPack}
-              onSetDefaultAgent={handleSetDefaultAgent}
-              onSetSecondaryAgent={handleSetSecondaryAgent}
-              onTogglePrewarm={togglePrewarm}
-              onUpdateTaskSources={handleUpdateTaskSources}
-              onAddAliasClick={handleAddAliasClick}
-              onCancelAddAlias={handleCancelAddAlias}
-              onSaveAlias={handleSaveAlias}
-              onRemoveAlias={handleRemoveAlias}
-              onAliasNameChange={handleAliasNameChange}
-              onAliasAgentChange={setNewAliasAgent}
-              onAliasFlagsChange={setNewAliasFlags}
-              onInitWorkspaceConfig={handleInitWorkspaceConfig}
-              onSaveWorkspaceConfig={handleSaveWorkspaceConfig}
-              onConnectLinear={handleConnectLinear}
-              onConnectGitHub={handleConnectGitHub}
-            />
-          </div>
-        </div>
+        <PanelTab
+          settings={settings}
+          swarmStatus={swarmStatus}
+          skillsStatus={skillsStatus}
+          builtInAgents={BUILT_IN_AGENTS}
+          defaultAgent={defaultAgent}
+          secondaryAgent={secondaryAgent}
+          installedAgents={installedAgents}
+          agentModels={agentModels}
+          icons={icons}
+          isLightTheme={isLightTheme}
+          swarmInstalling={swarmInstalling}
+          commandPackInstalling={commandPackInstalling}
+          prewarmEnabled={prewarmEnabled}
+          prewarmLoaded={prewarmLoaded}
+          prewarmPools={prewarmPools}
+          workspaceConfig={workspaceConfig}
+          workspaceConfigLoaded={workspaceConfigLoaded}
+          workspaceConfigExists={workspaceConfigExists}
+          userConfigExists={userConfigExists}
+          availableSources={availableSources}
+          isAddingAlias={isAddingAlias}
+          newAliasName={newAliasName}
+          newAliasAgent={newAliasAgent}
+          newAliasFlags={newAliasFlags}
+          aliasError={aliasError}
+          onSaveSettings={saveSettings}
+          onInstallSwarmAgent={handleInstallSwarmAgent}
+          onInstallCommandPack={handleInstallCommandPack}
+          onSetDefaultAgent={handleSetDefaultAgent}
+          onSetSecondaryAgent={handleSetSecondaryAgent}
+          onTogglePrewarm={togglePrewarm}
+          onUpdateTaskSources={handleUpdateTaskSources}
+          onAddAliasClick={handleAddAliasClick}
+          onCancelAddAlias={handleCancelAddAlias}
+          onSaveAlias={handleSaveAlias}
+          onRemoveAlias={handleRemoveAlias}
+          onAliasNameChange={handleAliasNameChange}
+          onAliasAgentChange={setNewAliasAgent}
+          onAliasFlagsChange={setNewAliasFlags}
+          onInitWorkspaceConfig={handleInitWorkspaceConfig}
+          onSaveWorkspaceConfig={handleSaveWorkspaceConfig}
+          onConnectLinear={handleConnectLinear}
+          onConnectGitHub={handleConnectGitHub}
+        />
       )}
 
       {showLinearAuth && (
