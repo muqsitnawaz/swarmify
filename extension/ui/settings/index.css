@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./components/mission-control/design-system.css";
 
 :root {
   /* Light mode palette with coral accent from logo */
@@ -37,21 +38,38 @@
   }
 }
 
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
   font-size: 13px;
   margin: 0;
-  padding: 32px 24px;
+  padding: 0;
   -webkit-font-smoothing: antialiased;
-  display: flex;
-  justify-content: center;
 }
 
 #root {
   width: 100%;
-  max-width: 640px;
+  height: 100%;
+}
+
+/* Legacy tab content (Workspace, Settings) — keep centered max-width layout for now */
+.sw-legacy-scroll {
+  height: 100%;
+  overflow-y: auto;
+  display: flex;
+  justify-content: center;
+  padding: 24px 20px 40px;
+}
+
+.sw-legacy-inner {
+  width: 100%;
+  max-width: 720px;
 }
 
 .todo-md {

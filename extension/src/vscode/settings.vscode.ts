@@ -823,6 +823,44 @@ export function openPanel(context: vscode.ExtensionContext): void {
           await openFileOrDiffInEditor(message.path);
         }
         break;
+      case 'fetchAllTerminals': {
+        const allWs = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        const allTypes = ['claude', 'codex', 'gemini', 'opencode', 'cursor'];
+        const allTerminalDetails = [] as Awaited<ReturnType<typeof terminals.getTerminalsByAgentType>>;
+        for (const t of allTypes) {
+          const details = await terminals.getTerminalsByAgentType(t, allWs);
+          allTerminalDetails.push(...details);
+        }
+        settingsPanel?.webview.postMessage({
+          type: 'allTerminalsData',
+          terminals: allTerminalDetails,
+        });
+        break;
+      }
+      case 'focusTerminal': {
+        const entry = terminals.getById(message.terminalId);
+        entry?.terminal.show(false);
+        break;
+      }
+      case 'executeCommand':
+        if (message.command && typeof message.command === 'string') {
+          await vscode.commands.executeCommand(message.command);
+        }
+        break;
+      case 'retrySwarm':
+      case 'killSwarm':
+      case 'clearCompletedSwarms':
+        vscode.window.showInformationMessage(
+          message.type === 'retrySwarm'
+            ? 'Retry swarm is coming soon. Dispatch a new one via /swarm for now.'
+            : message.type === 'killSwarm'
+              ? 'Killing swarms from the dashboard is coming soon. Use the agents-mcp Stop tool.'
+              : 'Clearing completed swarms will prune ~/.agents/swarm/agents — coming soon.'
+        );
+        break;
+      case 'dispatchSwarm':
+        await vscode.commands.executeCommand('agents.newTask');
+        break;
       case 'dismissTask':
         if (message.taskId) {
           const currentDismissed = context.globalState.get<string[]>('agents.dismissedTaskIds', []);
