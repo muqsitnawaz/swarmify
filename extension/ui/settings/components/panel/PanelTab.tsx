@@ -594,6 +594,26 @@ export function PanelTab({
                 ))}
               </div>
             )}
+            <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--ds-border-subtle)' }}>
+              <div className="sw-section-label" style={{ marginBottom: 8 }}>Context Bus</div>
+              <WorkspaceConfigSection
+                workspaceConfig={workspaceConfig}
+                workspaceConfigLoaded={workspaceConfigLoaded}
+                workspaceConfigExists={workspaceConfigExists}
+                emptyMessage={
+                  userConfigExists
+                    ? 'No workspace .agents config. Using ~/.agents defaults.'
+                    : 'No .agents config. Initialize to set up context file symlinks.'
+                }
+                emptySecondaryMessage={
+                  userConfigExists
+                    ? 'Initialize a workspace config to override user defaults.'
+                    : undefined
+                }
+                onInitWorkspaceConfig={onInitWorkspaceConfig}
+                onSaveWorkspaceConfig={onSaveWorkspaceConfig}
+              />
+            </div>
           </section>
 
           <section className="sw-panel-section">
