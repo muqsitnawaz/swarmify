@@ -2,6 +2,7 @@
 @import "tailwindcss";
 @import "./components/mission-control/design-system.css";
 @import "./components/bench/bench.css";
+@import "./components/panel/panel.css";
 
 :root {
   /* Light mode palette with coral accent from logo */
