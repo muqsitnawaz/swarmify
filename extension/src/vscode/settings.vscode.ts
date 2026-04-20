@@ -869,6 +869,11 @@ export function openPanel(context: vscode.ExtensionContext): void {
           }
         }
         break;
+      case 'openExternal':
+        if (message.url) {
+          vscode.env.openExternal(vscode.Uri.parse(message.url));
+        }
+        break;
     }
   }, undefined, context.subscriptions);
 
