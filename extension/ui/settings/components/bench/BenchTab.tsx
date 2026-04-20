@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react'
 import { Icon } from '../mission-control/icons'
+import { postMessage } from '../../hooks'
 import { TaskCard } from './TaskCard'
 import { TaskDetail } from './TaskDetail'
 import type { FlatTask } from './TaskCard'
@@ -156,7 +157,7 @@ export function BenchTab(props: BenchTabProps) {
   }
 
   const handleOpenExternal = (url: string) => {
-    window.open(url, '_blank')
+    postMessage({ type: 'openExternal', url })
   }
 
   const isLoading = todoLoading || unifiedTasksLoading

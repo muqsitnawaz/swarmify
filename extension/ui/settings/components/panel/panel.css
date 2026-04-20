@@ -9,13 +9,13 @@
 
 .sw-panel-grid {
   display: grid;
-  gap: 16px;
-  margin-bottom: 16px;
+  gap: 14px;
+  margin-bottom: 14px;
 }
 
 .sw-panel-grid-top {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  align-items: start;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  align-items: stretch;
 }
 
 .sw-panel-grid-main {
@@ -24,11 +24,16 @@
 }
 
 .sw-panel-grid-bottom {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   align-items: start;
 }
 
-.sw-panel-summary-stack,
+.sw-panel-summary-stack {
+  display: grid;
+  gap: 16px;
+  grid-template-rows: auto 1fr;
+}
+
 .sw-panel-column,
 .sw-panel-dials {
   display: grid;
@@ -37,6 +42,7 @@
 
 .sw-panel-dials {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: stretch;
 }
 
 .sw-panel-readouts {
@@ -166,6 +172,102 @@
 .sw-agent-dial-stop-label {
   display: block;
   transform: translateY(1px);
+}
+
+/* Dial info deck -- WinAMP / GarageBand style */
+.sw-dial-deck {
+  width: 100%;
+  background: var(--ds-bg-recessed);
+  border: 1px solid var(--ds-border-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-inset);
+  padding: 8px 10px;
+  display: grid;
+  gap: 5px;
+  margin-top: 2px;
+}
+
+.sw-dial-deck-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.sw-dial-deck-label {
+  font-family: "Geist Mono", monospace;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--ds-text-dim);
+  flex-shrink: 0;
+}
+
+.sw-dial-deck-value {
+  font-family: "Geist Mono", monospace;
+  font-size: 10.5px;
+  color: var(--ds-text-muted);
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sw-dial-deck-value.glow {
+  color: var(--led-running);
+  text-shadow: 0 0 6px var(--led-running-glow);
+}
+
+.sw-dial-deck-meters {
+  display: flex;
+  gap: 14px;
+  padding-top: 6px;
+  border-top: 1px solid var(--ds-border-subtle);
+  margin-top: 2px;
+}
+
+.sw-dial-deck-meter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+
+/* VU meter -- horizontal segmented bar */
+.sw-vu-bar {
+  display: flex;
+  gap: 1.5px;
+  height: 10px;
+  align-items: flex-end;
+  flex: 1;
+}
+
+.sw-vu-seg {
+  flex: 1;
+  height: 100%;
+  border-radius: 1px;
+  transition: background .15s, box-shadow .15s;
+}
+
+.sw-vu-seg.off {
+  background: var(--ds-border);
+  opacity: 0.4;
+}
+
+.sw-vu-seg.green {
+  background: var(--led-running);
+  box-shadow: 0 0 4px var(--led-running-glow);
+}
+
+.sw-vu-seg.amber {
+  background: var(--led-pending);
+  box-shadow: 0 0 4px var(--led-pending-glow);
+}
+
+.sw-vu-seg.red {
+  background: var(--led-failed);
+  box-shadow: 0 0 4px var(--led-failed-glow);
 }
 
 .sw-agent-dial-readout {

@@ -331,6 +331,13 @@ export function PanelTab({
             value={primaryKey}
             options={dialOptions}
             onChange={(key) => onSetDefaultAgent(AGENT_KEY_TO_TITLE[key] || 'CC')}
+            shortcut="Cmd+Shift+A"
+            meta={{
+              model: (agentModels[primaryKey] || [])[0] || 'auto',
+              running: (runningCounts as Record<string, number>)[primaryKey] ?? 0,
+              skillsInstalled: primaryKey !== 'opencode' ? getSkillSummary(primaryKey as any).installed : undefined,
+              skillsTotal: primaryKey !== 'opencode' ? getSkillSummary(primaryKey as any).total : undefined,
+            }}
           />
           <AgentDial
             title="Secondary Agent"
@@ -342,6 +349,13 @@ export function PanelTab({
             }))}
             onChange={(key) => {
               if (key !== primaryKey) onSetSecondaryAgent(AGENT_KEY_TO_TITLE[key] || 'CX')
+            }}
+            shortcut="Cmd+Shift+B"
+            meta={{
+              model: (agentModels[secondaryKey] || [])[0] || 'auto',
+              running: (runningCounts as Record<string, number>)[secondaryKey] ?? 0,
+              skillsInstalled: secondaryKey !== 'opencode' ? getSkillSummary(secondaryKey as any).installed : undefined,
+              skillsTotal: secondaryKey !== 'opencode' ? getSkillSummary(secondaryKey as any).total : undefined,
             }}
           />
         </div>
@@ -743,26 +757,6 @@ export function PanelTab({
           </div>
         </section>
 
-        <section className="sw-panel-section">
-          <div className="sw-panel-section-head">Context Bus</div>
-          <WorkspaceConfigSection
-            workspaceConfig={workspaceConfig}
-            workspaceConfigLoaded={workspaceConfigLoaded}
-            workspaceConfigExists={workspaceConfigExists}
-            emptyMessage={
-              userConfigExists
-                ? 'No workspace .agents config found. Using ~/.agents defaults.'
-                : 'No .agents config found. Initialize to configure context file symlinks.'
-            }
-            emptySecondaryMessage={
-              userConfigExists
-                ? 'Initialize a workspace config to override user defaults here.'
-                : undefined
-            }
-            onInitWorkspaceConfig={onInitWorkspaceConfig}
-            onSaveWorkspaceConfig={onSaveWorkspaceConfig}
-          />
-        </section>
       </div>
     </div>
   )

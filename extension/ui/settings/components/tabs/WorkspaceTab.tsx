@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react'
 import { ChevronDown, ChevronRight, RefreshCw, ExternalLink, X, FileText } from 'lucide-react'
+import { postMessage } from '../../hooks'
 import { Button } from '../ui/button'
 import { Checkbox } from '../ui/checkbox'
 import { SectionHeader, WorkspaceConfigSection } from '../common'
@@ -393,7 +394,7 @@ export function WorkspaceTab(props: WorkspaceTabProps) {
                 className="inline-flex items-center gap-1.5 text-xs text-[var(--muted-foreground)] mt-1 hover:text-[var(--foreground)] transition-colors"
                 onClick={(e) => {
                   e.preventDefault()
-                  window.open(`https://github.com/${githubRepo}`, '_blank')
+                  postMessage({ type: 'openExternal', url: `https://github.com/${githubRepo}` })
                 }}
               >
                 <img src={icons.github} alt="GitHub" className="w-3.5 h-3.5" />
