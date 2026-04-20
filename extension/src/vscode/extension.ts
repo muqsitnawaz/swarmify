@@ -1843,17 +1843,22 @@ async function goToTerminal(context: vscode.ExtensionContext) {
   const items: TerminalQuickPickItem[] = [];
   const previewPromises: Array<{ itemIndex: number; entry: terminals.EditorTerminal; promise: Promise<{ firstUserMessage?: string; lastUserMessage?: string; messageCount: number } | null> }> = [];
 
+  const display = getDisplayPrefs(context);
+  const extensionPath = context.extensionPath;
+
   for (const entry of allEntries) {
     if (!entry.agentConfig) continue;
 
-    const expandedName = getExpandedAgentName(entry.agentConfig.prefix);
+    const prefix = entry.agentConfig.prefix;
+    const agentName = display.showFullAgentNames ? getExpandedAgentName(prefix) : prefix;
     const effectiveTitle = entry.label || entry.autoLabel || 'Untitled';
     const sessionSuffix = entry.sessionId ? ` (${entry.sessionId})` : '';
     const itemIndex = items.length;
 
     items.push({
-      label: `${expandedName} - ${effectiveTitle}${sessionSuffix}`,
+      label: `${agentName} - ${effectiveTitle}${sessionSuffix}`,
       description: '',
+      iconPath: buildIconPath(prefix, extensionPath) ?? undefined,
       terminal: entry.terminal
     });
 
@@ -1882,9 +1887,10 @@ async function goToTerminal(context: vscode.ExtensionContext) {
         const generatedTitle = extractFirstNWords(info.firstUserMessage, 5);
         if (generatedTitle) {
           terminals.setAutoLabel(entry.terminal, generatedTitle);
-          const expandedName = getExpandedAgentName(entry.agentConfig?.prefix || '');
+          const prefix = entry.agentConfig?.prefix || '';
+          const agentName = display.showFullAgentNames ? getExpandedAgentName(prefix) : prefix;
           const sessionSuffix = entry.sessionId ? ` (${entry.sessionId})` : '';
-          items[idx].label = `${expandedName} - ${generatedTitle}${sessionSuffix}`;
+          items[idx].label = `${agentName} - ${generatedTitle}${sessionSuffix}`;
         }
       }
 
