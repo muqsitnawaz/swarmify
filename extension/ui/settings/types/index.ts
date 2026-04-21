@@ -117,7 +117,14 @@ export interface UnifiedTask {
     labels?: string[]
     assignee?: string
     state?: string
+    createdAt?: string
   }
+}
+
+export interface CycleInfo {
+  name: string
+  startsAt: string
+  endsAt: string
 }
 
 // Settings types

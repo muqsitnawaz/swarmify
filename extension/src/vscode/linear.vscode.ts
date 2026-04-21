@@ -3,7 +3,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs';
 import * as path from 'path';
-import { UnifiedTask, linearToUnifiedTask } from '../core/tasks';
+import { UnifiedTask, CycleInfo, linearToUnifiedTask } from '../core/tasks';
 
 const execFileAsync = promisify(execFile);
 
@@ -26,16 +26,28 @@ export async function isLinearAvailable(_context: vscode.ExtensionContext): Prom
   }
 }
 
-export async function fetchLinearTasks(context: vscode.ExtensionContext): Promise<UnifiedTask[]> {
-  if (!(await isLinearAvailable(context))) return [];
+export interface LinearFetchResult {
+  tasks: UnifiedTask[];
+  cycleInfo: CycleInfo | null;
+}
+
+export async function fetchLinearTasks(context: vscode.ExtensionContext): Promise<LinearFetchResult> {
+  if (!(await isLinearAvailable(context))) return { tasks: [], cycleInfo: null };
 
   try {
     const { stdout } = await execFileAsync(LINEAR_SCRIPT, ['tasks', '--json'], {
       timeout: 15000,
     });
 
-    const issues: any[] = JSON.parse(stdout);
-    return issues.map(issue => linearToUnifiedTask({
+    const data = JSON.parse(stdout);
+    const issues: any[] = data.issues || [];
+    const cycle = data.cycle || null;
+
+    const cycleInfo: CycleInfo | null = cycle && cycle.startsAt && cycle.endsAt
+      ? { name: cycle.name, startsAt: cycle.startsAt, endsAt: cycle.endsAt }
+      : null;
+
+    const tasks = issues.map(issue => linearToUnifiedTask({
       id: issue.identifier,
       identifier: issue.identifier,
       title: issue.title,
@@ -45,10 +57,13 @@ export async function fetchLinearTasks(context: vscode.ExtensionContext): Promis
       url: issue.url || `https://linear.app/issue/${issue.identifier}`,
       labels: issue.labels,
       assignee: issue.assignee,
+      createdAt: issue.createdAt,
     }));
+
+    return { tasks, cycleInfo };
   } catch (err) {
     console.error('[LINEAR] Error fetching tasks:', err);
-    return [];
+    return { tasks: [], cycleInfo: null };
   }
 }
 

@@ -3,10 +3,12 @@ import { Icon } from '../mission-control/icons'
 import { postMessage } from '../../hooks'
 import { TaskCard } from './TaskCard'
 import { TaskDetail } from './TaskDetail'
+import { CycleBar } from './CycleBar'
 import type { FlatTask } from './TaskCard'
 import type {
   AgentSettings,
   ContextFile,
+  CycleInfo,
   IconConfig,
   TaskSource,
   TodoFile,
@@ -24,6 +26,7 @@ const SOURCE_ORDER: Record<TaskSource, number> = {
 interface BenchTabProps {
   todoFiles: TodoFile[]
   unifiedTasks: UnifiedTask[]
+  cycleInfo: CycleInfo | null
   todoLoading: boolean
   unifiedTasksLoading: boolean
   expandedSources: Set<TaskSource>
@@ -65,6 +68,7 @@ export function BenchTab(props: BenchTabProps) {
   const {
     todoFiles,
     unifiedTasks,
+    cycleInfo,
     todoLoading,
     unifiedTasksLoading,
     settings,
@@ -190,6 +194,8 @@ export function BenchTab(props: BenchTabProps) {
           </button>
         </div>
 
+        {cycleInfo && <CycleBar cycleInfo={cycleInfo} />}
+
         <div className="sw-bench-list-body">
           {isLoading && filteredTasks.length === 0 ? (
             <div className="sw-empty">
@@ -220,6 +226,7 @@ export function BenchTab(props: BenchTabProps) {
         {selectedTask ? (
           <TaskDetail
             task={selectedTask}
+            cycleInfo={cycleInfo}
             onDispatch={handleDispatch}
             onDismiss={handleDismiss}
             onOpenExternal={handleOpenExternal}
