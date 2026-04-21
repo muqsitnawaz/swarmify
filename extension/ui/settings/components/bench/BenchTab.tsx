@@ -17,10 +17,9 @@ import type {
   WorkspaceConfig,
 } from '../../types'
 
-const SOURCE_ORDER: Record<TaskSource, number> = {
-  markdown: 0,
-  linear: 1,
-  github: 2,
+const SOURCE_ORDER: Record<string, number> = {
+  linear: 0,
+  github: 1,
 }
 
 interface BenchTabProps {
@@ -59,7 +58,6 @@ interface BenchTabProps {
 }
 
 const SOURCE_FILTERS: Array<{ key: TaskSource; label: string; cls: string }> = [
-  { key: 'markdown', label: 'MD', cls: 'md' },
   { key: 'linear', label: 'LN', cls: 'ln' },
   { key: 'github', label: 'GH', cls: 'gh' },
 ]
@@ -80,7 +78,7 @@ export function BenchTab(props: BenchTabProps) {
 
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [activeFilters, setActiveFilters] = useState<Set<TaskSource>>(
-    new Set(['markdown', 'linear', 'github'])
+    new Set(['linear', 'github'])
   )
 
   const toggleFilter = (source: TaskSource) => {
@@ -94,26 +92,6 @@ export function BenchTab(props: BenchTabProps) {
 
   const flatTasks = useMemo<FlatTask[]>(() => {
     const items: FlatTask[] = []
-
-    if (settings?.taskSources?.markdown ?? true) {
-      todoFiles.forEach(file => {
-        file.items.forEach((item, idx) => {
-          if (item.completed) return
-          const id = `md:${file.path}:${item.line}:${idx}`
-          if (dismissedTaskIds.has(id)) return
-          items.push({
-            id,
-            source: 'markdown',
-            title: item.title || 'Untitled',
-            description: item.description,
-            status: 'todo',
-            todoItem: item,
-            filePath: file.path,
-            metadata: { file: file.path, line: item.line },
-          })
-        })
-      })
-    }
 
     const filteredUnified = unifiedTasks.filter(task => {
       if (dismissedTaskIds.has(task.id)) return false
