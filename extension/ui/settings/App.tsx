@@ -651,6 +651,8 @@ export default function App() {
           tasks={tasks}
           tasksLoading={tasksLoading}
           terminals={allTerminals}
+          unifiedTasks={unifiedTasks}
+          unifiedTasksLoading={unifiedTasksLoading}
           onDispatch={handleDispatchSwarm}
         />
       )}
