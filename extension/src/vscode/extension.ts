@@ -1911,7 +1911,7 @@ async function goToTerminal(context: vscode.ExtensionContext) {
   }
 }
 
-async function openSingleAgentWithQueue(
+export async function openSingleAgentWithQueue(
   context: vscode.ExtensionContext,
   agentConfig: Omit<AgentConfig, 'count'>,
   messages: string[]
