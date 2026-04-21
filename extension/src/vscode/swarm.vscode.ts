@@ -1003,11 +1003,32 @@ async function fetchCloudRuns(): Promise<TaskSummary[]> {
   const data = (await resp.json()) as { executions?: CloudExecution[] };
   if (!data.executions?.length) return [];
 
+  // Fetch live output for running agents in parallel
+  const runningIds = data.executions
+    .filter((ex) => mapCloudStatus(ex.status) === 'running')
+    .map((ex) => ex.execution_id);
+  const liveOutputs = new Map<string, { output: string | null; current_activity: string | null }>();
+  if (runningIds.length > 0) {
+    const results = await Promise.allSettled(
+      runningIds.map((id) => fetchCloudRunOutput(id, token).then((r) => [id, r] as const))
+    );
+    for (const r of results) {
+      if (r.status === 'fulfilled' && r.value[1]) {
+        liveOutputs.set(r.value[0], r.value[1]);
+      }
+    }
+  }
+
   return data.executions.map((ex) => {
     const status = mapCloudStatus(ex.status);
     const startedAt = ex.created_at;
     const completedAt = status !== 'running' ? ex.updated_at : null;
     const duration = calcDuration(new Date(startedAt), completedAt ? new Date(completedAt) : null, status);
+
+    // Use live output for running agents, stored summary for completed
+    const live = liveOutputs.get(ex.execution_id);
+    const summary = ex.summary || live?.output || null;
+    const activity = live?.current_activity || null;
 
     const detail: AgentDetail = {
       agent_id: ex.execution_id,
@@ -1023,13 +1044,13 @@ async function fetchCloudRuns(): Promise<TaskSummary[]> {
       files_modified: [],
       files_deleted: [],
       bash_commands: [],
-      last_messages: ex.summary ? [ex.summary] : [],
+      last_messages: activity ? [activity] : summary ? [summary] : [],
       cloud_session_id: ex.execution_id,
       cloud_provider: 'rush',
       pr_url: ex.pr_url || null,
       repo_owner: ex.repo_owner || null,
       repo_name: ex.repo_name || null,
-      cloud_summary: ex.summary || null,
+      cloud_summary: summary,
       branch: ex.branch || null,
       linear_issue: ex.linear_issue || null,
     };
