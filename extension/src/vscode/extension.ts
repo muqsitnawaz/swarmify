@@ -1338,7 +1338,7 @@ async function openSingleAgent(
 
 async function newTaskWithContext(context: vscode.ExtensionContext) {
   const agentSettings = settings.getSettings(context);
-  const tasks = await tasksImport.fetchAllTasks(context, agentSettings.taskSources);
+  const { tasks } = await tasksImport.fetchAllTasks(context, agentSettings.taskSources);
 
   let message: string;
 

@@ -407,3 +407,189 @@
 .sw-source-chip.active.gh {
   background: #238636;
 }
+
+/* Cycle countdown bar */
+.sw-cycle-bar {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--ds-border);
+  background: var(--ds-bg-panel);
+  flex-shrink: 0;
+}
+
+.sw-cycle-bar-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-family: "Geist Mono", monospace;
+}
+
+.sw-cycle-bar-name {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--ds-text-dim);
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sw-cycle-bar-remaining {
+  font-size: 10px;
+  color: var(--ds-text);
+  flex-shrink: 0;
+  letter-spacing: .03em;
+}
+
+.sw-cycle-bar-gauge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sw-cycle-bar-gauge .sw-gauge {
+  flex: 1;
+}
+
+.sw-cycle-bar-pct {
+  font-family: "Geist Mono", monospace;
+  font-size: 10px;
+  color: var(--ds-text-faint);
+  flex-shrink: 0;
+  min-width: 28px;
+  text-align: right;
+}
+
+/* Mini calendar in task detail */
+.sw-task-calendar {
+  background: var(--ds-bg-panel);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-emboss);
+  padding: 12px 14px;
+  margin-bottom: 16px;
+}
+
+.sw-calendar-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.sw-calendar-month {
+  font-family: "Geist Mono", monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ds-text);
+  letter-spacing: .04em;
+}
+
+.sw-calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0;
+  margin-bottom: 2px;
+}
+
+.sw-calendar-weekdays span {
+  font-family: "Geist Mono", monospace;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--ds-text-faint);
+  text-align: center;
+  padding: 2px 0;
+  letter-spacing: .08em;
+}
+
+.sw-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+}
+
+.sw-calendar-day {
+  font-family: "Geist Mono", monospace;
+  font-size: 10px;
+  text-align: center;
+  padding: 4px 2px;
+  border-radius: 3px;
+  color: var(--ds-text-muted);
+}
+
+.sw-calendar-day.other-month {
+  color: var(--ds-text-faint);
+  opacity: 0.35;
+}
+
+.sw-calendar-day.in-cycle {
+  background: var(--status-running-bg);
+}
+
+.sw-calendar-day.today {
+  outline: 1.5px solid var(--ds-text-dim);
+  outline-offset: -1px;
+  font-weight: 700;
+  color: var(--ds-text);
+}
+
+.sw-calendar-day.created {
+  background: var(--brand-100);
+  color: var(--brand-700);
+  font-weight: 700;
+  box-shadow: 0 0 0 1px var(--brand);
+}
+
+.theme-dark .sw-calendar-day.in-cycle {
+  background: rgba(34,197,94,0.08);
+}
+
+.theme-dark .sw-calendar-day.created {
+  background: rgba(242,109,91,0.15);
+  color: var(--brand);
+}
+
+.sw-calendar-legend {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+  font-family: "Geist Mono", monospace;
+  font-size: 9px;
+  color: var(--ds-text-dim);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.sw-calendar-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sw-calendar-legend-item.created::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--brand);
+}
+
+.sw-calendar-legend-item.cycle::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--status-running-bg);
+  border: 1px solid var(--led-running);
+}
+
+.sw-calendar-legend-item.today-legend::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  outline: 1.5px solid var(--ds-text-dim);
+}

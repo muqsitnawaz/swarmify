@@ -657,13 +657,12 @@ export function openPanel(context: vscode.ExtensionContext): void {
         break;
       case 'fetchUnifiedTasks':
         try {
-          // Fetch tasks from all enabled sources (markdown, linear, github)
           const currentSettings = getSettings(context);
-          const unifiedTasks = await fetchAllTasks(context, currentSettings.taskSources);
-          settingsPanel?.webview.postMessage({ type: 'unifiedTasksData', tasks: unifiedTasks });
+          const { tasks: unifiedTasks, cycleInfo } = await fetchAllTasks(context, currentSettings.taskSources);
+          settingsPanel?.webview.postMessage({ type: 'unifiedTasksData', tasks: unifiedTasks, cycleInfo });
         } catch (err) {
           console.error('[SETTINGS] Error fetching unified tasks:', err);
-          settingsPanel?.webview.postMessage({ type: 'unifiedTasksData', tasks: [] });
+          settingsPanel?.webview.postMessage({ type: 'unifiedTasksData', tasks: [], cycleInfo: null });
         }
         break;
       case 'saveLinearApiKey': {

@@ -26,6 +26,14 @@ export interface TaskMetadata {
   labels?: string[];             // Labels/tags
   assignee?: string;             // Assigned user
   state?: string;                // Raw state from source
+  createdAt?: string;            // ISO 8601 creation timestamp
+}
+
+// Active cycle info from Linear
+export interface CycleInfo {
+  name: string;
+  startsAt: string;              // ISO 8601
+  endsAt: string;                // ISO 8601
 }
 
 // Source badge display info
@@ -69,6 +77,7 @@ export function linearToUnifiedTask(issue: {
   url: string;
   labels?: { nodes: { name: string }[] };
   assignee?: { name: string };
+  createdAt?: string;
 }): UnifiedTask {
   // Map Linear priority (0=none, 1=urgent, 2=high, 3=medium, 4=low)
   const priorityMap: Record<number, UnifiedTask['priority']> = {
@@ -99,7 +108,8 @@ export function linearToUnifiedTask(issue: {
       url: issue.url,
       labels: issue.labels?.nodes.map(l => l.name),
       assignee: issue.assignee?.name,
-      state: issue.state.name
+      state: issue.state.name,
+      createdAt: issue.createdAt,
     }
   };
 }
@@ -114,6 +124,7 @@ export function githubToUnifiedTask(issue: {
   html_url: string;
   labels?: { name: string }[];
   assignee?: { login: string };
+  createdAt?: string;
 }): UnifiedTask {
   return {
     id: `github:${issue.id}`,
@@ -126,7 +137,8 @@ export function githubToUnifiedTask(issue: {
       url: issue.html_url,
       labels: issue.labels?.map(l => l.name),
       assignee: issue.assignee?.login,
-      state: issue.state
+      state: issue.state,
+      createdAt: issue.createdAt,
     }
   };
 }
