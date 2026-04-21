@@ -1,7 +1,6 @@
 import React from 'react'
 import { RefreshCw, Cpu, Radio, Waypoints } from 'lucide-react'
 import { Input } from '../ui/input'
-import { WorkspaceConfigSection } from '../common'
 import { AgentDial } from './AgentDial'
 import { StatusBank } from './StatusBank'
 import type { StatusBankItem, StatusBankLevel } from './StatusBank'
@@ -14,8 +13,6 @@ import type {
   SwarmAgentType,
   PromptPackAgentType,
   IconConfig,
-  WorkspaceConfig,
-  PrewarmPool,
   QuickLaunchSlot,
   RunningCounts,
 } from '../../types'
@@ -44,14 +41,6 @@ export interface PanelTabProps {
   isLightTheme: boolean
   swarmInstalling: boolean
   commandPackInstalling: boolean
-  prewarmEnabled: boolean
-  prewarmLoaded: boolean
-  prewarmPools: PrewarmPool[]
-  workspaceConfig: WorkspaceConfig | null
-  workspaceConfigLoaded: boolean
-  workspaceConfigExists: boolean
-  userConfigExists: boolean
-  availableSources: { markdown: boolean; linear: boolean; github: boolean }
   isAddingAlias: boolean
   newAliasName: string
   newAliasAgent: string
@@ -62,8 +51,6 @@ export interface PanelTabProps {
   onInstallCommandPack: () => void
   onSetDefaultAgent: (agentTitle: string) => void
   onSetSecondaryAgent: (agentTitle: string) => void
-  onTogglePrewarm: () => void
-  onUpdateTaskSources: (sources: Partial<AgentSettings['taskSources']>) => void
   onAddAliasClick: () => void
   onCancelAddAlias: () => void
   onSaveAlias: () => void
@@ -71,10 +58,6 @@ export interface PanelTabProps {
   onAliasNameChange: (value: string) => void
   onAliasAgentChange: (value: string) => void
   onAliasFlagsChange: (value: string) => void
-  onInitWorkspaceConfig: () => void
-  onSaveWorkspaceConfig: (config: WorkspaceConfig) => void
-  onConnectLinear: () => void
-  onConnectGitHub: () => void
 }
 
 function statusLevel(value: boolean): StatusBankLevel {
@@ -100,14 +83,6 @@ export function PanelTab({
   isLightTheme,
   swarmInstalling,
   commandPackInstalling,
-  prewarmEnabled,
-  prewarmLoaded,
-  prewarmPools,
-  workspaceConfig,
-  workspaceConfigLoaded,
-  workspaceConfigExists,
-  userConfigExists,
-  availableSources,
   isAddingAlias,
   newAliasName,
   newAliasAgent,
@@ -118,8 +93,6 @@ export function PanelTab({
   onInstallCommandPack,
   onSetDefaultAgent,
   onSetSecondaryAgent,
-  onTogglePrewarm,
-  onUpdateTaskSources,
   onAddAliasClick,
   onCancelAddAlias,
   onSaveAlias,
@@ -127,10 +100,6 @@ export function PanelTab({
   onAliasNameChange,
   onAliasAgentChange,
   onAliasFlagsChange,
-  onInitWorkspaceConfig,
-  onSaveWorkspaceConfig,
-  onConnectLinear,
-  onConnectGitHub,
 }: PanelTabProps) {
   const skillCommands = skillsStatus?.commands ?? []
   const display = settings.display
@@ -526,107 +495,6 @@ export function PanelTab({
                   </div>
                 )
               })}
-            </div>
-          </section>
-
-          <section className="sw-panel-section">
-            <div className="sw-panel-section-head">Routing</div>
-            <div className="sw-panel-toggle-list">
-              <label className="sw-panel-rocker">
-                <span>Markdown Tasks</span>
-                <button
-                  type="button"
-                  className="toggle-switch"
-                  data-state={settings.taskSources?.markdown ? 'on' : 'off'}
-                  role="switch"
-                  aria-checked={settings.taskSources?.markdown}
-                  onClick={() => onUpdateTaskSources({ markdown: !(settings.taskSources?.markdown ?? true) })}
-                >
-                  <span className="toggle-knob" />
-                </button>
-              </label>
-              <label className="sw-panel-rocker">
-                <span>Linear Feed</span>
-                {availableSources.linear ? (
-                  <button
-                    type="button"
-                    className="toggle-switch"
-                    data-state={settings.taskSources?.linear ? 'on' : 'off'}
-                    role="switch"
-                    aria-checked={settings.taskSources?.linear}
-                    onClick={() => onUpdateTaskSources({ linear: !(settings.taskSources?.linear ?? false) })}
-                  >
-                    <span className="toggle-knob" />
-                  </button>
-                ) : (
-                  <button type="button" className="sw-btn secondary sm" onClick={onConnectLinear}>
-                    Connect
-                  </button>
-                )}
-              </label>
-              <label className="sw-panel-rocker">
-                <span>GitHub Feed</span>
-                {availableSources.github ? (
-                  <button
-                    type="button"
-                    className="toggle-switch"
-                    data-state={settings.taskSources?.github ? 'on' : 'off'}
-                    role="switch"
-                    aria-checked={settings.taskSources?.github}
-                    onClick={() => onUpdateTaskSources({ github: !(settings.taskSources?.github ?? false) })}
-                  >
-                    <span className="toggle-knob" />
-                  </button>
-                ) : (
-                  <button type="button" className="sw-btn secondary sm" onClick={onConnectGitHub}>
-                    Connect
-                  </button>
-                )}
-              </label>
-              <label className="sw-panel-rocker">
-                <span>Warm Pool</span>
-                <button
-                  type="button"
-                  className="toggle-switch"
-                  data-state={prewarmEnabled ? 'on' : 'off'}
-                  role="switch"
-                  aria-checked={prewarmEnabled}
-                  onClick={onTogglePrewarm}
-                >
-                  <span className="toggle-knob" />
-                </button>
-              </label>
-            </div>
-            {prewarmEnabled && prewarmLoaded && prewarmPools.length > 0 && (
-              <div className="sw-panel-pool-list">
-                {prewarmPools.map(pool => (
-                  <div key={pool.agentType} className="sw-panel-pool-row">
-                    <span className="sw-section-label">{pool.agentType}</span>
-                    <div className="sw-readout">{pool.available} ready</div>
-                    <div className="sw-readout">{pool.pending} warming</div>
-                  </div>
-                ))}
-              </div>
-            )}
-            <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--ds-border-subtle)' }}>
-              <div className="sw-section-label" style={{ marginBottom: 8 }}>Context Bus</div>
-              <WorkspaceConfigSection
-                workspaceConfig={workspaceConfig}
-                workspaceConfigLoaded={workspaceConfigLoaded}
-                workspaceConfigExists={workspaceConfigExists}
-                emptyMessage={
-                  userConfigExists
-                    ? 'No workspace .agents config. Using ~/.agents defaults.'
-                    : 'No .agents config. Initialize to set up context file symlinks.'
-                }
-                emptySecondaryMessage={
-                  userConfigExists
-                    ? 'Initialize a workspace config to override user defaults.'
-                    : undefined
-                }
-                onInitWorkspaceConfig={onInitWorkspaceConfig}
-                onSaveWorkspaceConfig={onSaveWorkspaceConfig}
-              />
             </div>
           </section>
 

@@ -699,14 +699,6 @@ export default function App() {
           isLightTheme={isLightTheme}
           swarmInstalling={swarmInstalling}
           commandPackInstalling={commandPackInstalling}
-          prewarmEnabled={prewarmEnabled}
-          prewarmLoaded={prewarmLoaded}
-          prewarmPools={prewarmPools}
-          workspaceConfig={workspaceConfig}
-          workspaceConfigLoaded={workspaceConfigLoaded}
-          workspaceConfigExists={workspaceConfigExists}
-          userConfigExists={userConfigExists}
-          availableSources={availableSources}
           isAddingAlias={isAddingAlias}
           newAliasName={newAliasName}
           newAliasAgent={newAliasAgent}
@@ -717,8 +709,6 @@ export default function App() {
           onInstallCommandPack={handleInstallCommandPack}
           onSetDefaultAgent={handleSetDefaultAgent}
           onSetSecondaryAgent={handleSetSecondaryAgent}
-          onTogglePrewarm={togglePrewarm}
-          onUpdateTaskSources={handleUpdateTaskSources}
           onAddAliasClick={handleAddAliasClick}
           onCancelAddAlias={handleCancelAddAlias}
           onSaveAlias={handleSaveAlias}
@@ -726,10 +716,6 @@ export default function App() {
           onAliasNameChange={handleAliasNameChange}
           onAliasAgentChange={setNewAliasAgent}
           onAliasFlagsChange={setNewAliasFlags}
-          onInitWorkspaceConfig={handleInitWorkspaceConfig}
-          onSaveWorkspaceConfig={handleSaveWorkspaceConfig}
-          onConnectLinear={handleConnectLinear}
-          onConnectGitHub={handleConnectGitHub}
         />
       )}
 
