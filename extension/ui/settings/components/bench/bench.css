@@ -292,8 +292,9 @@
   font-size: 12.5px;
   line-height: 1.6;
   color: var(--ds-text-muted);
-  white-space: pre-wrap;
   word-break: break-word;
+  max-height: 500px;
+  overflow-y: auto;
 }
 
 /* Activity / comments section */

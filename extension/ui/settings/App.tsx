@@ -314,6 +314,16 @@ export default function App() {
     }
   }, [activeTab, tasksLoaded, tasksLoading, todoLoaded, todoLoading, unifiedTasksLoaded, unifiedTasksLoading, contextLoaded, contextLoading])
 
+  // Poll for tasks and terminals when floor tab is active
+  useEffect(() => {
+    if (activeTab !== 'floor' || !tasksLoaded) return
+    const interval = setInterval(() => {
+      vscode.postMessage({ type: 'fetchTasks' })
+      vscode.postMessage({ type: 'fetchAllTerminals' })
+    }, 10_000)
+    return () => clearInterval(interval)
+  }, [activeTab, tasksLoaded])
+
   useEffect(() => {
     if (!selectedAgentType || agentTerminals.length === 0) return
     for (const terminal of agentTerminals) {

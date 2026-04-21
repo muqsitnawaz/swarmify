@@ -570,6 +570,8 @@ export interface AgentDetail {
   repo_owner?: string | null;
   repo_name?: string | null;
   cloud_summary?: string | null;
+  branch?: string | null;
+  linear_issue?: string | null;
 }
 
 export interface TaskSummary {
@@ -1028,6 +1030,8 @@ async function fetchCloudRuns(): Promise<TaskSummary[]> {
       repo_owner: ex.repo_owner || null,
       repo_name: ex.repo_name || null,
       cloud_summary: ex.summary || null,
+      branch: ex.branch || null,
+      linear_issue: ex.linear_issue || null,
     };
 
     const taskName = `cloud:${ex.execution_id}`;
@@ -1056,6 +1060,7 @@ interface CloudExecution {
   branch: string | null;
   pr_url: string | null;
   summary: string | null;
+  linear_issue: string | null;
   created_at: string;
   updated_at: string;
 }
