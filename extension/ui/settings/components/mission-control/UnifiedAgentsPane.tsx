@@ -73,7 +73,10 @@ function buildUnifiedList(terminals: TerminalInfo[], tasks: TaskSummary[]): Unif
       const lastMsg = a.last_messages?.[a.last_messages.length - 1]
       const lastCmd = a.bash_commands?.[a.bash_commands.length - 1]
       const lastFile = a.files_modified?.[a.files_modified.length - 1]
-      const activity = lastCmd ? `$ ${lastCmd}` : lastFile ? `Editing ${lastFile}` : lastMsg ? lastMsg.slice(0, 120) : a.prompt?.slice(0, 120) || 'working...'
+      const promptFirstLine = a.prompt?.split('\n')[0]?.slice(0, 120) || ''
+      const activity = isCloud
+        ? (promptFirstLine || 'cloud run')
+        : (lastCmd ? `$ ${lastCmd}` : lastFile ? `Editing ${lastFile}` : lastMsg ? lastMsg.slice(0, 120) : promptFirstLine || 'working...')
       items.push({
         kind: isCloud ? 'cloud' : 'headless',
         id: `agent-${a.agent_id}`,
@@ -499,20 +502,69 @@ function TeamDetail({ swarm, onRetry, onKill }: { swarm: TaskSummary; onRetry: (
 
 function AgentDetailView({ agent, swarm, onRetry, onKill }: { agent: AgentDetail; swarm?: TaskSummary; onRetry: (n: string) => void; onKill: (n: string) => void }) {
   const isActive = agent.status === 'running'
+  const isCloud = agent.mode === 'cloud' || !!agent.cloud_provider
   const allFiles = [...(agent.files_created || []), ...(agent.files_modified || [])]
+
+  if (isCloud) {
+    return (
+      <div className="sw-unified-detail-content">
+        {agent.repo_owner && agent.repo_name && (
+          <div className="sw-unified-detail-section">
+            <div className="sw-section-label">Repository</div>
+            <div className="mono" style={{ fontSize: 12 }}>{agent.repo_owner}/{agent.repo_name}</div>
+          </div>
+        )}
+        {agent.prompt && (
+          <div className="sw-unified-detail-section">
+            <div className="sw-section-label">Task</div>
+            <div className="sw-unified-detail-text sw-cloud-prompt">{agent.prompt}</div>
+          </div>
+        )}
+        {agent.cloud_summary && (
+          <div className="sw-unified-detail-section">
+            <div className="sw-section-label">Output</div>
+            <pre className="sw-cloud-log mono">{agent.cloud_summary}</pre>
+          </div>
+        )}
+        {!agent.cloud_summary && isActive && (
+          <div className="sw-unified-detail-section">
+            <div className="sw-section-label">Output</div>
+            <div className="sw-unified-detail-text" style={{ color: 'var(--ds-text-dim)', fontStyle: 'italic' }}>
+              Agent is running, no output yet...
+            </div>
+          </div>
+        )}
+        {swarm && (
+          <div className="sw-unified-detail-actions">
+            <button className="sw-btn secondary sm" onClick={() => onRetry(swarm.task_name)}>
+              <Icon name="refresh" size={11} />
+              Retry
+            </button>
+            {isActive && (
+              <button className="sw-btn danger sm" onClick={() => onKill(swarm.task_name)}>
+                <Icon name="x" size={11} />
+                Stop
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="sw-unified-detail-content">
       {agent.prompt && (
         <div className="sw-unified-detail-section">
           <div className="sw-section-label">Task</div>
-          <div className="sw-unified-detail-text">{agent.prompt.slice(0, 300)}</div>
+          <div className="sw-unified-detail-text">{agent.prompt.slice(0, 500)}</div>
         </div>
       )}
       {agent.last_messages?.length > 0 && (
         <div className="sw-unified-detail-section">
           <div className="sw-section-label">Latest</div>
           <div className="sw-unified-detail-text mono" style={{ fontSize: 11 }}>
-            {agent.last_messages[agent.last_messages.length - 1]?.slice(0, 200)}
+            {agent.last_messages[agent.last_messages.length - 1]?.slice(0, 300)}
           </div>
         </div>
       )}
