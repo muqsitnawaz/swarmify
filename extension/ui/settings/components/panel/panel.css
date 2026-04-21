@@ -270,6 +270,7 @@
 }
 
 .sw-agent-dial-readout {
+  margin-top: 6px;
   min-width: 210px;
   display: flex;
   justify-content: space-between;
