@@ -210,11 +210,15 @@ export interface AgentDetail {
   completed_at: string | null
   prompt: string
   cwd: string | null
+  mode?: string
   files_created: string[]
   files_modified: string[]
   files_deleted: string[]
   bash_commands: string[]
   last_messages: string[]
+  cloud_session_id?: string | null
+  cloud_provider?: string | null
+  pr_url?: string | null
 }
 
 export type ApprovalStatus = 'pending' | 'approved' | 'running' | 'complete' | 'rejected'
