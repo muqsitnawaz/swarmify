@@ -5,14 +5,12 @@ import type { FlatTask } from './TaskCard'
 import type { CycleInfo, TaskSource, TodoItem } from '../../types'
 import { renderTodoDescription } from '../../utils/markdown'
 
-const SOURCE_CLASS: Record<TaskSource, string> = {
-  markdown: 'md',
+const SOURCE_CLASS: Record<string, string> = {
   linear: 'ln',
   github: 'gh',
 }
 
-const SOURCE_LABEL: Record<TaskSource, string> = {
-  markdown: 'MD',
+const SOURCE_LABEL: Record<string, string> = {
   linear: 'LN',
   github: 'GH',
 }
@@ -38,8 +36,6 @@ export function TaskDetail({ task, cycleInfo, onDispatch, onDismiss, onOpenExter
   const assignee = task.metadata?.assignee?.trim()
   const labels = task.metadata?.labels?.filter(Boolean) ?? []
   const url = task.metadata?.url
-  const filePath = task.metadata?.file
-  const line = task.metadata?.line
   const state = task.metadata?.state
 
   return (
@@ -62,68 +58,63 @@ export function TaskDetail({ task, cycleInfo, onDispatch, onDismiss, onOpenExter
       </div>
 
       <div className="sw-bench-detail-body">
-        <div className="sw-detail-meta">
-          <div className="sw-detail-meta-row">
-            <span className="sw-detail-meta-label">Status</span>
-            <span className="sw-detail-meta-value">
-              <span className={`sw-status-led ${task.status}`}>
-                {STATUS_DISPLAY[task.status] || task.status}
+        <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+          <div className="sw-detail-meta" style={{ flex: '0 0 auto', minWidth: 180 }}>
+            <div className="sw-detail-meta-row">
+              <span className="sw-detail-meta-label">Status</span>
+              <span className="sw-detail-meta-value">
+                <span className={`sw-status-led ${task.status}`}>
+                  {STATUS_DISPLAY[task.status] || task.status}
+                </span>
               </span>
-            </span>
+            </div>
+
+            {identifier && (
+              <div className="sw-detail-meta-row">
+                <span className="sw-detail-meta-label">ID</span>
+                <span className="sw-detail-meta-value" style={{ fontFamily: '"Geist Mono", monospace', fontSize: 11 }}>
+                  {identifier}
+                </span>
+              </div>
+            )}
+
+            {labels.length > 0 && (
+              <div className="sw-detail-meta-row">
+                <span className="sw-detail-meta-label">Labels</span>
+                <span className="sw-detail-meta-value" style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                  {labels.map(label => (
+                    <span key={label} className="sw-label-chip">{label}</span>
+                  ))}
+                </span>
+              </div>
+            )}
+
+            {state && state !== task.status && (
+              <div className="sw-detail-meta-row">
+                <span className="sw-detail-meta-label">State</span>
+                <span className="sw-detail-meta-value" style={{ fontFamily: '"Geist Mono", monospace', fontSize: 11 }}>
+                  {state}
+                </span>
+              </div>
+            )}
+
+            {assignee && (
+              <div className="sw-detail-meta-row">
+                <span className="sw-detail-meta-label">Assignee</span>
+                <span className="sw-detail-meta-value">{assignee}</span>
+              </div>
+            )}
           </div>
 
-          {assignee && (
-            <div className="sw-detail-meta-row">
-              <span className="sw-detail-meta-label">Assignee</span>
-              <span className="sw-detail-meta-value">{assignee}</span>
-            </div>
-          )}
-
-          {identifier && (
-            <div className="sw-detail-meta-row">
-              <span className="sw-detail-meta-label">ID</span>
-              <span className="sw-detail-meta-value" style={{ fontFamily: '"Geist Mono", monospace', fontSize: 11 }}>
-                {identifier}
-              </span>
-            </div>
-          )}
-
-          {labels.length > 0 && (
-            <div className="sw-detail-meta-row">
-              <span className="sw-detail-meta-label">Labels</span>
-              <span className="sw-detail-meta-value" style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                {labels.map(label => (
-                  <span key={label} className="sw-label-chip">{label}</span>
-                ))}
-              </span>
-            </div>
-          )}
-
-          {state && state !== task.status && (
-            <div className="sw-detail-meta-row">
-              <span className="sw-detail-meta-label">State</span>
-              <span className="sw-detail-meta-value" style={{ fontFamily: '"Geist Mono", monospace', fontSize: 11 }}>
-                {state}
-              </span>
-            </div>
-          )}
-
-          {filePath && (
-            <div className="sw-detail-meta-row">
-              <span className="sw-detail-meta-label">File</span>
-              <span className="sw-detail-meta-value" style={{ fontFamily: '"Geist Mono", monospace', fontSize: 11 }}>
-                {filePath}{line != null ? `:${line}` : ''}
-              </span>
+          {task.metadata?.createdAt && (
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <TaskCalendar
+                createdAt={task.metadata.createdAt}
+                cycleInfo={task.source === 'linear' ? cycleInfo : null}
+              />
             </div>
           )}
         </div>
-
-        {task.metadata?.createdAt && (
-          <TaskCalendar
-            createdAt={task.metadata.createdAt}
-            cycleInfo={task.source === 'linear' ? cycleInfo : null}
-          />
-        )}
 
         {task.description && (
           <>
