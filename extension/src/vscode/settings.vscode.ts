@@ -891,6 +891,23 @@ export function openPanel(context: vscode.ExtensionContext): void {
           });
         }
         await pushSubscribedAgentTerminalUpdate(wsPath);
+
+        // Push updated allTerminals and tasks for Floor tab
+        if (settingsPanel) {
+          const allTypes = ['claude', 'codex', 'gemini', 'opencode', 'cursor'];
+          const allTerminalDetails: Awaited<ReturnType<typeof terminals.getTerminalsByAgentType>> = [];
+          for (const t of allTypes) {
+            const details = await terminals.getTerminalsByAgentType(t, wsPath);
+            allTerminalDetails.push(...details);
+          }
+          settingsPanel?.webview.postMessage({
+            type: 'allTerminalsData',
+            terminals: allTerminalDetails,
+          });
+
+          const updatedTasks = await swarm.fetchTasks(undefined, wsPath);
+          settingsPanel?.webview.postMessage({ type: 'tasksData', tasks: updatedTasks });
+        }
       }
     }, 500);
   };

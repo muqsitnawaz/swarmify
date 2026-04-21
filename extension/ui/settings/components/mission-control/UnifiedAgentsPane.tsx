@@ -4,6 +4,7 @@ import { AgentAvatar, agentShortChunk } from './AgentAvatar'
 import { Icon } from './icons'
 import { relTime, taskNameToTitle, swarmOverallStatus, shortDuration } from './types'
 import { postMessage } from '../../hooks'
+import { renderTodoDescription } from '../../utils/markdown'
 
 const NEW_AGENT_MENU: Array<{ agent: string; name: string; keys: string[] }> = [
   { agent: 'claude', name: 'Claude', keys: ['Cmd', 'Shift', 'A'] },
@@ -13,7 +14,7 @@ const NEW_AGENT_MENU: Array<{ agent: string; name: string; keys: string[] }> = [
   { agent: 'cursor', name: 'Cursor', keys: ['Cmd', 'Shift', 'U'] },
 ]
 
-type FilterTab = 'all' | 'terminal' | 'headless' | 'cloud' | 'team'
+type FilterTab = 'all' | 'terminal' | 'cloud' | 'team'
 
 interface UnifiedAgent {
   kind: 'terminal' | 'headless' | 'cloud' | 'team'
@@ -139,8 +140,11 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, onDispatch }
   const items = useMemo(() => buildUnifiedList(terminals, tasks), [terminals, tasks])
 
   const counts = useMemo(() => {
-    const c = { terminal: 0, headless: 0, cloud: 0, team: 0 }
-    for (const item of items) c[item.kind]++
+    const c = { terminal: 0, cloud: 0, team: 0 }
+    for (const item of items) {
+      if (item.kind === 'headless') c.terminal++
+      else c[item.kind]++
+    }
     return c
   }, [items])
 
@@ -148,6 +152,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, onDispatch }
 
   const filtered = useMemo(() => {
     if (filter === 'all') return items
+    if (filter === 'terminal') return items.filter((i) => i.kind === 'terminal' || i.kind === 'headless')
     return items.filter((i) => i.kind === filter)
   }, [items, filter])
 
@@ -180,7 +185,6 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, onDispatch }
   const filterTabs: Array<{ key: FilterTab; label: string; count: number }> = [
     { key: 'all', label: 'All', count: items.length },
     { key: 'terminal', label: 'Terminal', count: counts.terminal },
-    { key: 'headless', label: 'Headless', count: counts.headless },
     { key: 'cloud', label: 'Cloud', count: counts.cloud },
     { key: 'team', label: 'Teams', count: counts.team },
   ]
@@ -412,10 +416,12 @@ function DetailPane({ item, onFocusTerminal, onRetry, onKill }: {
         <div className="sw-spacer" />
         {item.swarm && (
           <>
-            <button className="sw-btn secondary sm" onClick={() => onRetry(item.swarm!.task_name)}>
-              <Icon name="refresh" size={11} />
-              Retry
-            </button>
+            {!isActive && (
+              <button className="sw-btn secondary sm" onClick={() => onRetry(item.swarm!.task_name)}>
+                <Icon name="refresh" size={11} />
+                Retry
+              </button>
+            )}
             {isActive && (
               <button className="sw-btn danger sm" onClick={() => onKill(item.swarm!.task_name)}>
                 <Icon name="x" size={11} />
@@ -553,38 +559,67 @@ function AgentDetailView({ agent, swarm, onRetry, onKill }: { agent: AgentDetail
   if (isCloud) {
     return (
       <div className="sw-unified-detail-content">
-        {agent.repo_owner && agent.repo_name && (
-          <div className="sw-unified-detail-section">
-            <div className="sw-section-label">Repository</div>
-            <div className="mono" style={{ fontSize: 12 }}>{agent.repo_owner}/{agent.repo_name}</div>
-          </div>
-        )}
+        <div className="sw-cloud-meta">
+          {agent.repo_owner && agent.repo_name && (
+            <div className="sw-cloud-meta-row">
+              <span className="sw-cloud-meta-label">Repository</span>
+              <a href={`https://github.com/${agent.repo_owner}/${agent.repo_name}`} target="_blank" rel="noreferrer" className="mono" style={{ fontSize: 12, color: 'var(--brand)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                {agent.repo_owner}/{agent.repo_name}
+                <Icon name="external" size={10} />
+              </a>
+            </div>
+          )}
+          {agent.branch && (
+            <div className="sw-cloud-meta-row">
+              <span className="sw-cloud-meta-label">Branch</span>
+              <span className="mono" style={{ fontSize: 12 }}>{agent.branch}</span>
+            </div>
+          )}
+          {agent.pr_url && (
+            <div className="sw-cloud-meta-row">
+              <span className="sw-cloud-meta-label">Pull request</span>
+              <a href={agent.pr_url} target="_blank" rel="noreferrer" className="mono" style={{ fontSize: 12, color: 'var(--brand)' }}>
+                {agent.pr_url.match(/\/pull\/(\d+)/)?.[0] || 'View PR'}
+              </a>
+            </div>
+          )}
+          {agent.linear_issue && (
+            <div className="sw-cloud-meta-row">
+              <span className="sw-cloud-meta-label">Linear</span>
+              <a href={`https://linear.app/issue/${agent.linear_issue}`} target="_blank" rel="noreferrer" className="mono" style={{ fontSize: 12, color: 'var(--brand)' }}>
+                {agent.linear_issue}
+              </a>
+            </div>
+          )}
+        </div>
         {agent.prompt && (
           <div className="sw-unified-detail-section">
             <div className="sw-section-label">Task</div>
-            <div className="sw-unified-detail-text sw-cloud-prompt">{agent.prompt}</div>
+            <div className="sw-cloud-prompt">{renderTodoDescription(agent.prompt, false)}</div>
           </div>
         )}
         {agent.cloud_summary && (
           <div className="sw-unified-detail-section">
             <div className="sw-section-label">Output</div>
-            <pre className="sw-cloud-log mono">{agent.cloud_summary}</pre>
+            <div className="sw-cloud-log">{renderTodoDescription(agent.cloud_summary, false)}</div>
           </div>
         )}
         {!agent.cloud_summary && isActive && (
           <div className="sw-unified-detail-section">
             <div className="sw-section-label">Output</div>
             <div className="sw-unified-detail-text" style={{ color: 'var(--ds-text-dim)', fontStyle: 'italic' }}>
-              Agent is running, no output yet...
+              Running remotely. Output appears when the agent finishes.
             </div>
           </div>
         )}
         {swarm && (
           <div className="sw-unified-detail-actions">
-            <button className="sw-btn secondary sm" onClick={() => onRetry(swarm.task_name)}>
-              <Icon name="refresh" size={11} />
-              Retry
-            </button>
+            {!isActive && (
+              <button className="sw-btn secondary sm" onClick={() => onRetry(swarm.task_name)}>
+                <Icon name="refresh" size={11} />
+                Retry
+              </button>
+            )}
             {isActive && (
               <button className="sw-btn danger sm" onClick={() => onKill(swarm.task_name)}>
                 <Icon name="x" size={11} />
@@ -626,10 +661,12 @@ function AgentDetailView({ agent, swarm, onRetry, onKill }: { agent: AgentDetail
       )}
       {swarm && (
         <div className="sw-unified-detail-actions">
-          <button className="sw-btn secondary sm" onClick={() => onRetry(swarm.task_name)}>
-            <Icon name="refresh" size={11} />
-            Retry
-          </button>
+          {!isActive && (
+            <button className="sw-btn secondary sm" onClick={() => onRetry(swarm.task_name)}>
+              <Icon name="refresh" size={11} />
+              Retry
+            </button>
+          )}
           {isActive && (
             <button className="sw-btn danger sm" onClick={() => onKill(swarm.task_name)}>
               <Icon name="x" size={11} />
