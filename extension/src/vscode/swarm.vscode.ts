@@ -567,6 +567,9 @@ export interface AgentDetail {
   cloud_session_id?: string | null;
   cloud_provider?: string | null;
   pr_url?: string | null;
+  repo_owner?: string | null;
+  repo_name?: string | null;
+  cloud_summary?: string | null;
 }
 
 export interface TaskSummary {
@@ -1011,17 +1014,20 @@ async function fetchCloudRuns(): Promise<TaskSummary[]> {
       duration,
       started_at: startedAt,
       completed_at: completedAt,
-      prompt: ex.prompt?.length > 150 ? ex.prompt.substring(0, 147) + '...' : (ex.prompt || ''),
+      prompt: ex.prompt || '',
       cwd: null,
       mode: 'cloud',
       files_created: [],
       files_modified: [],
       files_deleted: [],
       bash_commands: [],
-      last_messages: ex.summary ? [ex.summary.slice(0, 300)] : [],
+      last_messages: ex.summary ? [ex.summary] : [],
       cloud_session_id: ex.execution_id,
       cloud_provider: 'rush',
       pr_url: ex.pr_url || null,
+      repo_owner: ex.repo_owner || null,
+      repo_name: ex.repo_name || null,
+      cloud_summary: ex.summary || null,
     };
 
     const taskName = `cloud:${ex.execution_id}`;

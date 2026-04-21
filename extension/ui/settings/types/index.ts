@@ -219,6 +219,9 @@ export interface AgentDetail {
   cloud_session_id?: string | null
   cloud_provider?: string | null
   pr_url?: string | null
+  repo_owner?: string | null
+  repo_name?: string | null
+  cloud_summary?: string | null
 }
 
 export type ApprovalStatus = 'pending' | 'approved' | 'running' | 'complete' | 'rejected'
