@@ -146,57 +146,6 @@ function modeLabel(item: UnifiedAgent): string {
   return item.mode || 'edit'
 }
 
-// Gauge SVG arc component
-function GaugeWidget({ value, max, color, label, sub }: { value: number; max: number; color: string; label: string; sub: string }) {
-  const r = 40
-  const circumference = 2 * Math.PI * r
-  const pct = Math.min(value / Math.max(max, 1), 1)
-  const offset = circumference * (1 - pct)
-  return (
-    <div className="sw-gauge-widget">
-      <div className="sw-gauge-svg-wrap">
-        <svg viewBox="0 0 100 100">
-          <circle className="sw-gauge-bg" cx="50" cy="50" r={r} />
-          <circle className="sw-gauge-arc" cx="50" cy="50" r={r}
-            stroke={color}
-            strokeDasharray={circumference}
-            strokeDashoffset={offset} />
-        </svg>
-        <div className="sw-gauge-value">{value}</div>
-      </div>
-      <div className="sw-gauge-label">{label}</div>
-      <div className="sw-gauge-sub">{sub}</div>
-    </div>
-  )
-}
-
-// Throughput counter (FPS-style)
-function ThroughputCounter({ tokensPerSec }: { tokensPerSec: number }) {
-  const sparkData = useMemo(() => {
-    const bars = []
-    for (let i = 0; i < 20; i++) {
-      const base = tokensPerSec * (0.6 + Math.random() * 0.8)
-      bars.push(Math.max(2, Math.min(24, base / 40)))
-    }
-    return bars
-  }, [tokensPerSec])
-
-  return (
-    <div className="sw-throughput">
-      <div className="sw-throughput-sparkline">
-        {sparkData.map((h, i) => (
-          <div key={i} className="sw-spark-bar" style={{ height: h }} />
-        ))}
-      </div>
-      <div className="sw-throughput-value">{tokensPerSec}</div>
-      <div className="sw-throughput-unit">
-        <span className="sw-throughput-label">tok/s</span>
-        <span className="sw-throughput-sub">throughput</span>
-      </div>
-    </div>
-  )
-}
-
 // VU meter segments
 function VuMeter({ value, max }: { value: number; max: number }) {
   const segments = 8
@@ -228,6 +177,7 @@ interface UnifiedAgentsPaneProps {
 
 export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks, unifiedTasksLoading, onDispatch }: UnifiedAgentsPaneProps) {
   const [newMenuOpen, setNewMenuOpen] = useState(false)
+  const [recentOpen, setRecentOpen] = useState(false)
   const newMenuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -262,12 +212,10 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
 
   const totalPRs = useMemo(() => items.filter((i) => i.prUrl).length, [items])
 
-  // Estimated throughput (mock for now -- will be wired to session parsing)
-  const estimatedThroughput = useMemo(() => {
-    const activeCount = activeItems.length
-    if (activeCount === 0) return 0
-    return Math.round(activeCount * 280 + Math.random() * 120)
-  }, [activeItems.length])
+  const backlogRemaining = useMemo(() => {
+    const todoCount = unifiedTasks.filter((t) => t.status === 'todo').length
+    return Math.max(0, todoCount - queueTasks.length)
+  }, [unifiedTasks, queueTasks.length])
 
   const handleNewAgent = (agent: string) => {
     const commands: Record<string, string> = {
@@ -308,21 +256,39 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
       {/* Header */}
       <div className="sw-floor-header">
         <div className="sw-floor-title">Factory Floor</div>
-        <div className="sw-floor-header-right">
-          {activeItems.length > 0 && <ThroughputCounter tokensPerSec={estimatedThroughput} />}
-          <div className="sw-floor-status">
-            System {activeItems.length > 0 ? 'nominal' : 'idle'} -- {activeItems.length} agent{activeItems.length !== 1 ? 's' : ''} online
-          </div>
+        <div className="sw-floor-stat-bar">
+          <span><b>{activeItems.length}</b> running</span>
+          <span className="sw-stat-sep">·</span>
+          <span><b>{queueTasks.length}</b> next up</span>
+          <span className="sw-stat-sep">·</span>
+          <span><b>{totalFiles}</b> files</span>
+          <span className="sw-stat-sep">·</span>
+          <span><b>{totalPRs}</b> PRs</span>
+          {backlogRemaining > 0 && (
+            <>
+              <span className="sw-stat-sep">·</span>
+              <span>{backlogRemaining} more on Bench</span>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Gauges Row */}
-      <div className="sw-gauges-row">
-        <GaugeWidget value={activeItems.length} max={8} color="#F26D5B" label="Agents" sub={`of ${items.length} total`} />
-        <GaugeWidget value={totalFiles} max={20} color="#22C55E" label="Files" sub="changed" />
-        <GaugeWidget value={totalPRs} max={5} color="#3B82F6" label="PRs" sub="open" />
-        <GaugeWidget value={queueTasks.length} max={10} color="#D4A72C" label="Queue" sub="pending" />
-      </div>
+      {/* Next Up -- scheduled / urgent tasks about to run */}
+      {queueTasks.length > 0 && (
+        <div className="sw-queue-section">
+          <div className="sw-section-header-row">
+            <span className="sw-section-label">Next Up</span>
+            <span className="sw-section-count-pill">{queueTasks.length}</span>
+            <span className="sw-section-line" />
+          </div>
+
+          <div className="sw-queue-cards">
+            {queueTasks.map((task) => (
+              <DispatchCard key={task.id} task={task} onDispatch={handleDispatchTask} />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Active Agents */}
       {(activeItems.length > 0 || tasksLoading) && (
@@ -388,38 +354,28 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
         </div>
       )}
 
-      {/* Recent Agents */}
+      {/* Recent Agents -- collapsed by default */}
       {recentItems.length > 0 && (
         <>
-          <div className="sw-section-header-row" style={{ marginTop: 8 }}>
+          <button
+            className="sw-section-header-row sw-section-toggle"
+            onClick={() => setRecentOpen((o) => !o)}
+            aria-expanded={recentOpen}
+          >
+            <Icon name="chevD" size={11} style={{ transform: recentOpen ? undefined : 'rotate(-90deg)', transition: 'transform 120ms ease' }} />
             <span className="sw-section-label">Recent</span>
             <span className="sw-section-count-pill">{recentItems.length}</span>
             <span className="sw-section-line" />
-          </div>
+          </button>
 
-          <div className="sw-agent-strips">
-            {recentItems.slice(0, 5).map((item) => (
-              <AgentStrip key={item.id} item={item} dimmed onFocus={handleFocusTerminal} onRetry={handleRetry} />
-            ))}
-          </div>
+          {recentOpen && (
+            <div className="sw-agent-strips">
+              {recentItems.slice(0, 5).map((item) => (
+                <AgentStrip key={item.id} item={item} dimmed onFocus={handleFocusTerminal} onRetry={handleRetry} />
+              ))}
+            </div>
+          )}
         </>
-      )}
-
-      {/* Dispatch Queue */}
-      {queueTasks.length > 0 && (
-        <div className="sw-queue-section">
-          <div className="sw-section-header-row">
-            <span className="sw-section-label">Dispatch Queue</span>
-            <span className="sw-section-count-pill">{queueTasks.length}</span>
-            <span className="sw-section-line" />
-          </div>
-
-          <div className="sw-queue-cards">
-            {queueTasks.map((task) => (
-              <DispatchCard key={task.id} task={task} onDispatch={handleDispatchTask} />
-            ))}
-          </div>
-        </div>
       )}
     </div>
   )

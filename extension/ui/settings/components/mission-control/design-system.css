@@ -838,6 +838,24 @@
   text-transform: uppercase;
 }
 
+.sw-floor-stat-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ds-text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.sw-floor-stat-bar b {
+  color: var(--ds-text);
+  font-weight: 600;
+}
+
+.sw-stat-sep {
+  color: var(--ds-border-subtle);
+}
+
 /* Throughput counter */
 .sw-throughput {
   display: flex;
@@ -861,6 +879,7 @@
   border-radius: 1px 1px 0 0;
   background: #22C55E;
   opacity: 0.6;
+  transition: height 0.14s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .sw-spark-bar:nth-last-child(-n+5) { opacity: 0.85; }
@@ -992,6 +1011,22 @@
   flex: 1;
   height: 1px;
   background: var(--ds-border-subtle);
+}
+
+.sw-section-toggle {
+  background: none;
+  border: 0;
+  padding: 0;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  margin-top: 8px;
+}
+
+.sw-section-toggle:hover .sw-section-label {
+  color: var(--ds-text);
 }
 
 /* Agent strips */
