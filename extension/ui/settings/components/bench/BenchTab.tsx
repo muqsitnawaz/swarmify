@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { Icon } from '../mission-control/icons'
 import { postMessage } from '../../hooks'
 import { TaskCard } from './TaskCard'
@@ -127,6 +127,12 @@ export function BenchTab(props: BenchTabProps) {
     () => filteredTasks.find(t => t.id === selectedTaskId) ?? null,
     [filteredTasks, selectedTaskId]
   )
+
+  useEffect(() => {
+    if (filteredTasks.length === 0) return
+    if (selectedTaskId && filteredTasks.some(t => t.id === selectedTaskId)) return
+    setSelectedTaskId(filteredTasks[0].id)
+  }, [filteredTasks, selectedTaskId])
 
   const handleDispatch = (task: FlatTask) => {
     const source = unifiedTasks.find(t => t.id === task.id)

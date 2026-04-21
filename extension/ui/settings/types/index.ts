@@ -224,6 +224,11 @@ export interface AgentDetail {
   cloud_summary?: string | null
   branch?: string | null
   linear_issue?: string | null
+  // Factory metadata (Step 2: teams add --task-type flag).
+  // When set, the UI shows a task-type badge and can group DAG waves.
+  task_type?: 'plan' | 'implement' | 'test' | 'review' | 'bugfix' | 'docs' | null
+  name?: string | null
+  after?: string[]
 }
 
 export type ApprovalStatus = 'pending' | 'approved' | 'running' | 'complete' | 'rejected'

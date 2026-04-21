@@ -572,6 +572,10 @@ export interface AgentDetail {
   cloud_summary?: string | null;
   branch?: string | null;
   linear_issue?: string | null;
+  // Factory metadata (propagated from agents-cli meta.json via teams status).
+  task_type?: 'plan' | 'implement' | 'test' | 'review' | 'bugfix' | 'docs' | null;
+  name?: string | null;
+  after?: string[];
 }
 
 export interface TaskSummary {
@@ -927,6 +931,9 @@ export async function fetchTasks(limit?: number, filterCwd?: string): Promise<Ta
         cloud_session_id: meta.cloud_session_id || null,
         cloud_provider: meta.cloud_provider || null,
         pr_url: meta.pr_url || null,
+        task_type: (meta as { task_type?: AgentDetail['task_type'] }).task_type ?? null,
+        name: (meta as { name?: string | null }).name ?? null,
+        after: Array.isArray((meta as { after?: string[] }).after) ? (meta as { after?: string[] }).after : [],
       };
 
       const existing = taskMap.get(meta.task_name) || [];

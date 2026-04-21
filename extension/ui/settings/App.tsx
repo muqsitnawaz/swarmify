@@ -662,6 +662,7 @@ export default function App() {
           unifiedTasks={unifiedTasks}
           unifiedTasksLoading={unifiedTasksLoading}
           onDispatch={handleDispatchSwarm}
+          onNavigate={setActiveTab}
         />
       )}
 
