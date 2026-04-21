@@ -9,6 +9,7 @@ import { AgentManager, checkAllClis, ensureGeminiPlanMode } from './agents.js';
 import { AgentType } from './parsers.js';
 import { handleSpawn, handleStatus, handleStop, handleTasks } from './api.js';
 import { readConfig, type AgentConfig } from './persistence.js';
+import { resolveLedger } from './ledger/index.js';
 import {
   buildVersionNotice,
   detectClientFromName,
@@ -25,6 +26,10 @@ const TOOL_NAMES = {
   status: 'Status',
   stop: 'Stop',
   tasks: 'Tasks',
+  ledgerRead: 'LedgerRead',
+  ledgerRecent: 'LedgerRecent',
+  ledgerSearch: 'LedgerSearch',
+  ledgerNote: 'LedgerNote',
 } as const;
 
 export function getParentSessionIdFromEnv(): string | null {
@@ -235,6 +240,72 @@ Returns tasks sorted by most recent activity, with full agent details including:
           required: [],
         },
       },
+      {
+        name: TOOL_NAMES.ledgerRead,
+        description: withVersionNotice(`Read a task's artifacts from the Team Ledger.
+
+The Ledger is a team-scoped durable store where every teammate's diff, test output, notes, session transcript, and filed bugs live under one task_id. Use this to load another teammate's output when you depend on their work (e.g., implementer reads the planner's team.md, tester reads the implementer's diff).
+
+Omit 'kind' to get every artifact for the task, or pass one of: diff, test-output, notes, session, bug.`),
+        inputSchema: {
+          type: 'object',
+          properties: {
+            team_id: { type: 'string', description: 'Team name (same as task_name in Spawn)' },
+            task_id: { type: 'string', description: "Teammate's agent_id (UUID) whose work you want to read" },
+            kind: {
+              type: 'string',
+              enum: ['diff', 'test-output', 'notes', 'session', 'bug'],
+              description: 'Optional artifact kind. Omit for all artifacts.',
+            },
+          },
+          required: ['team_id', 'task_id'],
+        },
+      },
+      {
+        name: TOOL_NAMES.ledgerRecent,
+        description: withVersionNotice(`List the last N completed tasks in the Ledger for a team, newest first.
+
+Use this when you've just started a task and want to catch up on what other teammates have already done.`),
+        inputSchema: {
+          type: 'object',
+          properties: {
+            team_id: { type: 'string', description: 'Team name' },
+            limit: { type: 'number', description: 'How many recent tasks (default 5)' },
+          },
+          required: ['team_id'],
+        },
+      },
+      {
+        name: TOOL_NAMES.ledgerSearch,
+        description: withVersionNotice(`Substring search across the Ledger for a team (sessions, notes, bugs, narrative).
+
+Case-insensitive. Returns hits with file path + line number so you can call LedgerRead for full context.`),
+        inputSchema: {
+          type: 'object',
+          properties: {
+            team_id: { type: 'string' },
+            query: { type: 'string', description: 'Substring to find' },
+            limit: { type: 'number', description: 'Max hits to return (default 50)' },
+          },
+          required: ['team_id', 'query'],
+        },
+      },
+      {
+        name: TOOL_NAMES.ledgerNote,
+        description: withVersionNotice(`Append a timestamped note to your task's notes.md in the Ledger.
+
+Use this to record what you tried, what failed, and why — so later teammates (bugfix, review) don't re-learn the same dead ends.`),
+        inputSchema: {
+          type: 'object',
+          properties: {
+            team_id: { type: 'string' },
+            task_id: { type: 'string', description: 'Your own agent_id' },
+            teammate: { type: 'string', description: 'Your teammate name (for attribution)' },
+            text: { type: 'string', description: 'The note body' },
+          },
+          required: ['team_id', 'task_id', 'teammate', 'text'],
+        },
+      },
     ],
   };
 });
@@ -286,6 +357,38 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     } else if (normalizedName === 'tasks') {
       const limit = args?.limit as number | undefined;
       result = await handleTasks(manager, limit || 10);
+    } else if (normalizedName === 'ledgerread') {
+      if (!args) throw new Error('Missing arguments for LedgerRead');
+      const ledger = resolveLedger();
+      result = await ledger.read(
+        args.team_id as string,
+        args.task_id as string,
+        args.kind as string | undefined
+      );
+    } else if (normalizedName === 'ledgerrecent') {
+      if (!args) throw new Error('Missing arguments for LedgerRecent');
+      const ledger = resolveLedger();
+      const limit = (args.limit as number | undefined) ?? 5;
+      result = await ledger.recent(args.team_id as string, limit);
+    } else if (normalizedName === 'ledgersearch') {
+      if (!args) throw new Error('Missing arguments for LedgerSearch');
+      const ledger = resolveLedger();
+      const limit = (args.limit as number | undefined) ?? 50;
+      result = await ledger.search(
+        args.team_id as string,
+        args.query as string,
+        limit
+      );
+    } else if (normalizedName === 'ledgernote') {
+      if (!args) throw new Error('Missing arguments for LedgerNote');
+      const ledger = resolveLedger();
+      await ledger.note(
+        args.team_id as string,
+        args.task_id as string,
+        args.teammate as string,
+        args.text as string
+      );
+      result = { ok: true };
     } else {
       result = { error: `Unknown tool: ${name}` };
     }

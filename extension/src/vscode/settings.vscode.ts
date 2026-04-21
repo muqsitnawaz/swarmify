@@ -12,7 +12,7 @@ import * as terminals from './terminals.vscode';
 import * as swarm from './swarm.vscode';
 import { discoverTodoFiles, spawnSwarmForTodo } from './todos.vscode';
 import { fetchAllTasks, detectAvailableSources } from './tasks.vscode';
-import { getBuiltInByTitle } from './agents.vscode';
+import { getBuiltInByTitle, configFromDef } from './agents.vscode';
 import { openSingleAgentWithQueue } from './extension';
 import { CLAUDE_TITLE } from '../core/utils';
 import { discoverRecentSessions, getSessionPathBySessionId } from './sessions.vscode';
@@ -710,6 +710,38 @@ export function openPanel(context: vscode.ExtensionContext): void {
       case 'spawnSwarmForTodo':
         await spawnSwarmForTodo(message.item, context);
         break;
+      case 'dispatchTask': {
+        const agentType = typeof message.agentType === 'string' ? message.agentType : 'claude';
+        const target = message.target === 'cloud' ? 'cloud' : 'local';
+        const title = typeof message.title === 'string' ? message.title : '';
+        const description = typeof message.description === 'string' ? message.description : '';
+        const identifier = typeof message.identifier === 'string' ? message.identifier : '';
+        if (!title) {
+          vscode.window.showErrorMessage('Cannot dispatch: task has no title');
+          break;
+        }
+
+        if (target === 'cloud') {
+          vscode.window.showInformationMessage(
+            'Cloud dispatch is coming soon — wiring to the Prix cloud-runs API is not yet complete. Task was not dispatched.'
+          );
+          break;
+        }
+
+        const parts = [title];
+        if (description) parts.push(description);
+        if (identifier) parts.push(`Reference: ${identifier}`);
+        const prompt = parts.join('\n\n');
+
+        const def = getBuiltInByKey(agentType);
+        if (!def) {
+          vscode.window.showErrorMessage(`Unknown agent type: ${agentType}`);
+          break;
+        }
+        const agentConfig = configFromDef(context.extensionPath, def);
+        await openSingleAgentWithQueue(context, agentConfig, [prompt]);
+        break;
+      }
       case 'spawnAgentForTask': {
         const task = message.task as {
           title: string;
@@ -899,6 +931,18 @@ export function openPanel(context: vscode.ExtensionContext): void {
       case 'openExternal':
         if (message.url) {
           vscode.env.openExternal(vscode.Uri.parse(message.url));
+        }
+        break;
+      case 'factoryAnswer':
+        // Forward an intake answer to the oldest input_required teammate in
+        // the given team via `agents factory answer <team> <text>`. Run in a
+        // terminal so output is visible and failures are obvious — matches
+        // the UX of other CLI dispatches from the dashboard.
+        if (typeof message.teamId === 'string' && typeof message.text === 'string' && message.text.trim()) {
+          const term = vscode.window.createTerminal({ name: `Factory answer - ${message.teamId}` });
+          const escaped = message.text.replace(/"/g, '\\"').replace(/\$/g, '\\$');
+          term.sendText(`agents factory answer "${message.teamId}" "${escaped}"`, true);
+          term.show();
         }
         break;
     }
