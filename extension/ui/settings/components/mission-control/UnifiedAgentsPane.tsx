@@ -1,17 +1,16 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import type { TaskSummary, TerminalDetail as TerminalInfo, AgentDetail } from '../../types'
+import type { TaskSummary, TerminalDetail as TerminalInfo, AgentDetail, UnifiedTask } from '../../types'
 import { AgentAvatar, agentShortChunk } from './AgentAvatar'
 import { Icon } from './icons'
 import { relTime, taskNameToTitle, swarmOverallStatus, shortDuration } from './types'
 import { postMessage } from '../../hooks'
-import { renderTodoDescription } from '../../utils/markdown'
 
-const NEW_AGENT_MENU: Array<{ agent: string; name: string; keys: string[] }> = [
-  { agent: 'claude', name: 'Claude', keys: ['Cmd', 'Shift', 'A'] },
-  { agent: 'codex', name: 'Codex', keys: ['Cmd', 'Shift', 'B'] },
-  { agent: 'gemini', name: 'Gemini', keys: ['Cmd', 'Shift', 'X'] },
-  { agent: 'opencode', name: 'OpenCode', keys: ['Cmd', 'Shift', 'M'] },
-  { agent: 'cursor', name: 'Cursor', keys: ['Cmd', 'Shift', 'U'] },
+const NEW_AGENT_MENU: Array<{ agent: string; name: string; abbr: string; keys: string[] }> = [
+  { agent: 'claude', name: 'Claude', abbr: 'CC', keys: ['Cmd', 'Shift', 'A'] },
+  { agent: 'codex', name: 'Codex', abbr: 'CX', keys: ['Cmd', 'Shift', 'B'] },
+  { agent: 'gemini', name: 'Gemini', abbr: 'GX', keys: ['Cmd', 'Shift', 'X'] },
+  { agent: 'opencode', name: 'OpenCode', abbr: 'OC', keys: ['Cmd', 'Shift', 'M'] },
+  { agent: 'cursor', name: 'Cursor', abbr: 'CR', keys: ['Cmd', 'Shift', 'U'] },
 ]
 
 type FilterTab = 'all' | 'terminal' | 'cloud' | 'team'
@@ -32,6 +31,10 @@ interface UnifiedAgent {
   agent?: AgentDetail
   teamAgents?: AgentDetail[]
   status: 'running' | 'completed' | 'failed' | 'stopped' | 'idle'
+  files: string[]
+  toolCalls: number
+  linearIssue?: string | null
+  mode?: string
 }
 
 function buildUnifiedList(terminals: TerminalInfo[], tasks: TaskSummary[]): UnifiedAgent[] {
@@ -40,6 +43,8 @@ function buildUnifiedList(terminals: TerminalInfo[], tasks: TaskSummary[]): Unif
   for (const t of terminals) {
     const chunk = agentShortChunk(t.sessionId) || (t.id ?? '').slice(-8)
     const isActive = t.status === 'running' || !!t.currentActivity
+    const files: string[] = []
+    if (t.recentFiles) files.push(...t.recentFiles.slice(0, 5))
     items.push({
       kind: 'terminal',
       id: `term-${t.id}`,
@@ -51,6 +56,9 @@ function buildUnifiedList(terminals: TerminalInfo[], tasks: TaskSummary[]): Unif
       timestamp: t.lastActivityTimestamp || new Date(t.createdAt).toISOString(),
       terminal: t,
       status: isActive ? 'running' : 'idle',
+      files,
+      toolCalls: t.quickSummary?.toolCalls ?? 0,
+      mode: t.role || 'edit',
     })
   }
 
@@ -62,6 +70,9 @@ function buildUnifiedList(terminals: TerminalInfo[], tasks: TaskSummary[]): Unif
       const status = swarmOverallStatus(task)
       const pr = task.agents.map((a) => a.pr_url).find(Boolean)
       const dur = task.agents.map((a) => a.duration).find(Boolean)
+      const allFiles = task.agents.flatMap((a) => [...(a.files_created || []), ...(a.files_modified || [])]).slice(0, 6)
+      const totalTools = task.agents.reduce((s, a) => s + (a.bash_commands?.length || 0), 0)
+      const linear = task.agents.map((a) => a.linear_issue).find(Boolean)
       items.push({
         kind: 'team',
         id: `team-${task.task_name}`,
@@ -75,17 +86,21 @@ function buildUnifiedList(terminals: TerminalInfo[], tasks: TaskSummary[]): Unif
         swarm: task,
         teamAgents: task.agents,
         status: status === 'merged' ? 'completed' : status === 'running' ? 'running' : status === 'failed' ? 'failed' : 'idle',
+        files: allFiles,
+        toolCalls: totalTools,
+        linearIssue: linear,
       })
     } else if (task.agents.length === 1) {
       const a = task.agents[0]
       const isCloud = a.mode === 'cloud' || !!a.cloud_provider
-      const lastMsg = a.last_messages?.[a.last_messages.length - 1]
       const lastCmd = a.bash_commands?.[a.bash_commands.length - 1]
       const lastFile = a.files_modified?.[a.files_modified.length - 1]
+      const lastMsg = a.last_messages?.[a.last_messages.length - 1]
       const promptFirstLine = a.prompt?.split('\n')[0]?.slice(0, 120) || ''
       const activity = isCloud
         ? (promptFirstLine || 'cloud run')
         : (lastCmd ? `$ ${lastCmd}` : lastFile ? `Editing ${lastFile}` : lastMsg ? lastMsg.slice(0, 120) : promptFirstLine || 'working...')
+      const allFiles = [...(a.files_created || []), ...(a.files_modified || [])].slice(0, 6)
       items.push({
         kind: isCloud ? 'cloud' : 'headless',
         id: `agent-${a.agent_id}`,
@@ -102,6 +117,10 @@ function buildUnifiedList(terminals: TerminalInfo[], tasks: TaskSummary[]): Unif
         agent: a,
         swarm: task,
         status: a.status as UnifiedAgent['status'],
+        files: allFiles,
+        toolCalls: a.bash_commands?.length || 0,
+        linearIssue: a.linear_issue,
+        mode: a.mode,
       })
     }
   }
@@ -115,16 +134,99 @@ function buildUnifiedList(terminals: TerminalInfo[], tasks: TaskSummary[]): Unif
   return items
 }
 
+function agentAbbr(type: string): string {
+  const map: Record<string, string> = { claude: 'CC', codex: 'CX', gemini: 'GX', opencode: 'OC', cursor: 'CR' }
+  return map[type.toLowerCase()] || type.slice(0, 2).toUpperCase()
+}
+
+function modeLabel(item: UnifiedAgent): string {
+  if (item.mode === 'cloud') return 'cloud'
+  if (item.kind === 'team') return 'team'
+  if (item.kind === 'cloud') return 'cloud'
+  return item.mode || 'edit'
+}
+
+// Gauge SVG arc component
+function GaugeWidget({ value, max, color, label, sub }: { value: number; max: number; color: string; label: string; sub: string }) {
+  const r = 40
+  const circumference = 2 * Math.PI * r
+  const pct = Math.min(value / Math.max(max, 1), 1)
+  const offset = circumference * (1 - pct)
+  return (
+    <div className="sw-gauge-widget">
+      <div className="sw-gauge-svg-wrap">
+        <svg viewBox="0 0 100 100">
+          <circle className="sw-gauge-bg" cx="50" cy="50" r={r} />
+          <circle className="sw-gauge-arc" cx="50" cy="50" r={r}
+            stroke={color}
+            strokeDasharray={circumference}
+            strokeDashoffset={offset} />
+        </svg>
+        <div className="sw-gauge-value">{value}</div>
+      </div>
+      <div className="sw-gauge-label">{label}</div>
+      <div className="sw-gauge-sub">{sub}</div>
+    </div>
+  )
+}
+
+// Throughput counter (FPS-style)
+function ThroughputCounter({ tokensPerSec }: { tokensPerSec: number }) {
+  const sparkData = useMemo(() => {
+    const bars = []
+    for (let i = 0; i < 20; i++) {
+      const base = tokensPerSec * (0.6 + Math.random() * 0.8)
+      bars.push(Math.max(2, Math.min(24, base / 40)))
+    }
+    return bars
+  }, [tokensPerSec])
+
+  return (
+    <div className="sw-throughput">
+      <div className="sw-throughput-sparkline">
+        {sparkData.map((h, i) => (
+          <div key={i} className="sw-spark-bar" style={{ height: h }} />
+        ))}
+      </div>
+      <div className="sw-throughput-value">{tokensPerSec}</div>
+      <div className="sw-throughput-unit">
+        <span className="sw-throughput-label">tok/s</span>
+        <span className="sw-throughput-sub">throughput</span>
+      </div>
+    </div>
+  )
+}
+
+// VU meter segments
+function VuMeter({ value, max }: { value: number; max: number }) {
+  const segments = 8
+  const filled = Math.round((value / Math.max(max, 1)) * segments)
+  return (
+    <div className="sw-strip-vu">
+      {Array.from({ length: segments }, (_, i) => {
+        const h = 4 + ((i + 1) / segments) * 16
+        let cls = ''
+        if (i < filled) {
+          if (i >= segments - 2) cls = 'on-red'
+          else if (i >= segments - 4) cls = 'on-amber'
+          else cls = 'on-green'
+        }
+        return <div key={i} className={`sw-vu-seg ${cls}`} style={{ height: h }} />
+      })}
+    </div>
+  )
+}
+
 interface UnifiedAgentsPaneProps {
   terminals: TerminalInfo[]
   tasks: TaskSummary[]
   tasksLoading: boolean
+  unifiedTasks: UnifiedTask[]
+  unifiedTasksLoading: boolean
   onDispatch: () => void
 }
 
-export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, onDispatch }: UnifiedAgentsPaneProps) {
-  const [filter, setFilter] = useState<FilterTab>('all')
-  const [expandedId, setExpandedId] = useState<string | null>(null)
+export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks, unifiedTasksLoading, onDispatch }: UnifiedAgentsPaneProps) {
   const [newMenuOpen, setNewMenuOpen] = useState(false)
   const newMenuRef = useRef<HTMLDivElement>(null)
 
@@ -138,30 +240,34 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, onDispatch }
   }, [newMenuOpen])
 
   const items = useMemo(() => buildUnifiedList(terminals, tasks), [terminals, tasks])
+  const activeItems = useMemo(() => items.filter((i) => i.active), [items])
+  const recentItems = useMemo(() => items.filter((i) => !i.active), [items])
 
-  const counts = useMemo(() => {
-    const c = { terminal: 0, cloud: 0, team: 0 }
+  // Queue: urgent/high tasks that are todo
+  const queueTasks = useMemo(() =>
+    unifiedTasks
+      .filter((t) => t.status === 'todo' && (t.priority === 'urgent' || t.priority === 'high'))
+      .slice(0, 4),
+    [unifiedTasks]
+  )
+
+  // Gauge metrics
+  const totalFiles = useMemo(() => {
+    const fileSet = new Set<string>()
     for (const item of items) {
-      if (item.kind === 'headless') c.terminal++
-      else c[item.kind]++
+      for (const f of item.files) fileSet.add(f.split('/').pop() || f)
     }
-    return c
+    return fileSet.size
   }, [items])
 
-  const activeCount = useMemo(() => items.filter((i) => i.active).length, [items])
+  const totalPRs = useMemo(() => items.filter((i) => i.prUrl).length, [items])
 
-  const filtered = useMemo(() => {
-    if (filter === 'all') return items
-    if (filter === 'terminal') return items.filter((i) => i.kind === 'terminal' || i.kind === 'headless')
-    return items.filter((i) => i.kind === filter)
-  }, [items, filter])
-
-  const activeItems = filtered.filter((i) => i.active)
-  const recentItems = filtered.filter((i) => !i.active)
-
-  const handleFocusTerminal = (t: TerminalInfo) => {
-    postMessage({ type: 'focusTerminal', terminalId: t.id })
-  }
+  // Estimated throughput (mock for now -- will be wired to session parsing)
+  const estimatedThroughput = useMemo(() => {
+    const activeCount = activeItems.length
+    if (activeCount === 0) return 0
+    return Math.round(activeCount * 280 + Math.random() * 120)
+  }, [activeItems.length])
 
   const handleNewAgent = (agent: string) => {
     const commands: Record<string, string> = {
@@ -174,6 +280,10 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, onDispatch }
     postMessage({ type: 'executeCommand', command: commands[agent] })
   }
 
+  const handleFocusTerminal = (t: TerminalInfo) => {
+    postMessage({ type: 'focusTerminal', terminalId: t.id })
+  }
+
   const handleRetry = (taskName: string) => {
     postMessage({ type: 'retrySwarm', taskName })
   }
@@ -182,499 +292,228 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, onDispatch }
     postMessage({ type: 'killSwarm', taskName })
   }
 
-  const filterTabs: Array<{ key: FilterTab; label: string; count: number }> = [
-    { key: 'all', label: 'All', count: items.length },
-    { key: 'terminal', label: 'Terminal', count: counts.terminal },
-    { key: 'cloud', label: 'Cloud', count: counts.cloud },
-    { key: 'team', label: 'Teams', count: counts.team },
+  const handleDispatchTask = (task: UnifiedTask, agentType: string) => {
+    postMessage({
+      type: 'dispatchTask',
+      taskId: task.id,
+      agentType,
+      title: task.title,
+      description: task.description || '',
+      identifier: task.metadata.identifier || '',
+    })
+  }
+
+  return (
+    <div className="sw-floor-dashboard">
+      {/* Header */}
+      <div className="sw-floor-header">
+        <div className="sw-floor-title">Factory Floor</div>
+        <div className="sw-floor-header-right">
+          {activeItems.length > 0 && <ThroughputCounter tokensPerSec={estimatedThroughput} />}
+          <div className="sw-floor-status">
+            System {activeItems.length > 0 ? 'nominal' : 'idle'} -- {activeItems.length} agent{activeItems.length !== 1 ? 's' : ''} online
+          </div>
+        </div>
+      </div>
+
+      {/* Gauges Row */}
+      <div className="sw-gauges-row">
+        <GaugeWidget value={activeItems.length} max={8} color="#F26D5B" label="Agents" sub={`of ${items.length} total`} />
+        <GaugeWidget value={totalFiles} max={20} color="#22C55E" label="Files" sub="changed" />
+        <GaugeWidget value={totalPRs} max={5} color="#3B82F6" label="PRs" sub="open" />
+        <GaugeWidget value={queueTasks.length} max={10} color="#D4A72C" label="Queue" sub="pending" />
+      </div>
+
+      {/* Active Agents */}
+      {(activeItems.length > 0 || tasksLoading) && (
+        <>
+          <div className="sw-section-header-row">
+            <span className="sw-section-label">Active</span>
+            <span className="sw-section-count-pill">{activeItems.length}</span>
+            <span className="sw-section-line" />
+            <div style={{ position: 'relative' }} ref={newMenuRef}>
+              <button className="sw-btn secondary sm" onClick={() => setNewMenuOpen((o) => !o)}>
+                <Icon name="plus" size={11} />
+                New
+              </button>
+              {newMenuOpen && (
+                <div className="sw-menu">
+                  {NEW_AGENT_MENU.map((m) => (
+                    <button
+                      key={m.agent}
+                      className="sw-menu-item"
+                      onClick={() => { setNewMenuOpen(false); handleNewAgent(m.agent) }}
+                    >
+                      <AgentAvatar id={m.agent} size={16} />
+                      <span>{m.name}</span>
+                      <span className="spacer" />
+                      <span className="kbd-group">
+                        {m.keys.map((k) => (
+                          <span key={k} className="kbd kbd-inline">{k}</span>
+                        ))}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button className="sw-btn primary sm" onClick={onDispatch}>
+              <Icon name="dispatch" size={11} />
+              Dispatch
+            </button>
+          </div>
+
+          <div className="sw-agent-strips">
+            {activeItems.map((item) => (
+              <AgentStrip key={item.id} item={item} onFocus={handleFocusTerminal} onKill={handleKill} />
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Empty state */}
+      {items.length === 0 && !tasksLoading && queueTasks.length === 0 && (
+        <div className="sw-empty" style={{ marginTop: 40 }}>
+          <Icon name="zap" size={20} />
+          <div className="sw-empty-title">No agents running</div>
+          <div className="sw-empty-sub">
+            Press{' '}
+            <span className="kbd-group" style={{ display: 'inline-flex' }}>
+              <span className="kbd kbd-inline">Cmd</span>
+              <span className="kbd kbd-inline">Shift</span>
+              <span className="kbd kbd-inline">A</span>
+            </span>{' '}
+            to open Claude, or dispatch a team.
+          </div>
+        </div>
+      )}
+
+      {/* Recent Agents */}
+      {recentItems.length > 0 && (
+        <>
+          <div className="sw-section-header-row" style={{ marginTop: 8 }}>
+            <span className="sw-section-label">Recent</span>
+            <span className="sw-section-count-pill">{recentItems.length}</span>
+            <span className="sw-section-line" />
+          </div>
+
+          <div className="sw-agent-strips">
+            {recentItems.slice(0, 5).map((item) => (
+              <AgentStrip key={item.id} item={item} dimmed onFocus={handleFocusTerminal} onRetry={handleRetry} />
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Dispatch Queue */}
+      {queueTasks.length > 0 && (
+        <div className="sw-queue-section">
+          <div className="sw-section-header-row">
+            <span className="sw-section-label">Dispatch Queue</span>
+            <span className="sw-section-count-pill">{queueTasks.length}</span>
+            <span className="sw-section-line" />
+          </div>
+
+          <div className="sw-queue-cards">
+            {queueTasks.map((task) => (
+              <DispatchCard key={task.id} task={task} onDispatch={handleDispatchTask} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Agent horizontal strip
+function AgentStrip({ item, dimmed, onFocus, onKill, onRetry }: {
+  item: UnifiedAgent
+  dimmed?: boolean
+  onFocus: (t: TerminalInfo) => void
+  onKill?: (taskName: string) => void
+  onRetry?: (taskName: string) => void
+}) {
+  const fileNames = item.files.map((f) => f.split('/').pop() || f)
+  const abbr = agentAbbr(item.agentType)
+  const mode = modeLabel(item)
+
+  return (
+    <div className={`sw-agent-strip ${dimmed ? 'dimmed' : ''}`}>
+      <div className={`sw-strip-color-bar ${item.agentType.toLowerCase()}`} />
+      <div className={`sw-strip-led ${item.status === 'running' ? 'green' : item.status === 'failed' ? 'red' : 'gray'}`} />
+      <div className="sw-strip-identity">
+        <AgentAvatar id={item.agentType} size={28} />
+        <div>
+          <div className="sw-strip-name">{item.agentType.charAt(0).toUpperCase() + item.agentType.slice(1)}</div>
+          <div className="sw-strip-kind">{mode}</div>
+        </div>
+      </div>
+      <div className="sw-strip-activity">
+        {item.activity}
+      </div>
+      <div className="sw-strip-files">
+        {fileNames.slice(0, 3).map((f) => (
+          <span key={f} className="sw-file-pill">{f}</span>
+        ))}
+        {fileNames.length > 3 && <span className="sw-file-pill">+{fileNames.length - 3}</span>}
+      </div>
+      <VuMeter value={item.toolCalls} max={Math.max(item.toolCalls * 1.5, 10)} />
+      <div className="sw-strip-tags">
+        {item.linearIssue && <span className="sw-tag-linear">{item.linearIssue}</span>}
+        {item.prUrl && <span className="sw-tag-pr">#{item.prUrl.match(/\/pull\/(\d+)/)?.[1] || 'PR'}</span>}
+      </div>
+      <div className="sw-strip-actions">
+        {item.terminal && (
+          <button className="sw-btn-strip sw-btn-focus" onClick={() => onFocus(item.terminal!)}>Focus</button>
+        )}
+        {item.active && item.swarm && onKill && (
+          <button className="sw-btn-strip sw-btn-kill" onClick={() => onKill(item.swarm!.task_name)}>Kill</button>
+        )}
+        {!item.active && item.swarm && onRetry && (
+          <button className="sw-btn-strip sw-btn-focus" onClick={() => onRetry(item.swarm!.task_name)}>Retry</button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// Dispatch card with agent picker
+function DispatchCard({ task, onDispatch }: { task: UnifiedTask; onDispatch: (task: UnifiedTask, agent: string) => void }) {
+  const [selectedAgent, setSelectedAgent] = useState('claude')
+  const priorityCls = task.priority === 'urgent' ? 'urgent' : task.priority === 'high' ? 'high' : 'medium'
+  const priorityLabel = task.priority ? task.priority.charAt(0).toUpperCase() + task.priority.slice(1) : 'Medium'
+  const agents = [
+    { id: 'claude', abbr: 'CC' },
+    { id: 'codex', abbr: 'CX' },
+    { id: 'gemini', abbr: 'GX' },
   ]
 
-  const selectedItem = expandedId ? items.find((i) => i.id === expandedId) ?? null : null
-
   return (
-    <div className="sw-unified-split">
-      <div className="sw-unified">
-        <div className="sw-unified-head">
-          <Icon name="zap" size={13} />
-          <span style={{ fontSize: 12, fontWeight: 600 }}>Agents</span>
-          <span className="sw-section-count">{activeCount > 0 ? `${activeCount} active` : items.length}</span>
-          <div className="sw-spacer" />
-          <div style={{ position: 'relative' }} ref={newMenuRef}>
-            <button className="sw-btn secondary sm" onClick={() => setNewMenuOpen((o) => !o)}>
-              <Icon name="plus" size={11} />
-              New
-              <Icon name="chevD" size={10} />
-            </button>
-            {newMenuOpen && (
-              <div className="sw-menu">
-                {NEW_AGENT_MENU.map((m) => (
-                  <button
-                    key={m.agent}
-                    className="sw-menu-item"
-                    onClick={() => {
-                      setNewMenuOpen(false)
-                      handleNewAgent(m.agent)
-                    }}
-                  >
-                    <AgentAvatar id={m.agent} size={16} />
-                    <span>{m.name}</span>
-                    <span className="spacer" />
-                    <span className="kbd-group">
-                      {m.keys.map((k) => (
-                        <span key={k} className="kbd kbd-inline">{k}</span>
-                      ))}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          <button className="sw-btn primary sm" onClick={onDispatch}>
-            <Icon name="dispatch" size={11} />
-            Dispatch
-          </button>
-        </div>
-
-        <div className="sw-unified-filters">
-          {filterTabs.map((tab) => (
+    <div className="sw-queue-card">
+      <div className="sw-queue-card-header">
+        <div className={`sw-queue-priority-led ${priorityCls}`} />
+        <span className="sw-queue-badge">{task.metadata.identifier || task.id.slice(0, 8)}</span>
+        <span className={`sw-queue-priority-label ${priorityCls}`}>{priorityLabel}</span>
+      </div>
+      <div className="sw-queue-title">{task.title}</div>
+      {task.description && (
+        <div className="sw-queue-desc">{task.description.slice(0, 100)}</div>
+      )}
+      <div className="sw-queue-footer">
+        <div className="sw-queue-assign">
+          <span className="sw-queue-assign-label">Assign</span>
+          {agents.map((a) => (
             <button
-              key={tab.key}
-              className={`sw-unified-filter ${filter === tab.key ? 'active' : ''}`}
-              onClick={() => setFilter(tab.key)}
+              key={a.id}
+              className={`sw-queue-agent-pick ${a.id} ${selectedAgent === a.id ? 'selected' : ''}`}
+              onClick={() => setSelectedAgent(a.id)}
             >
-              {tab.label}
-              {tab.count > 0 && <span className="sw-unified-filter-count">{tab.count}</span>}
+              {a.abbr}
             </button>
           ))}
         </div>
-
-        <div className="sw-unified-body">
-          {items.length === 0 && !tasksLoading && (
-            <div className="sw-empty">
-              <Icon name="zap" size={20} />
-              <div className="sw-empty-title">No agents running</div>
-              <div className="sw-empty-sub">
-                Press{' '}
-                <span className="kbd-group" style={{ display: 'inline-flex' }}>
-                  <span className="kbd kbd-inline">Cmd</span>
-                  <span className="kbd kbd-inline">Shift</span>
-                  <span className="kbd kbd-inline">A</span>
-                </span>{' '}
-                to open Claude, or dispatch a team.
-              </div>
-            </div>
-          )}
-
-          {tasksLoading && items.length === 0 && (
-            <div className="sw-empty">
-              <div className="sw-empty-sub">Loading agents...</div>
-            </div>
-          )}
-
-          {activeItems.length > 0 && activeItems.map((item) => (
-            <AgentRow
-              key={item.id}
-              item={item}
-              selected={expandedId === item.id}
-              onSelect={() => setExpandedId(expandedId === item.id ? null : item.id)}
-              onFocusTerminal={handleFocusTerminal}
-            />
-          ))}
-
-          {recentItems.length > 0 && activeItems.length > 0 && (
-            <div className="sw-unified-divider">
-              <span>Recent</span>
-            </div>
-          )}
-
-          {recentItems.map((item) => (
-            <AgentRow
-              key={item.id}
-              item={item}
-              selected={expandedId === item.id}
-              onSelect={() => setExpandedId(expandedId === item.id ? null : item.id)}
-              onFocusTerminal={handleFocusTerminal}
-            />
-          ))}
-        </div>
+        <button className="sw-btn-dispatch" onClick={() => onDispatch(task, selectedAgent)}>Dispatch</button>
       </div>
-
-      <div className="sw-unified-detail-pane">
-        {selectedItem ? (
-          <DetailPane
-            item={selectedItem}
-            onFocusTerminal={handleFocusTerminal}
-            onRetry={handleRetry}
-            onKill={handleKill}
-          />
-        ) : (
-          <div className="sw-empty" style={{ height: '100%' }}>
-            <Icon name="inbox" size={24} />
-            <div className="sw-empty-title">Select an agent to see details</div>
-            <div className="sw-empty-sub">
-              Click an agent in the list to view its full activity, files changed, and actions.
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function statusDotClass(status: UnifiedAgent['status']): string {
-  switch (status) {
-    case 'running': return 'running pulse'
-    case 'completed': return 'idle'
-    case 'failed': return 'failed'
-    case 'stopped': return 'idle'
-    case 'idle': return 'idle'
-  }
-}
-
-function kindBadge(kind: UnifiedAgent['kind']): string {
-  switch (kind) {
-    case 'terminal': return 'terminal'
-    case 'headless': return 'headless'
-    case 'cloud': return 'cloud'
-    case 'team': return 'team'
-  }
-}
-
-function statusLabel(status: UnifiedAgent['status']): string {
-  switch (status) {
-    case 'running': return 'running'
-    case 'completed': return 'completed'
-    case 'failed': return 'failed'
-    case 'stopped': return 'stopped'
-    case 'idle': return 'idle'
-  }
-}
-
-interface AgentRowProps {
-  item: UnifiedAgent
-  selected: boolean
-  onSelect: () => void
-  onFocusTerminal: (t: TerminalInfo) => void
-}
-
-function AgentRow({ item, selected, onSelect, onFocusTerminal }: AgentRowProps) {
-  return (
-    <button
-      className={`sw-unified-row ${selected ? 'selected' : ''} ${item.active ? '' : 'inactive'}`}
-      onClick={() => {
-        onSelect()
-        if (item.terminal && item.kind === 'terminal') onFocusTerminal(item.terminal)
-      }}
-    >
-      <span className={`sw-dot ${statusDotClass(item.status)}`} />
-      <AgentAvatar id={item.agentType} size={18} />
-      <div className="sw-unified-row-info">
-        <div className="sw-unified-row-name">
-          <span className="mono">{item.displayName}</span>
-          {item.kind === 'team' && item.teamAgents && (
-            <span className="sw-unified-team-avatars">
-              {[...new Set(item.teamAgents.map((a) => a.agent_type.toLowerCase()))].map((t) => (
-                <AgentAvatar key={t} id={t} size={14} />
-              ))}
-            </span>
-          )}
-        </div>
-        <div className="sw-unified-row-activity mono">
-          {item.activity}
-        </div>
-      </div>
-      <div className="sw-unified-row-meta">
-        {!item.active && item.status !== 'idle' && (
-          <span className={`sw-badge ${item.status === 'completed' ? 'ok' : item.status}`}>
-            {statusLabel(item.status)}
-          </span>
-        )}
-        <span className={`sw-unified-kind-badge ${item.kind}`}>{kindBadge(item.kind)}</span>
-        <span className="mono sw-unified-row-time">{relTime(item.timestamp)}</span>
-      </div>
-    </button>
-  )
-}
-
-function DetailPane({ item, onFocusTerminal, onRetry, onKill }: {
-  item: UnifiedAgent
-  onFocusTerminal: (t: TerminalInfo) => void
-  onRetry: (taskName: string) => void
-  onKill: (taskName: string) => void
-}) {
-  const isActive = item.active
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
-      <div className="sw-mc-pane-head">
-        <AgentAvatar id={item.agentType} size={20} />
-        <span style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-          {item.displayName}
-        </span>
-        <span className={`sw-unified-kind-badge ${item.kind}`}>{kindBadge(item.kind)}</span>
-        {item.cloudProvider && <span className="mono sw-unified-provider">{item.cloudProvider}</span>}
-        <div className="sw-spacer" />
-        {item.swarm && (
-          <>
-            {!isActive && (
-              <button className="sw-btn secondary sm" onClick={() => onRetry(item.swarm!.task_name)}>
-                <Icon name="refresh" size={11} />
-                Retry
-              </button>
-            )}
-            {isActive && (
-              <button className="sw-btn danger sm" onClick={() => onKill(item.swarm!.task_name)}>
-                <Icon name="x" size={11} />
-                Kill
-              </button>
-            )}
-          </>
-        )}
-        {item.terminal && (
-          <button className="sw-btn secondary sm" onClick={() => onFocusTerminal(item.terminal!)}>
-            <Icon name="terminal" size={11} />
-            Focus
-          </button>
-        )}
-      </div>
-
-      <div className="sw-mc-pane-body">
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
-          {item.duration && <span className="sw-pill mono">{item.duration}</span>}
-          <span className="sw-pill">{relTime(item.timestamp)}</span>
-          {item.status !== 'idle' && (
-            <span className={`sw-badge ${item.status === 'completed' ? 'ok' : item.status}`}>
-              {statusLabel(item.status)}
-            </span>
-          )}
-          {item.prUrl && (
-            <a href={item.prUrl} target="_blank" rel="noreferrer" className="mono" style={{ fontSize: 11, color: 'var(--brand)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              <Icon name="external" size={10} /> PR
-            </a>
-          )}
-        </div>
-
-        {item.terminal && <TerminalExpandedDetail terminal={item.terminal} onFocus={onFocusTerminal} />}
-        {item.kind === 'team' && item.swarm && <TeamDetail swarm={item.swarm} onRetry={onRetry} onKill={onKill} />}
-        {(item.kind === 'headless' || item.kind === 'cloud') && item.agent && (
-          <AgentDetailView agent={item.agent} swarm={item.swarm} onRetry={onRetry} onKill={onKill} />
-        )}
-      </div>
-    </div>
-  )
-}
-
-function TerminalExpandedDetail({ terminal, onFocus }: { terminal: TerminalInfo; onFocus: (t: TerminalInfo) => void }) {
-  return (
-    <div className="sw-unified-detail-content">
-      {terminal.firstUserMessage && (
-        <div className="sw-unified-detail-section">
-          <div className="sw-section-label">Task</div>
-          <div className="sw-unified-detail-text">{terminal.firstUserMessage}</div>
-        </div>
-      )}
-      {terminal.quickSummary && (
-        <div className="sw-unified-detail-section">
-          <div className="sw-section-label">Activity</div>
-          <div className="sw-unified-detail-stats">
-            {terminal.quickSummary.filesEdited > 0 && <span>{terminal.quickSummary.filesEdited} files edited</span>}
-            {terminal.quickSummary.toolCalls > 0 && <span>{terminal.quickSummary.toolCalls} tool calls</span>}
-            {terminal.quickSummary.webSearches > 0 && <span>{terminal.quickSummary.webSearches} web searches</span>}
-          </div>
-        </div>
-      )}
-      {terminal.recentFiles && terminal.recentFiles.length > 0 && (
-        <div className="sw-unified-detail-section">
-          <div className="sw-section-label">Recent files</div>
-          <div className="sw-unified-detail-files">
-            {terminal.recentFiles.slice(0, 5).map((f) => (
-              <span key={f} className="mono sw-unified-file-pill">{f.split('/').pop()}</span>
-            ))}
-          </div>
-        </div>
-      )}
-      <div className="sw-unified-detail-actions">
-        <button className="sw-btn secondary sm" onClick={() => onFocus(terminal)}>
-          <Icon name="terminal" size={11} />
-          Focus terminal
-        </button>
-      </div>
-    </div>
-  )
-}
-
-function TeamDetail({ swarm, onRetry, onKill }: { swarm: TaskSummary; onRetry: (n: string) => void; onKill: (n: string) => void }) {
-  const isActive = swarm.status_counts.running > 0
-  return (
-    <div className="sw-unified-detail-content">
-      <div className="sw-unified-detail-section">
-        <div className="sw-section-label">Agents</div>
-        <div className="sw-unified-team-agents">
-          {swarm.agents.map((a) => {
-            const statusClass = a.status === 'running' ? 'running' : a.status === 'completed' ? 'ok' : a.status === 'failed' ? 'failed' : 'idle'
-            const lastAction = a.bash_commands?.slice(-1)[0] || a.files_modified?.slice(-1)[0] || a.last_messages?.slice(-1)[0]?.slice(0, 80) || ''
-            return (
-              <div key={a.agent_id} className="sw-unified-team-agent">
-                <AgentAvatar id={a.agent_type} size={16} />
-                <span style={{ fontSize: 12, fontWeight: 550, textTransform: 'capitalize' }}>{a.agent_type}</span>
-                <span className={`sw-badge ${statusClass}`}>{a.status}</span>
-                <div className="sw-spacer" />
-                {a.duration && <span className="mono" style={{ fontSize: 10.5, color: 'var(--ds-text-dim)' }}>{a.duration}</span>}
-                {a.pr_url && (
-                  <a href={a.pr_url} target="_blank" rel="noreferrer" className="mono" style={{ fontSize: 10.5, color: 'var(--brand)' }} onClick={(e) => e.stopPropagation()}>
-                    <Icon name="external" size={10} /> PR
-                  </a>
-                )}
-                {lastAction && (
-                  <div className="mono" style={{ fontSize: 10.5, color: 'var(--ds-text-dim)', gridColumn: '1 / -1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingLeft: 24 }}>
-                    {lastAction}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      </div>
-      <div className="sw-unified-detail-actions">
-        <button className="sw-btn secondary sm" onClick={() => onRetry(swarm.task_name)}>
-          <Icon name="refresh" size={11} />
-          Retry
-        </button>
-        {isActive && (
-          <button className="sw-btn danger sm" onClick={() => onKill(swarm.task_name)}>
-            <Icon name="x" size={11} />
-            Kill
-          </button>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function AgentDetailView({ agent, swarm, onRetry, onKill }: { agent: AgentDetail; swarm?: TaskSummary; onRetry: (n: string) => void; onKill: (n: string) => void }) {
-  const isActive = agent.status === 'running'
-  const isCloud = agent.mode === 'cloud' || !!agent.cloud_provider
-  const allFiles = [...(agent.files_created || []), ...(agent.files_modified || [])]
-
-  if (isCloud) {
-    return (
-      <div className="sw-unified-detail-content">
-        <div className="sw-cloud-meta">
-          {agent.repo_owner && agent.repo_name && (
-            <div className="sw-cloud-meta-row">
-              <span className="sw-cloud-meta-label">Repository</span>
-              <a href={`https://github.com/${agent.repo_owner}/${agent.repo_name}`} target="_blank" rel="noreferrer" className="mono" style={{ fontSize: 12, color: 'var(--brand)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                {agent.repo_owner}/{agent.repo_name}
-                <Icon name="external" size={10} />
-              </a>
-            </div>
-          )}
-          {agent.branch && (
-            <div className="sw-cloud-meta-row">
-              <span className="sw-cloud-meta-label">Branch</span>
-              <span className="mono" style={{ fontSize: 12 }}>{agent.branch}</span>
-            </div>
-          )}
-          {agent.pr_url && (
-            <div className="sw-cloud-meta-row">
-              <span className="sw-cloud-meta-label">Pull request</span>
-              <a href={agent.pr_url} target="_blank" rel="noreferrer" className="mono" style={{ fontSize: 12, color: 'var(--brand)' }}>
-                {agent.pr_url.match(/\/pull\/(\d+)/)?.[0] || 'View PR'}
-              </a>
-            </div>
-          )}
-          {agent.linear_issue && (
-            <div className="sw-cloud-meta-row">
-              <span className="sw-cloud-meta-label">Linear</span>
-              <a href={`https://linear.app/issue/${agent.linear_issue}`} target="_blank" rel="noreferrer" className="mono" style={{ fontSize: 12, color: 'var(--brand)' }}>
-                {agent.linear_issue}
-              </a>
-            </div>
-          )}
-        </div>
-        {agent.prompt && (
-          <div className="sw-unified-detail-section">
-            <div className="sw-section-label">Task</div>
-            <div className="sw-cloud-prompt">{renderTodoDescription(agent.prompt, false)}</div>
-          </div>
-        )}
-        {agent.cloud_summary && (
-          <div className="sw-unified-detail-section">
-            <div className="sw-section-label">Output</div>
-            <div className="sw-cloud-log">{renderTodoDescription(agent.cloud_summary, false)}</div>
-          </div>
-        )}
-        {!agent.cloud_summary && isActive && (
-          <div className="sw-unified-detail-section">
-            <div className="sw-section-label">Output</div>
-            <div className="sw-unified-detail-text" style={{ color: 'var(--ds-text-dim)', fontStyle: 'italic' }}>
-              Running remotely. Output appears when the agent finishes.
-            </div>
-          </div>
-        )}
-        {swarm && (
-          <div className="sw-unified-detail-actions">
-            {!isActive && (
-              <button className="sw-btn secondary sm" onClick={() => onRetry(swarm.task_name)}>
-                <Icon name="refresh" size={11} />
-                Retry
-              </button>
-            )}
-            {isActive && (
-              <button className="sw-btn danger sm" onClick={() => onKill(swarm.task_name)}>
-                <Icon name="x" size={11} />
-                Stop
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  return (
-    <div className="sw-unified-detail-content">
-      {agent.prompt && (
-        <div className="sw-unified-detail-section">
-          <div className="sw-section-label">Task</div>
-          <div className="sw-unified-detail-text">{agent.prompt.slice(0, 500)}</div>
-        </div>
-      )}
-      {agent.last_messages?.length > 0 && (
-        <div className="sw-unified-detail-section">
-          <div className="sw-section-label">Latest</div>
-          <div className="sw-unified-detail-text mono" style={{ fontSize: 11 }}>
-            {agent.last_messages[agent.last_messages.length - 1]?.slice(0, 300)}
-          </div>
-        </div>
-      )}
-      {allFiles.length > 0 && (
-        <div className="sw-unified-detail-section">
-          <div className="sw-section-label">Files ({allFiles.length})</div>
-          <div className="sw-unified-detail-files">
-            {allFiles.slice(0, 8).map((f) => (
-              <span key={f} className="mono sw-unified-file-pill">{f.split('/').pop()}</span>
-            ))}
-            {allFiles.length > 8 && <span className="mono" style={{ fontSize: 10.5, color: 'var(--ds-text-dim)' }}>+{allFiles.length - 8} more</span>}
-          </div>
-        </div>
-      )}
-      {swarm && (
-        <div className="sw-unified-detail-actions">
-          {!isActive && (
-            <button className="sw-btn secondary sm" onClick={() => onRetry(swarm.task_name)}>
-              <Icon name="refresh" size={11} />
-              Retry
-            </button>
-          )}
-          {isActive && (
-            <button className="sw-btn danger sm" onClick={() => onKill(swarm.task_name)}>
-              <Icon name="x" size={11} />
-              Stop
-            </button>
-          )}
-        </div>
-      )}
     </div>
   )
 }
