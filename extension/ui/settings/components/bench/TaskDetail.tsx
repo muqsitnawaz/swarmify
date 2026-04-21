@@ -1,7 +1,8 @@
 import React from 'react'
 import { Icon } from '../mission-control/icons'
+import { TaskCalendar } from './TaskCalendar'
 import type { FlatTask } from './TaskCard'
-import type { TaskSource, TodoItem } from '../../types'
+import type { CycleInfo, TaskSource, TodoItem } from '../../types'
 
 const SOURCE_CLASS: Record<TaskSource, string> = {
   markdown: 'md',
@@ -23,12 +24,13 @@ const STATUS_DISPLAY: Record<string, string> = {
 
 interface TaskDetailProps {
   task: FlatTask
+  cycleInfo?: CycleInfo | null
   onDispatch: (task: FlatTask) => void
   onDismiss: (taskId: string) => void
   onOpenExternal: (url: string) => void
 }
 
-export function TaskDetail({ task, onDispatch, onDismiss, onOpenExternal }: TaskDetailProps) {
+export function TaskDetail({ task, cycleInfo, onDispatch, onDismiss, onOpenExternal }: TaskDetailProps) {
   const srcClass = SOURCE_CLASS[task.source]
   const srcLabel = SOURCE_LABEL[task.source]
   const identifier = task.metadata?.identifier
@@ -114,6 +116,13 @@ export function TaskDetail({ task, onDispatch, onDismiss, onOpenExternal }: Task
             </div>
           )}
         </div>
+
+        {task.metadata?.createdAt && (
+          <TaskCalendar
+            createdAt={task.metadata.createdAt}
+            cycleInfo={task.source === 'linear' ? cycleInfo : null}
+          />
+        )}
 
         {task.description && (
           <>

@@ -42,7 +42,7 @@ export async function fetchGitHubTasks(context: vscode.ExtensionContext): Promis
       '--assignee', '@me',
       '--state', 'open',
       '--limit', '50',
-      '--json', 'number,title,state,labels,assignees,url,body',
+      '--json', 'number,title,state,labels,assignees,url,body,createdAt',
     ];
 
     const { stdout } = await execFileAsync('gh', args, { timeout: 15000 });
@@ -57,6 +57,7 @@ export async function fetchGitHubTasks(context: vscode.ExtensionContext): Promis
       html_url: issue.url,
       labels: issue.labels,
       assignee: issue.assignees?.[0],
+      createdAt: issue.createdAt,
     }));
   } catch (err) {
     console.error('[GITHUB] Error fetching tasks:', err);

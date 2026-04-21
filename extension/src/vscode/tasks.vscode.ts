@@ -3,10 +3,15 @@
 
 import * as vscode from 'vscode';
 import { TaskSource, TaskSourceSettings } from '../core/settings';
-import { UnifiedTask, markdownToUnifiedTask, groupTasksBySource } from '../core/tasks';
+import { UnifiedTask, CycleInfo, markdownToUnifiedTask, groupTasksBySource } from '../core/tasks';
 import { discoverTodoFiles } from './todos.vscode';
 import { fetchLinearTasks, isLinearAvailable } from './linear.vscode';
 import { fetchGitHubTasks, isGitHubAvailable } from './github.vscode';
+
+export interface TaskFetchResult {
+  tasks: UnifiedTask[];
+  cycleInfo: CycleInfo | null;
+}
 
 // Detect which task sources are available based on MCP configuration
 export async function detectAvailableSources(context: vscode.ExtensionContext): Promise<{
@@ -30,8 +35,9 @@ export async function detectAvailableSources(context: vscode.ExtensionContext): 
 export async function fetchAllTasks(
   context: vscode.ExtensionContext,
   enabledSources: TaskSourceSettings
-): Promise<UnifiedTask[]> {
+): Promise<TaskFetchResult> {
   const tasks: UnifiedTask[] = [];
+  let cycleInfo: CycleInfo | null = null;
   const fetchPromises: Promise<void>[] = [];
 
   // Fetch markdown tasks
@@ -48,8 +54,9 @@ export async function fetchAllTasks(
   // Fetch Linear tasks
   if (enabledSources.linear) {
     fetchPromises.push(
-      fetchLinearTasks(context).then(linearTasks => {
-        tasks.push(...linearTasks);
+      fetchLinearTasks(context).then(result => {
+        tasks.push(...result.tasks);
+        if (result.cycleInfo) cycleInfo = result.cycleInfo;
       }).catch(err => {
         console.error('[TASKS] Error fetching Linear tasks:', err);
       })
@@ -69,7 +76,7 @@ export async function fetchAllTasks(
 
   await Promise.all(fetchPromises);
 
-  return tasks;
+  return { tasks, cycleInfo };
 }
 
 // Fetch tasks from markdown files (TODO.md, RALPH.md, etc.)
@@ -91,7 +98,7 @@ export async function fetchTasksGrouped(
   context: vscode.ExtensionContext,
   enabledSources: TaskSourceSettings
 ): Promise<Map<TaskSource, UnifiedTask[]>> {
-  const tasks = await fetchAllTasks(context, enabledSources);
+  const { tasks } = await fetchAllTasks(context, enabledSources);
   return groupTasksBySource(tasks);
 }
 

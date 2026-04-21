@@ -9,6 +9,7 @@ import {
   TaskSummary,
   TodoFile,
   UnifiedTask,
+  CycleInfo,
   TaskSource,
   AgentSession,
   ContextFile,
@@ -107,6 +108,7 @@ export default function App() {
   const [unifiedTasks, setUnifiedTasks] = useState<UnifiedTask[]>([])
   const [unifiedTasksLoading, setUnifiedTasksLoading] = useState(false)
   const [unifiedTasksLoaded, setUnifiedTasksLoaded] = useState(false)
+  const [cycleInfo, setCycleInfo] = useState<CycleInfo | null>(null)
   const [availableSources, setAvailableSources] = useState<{ markdown: boolean; linear: boolean; github: boolean }>({
     markdown: true, linear: false, github: false
   })
@@ -268,6 +270,7 @@ export default function App() {
           break
         case 'unifiedTasksData':
           setUnifiedTasks(message.tasks || [])
+          setCycleInfo(message.cycleInfo || null)
           setUnifiedTasksLoading(false)
           setUnifiedTasksLoaded(true)
           break
@@ -647,6 +650,7 @@ export default function App() {
         <BenchTab
           todoFiles={todoFiles}
           unifiedTasks={unifiedTasks}
+          cycleInfo={cycleInfo}
           todoLoading={todoLoading}
           unifiedTasksLoading={unifiedTasksLoading}
           expandedSources={expandedSources}
