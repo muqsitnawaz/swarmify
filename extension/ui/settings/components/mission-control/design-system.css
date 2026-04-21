@@ -593,3 +593,175 @@
   background: var(--ds-border-strong); border-radius: 3px;
 }
 .swarmify-root ::-webkit-scrollbar-thumb:hover { background: var(--ds-text-dim); }
+
+/* ============================================
+   UNIFIED AGENTS LIST — Single-pane agent view
+   ============================================ */
+.sw-unified {
+  display: flex; flex-direction: column; height: 100%; overflow: hidden;
+  background: var(--ds-bg-panel);
+}
+.sw-unified-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 16px; flex-shrink: 0;
+  border-bottom: 2px solid var(--ds-border);
+  background: var(--ds-bg-panel);
+  box-shadow: var(--shadow-emboss);
+  font-family: "Geist Mono", monospace;
+}
+.sw-unified-filters {
+  display: flex; gap: 0; padding: 6px 16px;
+  border-bottom: 1px solid var(--ds-border-subtle);
+  background: var(--ds-bg-panel);
+  flex-shrink: 0;
+}
+.sw-unified-filter {
+  display: flex; align-items: center; gap: 5px;
+  padding: 4px 10px; font-size: 10.5px; font-weight: 600;
+  font-family: "Geist Mono", monospace; letter-spacing: .03em;
+  text-transform: uppercase; color: var(--ds-text-dim);
+  background: transparent; border: 0; border-bottom: 2px solid transparent;
+  cursor: pointer; transition: .12s;
+}
+.sw-unified-filter:hover { color: var(--ds-text-muted); }
+.sw-unified-filter.active {
+  color: var(--brand); border-bottom-color: var(--brand);
+}
+.sw-unified-filter-count {
+  font-size: 9px; padding: 1px 4px; border-radius: 3px;
+  background: var(--ds-bg-recessed); color: var(--ds-text-dim);
+  box-shadow: var(--shadow-inset);
+}
+.sw-unified-filter.active .sw-unified-filter-count {
+  background: rgba(242,109,91,0.12); color: var(--brand);
+}
+.sw-unified-body {
+  overflow-y: auto; flex: 1; padding: 4px 8px 20px;
+}
+.sw-unified-divider {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 8px 6px; color: var(--ds-text-dim);
+  font-family: "Geist Mono", monospace; font-size: 9.5px;
+  font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
+}
+.sw-unified-divider::after {
+  content: ""; flex: 1; height: 1px;
+  background: var(--ds-border-subtle);
+}
+
+/* Agent row */
+.sw-unified-row {
+  border-radius: var(--r-md); margin: 2px 0;
+  border: 1px solid transparent;
+  transition: .12s;
+}
+.sw-unified-row:hover {
+  border-color: var(--ds-border);
+  box-shadow: var(--shadow-emboss);
+}
+.sw-unified-row.expanded {
+  border-color: var(--ds-border-strong);
+  box-shadow: var(--shadow-raised);
+  background: var(--ds-bg-panel);
+}
+.sw-unified-row.inactive { opacity: 0.75; }
+.sw-unified-row.inactive:hover { opacity: 1; }
+
+.sw-unified-row-main {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; width: 100%; cursor: pointer;
+  background: transparent; border: 0; color: inherit;
+  font-family: inherit; text-align: left;
+}
+.sw-unified-row-info {
+  flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;
+}
+.sw-unified-row-name {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12.5px; font-weight: 550;
+}
+.sw-unified-row-activity {
+  font-size: 10.5px; color: var(--ds-text-dim);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 500px;
+}
+.sw-unified-row-meta {
+  display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+}
+.sw-unified-row-dur {
+  font-size: 10.5px; color: var(--ds-text-dim);
+}
+.sw-unified-row-time {
+  font-size: 10.5px; color: var(--ds-text-faint);
+}
+.sw-unified-team-avatars {
+  display: flex; gap: 2px;
+}
+
+/* Kind badge — type indicator */
+.sw-unified-kind-badge {
+  font-family: "Geist Mono", monospace; font-size: 9px; font-weight: 600;
+  letter-spacing: .05em; text-transform: uppercase;
+  padding: 1px 6px; border-radius: 3px;
+  background: var(--ds-bg-recessed); color: var(--ds-text-dim);
+  box-shadow: var(--shadow-inset);
+}
+.sw-unified-kind-badge.cloud {
+  background: rgba(74,125,255,0.1); color: #4a7dff;
+}
+.sw-unified-kind-badge.team {
+  background: rgba(242,109,91,0.08); color: var(--brand);
+}
+.sw-unified-provider {
+  font-size: 9.5px; color: var(--ds-text-faint);
+}
+.sw-unified-pr {
+  font-size: 10.5px; color: var(--brand); text-decoration: none;
+  display: inline-flex; align-items: center; gap: 3px;
+}
+.sw-unified-pr:hover { text-decoration: underline; }
+
+/* Expanded detail panel */
+.sw-unified-detail {
+  border-top: 1px solid var(--ds-border-subtle);
+  background: var(--ds-bg-sunken);
+}
+.sw-unified-detail-content {
+  padding: 10px 14px 14px;
+}
+.sw-unified-detail-section {
+  margin-bottom: 12px;
+}
+.sw-unified-detail-section .sw-section-label {
+  margin-bottom: 6px;
+}
+.sw-unified-detail-text {
+  font-size: 12px; color: var(--ds-text-muted);
+  line-height: 1.45; max-height: 80px; overflow: hidden;
+}
+.sw-unified-detail-stats {
+  display: flex; gap: 12px; font-size: 11px; color: var(--ds-text-dim);
+  font-family: "Geist Mono", monospace;
+}
+.sw-unified-detail-files {
+  display: flex; flex-wrap: wrap; gap: 4px;
+}
+.sw-unified-file-pill {
+  font-size: 10px; padding: 2px 6px; border-radius: 3px;
+  background: var(--ds-bg-recessed); border: 1px solid var(--ds-border);
+  color: var(--ds-text-muted);
+}
+.sw-unified-detail-actions {
+  display: flex; gap: 6px; margin-top: 10px;
+}
+
+/* Team agents list in detail */
+.sw-unified-team-agents {
+  display: flex; flex-direction: column; gap: 6px;
+}
+.sw-unified-team-agent {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px; border-radius: var(--r-sm);
+  background: var(--ds-bg-panel); border: 1px solid var(--ds-border-subtle);
+  font-size: 12px;
+}

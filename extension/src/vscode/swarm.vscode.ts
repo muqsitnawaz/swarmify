@@ -26,8 +26,11 @@ export type { PromptPackAgent } from '../core/swarm.detect';
 
 const execAsync = promisify(exec);
 
-// Agent swarm data directory (agents-mcp writes to ~/.agents/swarm/agents/)
+// Agent data directories
+// agents-mcp writes to ~/.agents/swarm/agents/
+// agents-cli teams writes to ~/.agents/teams/agents/
 const AGENT_SWARM_DIR = path.join(os.homedir(), '.agents', 'swarm', 'agents');
+const AGENT_TEAMS_DIR = path.join(os.homedir(), '.agents', 'teams', 'agents');
 
 const SWARM_PACKAGE = '@swarmify/agents-mcp';
 
@@ -867,18 +870,24 @@ export async function fetchTasksBySession(sessionId: string): Promise<TaskSummar
   return [];
 }
 
-// Fetch all tasks from the agent-swarm directory
+// Fetch all tasks from both agent directories (swarm + teams)
 export async function fetchTasks(limit?: number, filterCwd?: string): Promise<TaskSummary[]> {
-  if (!fs.existsSync(AGENT_SWARM_DIR)) {
-    return [];
+  const agentDirs: Array<{ dir: string; agentId: string }> = [];
+
+  for (const baseDir of [AGENT_SWARM_DIR, AGENT_TEAMS_DIR]) {
+    if (!fs.existsSync(baseDir)) continue;
+    for (const agentId of fs.readdirSync(baseDir)) {
+      agentDirs.push({ dir: baseDir, agentId });
+    }
   }
 
-  const entries = fs.readdirSync(AGENT_SWARM_DIR);
+  if (agentDirs.length === 0) return [];
+
   const taskMap = new Map<string, AgentDetail[]>();
   const taskTimes = new Map<string, Date>();
 
-  for (const agentId of entries) {
-    const agentDir = path.join(AGENT_SWARM_DIR, agentId);
+  for (const { dir, agentId } of agentDirs) {
+    const agentDir = path.join(dir, agentId);
     const metaPath = path.join(agentDir, 'meta.json');
     const logPath = path.join(agentDir, 'stdout.log');
 
@@ -956,5 +965,109 @@ export async function fetchTasks(limit?: number, filterCwd?: string): Promise<Ta
   // Sort tasks by latest activity (most recent first)
   tasks.sort((a, b) => new Date(b.latest_activity).getTime() - new Date(a.latest_activity).getTime());
 
+  // Merge cloud runs from Prix API
+  try {
+    const cloudTasks = await fetchCloudRuns();
+    tasks.push(...cloudTasks);
+    tasks.sort((a, b) => new Date(b.latest_activity).getTime() - new Date(a.latest_activity).getTime());
+  } catch {
+    // Cloud runs unavailable — continue with local data only
+  }
+
   return limit ? tasks.slice(0, limit) : tasks;
+}
+
+// Rush Cloud runs from Prix API
+const RUSH_USER_YAML = path.join(os.homedir(), '.rush', 'user.yaml');
+const PRIX_API_URL = 'https://api.prix.dev';
+
+async function fetchCloudRuns(): Promise<TaskSummary[]> {
+  if (!fs.existsSync(RUSH_USER_YAML)) return [];
+
+  const content = fs.readFileSync(RUSH_USER_YAML, 'utf-8');
+  const tokenMatch = content.match(/access_token:\s*(.+)/);
+  if (!tokenMatch) return [];
+  const token = tokenMatch[1].trim();
+
+  const resp = await fetch(`${PRIX_API_URL}/api/v1/cloud-runs`, {
+    headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!resp.ok) return [];
+
+  const data = (await resp.json()) as { executions?: CloudExecution[] };
+  if (!data.executions?.length) return [];
+
+  return data.executions.map((ex) => {
+    const status = mapCloudStatus(ex.status);
+    const startedAt = ex.created_at;
+    const completedAt = status !== 'running' ? ex.updated_at : null;
+    const duration = calcDuration(new Date(startedAt), completedAt ? new Date(completedAt) : null, status);
+
+    const detail: AgentDetail = {
+      agent_id: ex.execution_id,
+      agent_type: ex.agent || 'claude',
+      status,
+      duration,
+      started_at: startedAt,
+      completed_at: completedAt,
+      prompt: ex.prompt?.length > 150 ? ex.prompt.substring(0, 147) + '...' : (ex.prompt || ''),
+      cwd: null,
+      mode: 'cloud',
+      files_created: [],
+      files_modified: [],
+      files_deleted: [],
+      bash_commands: [],
+      last_messages: ex.summary ? [ex.summary.slice(0, 300)] : [],
+      cloud_session_id: ex.execution_id,
+      cloud_provider: 'rush',
+      pr_url: ex.pr_url || null,
+    };
+
+    const taskName = `cloud:${ex.execution_id}`;
+    return {
+      task_name: taskName,
+      agent_count: 1,
+      status_counts: {
+        running: status === 'running' ? 1 : 0,
+        completed: status === 'completed' ? 1 : 0,
+        failed: status === 'failed' ? 1 : 0,
+        stopped: status === 'stopped' ? 1 : 0,
+      },
+      latest_activity: ex.updated_at || ex.created_at,
+      agents: [detail],
+    };
+  });
+}
+
+interface CloudExecution {
+  execution_id: string;
+  agent: string;
+  prompt: string;
+  status: string;
+  repo_owner: string;
+  repo_name: string;
+  branch: string | null;
+  pr_url: string | null;
+  summary: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+function mapCloudStatus(s: string): string {
+  switch (s) {
+    case 'running':
+    case 'allocating':
+      return 'running';
+    case 'completed':
+      return 'completed';
+    case 'failed':
+      return 'failed';
+    case 'cancelled':
+      return 'stopped';
+    case 'needs_review':
+      return 'completed';
+    default:
+      return s;
+  }
 }
