@@ -163,88 +163,107 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, onDispatch }
     { key: 'team', label: 'Teams', count: counts.team },
   ]
 
+  const selectedItem = expandedId ? items.find((i) => i.id === expandedId) ?? null : null
+
   return (
-    <div className="sw-unified">
-      <div className="sw-unified-head">
-        <Icon name="zap" size={13} />
-        <span style={{ fontSize: 12, fontWeight: 600 }}>Agents</span>
-        <span className="sw-section-count">{activeCount > 0 ? `${activeCount} active` : items.length}</span>
-        <div className="sw-spacer" />
-        <button className="sw-btn secondary sm" onClick={() => handleNewAgent('claude')}>
-          <Icon name="plus" size={11} />
-          New
-        </button>
-        <button className="sw-btn primary sm" onClick={onDispatch}>
-          <Icon name="dispatch" size={11} />
-          Dispatch
-        </button>
-      </div>
-
-      <div className="sw-unified-filters">
-        {filterTabs.map((tab) => (
-          <button
-            key={tab.key}
-            className={`sw-unified-filter ${filter === tab.key ? 'active' : ''}`}
-            onClick={() => setFilter(tab.key)}
-          >
-            {tab.label}
-            {tab.count > 0 && <span className="sw-unified-filter-count">{tab.count}</span>}
+    <div className="sw-unified-split">
+      <div className="sw-unified">
+        <div className="sw-unified-head">
+          <Icon name="zap" size={13} />
+          <span style={{ fontSize: 12, fontWeight: 600 }}>Agents</span>
+          <span className="sw-section-count">{activeCount > 0 ? `${activeCount} active` : items.length}</span>
+          <div className="sw-spacer" />
+          <button className="sw-btn secondary sm" onClick={() => handleNewAgent('claude')}>
+            <Icon name="plus" size={11} />
+            New
           </button>
-        ))}
+          <button className="sw-btn primary sm" onClick={onDispatch}>
+            <Icon name="dispatch" size={11} />
+            Dispatch
+          </button>
+        </div>
+
+        <div className="sw-unified-filters">
+          {filterTabs.map((tab) => (
+            <button
+              key={tab.key}
+              className={`sw-unified-filter ${filter === tab.key ? 'active' : ''}`}
+              onClick={() => setFilter(tab.key)}
+            >
+              {tab.label}
+              {tab.count > 0 && <span className="sw-unified-filter-count">{tab.count}</span>}
+            </button>
+          ))}
+        </div>
+
+        <div className="sw-unified-body">
+          {items.length === 0 && !tasksLoading && (
+            <div className="sw-empty">
+              <Icon name="zap" size={20} />
+              <div className="sw-empty-title">No agents running</div>
+              <div className="sw-empty-sub">
+                Press{' '}
+                <span className="kbd-group" style={{ display: 'inline-flex' }}>
+                  <span className="kbd kbd-inline">Cmd</span>
+                  <span className="kbd kbd-inline">Shift</span>
+                  <span className="kbd kbd-inline">A</span>
+                </span>{' '}
+                to open Claude, or dispatch a team.
+              </div>
+            </div>
+          )}
+
+          {tasksLoading && items.length === 0 && (
+            <div className="sw-empty">
+              <div className="sw-empty-sub">Loading agents...</div>
+            </div>
+          )}
+
+          {activeItems.length > 0 && activeItems.map((item) => (
+            <AgentRow
+              key={item.id}
+              item={item}
+              selected={expandedId === item.id}
+              onSelect={() => setExpandedId(expandedId === item.id ? null : item.id)}
+              onFocusTerminal={handleFocusTerminal}
+            />
+          ))}
+
+          {recentItems.length > 0 && activeItems.length > 0 && (
+            <div className="sw-unified-divider">
+              <span>Recent</span>
+            </div>
+          )}
+
+          {recentItems.map((item) => (
+            <AgentRow
+              key={item.id}
+              item={item}
+              selected={expandedId === item.id}
+              onSelect={() => setExpandedId(expandedId === item.id ? null : item.id)}
+              onFocusTerminal={handleFocusTerminal}
+            />
+          ))}
+        </div>
       </div>
 
-      <div className="sw-unified-body">
-        {items.length === 0 && !tasksLoading && (
-          <div className="sw-empty">
-            <Icon name="zap" size={20} />
-            <div className="sw-empty-title">No agents running</div>
+      <div className="sw-unified-detail-pane">
+        {selectedItem ? (
+          <DetailPane
+            item={selectedItem}
+            onFocusTerminal={handleFocusTerminal}
+            onRetry={handleRetry}
+            onKill={handleKill}
+          />
+        ) : (
+          <div className="sw-empty" style={{ height: '100%' }}>
+            <Icon name="inbox" size={24} />
+            <div className="sw-empty-title">Select an agent to see details</div>
             <div className="sw-empty-sub">
-              Press{' '}
-              <span className="kbd-group" style={{ display: 'inline-flex' }}>
-                <span className="kbd kbd-inline">Cmd</span>
-                <span className="kbd kbd-inline">Shift</span>
-                <span className="kbd kbd-inline">A</span>
-              </span>{' '}
-              to open Claude, or dispatch a team.
+              Click an agent in the list to view its full activity, files changed, and actions.
             </div>
           </div>
         )}
-
-        {tasksLoading && items.length === 0 && (
-          <div className="sw-empty">
-            <div className="sw-empty-sub">Loading agents...</div>
-          </div>
-        )}
-
-        {activeItems.length > 0 && activeItems.map((item) => (
-          <AgentRow
-            key={item.id}
-            item={item}
-            expanded={expandedId === item.id}
-            onToggle={() => setExpandedId(expandedId === item.id ? null : item.id)}
-            onFocusTerminal={handleFocusTerminal}
-            onRetry={handleRetry}
-            onKill={handleKill}
-          />
-        ))}
-
-        {recentItems.length > 0 && activeItems.length > 0 && (
-          <div className="sw-unified-divider">
-            <span>Recent</span>
-          </div>
-        )}
-
-        {recentItems.map((item) => (
-          <AgentRow
-            key={item.id}
-            item={item}
-            expanded={expandedId === item.id}
-            onToggle={() => setExpandedId(expandedId === item.id ? null : item.id)}
-            onFocusTerminal={handleFocusTerminal}
-            onRetry={handleRetry}
-            onKill={handleKill}
-          />
-        ))}
       </div>
     </div>
   )
@@ -281,73 +300,112 @@ function statusLabel(status: UnifiedAgent['status']): string {
 
 interface AgentRowProps {
   item: UnifiedAgent
-  expanded: boolean
-  onToggle: () => void
+  selected: boolean
+  onSelect: () => void
+  onFocusTerminal: (t: TerminalInfo) => void
+}
+
+function AgentRow({ item, selected, onSelect, onFocusTerminal }: AgentRowProps) {
+  return (
+    <button
+      className={`sw-unified-row ${selected ? 'selected' : ''} ${item.active ? '' : 'inactive'}`}
+      onClick={() => {
+        onSelect()
+        if (item.terminal && item.kind === 'terminal') onFocusTerminal(item.terminal)
+      }}
+    >
+      <span className={`sw-dot ${statusDotClass(item.status)}`} />
+      <AgentAvatar id={item.agentType} size={18} />
+      <div className="sw-unified-row-info">
+        <div className="sw-unified-row-name">
+          <span className="mono">{item.displayName}</span>
+          {item.kind === 'team' && item.teamAgents && (
+            <span className="sw-unified-team-avatars">
+              {[...new Set(item.teamAgents.map((a) => a.agent_type.toLowerCase()))].map((t) => (
+                <AgentAvatar key={t} id={t} size={14} />
+              ))}
+            </span>
+          )}
+        </div>
+        <div className="sw-unified-row-activity mono">
+          {item.activity}
+        </div>
+      </div>
+      <div className="sw-unified-row-meta">
+        {!item.active && item.status !== 'idle' && (
+          <span className={`sw-badge ${item.status === 'completed' ? 'ok' : item.status}`}>
+            {statusLabel(item.status)}
+          </span>
+        )}
+        <span className={`sw-unified-kind-badge ${item.kind}`}>{kindBadge(item.kind)}</span>
+        <span className="mono sw-unified-row-time">{relTime(item.timestamp)}</span>
+      </div>
+    </button>
+  )
+}
+
+function DetailPane({ item, onFocusTerminal, onRetry, onKill }: {
+  item: UnifiedAgent
   onFocusTerminal: (t: TerminalInfo) => void
   onRetry: (taskName: string) => void
   onKill: (taskName: string) => void
-}
+}) {
+  const isActive = item.active
 
-function AgentRow({ item, expanded, onToggle, onFocusTerminal, onRetry, onKill }: AgentRowProps) {
   return (
-    <div className={`sw-unified-row ${expanded ? 'expanded' : ''} ${item.active ? '' : 'inactive'}`}>
-      <button className="sw-unified-row-main" onClick={onToggle}>
-        <span className={`sw-dot ${statusDotClass(item.status)}`} />
-        <AgentAvatar id={item.agentType} size={18} />
-        <div className="sw-unified-row-info">
-          <div className="sw-unified-row-name">
-            <span className="mono">{item.displayName}</span>
-            {item.kind === 'team' && item.teamAgents && (
-              <span className="sw-unified-team-avatars">
-                {[...new Set(item.teamAgents.map((a) => a.agent_type.toLowerCase()))].map((t) => (
-                  <AgentAvatar key={t} id={t} size={14} />
-                ))}
-              </span>
+    <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
+      <div className="sw-mc-pane-head">
+        <AgentAvatar id={item.agentType} size={20} />
+        <span style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+          {item.displayName}
+        </span>
+        <span className={`sw-unified-kind-badge ${item.kind}`}>{kindBadge(item.kind)}</span>
+        {item.cloudProvider && <span className="mono sw-unified-provider">{item.cloudProvider}</span>}
+        <div className="sw-spacer" />
+        {item.swarm && (
+          <>
+            <button className="sw-btn secondary sm" onClick={() => onRetry(item.swarm!.task_name)}>
+              <Icon name="refresh" size={11} />
+              Retry
+            </button>
+            {isActive && (
+              <button className="sw-btn danger sm" onClick={() => onKill(item.swarm!.task_name)}>
+                <Icon name="x" size={11} />
+                Kill
+              </button>
             )}
-          </div>
-          <div className="sw-unified-row-activity mono">
-            {item.activity}
-          </div>
-        </div>
-        <div className="sw-unified-row-meta">
-          {item.duration && <span className="mono sw-unified-row-dur">{item.duration}</span>}
-          <span className={`sw-unified-kind-badge ${item.kind}`}>{kindBadge(item.kind)}</span>
-          {item.cloudProvider && (
-            <span className="mono sw-unified-provider">{item.cloudProvider}</span>
-          )}
-          {item.prUrl && (
-            <a
-              href={item.prUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="mono sw-unified-pr"
-              onClick={(e) => e.stopPropagation()}
-            >
-              PR
-            </a>
-          )}
-          {!item.active && item.status !== 'idle' && (
+          </>
+        )}
+        {item.terminal && (
+          <button className="sw-btn secondary sm" onClick={() => onFocusTerminal(item.terminal!)}>
+            <Icon name="terminal" size={11} />
+            Focus
+          </button>
+        )}
+      </div>
+
+      <div className="sw-mc-pane-body">
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+          {item.duration && <span className="sw-pill mono">{item.duration}</span>}
+          <span className="sw-pill">{relTime(item.timestamp)}</span>
+          {item.status !== 'idle' && (
             <span className={`sw-badge ${item.status === 'completed' ? 'ok' : item.status}`}>
               {statusLabel(item.status)}
             </span>
           )}
-          <span className="mono sw-unified-row-time">{relTime(item.timestamp)}</span>
+          {item.prUrl && (
+            <a href={item.prUrl} target="_blank" rel="noreferrer" className="mono" style={{ fontSize: 11, color: 'var(--brand)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <Icon name="external" size={10} /> PR
+            </a>
+          )}
         </div>
-      </button>
 
-      {expanded && (
-        <div className="sw-unified-detail">
-          {item.terminal && (
-            <TerminalExpandedDetail terminal={item.terminal} onFocus={onFocusTerminal} />
-          )}
-          {item.kind === 'team' && item.swarm && (
-            <TeamDetail swarm={item.swarm} onRetry={onRetry} onKill={onKill} />
-          )}
-          {(item.kind === 'headless' || item.kind === 'cloud') && item.agent && (
-            <AgentDetailView agent={item.agent} swarm={item.swarm} onRetry={onRetry} onKill={onKill} />
-          )}
-        </div>
-      )}
+        {item.terminal && <TerminalExpandedDetail terminal={item.terminal} onFocus={onFocusTerminal} />}
+        {item.kind === 'team' && item.swarm && <TeamDetail swarm={item.swarm} onRetry={onRetry} onKill={onKill} />}
+        {(item.kind === 'headless' || item.kind === 'cloud') && item.agent && (
+          <AgentDetailView agent={item.agent} swarm={item.swarm} onRetry={onRetry} onKill={onKill} />
+        )}
+      </div>
     </div>
   )
 }
