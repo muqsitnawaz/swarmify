@@ -3,6 +3,7 @@ import { Icon } from '../mission-control/icons'
 import { TaskCalendar } from './TaskCalendar'
 import type { FlatTask } from './TaskCard'
 import type { CycleInfo, TaskSource, TodoItem } from '../../types'
+import { renderTodoDescription } from '../../utils/markdown'
 
 const SOURCE_CLASS: Record<TaskSource, string> = {
   markdown: 'md',
@@ -127,7 +128,7 @@ export function TaskDetail({ task, cycleInfo, onDispatch, onDismiss, onOpenExter
         {task.description && (
           <>
             <div className="sw-panel-section-head">Description</div>
-            <div className="sw-detail-desc">{task.description}</div>
+            <div className="sw-detail-desc">{renderTodoDescription(task.description, false)}</div>
           </>
         )}
       </div>

@@ -222,6 +222,8 @@ export interface AgentDetail {
   repo_owner?: string | null
   repo_name?: string | null
   cloud_summary?: string | null
+  branch?: string | null
+  linear_issue?: string | null
 }
 
 export type ApprovalStatus = 'pending' | 'approved' | 'running' | 'complete' | 'rejected'
