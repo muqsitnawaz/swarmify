@@ -1,9 +1,17 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import type { TaskSummary, TerminalDetail as TerminalInfo, AgentDetail } from '../../types'
 import { AgentAvatar, agentShortChunk } from './AgentAvatar'
 import { Icon } from './icons'
 import { relTime, taskNameToTitle, swarmOverallStatus, shortDuration } from './types'
 import { postMessage } from '../../hooks'
+
+const NEW_AGENT_MENU: Array<{ agent: string; name: string; keys: string[] }> = [
+  { agent: 'claude', name: 'Claude', keys: ['Cmd', 'Shift', 'A'] },
+  { agent: 'codex', name: 'Codex', keys: ['Cmd', 'Shift', 'B'] },
+  { agent: 'gemini', name: 'Gemini', keys: ['Cmd', 'Shift', 'X'] },
+  { agent: 'opencode', name: 'OpenCode', keys: ['Cmd', 'Shift', 'M'] },
+  { agent: 'cursor', name: 'Cursor', keys: ['Cmd', 'Shift', 'U'] },
+]
 
 type FilterTab = 'all' | 'terminal' | 'headless' | 'cloud' | 'team'
 
@@ -116,6 +124,17 @@ interface UnifiedAgentsPaneProps {
 export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, onDispatch }: UnifiedAgentsPaneProps) {
   const [filter, setFilter] = useState<FilterTab>('all')
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [newMenuOpen, setNewMenuOpen] = useState(false)
+  const newMenuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!newMenuOpen) return
+    const handler = (e: MouseEvent) => {
+      if (newMenuRef.current && !newMenuRef.current.contains(e.target as Node)) setNewMenuOpen(false)
+    }
+    window.addEventListener('mousedown', handler)
+    return () => window.removeEventListener('mousedown', handler)
+  }, [newMenuOpen])
 
   const items = useMemo(() => buildUnifiedList(terminals, tasks), [terminals, tasks])
 
@@ -176,10 +195,36 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, onDispatch }
           <span style={{ fontSize: 12, fontWeight: 600 }}>Agents</span>
           <span className="sw-section-count">{activeCount > 0 ? `${activeCount} active` : items.length}</span>
           <div className="sw-spacer" />
-          <button className="sw-btn secondary sm" onClick={() => handleNewAgent('claude')}>
-            <Icon name="plus" size={11} />
-            New
-          </button>
+          <div style={{ position: 'relative' }} ref={newMenuRef}>
+            <button className="sw-btn secondary sm" onClick={() => setNewMenuOpen((o) => !o)}>
+              <Icon name="plus" size={11} />
+              New
+              <Icon name="chevD" size={10} />
+            </button>
+            {newMenuOpen && (
+              <div className="sw-menu">
+                {NEW_AGENT_MENU.map((m) => (
+                  <button
+                    key={m.agent}
+                    className="sw-menu-item"
+                    onClick={() => {
+                      setNewMenuOpen(false)
+                      handleNewAgent(m.agent)
+                    }}
+                  >
+                    <AgentAvatar id={m.agent} size={16} />
+                    <span>{m.name}</span>
+                    <span className="spacer" />
+                    <span className="kbd-group">
+                      {m.keys.map((k) => (
+                        <span key={k} className="kbd kbd-inline">{k}</span>
+                      ))}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <button className="sw-btn primary sm" onClick={onDispatch}>
             <Icon name="dispatch" size={11} />
             Dispatch
