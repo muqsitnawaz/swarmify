@@ -56,5 +56,6 @@ export type VsCodeMessageType =
   | 'openTerminalFile'
   | 'openSession'
   | 'spawnSwarmForTodo'
+  | 'spawnAgentForTask'
   | 'installSwarmAgent'
   | 'installCommandPack'

@@ -29,7 +29,7 @@ interface BenchTabProps {
   todoLoading: boolean
   unifiedTasksLoading: boolean
   expandedSources: Set<TaskSource>
-  availableSources: { markdown?: boolean; linear: boolean; github: boolean }
+  availableSources: { linear: boolean; github: boolean }
   settings: AgentSettings | null
   defaultAgent: string
   contextFiles: ContextFile[]
@@ -45,6 +45,7 @@ interface BenchTabProps {
   isLightTheme: boolean
   onToggleSource: (source: TaskSource) => void
   onSpawnTodo: (item: TodoItem, filePath: string) => void
+  onSpawnAgentForTask: (task: UnifiedTask) => void
   onRefreshTasks: () => void
   onRefreshContext: () => void
   onUpdateTaskSources: (sources: Partial<any>) => void
@@ -72,7 +73,7 @@ export function BenchTab(props: BenchTabProps) {
     settings,
     dismissedTaskIds,
     onRefreshTasks,
-    onSpawnTodo,
+    onSpawnAgentForTask,
     onDismissTask,
   } = props
 
@@ -128,9 +129,8 @@ export function BenchTab(props: BenchTabProps) {
   )
 
   const handleDispatch = (task: FlatTask) => {
-    if (task.source === 'markdown' && task.todoItem && task.filePath) {
-      onSpawnTodo(task.todoItem, task.filePath)
-    }
+    const source = unifiedTasks.find(t => t.id === task.id)
+    if (source) onSpawnAgentForTask(source)
   }
 
   const handleDismiss = (taskId: string) => {
@@ -183,7 +183,7 @@ export function BenchTab(props: BenchTabProps) {
             <div className="sw-empty">
               <span className="sw-empty-title">Work queue empty</span>
               <span className="sw-empty-sub">
-                Add a TODO.md file or connect Linear or GitHub to see tasks here.
+                Connect Linear or GitHub to see tasks here.
               </span>
             </div>
           ) : (
