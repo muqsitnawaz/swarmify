@@ -721,17 +721,28 @@ export function openPanel(context: vscode.ExtensionContext): void {
           break;
         }
 
-        if (target === 'cloud') {
-          vscode.window.showInformationMessage(
-            'Cloud dispatch is coming soon — wiring to the Prix cloud-runs API is not yet complete. Task was not dispatched.'
-          );
-          break;
-        }
-
         const parts = [title];
         if (description) parts.push(description);
         if (identifier) parts.push(`Reference: ${identifier}`);
         const prompt = parts.join('\n\n');
+
+        if (target === 'cloud') {
+          const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+          if (!workspacePath) {
+            vscode.window.showErrorMessage('Cloud dispatch requires an open workspace.');
+            break;
+          }
+          const repo = await getGitHubRepo(workspacePath);
+          if (!repo) {
+            vscode.window.showErrorMessage('Cloud dispatch requires a GitHub remote on the workspace.');
+            break;
+          }
+          const term = vscode.window.createTerminal({ name: `rush cloud ${agentType}`, cwd: workspacePath });
+          const safePrompt = prompt.replace(/'/g, `'\\''`);
+          term.sendText(`rush cloud run ${agentType} ${repo} -p '${safePrompt}'`);
+          term.show();
+          break;
+        }
 
         const def = getBuiltInByKey(agentType);
         if (!def) {
