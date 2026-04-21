@@ -1065,6 +1065,19 @@ interface CloudExecution {
   updated_at: string;
 }
 
+async function fetchCloudRunOutput(executionId: string, token: string): Promise<{ output: string | null; current_activity: string | null } | null> {
+  try {
+    const resp = await fetch(`${PRIX_API_URL}/api/v1/cloud-runs/${executionId}/output`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!resp.ok) return null;
+    return (await resp.json()) as { output: string | null; current_activity: string | null };
+  } catch {
+    return null;
+  }
+}
+
 function mapCloudStatus(s: string): string {
   switch (s) {
     case 'running':
