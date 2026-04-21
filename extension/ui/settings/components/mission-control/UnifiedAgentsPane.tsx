@@ -881,7 +881,7 @@ function DispatchModal({ tasks, loading, onClose, onDispatch, onDispatchBatch, o
                   type="button"
                   className={`sw-dispatch-target-btn ${target === 'cloud' ? 'active' : ''}`}
                   onClick={() => setTarget('cloud')}
-                  title="Rush Cloud -- coming soon"
+                  title="Rush Cloud -- run on GitHub repo"
                 >
                   Cloud
                 </button>
