@@ -445,6 +445,11 @@ export default function App() {
     vscode.postMessage({ type: 'spawnSwarmForTodo', item, filePath })
   }
 
+  const handleSpawnAgentForTask = (task: UnifiedTask) => {
+    setActiveTab('floor')
+    vscode.postMessage({ type: 'spawnAgentForTask', task })
+  }
+
   const handleOpenSession = (session: AgentSession) => {
     vscode.postMessage({ type: 'openSession', session })
   }
@@ -685,6 +690,7 @@ export default function App() {
           isLightTheme={isLightTheme}
           onToggleSource={toggleSourceExpanded}
           onSpawnTodo={handleSpawnTodo}
+          onSpawnAgentForTask={handleSpawnAgentForTask}
           onRefreshTasks={() => { fetchTodoFiles(); fetchUnifiedTasks() }}
           onRefreshContext={() => { setContextLoaded(false); fetchContextFiles() }}
           onUpdateTaskSources={handleUpdateTaskSources}

@@ -12,6 +12,9 @@ import * as terminals from './terminals.vscode';
 import * as swarm from './swarm.vscode';
 import { discoverTodoFiles, spawnSwarmForTodo } from './todos.vscode';
 import { fetchAllTasks, detectAvailableSources } from './tasks.vscode';
+import { getBuiltInByTitle } from './agents.vscode';
+import { openSingleAgentWithQueue } from './extension';
+import { CLAUDE_TITLE } from '../core/utils';
 import { discoverRecentSessions, getSessionPathBySessionId } from './sessions.vscode';
 import { formatTerminalTitle, parseTerminalName, getSessionChunk } from '../core/utils';
 import { getBuiltInByKey } from '../core/agents';
@@ -707,6 +710,31 @@ export function openPanel(context: vscode.ExtensionContext): void {
       case 'spawnSwarmForTodo':
         await spawnSwarmForTodo(message.item, context);
         break;
+      case 'spawnAgentForTask': {
+        const task = message.task as {
+          title: string;
+          description?: string;
+          metadata?: { identifier?: string; url?: string };
+        } | undefined;
+        if (!task || !task.title) break;
+
+        const parts = [task.title];
+        if (task.description) parts.push(task.description);
+        if (task.metadata?.identifier) parts.push(`Reference: ${task.metadata.identifier}`);
+        if (task.metadata?.url) parts.push(`URL: ${task.metadata.url}`);
+        const prompt = parts.join('\n\n');
+
+        const defaultTitle = context.globalState.get<string>('agents.defaultAgentTitle', CLAUDE_TITLE);
+        const agentConfig = getBuiltInByTitle(context.extensionPath, defaultTitle)
+          ?? getBuiltInByTitle(context.extensionPath, CLAUDE_TITLE);
+        if (!agentConfig) {
+          vscode.window.showErrorMessage('Could not find default agent configuration');
+          break;
+        }
+
+        await openSingleAgentWithQueue(context, agentConfig, [prompt]);
+        break;
+      }
       case 'openSession':
         // Open session file in editor
         if (message.session?.path) {
