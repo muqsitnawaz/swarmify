@@ -302,6 +302,9 @@ export default function App() {
     if (activeTab === 'floor' && !tasksLoaded && !tasksLoading) {
       fetchTasks()
     }
+    if (activeTab === 'floor' && !unifiedTasksLoaded && !unifiedTasksLoading) {
+      fetchUnifiedTasks()
+    }
     if (activeTab === 'bench' && !todoLoaded && !todoLoading) {
       fetchTodoFiles()
     }
