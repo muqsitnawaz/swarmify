@@ -1,1 +1,1 @@
-export { ForemanTab } from './ForemanTab'
+export { ForemanOrb } from './ForemanOrb'
