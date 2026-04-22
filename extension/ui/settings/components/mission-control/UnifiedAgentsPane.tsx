@@ -2237,7 +2237,6 @@ function DispatchCard({ task, onOpen }: { task: UnifiedTask; onOpen: (task: Unif
   const assignee = task.metadata.assignee
   const isAgentAssignee = task.metadata.assigneeKind === 'agent'
   const repoHref = repo ? `https://github.com/${repo}` : null
-  const shortDesc = task.description?.trim().replace(/\s+/g, ' ').slice(0, 120) || null
 
   const stopOpen = (e: React.MouseEvent) => { e.stopPropagation() }
 
@@ -2281,7 +2280,6 @@ function DispatchCard({ task, onOpen }: { task: UnifiedTask; onOpen: (task: Unif
           {due && <span className={`sw-queue-due ${due.tone}`}>{due.label}</span>}
         </div>
       )}
-      {shortDesc && <div className="sw-queue-desc sw-queue-desc-oneline">{shortDesc}</div>}
       {assignee && (
         <div className="sw-queue-assignee">
           {isAgentAssignee ? (
