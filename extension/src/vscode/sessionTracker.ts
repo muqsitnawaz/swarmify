@@ -252,17 +252,14 @@ async function correlateKillRestart(
     return;
   }
 
-  const pickedPid = await newestChildPid(dormant);
-  if (pickedPid === undefined) return;
-  const picked = dormant.find(async t => {
-    const pid = await (t.terminal.processId as Promise<number | undefined>);
-    return pid === pickedPid;
-  });
+  const picked = await newestDormantTerminal(dormant);
   if (picked) applyChange(picked, newId, file);
 }
 
-async function newestChildPid(terms: TrackedTerminal[]): Promise<number | undefined> {
-  let newest: { pid: number; start: number } | undefined;
+async function newestDormantTerminal(
+  terms: TrackedTerminal[],
+): Promise<TrackedTerminal | undefined> {
+  let newest: { terminal: TrackedTerminal; start: number } | undefined;
   for (const t of terms) {
     try {
       const shellPid = await t.terminal.processId;
@@ -273,7 +270,9 @@ async function newestChildPid(terms: TrackedTerminal[]): Promise<number | undefi
         try {
           const { stdout: lstart } = await execAsync(`ps -p ${pid} -o lstart=`);
           const start = Date.parse(lstart.trim());
-          if (!newest || start > newest.start) newest = { pid, start };
+          if (!isNaN(start) && (!newest || start > newest.start)) {
+            newest = { terminal: t, start };
+          }
         } catch {
           /* ignore */
         }
@@ -282,7 +281,7 @@ async function newestChildPid(terms: TrackedTerminal[]): Promise<number | undefi
       /* ignore */
     }
   }
-  return newest?.pid;
+  return newest?.terminal;
 }
 
 function applyChange(t: TrackedTerminal, newId: string, file: string): void {
@@ -397,17 +396,6 @@ export function __reset(): void {
   lastWriteMs.clear();
   listeners = [];
   initialized = false;
-}
-
-export function __setClaudeRootsForTests(roots: string[]): void {
-  overrideClaudeRoots = roots;
-}
-
-let overrideClaudeRoots: string[] | null = null;
-const _origClaudeRootsFor = claudeRootsFor;
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function _useOverride(_workspacePath: string): string[] {
-  return overrideClaudeRoots ?? _origClaudeRootsFor(_workspacePath);
 }
 
 export function __testRegister(

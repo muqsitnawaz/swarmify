@@ -529,10 +529,10 @@ export async function scanExisting(
     }
 
     if (sessionId) {
-      setSessionId(terminal, sessionId);
       if (agentType) {
         setAgentType(terminal, agentType);
       }
+      setSessionId(terminal, sessionId);
       console.log(`[TERMINALS] Restored session: sessionId=${sessionId}, agentType=${agentType}`);
       if (onSessionRestored) {
         onSessionRestored(terminal);

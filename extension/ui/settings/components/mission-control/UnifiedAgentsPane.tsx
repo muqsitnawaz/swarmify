@@ -539,28 +539,40 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
 
   const optimisticItems = useMemo<UnifiedAgent[]>(() => {
     void tick
-    return pendingDispatches.map((p) => {
-      const timedOut = (p.status ?? 'pending') === 'timedOut'
-      return {
+    // Only render still-pending dispatches as optimistic cards. Timed-out
+    // ones are surfaced as a separate dismissable banner above the grid
+    // (see `timedOutDispatches` + banner render below) so they stand out
+    // visually instead of masquerading as a running agent.
+    return pendingDispatches
+      .filter((p) => (p.status ?? 'pending') !== 'timedOut')
+      .map((p) => ({
         kind: p.target === 'cloud' ? 'cloud' : 'terminal',
         id: p.id,
         agentType: p.agentType,
         displayName: p.taskIdentifier || p.title.slice(0, 40),
         activity: optimisticActivityLabel(p),
-        // Timed-out entries stay "active" so they render in the Active list
-        // rather than drop off the UI — the status: 'failed' styling makes
-        // them visually distinct (red LED + muted card).
         active: true,
         duration: '',
         timestamp: new Date(p.createdAt).toISOString(),
-        status: timedOut ? 'failed' : 'running',
+        status: 'running',
         files: [],
         toolCalls: 0,
         mode: p.target === 'cloud' ? 'cloud' : 'edit',
         cloudProvider: p.target === 'cloud' ? 'anthropic' : null,
-      }
-    })
+      }))
   }, [pendingDispatches, tick])
+
+  // Timed-out dispatches surfaced as a warning banner. Collected separately
+  // so the banner renders above the active grid and can be individually
+  // dismissed without affecting still-pending entries.
+  const timedOutDispatches = useMemo(() => {
+    void tick
+    return pendingDispatches.filter((p) => (p.status ?? 'pending') === 'timedOut')
+  }, [pendingDispatches, tick])
+
+  const dismissPending = (id: string) => {
+    setPendingDispatches((prev) => prev.filter((p) => p.id !== id))
+  }
 
   const items = useMemo(() => [...optimisticItems, ...baseItems], [optimisticItems, baseItems])
   const activeItems = useMemo(() => items.filter((i) => i.active), [items])
@@ -1015,6 +1027,36 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
               Dispatch
             </button>
           </div>
+
+          {timedOutDispatches.length > 0 && (
+            <div className="sw-dispatch-timeout-banner" role="alert">
+              {timedOutDispatches.map((p) => (
+                <div key={p.id} className="sw-dispatch-timeout-row">
+                  <Icon name="zap" size={12} />
+                  <span className="sw-dispatch-timeout-text">
+                    {optimisticActivityLabel(p)}
+                  </span>
+                  <button
+                    className="sw-btn secondary sm"
+                    onClick={() => {
+                      postMessage({ type: 'focusRushCloudTerminal' })
+                    }}
+                    title="Jump to the Rush Cloud terminal for logs"
+                  >
+                    Show terminal
+                  </button>
+                  <button
+                    className="sw-btn ghost sm"
+                    onClick={() => dismissPending(p.id)}
+                    aria-label="Dismiss"
+                    title="Dismiss"
+                  >
+                    <Icon name="x" size={11} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
 
           {(() => {
             const visibleActive = activeItems.filter((item) => activeFilter === 'all' || (activeFilter === 'cloud' ? item.kind === 'cloud' : item.kind !== 'cloud'))
