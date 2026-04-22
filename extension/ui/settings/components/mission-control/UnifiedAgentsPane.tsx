@@ -1191,6 +1191,7 @@ function DispatchModal({ tasks, loading, onClose, onDispatch, onDispatchBatch, o
   const [query, setQuery] = useState('')
   const [priorityFilter, setPriorityFilter] = useState<'all' | 'urgent' | 'high'>('all')
   const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null)
+  const [detailTaskId, setDetailTaskId] = useState<string | null>(null)
   const [checkedIds, setCheckedIds] = useState<Set<string>>(() => new Set())
   const [target, setTarget] = useState<'local' | 'cloud'>('local')
   const inputRef = useRef<HTMLInputElement>(null)
