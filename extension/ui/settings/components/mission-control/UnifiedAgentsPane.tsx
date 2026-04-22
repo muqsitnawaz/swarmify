@@ -58,9 +58,12 @@ function taskTypeColor(type: FactoryTaskType): string {
 function buildUnifiedList(terminals: TerminalInfo[], tasks: TaskSummary[]): UnifiedAgent[] {
   const items: UnifiedAgent[] = []
 
+  const now = Date.now()
   for (const t of terminals) {
     const chunk = agentShortChunk(t.sessionId) || (t.id ?? '').slice(-8)
-    const isActive = t.status === 'running' || !!t.currentActivity
+    const ageMs = now - (t.createdAt || 0)
+    const isJustSpawned = ageMs >= 0 && ageMs < 15000
+    const isActive = t.status === 'running' || !!t.currentActivity || isJustSpawned
     const files: string[] = []
     if (t.recentFiles) files.push(...t.recentFiles.slice(0, 5))
     items.push({
@@ -68,7 +71,7 @@ function buildUnifiedList(terminals: TerminalInfo[], tasks: TaskSummary[]): Unif
       id: `term-${t.id}`,
       agentType: t.agentType,
       displayName: `${t.agentType}-${chunk}`,
-      activity: t.currentActivity || t.label || (t.status === 'idle' ? 'idle' : t.role ?? 'terminal'),
+      activity: t.currentActivity || t.label || (isJustSpawned ? 'Starting...' : t.status === 'idle' ? 'idle' : t.role ?? 'terminal'),
       active: isActive,
       duration: t.firstMessageTimestamp ? relTime(t.firstMessageTimestamp) : '',
       timestamp: t.lastActivityTimestamp || new Date(t.createdAt).toISOString(),
@@ -307,13 +310,42 @@ interface UnifiedAgentsPaneProps {
   onNavigate?: (tab: 'floor' | 'bench' | 'panel') => void
 }
 
+type PendingDispatch = {
+  id: string
+  agentType: string
+  target: 'local' | 'cloud'
+  taskId: string
+  taskIdentifier: string
+  title: string
+  createdAt: number
+}
+
+const PENDING_DISPATCH_TTL_MS = 30000
+
 export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks, unifiedTasksLoading, onDispatch, onNavigate }: UnifiedAgentsPaneProps) {
   const [newMenuOpen, setNewMenuOpen] = useState(false)
   const [recentOpen, setRecentOpen] = useState(false)
   const [prPopover, setPrPopover] = useState<'shipped' | 'open' | null>(null)
   const [dispatchOpen, setDispatchOpen] = useState(false)
+  const [pendingDispatches, setPendingDispatches] = useState<PendingDispatch[]>([])
+  const [tick, setTick] = useState(0)
   const newMenuRef = useRef<HTMLDivElement>(null)
   const prPopoverRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (pendingDispatches.length === 0) return
+    const interval = setInterval(() => setTick((n) => n + 1), 1000)
+    return () => clearInterval(interval)
+  }, [pendingDispatches.length])
+
+  useEffect(() => {
+    if (pendingDispatches.length === 0) return
+    const now = Date.now()
+    const stale = pendingDispatches.filter((p) => now - p.createdAt >= PENDING_DISPATCH_TTL_MS)
+    if (stale.length > 0) {
+      setPendingDispatches((prev) => prev.filter((p) => now - p.createdAt < PENDING_DISPATCH_TTL_MS))
+    }
+  }, [tick, pendingDispatches])
 
   useEffect(() => {
     if (!newMenuOpen) return
@@ -333,16 +365,74 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     return () => window.removeEventListener('mousedown', handler)
   }, [prPopover])
 
-  const items = useMemo(() => buildUnifiedList(terminals, tasks), [terminals, tasks])
+  const baseItems = useMemo(() => buildUnifiedList(terminals, tasks), [terminals, tasks])
+
+  // Reconcile: drop a pending dispatch once a matching real terminal/task appears.
+  // Local: match by agentType on a terminal created at/after the pending dispatch.
+  // Cloud: match by agentType on a swarm task started at/after the pending dispatch.
+  useEffect(() => {
+    if (pendingDispatches.length === 0) return
+    setPendingDispatches((prev) => {
+      if (prev.length === 0) return prev
+      const consumed = new Set<string>()
+      for (const p of prev) {
+        if (p.target === 'local') {
+          const match = terminals.find((t) =>
+            t.agentType === p.agentType && (t.createdAt || 0) >= p.createdAt - 1000
+          )
+          if (match) consumed.add(p.id)
+        } else {
+          const match = tasks.find((task) =>
+            task.agents.some((a) =>
+              a.agent_type === p.agentType &&
+              a.started_at &&
+              new Date(a.started_at).getTime() >= p.createdAt - 1000
+            )
+          )
+          if (match) consumed.add(p.id)
+        }
+      }
+      if (consumed.size === 0) return prev
+      return prev.filter((p) => !consumed.has(p.id))
+    })
+  }, [terminals, tasks, pendingDispatches])
+
+  const optimisticItems = useMemo<UnifiedAgent[]>(() => {
+    void tick
+    const now = Date.now()
+    return pendingDispatches.map((p) => ({
+      kind: p.target === 'cloud' ? 'cloud' : 'terminal',
+      id: p.id,
+      agentType: p.agentType,
+      displayName: p.taskIdentifier || p.title.slice(0, 40),
+      activity: p.target === 'cloud' ? `Queuing on Rush Cloud... (${p.taskIdentifier || p.title.slice(0, 40)})` : `Starting... (${p.taskIdentifier || p.title.slice(0, 40)})`,
+      active: true,
+      duration: '',
+      timestamp: new Date(p.createdAt).toISOString(),
+      status: 'running',
+      files: [],
+      toolCalls: 0,
+      mode: p.target === 'cloud' ? 'cloud' : 'edit',
+      cloudProvider: p.target === 'cloud' ? 'anthropic' : null,
+    }))
+  }, [pendingDispatches, tick])
+
+  const items = useMemo(() => [...optimisticItems, ...baseItems], [optimisticItems, baseItems])
   const activeItems = useMemo(() => items.filter((i) => i.active), [items])
   const recentItems = useMemo(() => items.filter((i) => !i.active), [items])
 
-  // Queue: urgent/high tasks that are todo
+  const pendingTaskIds = useMemo(
+    () => new Set(pendingDispatches.map((p) => p.taskId)),
+    [pendingDispatches]
+  )
+
+  // Queue: urgent/high tasks that are todo (exclude tasks currently being dispatched)
   const queueTasks = useMemo(() =>
     unifiedTasks
       .filter((t) => t.status === 'todo' && (t.priority === 'urgent' || t.priority === 'high'))
+      .filter((t) => !pendingTaskIds.has(t.id))
       .slice(0, 4),
-    [unifiedTasks]
+    [unifiedTasks, pendingTaskIds]
   )
 
   // Intake queue: cloud teammates that a cloud provider flagged as
@@ -433,13 +523,29 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     return Math.max(0, todoCount - queueTasks.length)
   }, [unifiedTasks, queueTasks.length])
 
-  // Estimated LLM output tok/s based on active agent count.
-  // TODO: replace with real session parsing (output tokens delta / sec rolling window).
-  const estimatedThroughput = useMemo(() => {
-    const activeCount = activeItems.length
-    if (activeCount === 0) return 0
-    return Math.round(activeCount * 280)
+  // Real LLM output tok/s -- extension parses active Claude session JSONL files
+  // and sums usage.output_tokens over the last 60s rolling window.
+  const [liveThroughput, setLiveThroughput] = useState(0)
+  useEffect(() => {
+    if (activeItems.length === 0) {
+      setLiveThroughput(0)
+      return
+    }
+    const poll = () => postMessage({ type: 'getFloorThroughput' })
+    poll()
+    const id = setInterval(poll, 2500)
+    return () => clearInterval(id)
   }, [activeItems.length])
+  useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      const msg = event.data
+      if (msg?.type === 'floorThroughputData' && typeof msg.tokensPerSec === 'number') {
+        setLiveThroughput(msg.tokensPerSec)
+      }
+    }
+    window.addEventListener('message', handler)
+    return () => window.removeEventListener('message', handler)
+  }, [])
 
   const handleNewAgent = (agent: string) => {
     const commands: Record<string, string> = {
@@ -474,6 +580,20 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
       description: task.description || '',
       identifier: task.metadata.identifier || '',
     })
+    const pending: PendingDispatch = {
+      id: `pending-${task.id}-${Date.now()}`,
+      agentType,
+      target,
+      taskId: task.id,
+      taskIdentifier: task.metadata.identifier || '',
+      title: task.title,
+      createdAt: Date.now(),
+    }
+    setPendingDispatches((prev) => [...prev, pending])
+    setTimeout(() => {
+      postMessage({ type: 'fetchAllTerminals' })
+      postMessage({ type: 'fetchTasks' })
+    }, 800)
   }
 
   return (
@@ -532,7 +652,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
               />
             )}
           </div>
-          {activeItems.length > 0 && <ThroughputCounter tokensPerSec={estimatedThroughput} />}
+          {activeItems.length > 0 && <ThroughputCounter tokensPerSec={liveThroughput} />}
         </div>
       </div>
 
