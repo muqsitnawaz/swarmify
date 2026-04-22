@@ -391,3 +391,42 @@ Live activity extraction from agent session files. Shows what the agent is curre
 - Sort by modification time to find most recent
 
 **Testing**: E2E tests in `tests/sessions.activity.test.ts` use real session files. Filter by 5KB minimum size and sort by mtime to find substantial recent sessions.
+
+## Factory Floor Dispatch
+
+Dispatch flow from the Factory Floor webview (Dispatch button, Next Up cards) down to the real terminal / cloud run.
+
+**Entry points** (all route to the same backend handler):
+- `DispatchModal` (top-level Dispatch button, single + batch) — `ui/settings/components/mission-control/UnifiedAgentsPane.tsx`
+- `DispatchCard` (Next Up row) — same file
+- Both call `handleDispatchTask(task, agentType, target, targetRepos?)` which posts `{ type: 'dispatchTask', labels, targetRepos, ... }` to the extension
+
+**Backend handler**: `src/vscode/settings.vscode.ts` `case 'dispatchTask'`
+
+**Local path** (`target === 'local'`):
+- Builds `prompt` = `title \n\n description \n\n Reference: <id>`
+- Resolves agent config, calls `openSingleAgentWithQueue(context, agentConfig, [prompt])`
+- `extension.ts:openSingleAgentWithQueue` creates a transient editor-tab terminal with `ViewColumn.Active` + `preserveFocus: false` + explicit `terminal.show(false)` so it takes focus from the webview column (matches Cmd+Shift+A behavior)
+
+**Cloud path** (`target === 'cloud'`):
+1. Resolve GitHub owner via fallback chain (`resolveGithubOwner`):
+   - `settings.githubOwner` (Panel-editable)
+   - Workspace git remote owner
+   - `gh api user -q .login`
+   - null → webview gets `needGithubOwner` message, shows `GithubOwnerModal`
+2. Parse `repo:<name>` labels via `resolveReposFromLabels(labels, owner)` → `owner/name[]`
+3. If 0 repos from labels → fall back to workspace remote
+4. If 2+ repos → webview gets `pickRepos` message, shows `RepoPickerModal` → user picks subset → re-dispatch with `targetRepos` override
+5. For each resolved repo, `rush cloud run <agent> <owner/repo> -p '<prompt>'` is sent to a single shared **Rush Cloud** editor tab (`getOrCreateRushCloudTerminal` singleton with the Rush bird icon). 10 cloud dispatches = 1 terminal tab with 10 commands logged in order.
+
+**Optimistic UI + reconciliation** — `ui/settings/components/mission-control/dispatch.ts` (pure, tested):
+- `handleDispatchTask` pushes a `PendingDispatch` row into Active immediately (`Starting... (RUSH-362)` for local, `Queuing on Rush Cloud... (RUSH-362 -> muqsitnawaz/agents)` for cloud)
+- `reconcilePending(pending, terminals, tasks)` runs on every terminals/tasks update. Local: match by `agentType` on a terminal created at/after the dispatch time. Cloud: match by `agent_type` on a swarm task started at/after. Matching pending rows are dropped and the real row takes over.
+- `pruneExpiredPending` GCs any stuck pending rows after `PENDING_DISPATCH_TTL_MS` (30s).
+- `isTerminalActive(t, now)` uses a 15s trust window — newly-spawned terminals with no session file yet are still shown in Active as `Starting...` instead of landing in the Recent bucket.
+- `filterDispatchedTaskIds` removes dispatched task ids from the Next Up queue immediately.
+
+**Settings**:
+- `AgentSettings.githubOwner?: string` — persisted in VS Code globalState. Panel → "Cloud Dispatch" section edits it.
+
+**Tests**: `ui/settings/components/mission-control/dispatch.test.ts` covers trust-window, reconciliation, TTL prune, label-filter, optimistic label composition, and `resolveReposFromLabels` (46 tests, no mocks — pure-function coverage).

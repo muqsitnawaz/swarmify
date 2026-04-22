@@ -1001,9 +1001,12 @@ export function openPanel(context: vscode.ExtensionContext): void {
 
           const safePrompt = prompt.replace(/'/g, `'\\''`);
           const term = await getOrCreateRushCloudTerminal(context, workspacePath || process.cwd());
-          for (const repo of targetRepos) {
-            term.sendText(`rush cloud run ${agentType} ${repo} -p '${safePrompt}'`);
-          }
+          // Single dispatch with repeatable --repo flags. The cloud agent
+          // clones each repo into /workspace/<owner>/<name>/ and can commit
+          // to any of them. Firing N separate `rush cloud run` invocations
+          // would produce N disconnected pods that can't coordinate.
+          const repoFlags = targetRepos.map((r) => `--repo ${r}`).join(' ');
+          term.sendText(`rush cloud run ${agentType} ${repoFlags} -p '${safePrompt}'`);
           term.show(true);
           break;
         }
