@@ -2,7 +2,7 @@ import React from 'react'
 import { Icon } from '../mission-control/icons'
 import { TaskCalendar } from './TaskCalendar'
 import type { FlatTask } from './TaskCard'
-import type { CycleInfo, TaskSource, TodoItem } from '../../types'
+import type { CycleInfo } from '../../types'
 import { renderTodoDescription } from '../../utils/markdown'
 
 const SOURCE_CLASS: Record<string, string> = {

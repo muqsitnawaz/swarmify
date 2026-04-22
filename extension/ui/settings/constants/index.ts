@@ -24,7 +24,6 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
 
 // Source badges for task sources
 export const SOURCE_BADGES: Record<TaskSource, { label: string; color: string }> = {
-  markdown: { label: 'MD', color: '#6366f1' },
   linear: { label: 'LN', color: '#5e6ad2' },
   github: { label: 'GH', color: '#238636' }
 }

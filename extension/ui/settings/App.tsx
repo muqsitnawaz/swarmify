@@ -7,7 +7,6 @@ import {
   SwarmStatus,
   SkillsStatus,
   TaskSummary,
-  TodoFile,
   UnifiedTask,
   CycleInfo,
   TaskSource,
@@ -20,7 +19,6 @@ import {
   PrewarmPool,
   WorkspaceConfig,
   SwarmAgentType,
-  TodoItem,
 } from './types'
 import {
   ALL_SWARM_AGENTS,
@@ -100,18 +98,15 @@ export default function App() {
   const [sessionTasks, setSessionTasks] = useState<Record<string, TaskSummary[]>>({})
   const [sessionTasksLoading, setSessionTasksLoading] = useState<Record<string, boolean>>({})
 
-  // Todo and unified tasks state
-  const [todoFiles, setTodoFiles] = useState<TodoFile[]>([])
-  const [todoLoading, setTodoLoading] = useState(false)
-  const [todoLoaded, setTodoLoaded] = useState(false)
+  // Unified tasks state
   const [unifiedTasks, setUnifiedTasks] = useState<UnifiedTask[]>([])
   const [unifiedTasksLoading, setUnifiedTasksLoading] = useState(false)
   const [unifiedTasksLoaded, setUnifiedTasksLoaded] = useState(false)
   const [cycleInfo, setCycleInfo] = useState<CycleInfo | null>(null)
-  const [availableSources, setAvailableSources] = useState<{ markdown: boolean; linear: boolean; github: boolean }>({
-    markdown: true, linear: false, github: false
+  const [availableSources, setAvailableSources] = useState<{ linear: boolean; github: boolean }>({
+    linear: false, github: false
   })
-  const [expandedSources, setExpandedSources] = useState<Set<TaskSource>>(new Set(['markdown']))
+  const [expandedSources, setExpandedSources] = useState<Set<TaskSource>>(new Set(['linear']))
 
   // Sessions state
   const [recentSessions, setRecentSessions] = useState<AgentSession[]>([])
@@ -194,12 +189,6 @@ export default function App() {
           setTasksLoading(false)
           setTasksLoaded(true)
           break
-        case 'todoFilesData':
-        case 'todoFilesUpdated':
-          setTodoFiles(message.files || [])
-          setTodoLoading(false)
-          setTodoLoaded(true)
-          break
         case 'sessionsData':
         case 'sessionsUpdated':
           setRecentSessions(message.sessions || [])
@@ -274,7 +263,7 @@ export default function App() {
           setUnifiedTasksLoaded(true)
           break
         case 'taskSourcesData':
-          setAvailableSources(message.sources || { markdown: true, linear: false, github: false })
+          setAvailableSources(message.sources || { linear: false, github: false })
           break
         case 'sessionTasksData':
           setSessionTasks(prev => ({ ...prev, [message.sessionId]: message.tasks || [] }))
@@ -304,9 +293,6 @@ export default function App() {
     if (activeTab === 'floor' && !unifiedTasksLoaded && !unifiedTasksLoading) {
       fetchUnifiedTasks()
     }
-    if (activeTab === 'bench' && !todoLoaded && !todoLoading) {
-      fetchTodoFiles()
-    }
     if (activeTab === 'bench' && !unifiedTasksLoaded && !unifiedTasksLoading) {
       fetchUnifiedTasks()
       detectTaskSources()
@@ -314,7 +300,7 @@ export default function App() {
     if (activeTab === 'bench' && !contextLoaded && !contextLoading) {
       fetchContextFiles()
     }
-  }, [activeTab, tasksLoaded, tasksLoading, todoLoaded, todoLoading, unifiedTasksLoaded, unifiedTasksLoading, contextLoaded, contextLoading])
+  }, [activeTab, tasksLoaded, tasksLoading, unifiedTasksLoaded, unifiedTasksLoading, contextLoaded, contextLoading])
 
   // Poll for tasks and terminals when floor tab is active
   useEffect(() => {
@@ -372,11 +358,6 @@ export default function App() {
 
   const handleLoadMoreTasks = () => {
     setTasksDisplayCount(prev => prev + 10)
-  }
-
-  const fetchTodoFiles = () => {
-    setTodoLoading(true)
-    vscode.postMessage({ type: 'fetchTodoFiles' })
   }
 
   const fetchUnifiedTasks = () => {
@@ -437,11 +418,6 @@ export default function App() {
 
   const handleOpenTerminalFile = (filePath: string) => {
     vscode.postMessage({ type: 'openTerminalFile', path: filePath })
-  }
-
-  const handleSpawnTodo = (item: TodoItem, filePath: string) => {
-    setActiveTab('floor')
-    vscode.postMessage({ type: 'spawnSwarmForTodo', item, filePath })
   }
 
   const handleSpawnAgentForTask = (task: UnifiedTask) => {
@@ -668,10 +644,8 @@ export default function App() {
       {/* Bench (2-column work queue) */}
       {activeTab === 'bench' && (
         <BenchTab
-          todoFiles={todoFiles}
           unifiedTasks={unifiedTasks}
           cycleInfo={cycleInfo}
-          todoLoading={todoLoading}
           unifiedTasksLoading={unifiedTasksLoading}
           expandedSources={expandedSources}
           availableSources={availableSources}
@@ -689,9 +663,8 @@ export default function App() {
           icons={icons}
           isLightTheme={isLightTheme}
           onToggleSource={toggleSourceExpanded}
-          onSpawnTodo={handleSpawnTodo}
           onSpawnAgentForTask={handleSpawnAgentForTask}
-          onRefreshTasks={() => { fetchTodoFiles(); fetchUnifiedTasks() }}
+          onRefreshTasks={() => { fetchUnifiedTasks() }}
           onRefreshContext={() => { setContextLoaded(false); fetchContextFiles() }}
           onUpdateTaskSources={handleUpdateTaskSources}
           onToggleDir={toggleDirExpanded}

@@ -88,7 +88,7 @@ export function NotificationsSection({ settings, onSaveSettings }: Notifications
 
 interface SourcesSectionProps {
   settings: AgentSettings
-  availableSources: { markdown: boolean; linear: boolean; github: boolean }
+  availableSources: { linear: boolean; github: boolean }
   onUpdateTaskSources: (sources: Partial<AgentSettings['taskSources']>) => void
   onConnectLinear: () => void
   onConnectGitHub: () => void
@@ -104,12 +104,6 @@ export function SourcesSection({
   return (
     <div className="sw-panel-section">
       <div className="sw-panel-section-head">Sources</div>
-
-      <div className="sw-source-row">
-        <span className="sw-badge ok" style={{ minWidth: 26, justifyContent: 'center' }}>MD</span>
-        <span style={{ flex: 1, fontSize: '12px' }}>Markdown</span>
-        <span style={{ fontSize: '11px', color: 'var(--ds-text-dim)' }}>Always on</span>
-      </div>
 
       <div className="sw-source-row">
         <span className="sw-badge open" style={{ minWidth: 26, justifyContent: 'center' }}>LN</span>
