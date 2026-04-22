@@ -30,22 +30,30 @@ import {
 export const FOREMAN_MODEL = 'gpt-realtime';
 export const FOREMAN_VOICE = 'cedar';
 
-export const FOREMAN_SYSTEM_PROMPT = `You are Foreman, the voice coordinator of a factory of AI coding agents.
+export const FOREMAN_SYSTEM_PROMPT = `You are Foreman, the voice coordinator of a factory of AI coding agents across
+local IDE sessions, background teams, and cloud dispatches.
 
-Persona: dry, brief. Clipped sentences. No filler words. No adjectives without facts.
-Never say "grinding away", "humming along", "going well", "everything's on track" -
-those are content-free. If you have no specifics, say so: "nothing concrete yet".
+Persona: dry, brief. Clipped sentences. No filler. No adjectives without facts.
+Banned words: "grinding", "humming", "going well", "on track", "all good".
+If you have no specifics, say so: "nothing concrete yet".
 
-Always call the briefing tool first. If the user asks about one agent, call focus next.
+Tool usage:
+- Always call briefing first for overall state. It's cheap (cached SQLite).
+- If the user asks about one agent, project, or task, call focus(who). Only focus
+  gives you the current file, current tool, recent bash command.
+- Don't call focus speculatively; wait for a specific question.
 
 Answering rules:
-- Lead with the SPECIFIC thing: the task, the file, the tool, the elapsed time.
-- Example good: "Claude is 12 minutes into the auth refactor, last edited jwt.ts."
-- Example bad: "Claude's been grinding for 12 minutes, humming along."
-- Never summarize as "all good" - say exactly which agent is on which task.
-- Use labels when present ("Philip Music"), kinds when not ("claude", "codex").
-- Never narrate what the UI already shows. Bring the fact, not the tour.
-- If no info: "no visible activity yet" - don't pad with speculation.
+- Lead with the SPECIFIC: the task (topic), the file, the tool, the elapsed time.
+- Good: "Claude is 12 minutes into auth refactor on agents repo, last edited jwt.ts."
+- Bad: "Claude's been grinding 12 minutes, humming along."
+- Prefer labels when present ("Philip Music"), fall back to kind ("claude, codex").
+- If an agent is open in the IDE vs. just a local session, call it out only if
+  relevant ("the one you have open" vs "the background Codex").
+- Cloud dispatches run remotely; say "on Rush Cloud" or "on Codex Cloud" when
+  referencing them so the user knows they're not on the laptop.
+- Teams are DAG-coordinated runs; say "team <name>, 2 running, 1 pending".
+- Never narrate the UI or offer to click things - that's the user's hands.
 
 Length: 1-2 sentences default. Expand only if asked.`.trim();
 
@@ -60,17 +68,17 @@ export const FOREMAN_TOOLS: ForemanTool[] = [
   {
     type: 'function',
     name: 'briefing',
-    description: 'Returns a digest of the current factory floor: each active agent with label, kind, elapsed time, status, current task (what they were asked to do), recent files touched, recent tools called, and any cloud dispatches. Call this first for any question about overall state.',
+    description: 'Fast digest of the factory floor: recent local sessions (Claude/Codex/Gemini/OpenCode/OpenClaw from the last 2h), cloud dispatches (Rush/Codex/Factory running remotely), and active team DAGs. Each session has kind, label, topic (task), project, elapsed time, and open_in_ide flag. Call first for any overview question.',
     parameters: { type: 'object', properties: {}, required: [] },
   },
   {
     type: 'function',
     name: 'focus',
-    description: 'Returns deep detail on one agent by its label or kind (e.g. "claude", "Philip Music"). Use when the user asks about a specific agent. Includes full task description, all recent files and tools, elapsed time, status.',
+    description: 'Deep detail on one agent. Reads the session event tail to return current file being edited, current tool, last bash command, recent files, recent tools, since_last_activity, git_branch, token_count. Use when the user asks about a specific agent/task/project.',
     parameters: {
       type: 'object',
       properties: {
-        who: { type: 'string', description: 'Agent label, kind (claude/codex/gemini), or session id prefix.' },
+        who: { type: 'string', description: 'Agent label ("Philip Music"), topic keyword, kind (claude/codex/gemini/opencode/openclaw), or 8-char session id prefix.' },
       },
       required: ['who'],
     },
@@ -113,120 +121,206 @@ export async function mintEphemeralKey(apiKey: string): Promise<{ clientSecret: 
   return { clientSecret: value, expiresAt };
 }
 
-// Walk the live terminals across all known agent types, pull rich per-agent
-// details (task, recent files, recent tools), and query the cloud dispatch
-// list. Returns a single digest the model can narrate in one sentence.
-export async function computeBriefing(workspacePath?: string): Promise<ForemanDigest> {
-  const [localAgents, cloud] = await Promise.all([
-    collectLocalAgents(workspacePath),
-    collectCloudTasks(),
+// Pulls the three source-of-truth systems in parallel (local sessions via
+// agents-cli SQLite + FTS5, cloud dispatches, team DAGs), cross-references
+// local sessions with open VS Code terminals for the "open-in-IDE" flag, and
+// hands the union to the pure digest builder.
+export async function computeBriefing(_workspacePath?: string): Promise<ForemanDigest> {
+  const [local, cloud, teams] = await Promise.all([
+    listLocalSessions({ since: '2h', limit: 30, all: true }),
+    listCloudTasks(),
+    listTeams(),
   ]);
-  return buildForemanDigest(localAgents, cloud);
+
+  const openIds = openSessionIdsFromIde();
+  const agents: ForemanTerminal[] = local.map((s) => sessionToForemanTerminal(s, openIds));
+
+  const cloudDigest: ForemanCloudTask[] = cloud
+    .filter((c) => c.status === 'running' || c.status === 'needs_review' || c.status === 'completed')
+    .slice(0, 10)
+    .map((c) => ({
+      id: c.id,
+      provider: c.provider,
+      agent: c.agent,
+      status: c.status,
+      prompt: c.prompt,
+      repo: c.repo ?? null,
+      updated: c.updatedAt ?? '',
+    }));
+
+  const teamDigest: ForemanTeamRollup[] = teams.slice(0, 10).map((t) => ({
+    name: t.task_name,
+    running: t.running,
+    pending: t.pending,
+    completed: t.completed,
+    failed: t.failed,
+  }));
+
+  return buildForemanDigest(agents, cloudDigest, teamDigest);
 }
 
-async function collectLocalAgents(workspacePath?: string): Promise<ForemanTerminal[]> {
-  const kinds = ['claude', 'codex', 'gemini', 'opencode', 'cursor'];
-  const all: ForemanTerminal[] = [];
-
-  for (const kind of kinds) {
-    const details = await terminals.getTerminalsByAgentType(kind, workspacePath);
-    for (const d of details) {
-      all.push({
-        name: prefixExpand(kind),
-        label: d.label ?? d.autoLabel ?? null,
-        sessionId: d.sessionId ?? null,
-        startedAtMs: d.firstMessageTimestamp ? Date.parse(d.firstMessageTimestamp) : d.createdAt,
-        lastActivityMs: d.lastActivityTimestamp ? Date.parse(d.lastActivityTimestamp) : d.createdAt,
-        lastTool: d.currentActivity ?? null,
-        status: mapStatus(d.status),
-        task: d.firstUserMessage ?? null,
-        recentFiles: d.recentFiles ?? [],
-        recentTools: d.recentTools ?? [],
-        lastFilePath: d.lastFilePath ?? null,
-        filesEdited: d.quickSummary?.filesEdited ?? 0,
-        toolCalls: d.quickSummary?.toolCalls ?? 0,
-      });
-    }
-  }
-  return all;
-}
-
-// Pulls cloud tasks via the agents-cli. Cheap, fast, no auth to manage here -
-// agents-cli already owns credentials. 2-second timeout so the briefing tool
-// never blocks the voice turn for long.
-async function collectCloudTasks(): Promise<ForemanCloudTask[]> {
-  try {
-    const { stdout } = await execAsync('agents cloud list --json', { timeout: 2_000 });
-    const raw = JSON.parse(stdout);
-    if (!Array.isArray(raw)) return [];
-    return raw
-      .map((r: any): ForemanCloudTask => ({
-        id: String(r.id ?? ''),
-        provider: String(r.provider ?? ''),
-        agent: String(r.agent ?? ''),
-        status: String(r.status ?? ''),
-        prompt: String(r.prompt ?? '').slice(0, 200),
-        repo: r.repo ? String(r.repo) : null,
-        updated: String(r.updatedAt ?? r.createdAt ?? ''),
-      }))
-      .filter((r) => r.status === 'running' || r.status === 'needs_review' || r.status === 'completed')
-      .slice(0, 10);
-  } catch {
-    return [];
-  }
-}
-
-// Deep detail for one agent. Match by label (case-insensitive substring),
-// kind, or session id prefix. Returns null if no match so the model can say
-// "no agent like that".
-export async function computeFocus(who: string, workspacePath?: string): Promise<unknown> {
-  const digest = await computeBriefing(workspacePath);
-  const q = (who ?? '').trim().toLowerCase();
-  if (!q) return { error: 'no query' };
-
-  const match = digest.agents.find((a) => {
-    if (a.label && a.label.toLowerCase().includes(q)) return true;
-    if (a.kind.toLowerCase() === q) return true;
-    if (a.id.toLowerCase().startsWith(q)) return true;
-    return false;
-  });
-
-  if (!match) {
-    return { error: `no agent matching "${who}"`, available: digest.agents.map((a) => a.label ?? a.kind) };
-  }
-
+function sessionToForemanTerminal(s: SessionLite, openIds: Set<string>): ForemanTerminal {
+  const startedAt = s.timestamp ? Date.parse(s.timestamp) : null;
   return {
-    kind: match.kind,
-    label: match.label,
-    elapsed: match.elapsed,
-    status: match.status,
-    task: match.task,
-    last_tool: match.last_tool,
-    last_file: match.last_file,
-    recent_files: match.recent_files,
-    recent_tools: match.recent_tools,
-    files_edited: match.files_edited,
-    tool_calls: match.tool_calls,
+    name: expand(s.agent),
+    kind: s.agent,
+    label: s.label ?? null,
+    sessionId: s.id,
+    project: s.project ?? null,
+    openInIde: openIds.has(s.id),
+    startedAtMs: startedAt,
+    lastActivityMs: startedAt, // refined by focus() which reads event tail
+    lastTool: null,
+    status: null,              // derived from lastActivity; idle until focus() refines
+    task: s.topic ?? null,
+    recentFiles: [],
+    recentTools: [],
+    filesEdited: 0,
+    toolCalls: 0,
   };
 }
 
-function prefixExpand(kind: string): string {
+function expand(kind: string): string {
   switch (kind) {
     case 'claude': return 'Claude';
     case 'codex': return 'Codex';
     case 'gemini': return 'Gemini';
     case 'opencode': return 'OpenCode';
-    case 'cursor': return 'Cursor';
+    case 'openclaw': return 'OpenClaw';
     default: return kind;
   }
 }
 
-function mapStatus(
-  s: 'running' | 'completed' | 'idle' | undefined
-): 'idle' | 'working' | 'waiting' | 'blocked' | null {
-  if (s === 'running') return 'working';
-  if (s === 'idle' || s === 'completed') return 'idle';
-  return null;
+// Deep detail for one agent. Matches by label substring, kind, or session id
+// prefix. Reads the normalized event tail from agents-cli for the truly live
+// bits (last tool, last file, recent tool calls) that the lean briefing skips.
+export async function computeFocus(who: string, _workspacePath?: string): Promise<unknown> {
+  const q = (who ?? '').trim().toLowerCase();
+  if (!q) return { error: 'no query' };
+
+  const local = await listLocalSessions({ since: '6h', limit: 60, all: true });
+  const match = local.find((s) => {
+    if (s.label && s.label.toLowerCase().includes(q)) return true;
+    if (s.topic && s.topic.toLowerCase().includes(q)) return true;
+    if (s.agent.toLowerCase() === q) return true;
+    if (s.id.toLowerCase().startsWith(q)) return true;
+    if (s.shortId && s.shortId.toLowerCase().startsWith(q)) return true;
+    return false;
+  });
+
+  if (!match) {
+    return {
+      error: `no agent matching "${who}"`,
+      available: local.slice(0, 10).map((s) => s.label ?? s.topic ?? `${s.agent} ${s.shortId}`),
+    };
+  }
+
+  const events = await readSessionEvents(match.id, 30);
+  const tail = summarizeTail(events);
+  const openIds = openSessionIdsFromIde();
+  const startedMs = match.timestamp ? Date.parse(match.timestamp) : Date.now();
+  const lastActivityMs = tail.lastEventAtMs ?? startedMs;
+
+  return {
+    kind: match.agent,
+    label: match.label ?? null,
+    project: match.project ?? null,
+    git_branch: match.gitBranch ?? null,
+    open_in_ide: openIds.has(match.id),
+    elapsed: humanElapsedFromMs(Date.now() - startedMs),
+    since_last_activity: humanElapsedFromMs(Date.now() - lastActivityMs),
+    status: tail.status,
+    task: match.topic ?? null,
+    token_count: match.tokenCount ?? null,
+    last_tool: tail.lastTool,
+    last_file: tail.lastFile,
+    last_bash: tail.lastBash,
+    recent_tools: tail.recentTools,
+    recent_files: tail.recentFiles,
+    files_edited: tail.filesEdited,
+    tool_calls: tail.toolCalls,
+  };
+}
+
+interface TailSummary {
+  lastEventAtMs: number | null;
+  status: 'idle' | 'working' | 'waiting' | 'blocked';
+  lastTool: string | null;
+  lastFile: string | null;
+  lastBash: string | null;
+  recentTools: string[];
+  recentFiles: string[];
+  filesEdited: number;
+  toolCalls: number;
+}
+
+function summarizeTail(events: SessionEvent[]): TailSummary {
+  const toolCallNames: string[] = [];
+  const filesSeen: string[] = [];
+  const filesEditedSet = new Set<string>();
+  let lastTool: string | null = null;
+  let lastFile: string | null = null;
+  let lastBash: string | null = null;
+  let lastEventAtMs: number | null = null;
+
+  for (const e of events) {
+    const ts = e.timestamp ? Date.parse(e.timestamp) : null;
+    if (ts && (!lastEventAtMs || ts > lastEventAtMs)) lastEventAtMs = ts;
+
+    if (e.type === 'tool_use') {
+      toolCallNames.push(e.tool ?? '');
+      if (e.tool) lastTool = e.tool;
+      if (e.path) {
+        lastFile = e.path;
+        filesSeen.push(e.path);
+      }
+      const isEdit = e.tool === 'Edit' || e.tool === 'Write' || e.tool === 'MultiEdit';
+      if (isEdit && e.path) filesEditedSet.add(e.path);
+      if (e.tool === 'Bash' && e.args && typeof (e.args as { command?: unknown }).command === 'string') {
+        lastBash = String((e.args as { command: string }).command).slice(0, 200);
+      }
+    }
+  }
+
+  const status: TailSummary['status'] =
+    !lastEventAtMs ? 'idle'
+    : Date.now() - lastEventAtMs < 60_000 ? 'working'
+    : Date.now() - lastEventAtMs < 10 * 60_000 ? 'waiting'
+    : 'idle';
+
+  return {
+    lastEventAtMs,
+    status,
+    lastTool,
+    lastFile,
+    lastBash,
+    recentTools: dedup(toolCallNames).slice(-5),
+    recentFiles: dedup(filesSeen).slice(-5),
+    filesEdited: filesEditedSet.size,
+    toolCalls: toolCallNames.length,
+  };
+}
+
+function dedup<T>(xs: T[]): T[] {
+  const seen = new Set<T>();
+  const out: T[] = [];
+  for (const x of xs) {
+    if (seen.has(x)) continue;
+    seen.add(x);
+    out.push(x);
+  }
+  return out;
+}
+
+function humanElapsedFromMs(ms: number): string {
+  if (ms < 0 || !Number.isFinite(ms)) return 'just now';
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  const rem = m % 60;
+  return rem === 0 ? `${h}h` : `${h}h ${rem}m`;
 }
 
 // Convenience: read the OpenAI key from settings exactly once. Matches the
