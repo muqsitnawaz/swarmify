@@ -108,6 +108,19 @@ export function buildCloudDispatchCommand(input: {
 }
 
 /**
+ * True when the task identifier looks like a Linear ticket (e.g. `RUSH-461`).
+ * Used to decide whether a cloud dispatch may silently fall back to the
+ * current workspace repo. Linear tasks get no fallback because the workspace
+ * (e.g. `muqsitnawaz/swarmify`) is often a different codebase than the one
+ * the ticket is actually about — we'd rather pop a picker than dispatch to
+ * the wrong repo.
+ */
+export function isLinearSourcedTask(identifier: string | null | undefined): boolean {
+  if (typeof identifier !== 'string') return false
+  return /^[A-Z][A-Z0-9]*-\d+$/.test(identifier.trim())
+}
+
+/**
  * Parse `repo:<name>` labels into fully-qualified `owner/name` repo strings.
  * Returns all matches (a task can be tagged for multiple repos).
  * Returns [] if the owner is unknown or no repo labels exist.

@@ -2,6 +2,7 @@ import { describe, test, expect } from 'bun:test'
 import type { TaskSummary, TerminalDetail, AgentDetail } from '../../types'
 import {
   buildCloudDispatchCommand,
+  isLinearSourcedTask,
   isTerminalJustSpawned,
   isTerminalActive,
   reconcilePending,
@@ -342,6 +343,49 @@ describe('resolveReposFromLabels', () => {
   test('rejects slashes in repo label (prevents owner injection)', () => {
     expect(resolveReposFromLabels(['repo:evil/other-owner/target'], 'muqsitnawaz'))
       .toEqual([])
+  })
+})
+
+describe('isLinearSourcedTask', () => {
+  test('accepts standard Linear identifier', () => {
+    expect(isLinearSourcedTask('RUSH-461')).toBe(true)
+  })
+
+  test('accepts single-letter team prefix', () => {
+    expect(isLinearSourcedTask('A-1')).toBe(true)
+  })
+
+  test('accepts alphanumeric team prefix (must start with letter)', () => {
+    expect(isLinearSourcedTask('RUSH2-42')).toBe(true)
+  })
+
+  test('trims surrounding whitespace', () => {
+    expect(isLinearSourcedTask('  RUSH-7 ')).toBe(true)
+  })
+
+  test('rejects lowercase prefix (Linear identifiers are uppercase)', () => {
+    expect(isLinearSourcedTask('rush-461')).toBe(false)
+  })
+
+  test('rejects GitHub-style identifier (#42)', () => {
+    expect(isLinearSourcedTask('#42')).toBe(false)
+  })
+
+  test('rejects prefix starting with digit', () => {
+    expect(isLinearSourcedTask('2RUSH-1')).toBe(false)
+  })
+
+  test('rejects missing number', () => {
+    expect(isLinearSourcedTask('RUSH-')).toBe(false)
+  })
+
+  test('rejects empty string', () => {
+    expect(isLinearSourcedTask('')).toBe(false)
+  })
+
+  test('rejects null/undefined', () => {
+    expect(isLinearSourcedTask(null)).toBe(false)
+    expect(isLinearSourcedTask(undefined)).toBe(false)
   })
 })
 

@@ -425,6 +425,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     taskId: string
     agentType: string
     repos: string[]
+    preSelected: string[]
     title: string
     description: string
     identifier: string
@@ -463,10 +464,19 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
       const msg = event.data
       if (!msg || typeof msg !== 'object') return
       if (msg.type === 'pickRepos') {
+        const repos = Array.isArray(msg.repos) ? msg.repos.filter((r: unknown) => typeof r === 'string') : []
+        // Fall back to pre-selecting all repos when `preSelected` is absent,
+        // matching the prior multi-repo-narrowing behavior. Empty array
+        // means "no pre-selection" — used when the Linear task has no
+        // repo: label and the user must pick from the owner's full list.
+        const preSelected = Array.isArray(msg.preSelected)
+          ? msg.preSelected.filter((r: unknown) => typeof r === 'string')
+          : repos
         setRepoPicker({
           taskId: String(msg.taskId || ''),
           agentType: String(msg.agentType || 'claude'),
-          repos: Array.isArray(msg.repos) ? msg.repos.filter((r: unknown) => typeof r === 'string') : [],
+          repos,
+          preSelected,
           title: String(msg.title || ''),
           description: String(msg.description || ''),
           identifier: String(msg.identifier || ''),
@@ -1000,6 +1010,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
       {repoPicker && (
         <RepoPickerModal
           repos={repoPicker.repos}
+          preSelected={repoPicker.preSelected}
           taskIdentifier={repoPicker.identifier}
           taskTitle={repoPicker.title}
           onClose={() => setRepoPicker(null)}
@@ -1050,14 +1061,19 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   )
 }
 
-function RepoPickerModal({ repos, taskIdentifier, taskTitle, onClose, onConfirm }: {
+function RepoPickerModal({ repos, preSelected, taskIdentifier, taskTitle, onClose, onConfirm }: {
   repos: string[]
+  preSelected: string[]
   taskIdentifier: string
   taskTitle: string
   onClose: () => void
   onConfirm: (selected: string[]) => void
 }) {
-  const [checked, setChecked] = useState<Set<string>>(() => new Set(repos))
+  const [checked, setChecked] = useState<Set<string>>(() => new Set(preSelected))
+  // Empty pre-selection signals the "Linear task has no repo: label, pick
+  // one from the owner's full list" flow. Switch the title + subcopy so the
+  // user understands they must make a choice vs. narrow from multiple.
+  const isEmptyPick = preSelected.length === 0
   useEffect(() => {
     const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', esc)
@@ -1080,7 +1096,9 @@ function RepoPickerModal({ repos, taskIdentifier, taskTitle, onClose, onConfirm 
       <div className="sw-dispatch-modal" onMouseDown={(e) => e.stopPropagation()} style={{ maxWidth: 520 }}>
         <div className="sw-dispatch-modal-head">
           <span className="sw-dispatch-modal-title">
-            {taskIdentifier ? `${taskIdentifier} targets multiple repos` : 'Pick target repos'}
+            {isEmptyPick
+              ? (taskIdentifier ? `${taskIdentifier} has no repo: label` : 'Pick a target repo')
+              : (taskIdentifier ? `${taskIdentifier} targets multiple repos` : 'Pick target repos')}
           </span>
           <span className="sw-dispatch-modal-sub">{taskTitle.slice(0, 80)}</span>
           <button className="sw-dispatch-modal-close" onClick={onClose} aria-label="Close">
@@ -1112,7 +1130,9 @@ function RepoPickerModal({ repos, taskIdentifier, taskTitle, onClose, onConfirm 
         <div className="sw-dispatch-modal-foot">
           <div className="sw-dispatch-modal-foot-info">
             <div className="sw-dispatch-modal-foot-desc">
-              Selected {checked.size} of {repos.length}. One cloud dispatch per selected repo.
+              {isEmptyPick
+                ? `Selected ${checked.size} of ${repos.length}. Add a repo: label in Linear to skip this next time.`
+                : `Selected ${checked.size} of ${repos.length}. One cloud dispatch per selected repo.`}
             </div>
           </div>
           <div className="sw-dispatch-modal-foot-actions">
