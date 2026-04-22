@@ -22,7 +22,7 @@ const LETTER: Record<AgentId, string> = {
 
 export function AgentAvatar({ id, size = 18, title }: {
   id: AgentId | string
-  size?: 14 | 16 | 18 | 20 | 24
+  size?: 14 | 16 | 18 | 20 | 24 | 28
   title?: string
 }) {
   const normalized = (id.toLowerCase() as AgentId)

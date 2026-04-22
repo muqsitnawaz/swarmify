@@ -33,6 +33,7 @@ export function MachineStatus({
   onSaveSettings,
 }: MachineStatusProps) {
   const [expandedAgent, setExpandedAgent] = useState<string | null>(null)
+  const [copiedAgent, setCopiedAgent] = useState<string | null>(null)
 
   const skillCommands = skillsStatus?.commands ?? []
 
@@ -109,9 +110,20 @@ export function MachineStatus({
                       <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{installInfo.command}</span>
                       <button
                         className="sw-btn ghost sm"
-                        onClick={() => navigator.clipboard.writeText(installInfo.command!)}
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(installInfo.command!)
+                            setCopiedAgent(agent)
+                            setTimeout(() => setCopiedAgent((cur) => (cur === agent ? null : cur)), 1500)
+                          } catch {
+                            // Clipboard denied — surface inline so the user
+                            // knows the command wasn't copied.
+                            setCopiedAgent(`err:${agent}`)
+                            setTimeout(() => setCopiedAgent((cur) => (cur === `err:${agent}` ? null : cur)), 2000)
+                          }
+                        }}
                       >
-                        Copy
+                        {copiedAgent === agent ? 'Copied' : copiedAgent === `err:${agent}` ? 'Copy failed' : 'Copy'}
                       </button>
                     </div>
                   </div>
