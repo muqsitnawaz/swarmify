@@ -3,7 +3,7 @@
   "displayName": "Agents",
   "publisher": "swarmify",
   "description": "Turn your IDE into an Integrated Agents Environment. Run Claude, Codex, Gemini, and Cursor at scale with keyboard-first navigation.",
-  "version": "0.8.32",
+  "version": "0.8.33",
   "license": "MIT",
   "author": "Muqsit Nawaz <dev@muqsitnawaz.com>",
   "icon": "assets/agents.png",
@@ -305,7 +305,7 @@
         "agents.openaiApiKey": {
           "type": "string",
           "default": "",
-          "description": "OpenAI API key for commit message generation (uses gpt-4o-mini)"
+          "description": "OpenAI API key. Used for commit message generation (gpt-4o-mini) and the Foreman voice coordinator (gpt-realtime)."
         }
       }
     },

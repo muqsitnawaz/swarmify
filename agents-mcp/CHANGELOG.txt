@@ -1,5 +1,13 @@
 CHANGELOG
 
+2026-04-22 — 0.3.0
+- Migrated agent lifecycle, parsing, persistence, and summarization to @swarmify/agents-cli/teams. Deleted ~3,860 lines of duplicated code from src/ (agents, parsers, api, persistence, summarizer, file_ops) and their tests. agents-mcp is now a thin MCP protocol adapter.
+- Storage path moved from ~/.agents/swarm/ to ~/.agents/teams/. Old directory is not migrated; orphan agents from 0.2.x no longer appear in status/tasks.
+- Effort vocabulary updated: low | medium | high | xhigh | max | auto. Legacy values (fast | default | detailed) are still accepted and mapped internally.
+- Ralph mode deprecated. Spawns still work but emit a stderr warning. Will be removed in 0.4.0. Prefer a normal spawn with a task-list prompt, or use agents-cli's oracle/supervisor primitives.
+- Added PENDING status, DAG dependencies (after[]), named teammates, task_type, and richer cloud fields (cloudRepo, cloudBranch) inherited from agents-cli/teams.
+- tsconfig moved to NodeNext module/resolution to support subpath exports.
+
 2026-01-07
 - Added a changelog file.
 - Rewrote README to focus on MCP ecosystem needs and agent orchestration value.

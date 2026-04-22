@@ -112,41 +112,8 @@ function buildTerminalTitle(
   return formatTerminalTitle(prefix, { label: label || undefined, display, sessionChunk, isFocused });
 }
 
-/**
- * Wait for a terminal's shell to be ready to accept input.
- * Uses VS Code's shell integration API which fires when the shell finishes loading (after .zshrc etc).
- * Falls back to sendText if shell integration doesn't activate within the timeout.
- *
- * @param terminal The terminal to wait for
- * @param timeoutMs Maximum time to wait (default 5000ms)
- * @returns true if shell integration is available, false if timed out
- */
-async function waitForShellReady(terminal: vscode.Terminal, timeoutMs: number = 5000): Promise<boolean> {
-  // Check if shell integration is already available
-  if (terminal.shellIntegration) {
-    return true;
-  }
-
-  return new Promise((resolve) => {
-    let resolved = false;
-
-    const listener = vscode.window.onDidChangeTerminalShellIntegration(({ terminal: t }) => {
-      if (t === terminal && !resolved) {
-        resolved = true;
-        listener.dispose();
-        resolve(true);
-      }
-    });
-
-    setTimeout(() => {
-      if (!resolved) {
-        resolved = true;
-        listener.dispose();
-        resolve(false); // Timed out, fall back to sendText
-      }
-    }, timeoutMs);
-  });
-}
+// Terminal readiness detection moved to src/vscode/terminalReadiness.ts.
+// All spawn/resume flows now call readiness.waitFor(t, 'promptReady') instead.
 
 /**
  * Detect OpenCode session ID after spawn by comparing session lists.
@@ -1822,16 +1789,22 @@ async function resumeSession(context: vscode.ExtensionContext) {
 
   const pid = await terminal.processId;
   terminals.register(terminal, terminalId, agentConfig, pid, context);
+  readiness.registerTerminal(terminal);
   terminals.setSessionId(terminal, session.id);
   terminals.setAgentType(terminal, agentKey);
   startAutoLabelPollerForTerminal(terminal, context);
 
-  const shellReady = await waitForShellReady(terminal);
-  if (shellReady && terminal.shellIntegration) {
+  try {
+    await readiness.waitFor(terminal, 'promptReady');
+  } catch (err) {
+    console.warn(`[READINESS] promptReady wait failed: ${err}`);
+  }
+  if (terminal.shellIntegration) {
     terminal.shellIntegration.executeCommand(resumeCmd);
   } else {
     terminal.sendText(resumeCmd);
   }
+  readiness.armAgentReady(terminal);
 
   terminal.show();
   vscode.window.setStatusBarMessage(`Resuming ${agentKey}${session.version ? `@${session.version}` : ''} · ${session.shortId}`, 3000);
@@ -1926,22 +1899,13 @@ async function resumeCurrentInBestProfile(context: vscode.ExtensionContext) {
 
   const pid = await terminal.processId;
   terminals.register(terminal, terminalId, agentConfig, pid, context);
+  readiness.registerTerminal(terminal);
   terminals.setSessionId(terminal, sessionId);
   terminals.setAgentType(terminal, agentKey);
   startAutoLabelPollerForTerminal(terminal, context);
 
-  // Step 1: launch the agent
-  const shellReady = await waitForShellReady(terminal);
-  if (shellReady && terminal.shellIntegration) {
-    terminal.shellIntegration.executeCommand(launchCmd);
-  } else {
-    terminal.sendText(launchCmd);
-  }
-
-  terminal.show();
-
-  // Step 2: decide resume input — prefer /continue if the slash command is
-  // synced to this version's home; otherwise inline the full instructions.
+  // Decide resume input — prefer /continue if the slash command is synced
+  // to this version's home; otherwise inline the full instructions.
   const versionHomeCommand = path.join(
     os.homedir(), '.agents', 'versions', agentKey, best.version,
     'home', '.claude', 'commands', 'continue.md'
@@ -1957,19 +1921,33 @@ async function resumeCurrentInBestProfile(context: vscode.ExtensionContext) {
       const body = fsSync.readFileSync(centralCommand, 'utf-8');
       resumeInput = inlineContinueInstructions(body, sessionId);
     } catch {
-      // Last resort: tell the agent directly.
       resumeInput = `Resume previous work by loading session ${sessionId}. Run \`agents sessions ${sessionId}\` to load the transcript, assess current state, then continue working.`;
     }
   }
 
-  // Step 3: wait for the TUI to come up, then type the resume input.
-  // 3 seconds is a conservative default — Claude Code's welcome screen
-  // usually renders in 1–2s. sendText appends a newline so the agent
-  // receives the command as a submitted message.
-  const AGENT_STARTUP_MS = 3000;
-  setTimeout(() => {
-    terminal.sendText(resumeInput);
-  }, AGENT_STARTUP_MS);
+  // IMPORTANT: use sendText for BOTH the launch and the resume input.
+  // Mixing shellIntegration.executeCommand (launch) with sendText (resume)
+  // reorders them — executeCommand waits for a shell-integration
+  // handshake while sendText writes to the pty immediately, so the
+  // resume input lands at the shell prompt before the launch command
+  // executes and zsh tries to run `/continue …` as a file. sendText
+  // writes go through the pty FIFO, so ordering is guaranteed.
+  try {
+    await readiness.waitFor(terminal, 'promptReady');
+  } catch (err) {
+    console.warn(`[READINESS] promptReady wait failed: ${err}`);
+  }
+  terminal.sendText(launchCmd);
+  readiness.armAgentReady(terminal);
+  terminal.show();
+
+  // Send the resume input only after the agent CLI is actually idle on the
+  // pty. Replaces a hardcoded 6s guess that was unreliable on slow machines
+  // (never enough) and wasteful on fast ones (always too much).
+  readiness.waitFor(terminal, 'agentReady').then(
+    () => terminal.sendText(resumeInput),
+    () => terminal.sendText(resumeInput),
+  );
 
   const acct = best.email ? ` (${best.email})` : '';
   const usage = `${sessionUsedPercent(best)}% session`;
@@ -2215,6 +2193,7 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
 
       const pid = await terminal.processId;
       terminals.register(terminal, terminalId, agent, pid, context);
+      readiness.registerTerminal(terminal);
 
       // Track session ID
       if (sessionId && agentKey && supportsPrewarming(agentKey)) {
@@ -2225,14 +2204,17 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
       }
 
       if (command) {
-        // Wait for shell to be ready before sending command
-        const shellReady = await waitForShellReady(terminal);
-        if (shellReady && terminal.shellIntegration) {
+        try {
+          await readiness.waitFor(terminal, 'promptReady');
+        } catch (err) {
+          console.warn(`[READINESS] promptReady wait failed: ${err}`);
+        }
+        if (terminal.shellIntegration) {
           terminal.shellIntegration.executeCommand(command);
         } else {
-          // Fallback to sendText if shell integration not available
           terminal.sendText(command);
         }
+        readiness.armAgentReady(terminal);
       }
       totalCount++;
     }
@@ -2714,6 +2696,7 @@ async function restoreAgentTerminals(context: vscode.ExtensionContext): Promise<
 
     const pid = await terminal.processId;
     terminals.register(terminal, session.terminalId, agentConfig, pid, context, session.label);
+    readiness.registerTerminal(terminal);
 
     // Restore session tracking metadata if present
     if (session.sessionId && session.agentType) {
@@ -2724,14 +2707,17 @@ async function restoreAgentTerminals(context: vscode.ExtensionContext): Promise<
       // Actually resume the session by sending the resume command
       if (supportsPrewarming(session.agentType)) {
         const resumeCmd = PREWARM_CONFIGS[session.agentType].resumeCommand(session.sessionId);
-        // Wait for shell to be ready before sending resume command
-        const shellReady = await waitForShellReady(terminal);
-        if (shellReady && terminal.shellIntegration) {
+        try {
+          await readiness.waitFor(terminal, 'promptReady');
+        } catch (err) {
+          console.warn(`[READINESS] promptReady wait failed: ${err}`);
+        }
+        if (terminal.shellIntegration) {
           terminal.shellIntegration.executeCommand(resumeCmd);
         } else {
-          // Fallback to sendText if shell integration not available
           terminal.sendText(resumeCmd);
         }
+        readiness.armAgentReady(terminal);
       }
     }
   }
@@ -2771,6 +2757,7 @@ async function reopenLastClosedSession(context: vscode.ExtensionContext): Promis
 
   const pid = await terminal.processId;
   terminals.register(terminal, terminalId, closed.agentConfig, pid, context, closed.label);
+  readiness.registerTerminal(terminal);
 
   if (closed.sessionId && closed.agentType) {
     terminals.setSessionId(terminal, closed.sessionId);
@@ -2779,12 +2766,17 @@ async function reopenLastClosedSession(context: vscode.ExtensionContext): Promis
 
     if (supportsPrewarming(closed.agentType)) {
       const resumeCmd = PREWARM_CONFIGS[closed.agentType].resumeCommand(closed.sessionId);
-      const shellReady = await waitForShellReady(terminal);
-      if (shellReady && terminal.shellIntegration) {
+      try {
+        await readiness.waitFor(terminal, 'promptReady');
+      } catch (err) {
+        console.warn(`[READINESS] promptReady wait failed: ${err}`);
+      }
+      if (terminal.shellIntegration) {
         terminal.shellIntegration.executeCommand(resumeCmd);
       } else {
         terminal.sendText(resumeCmd);
       }
+      readiness.armAgentReady(terminal);
     }
   }
 
