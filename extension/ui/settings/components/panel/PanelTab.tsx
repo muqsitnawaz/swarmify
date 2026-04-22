@@ -26,6 +26,7 @@ import {
   DEFAULT_EDITOR_PREFERENCES,
 } from '../../constants'
 import { getIcon, formatPreviewTerminalTitle } from '../../utils'
+import { FactorySection } from '../FactorySection'
 
 export interface PanelTabProps {
   settings: AgentSettings
@@ -623,6 +624,10 @@ export function PanelTab({
               ))}
             </div>
           </div>
+        </section>
+
+        <section className="sw-panel-section sw-panel-section-factory">
+          <FactorySection />
         </section>
 
       </div>
