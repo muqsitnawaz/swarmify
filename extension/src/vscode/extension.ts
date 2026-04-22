@@ -15,6 +15,12 @@ import * as swarm from './swarm.vscode';
 import * as notifications from './notifications.vscode';
 import * as terminals from './terminals.vscode';
 import { buildAgentTerminalEnv } from '../core/terminals';
+import {
+  AgentsViewJsonAgent,
+  AgentsViewJsonVersion,
+  pickBestVersion,
+  sessionUsedPercent,
+} from '../core/resumeInBest';
 import * as workbench from './workbench.vscode';
 import { ensureSymlinksOnWorkspaceOpen, createSymlinksCodebaseWide } from './agentlinks.vscode';
 import {
@@ -883,6 +889,13 @@ export async function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('agents.sessionResume', () => resumeSession(context))
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'agents.resumeCurrentInBestProfile',
+      () => resumeCurrentInBestProfile(context)
+    )
   );
 
   interface TerminalQuickPickItem extends vscode.QuickPickItem {
@@ -1806,6 +1819,109 @@ async function resumeSession(context: vscode.ExtensionContext) {
 
   terminal.show();
   vscode.window.setStatusBarMessage(`Resuming ${agentKey}${session.version ? `@${session.version}` : ''} · ${session.shortId}`, 3000);
+}
+
+async function fetchAgentsViewJson(agentKey: PrewarmAgentType): Promise<AgentsViewJsonAgent | null> {
+  const { exec } = await import('child_process');
+  const { promisify } = await import('util');
+  const execAsync = promisify(exec);
+  try {
+    const { stdout } = await execAsync(`agents view ${agentKey} --json`, {
+      maxBuffer: 5 * 1024 * 1024,
+    });
+    const parsed = JSON.parse(stdout) as AgentsViewJsonAgent;
+    if (!parsed || !Array.isArray(parsed.versions)) return null;
+    return parsed;
+  } catch (err: any) {
+    const msg = err?.stderr || err?.message || String(err);
+    if (msg.includes('unknown option') || msg.includes('--json')) {
+      vscode.window.showInformationMessage(
+        'Needs @swarmify/agents-cli >= 1.13.0. Run: npm i -g @swarmify/agents-cli'
+      );
+    } else {
+      vscode.window.showInformationMessage(`Failed to query agents view: ${msg.slice(0, 120)}`);
+    }
+    return null;
+  }
+}
+
+async function resumeCurrentInBestProfile(context: vscode.ExtensionContext) {
+  const activeTerminal = vscode.window.activeTerminal;
+  if (!activeTerminal) {
+    vscode.window.showInformationMessage('No active terminal');
+    return;
+  }
+  const terminalEntry = terminals.getByTerminal(activeTerminal);
+  if (!terminalEntry?.sessionId) {
+    vscode.window.showInformationMessage('Active terminal has no session to resume');
+    return;
+  }
+
+  const agentKey = terminalEntry.agentType
+    || prefixToAgentType(terminalEntry.agentConfig?.prefix ?? null);
+  if (!agentKey) {
+    vscode.window.showInformationMessage('Active terminal is not a supported agent');
+    return;
+  }
+
+  const data = await fetchAgentsViewJson(agentKey);
+  if (!data) return;
+
+  const best = pickBestVersion(data.versions);
+  if (!best) {
+    vscode.window.showInformationMessage(
+      `No signed-in ${agentKey} versions available. Run: agents add ${agentKey}@latest`
+    );
+    return;
+  }
+
+  const builtIn = BUILT_IN_AGENTS.find(a => a.key === agentKey);
+  if (!builtIn) {
+    vscode.window.showInformationMessage(`No built-in agent config for ${agentKey}`);
+    return;
+  }
+
+  const agentConfig = createAgentConfig(
+    context.extensionPath,
+    builtIn.title,
+    builtIn.command,
+    builtIn.icon,
+    builtIn.prefix,
+  );
+
+  const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
+  const resumeCmd = buildVersionedResumeCommand(agentKey, terminalEntry.sessionId, best.version);
+
+  const terminalId = terminals.nextId(builtIn.prefix);
+  const title = buildTerminalTitle(agentConfig.title, undefined, context, terminalEntry.sessionId);
+  const terminal = vscode.window.createTerminal({
+    iconPath: agentConfig.iconPath,
+    location: { viewColumn: vscode.ViewColumn.Active },
+    name: title,
+    env: buildAgentTerminalEnv(terminalId, terminalEntry.sessionId, workspacePath),
+    isTransient: true,
+  });
+
+  const pid = await terminal.processId;
+  terminals.register(terminal, terminalId, agentConfig, pid, context);
+  terminals.setSessionId(terminal, terminalEntry.sessionId);
+  terminals.setAgentType(terminal, agentKey);
+  startAutoLabelPollerForTerminal(terminal, context);
+
+  const shellReady = await waitForShellReady(terminal);
+  if (shellReady && terminal.shellIntegration) {
+    terminal.shellIntegration.executeCommand(resumeCmd);
+  } else {
+    terminal.sendText(resumeCmd);
+  }
+
+  terminal.show();
+  const acct = best.email ? ` (${best.email})` : '';
+  const usage = `${sessionUsedPercent(best)}% session`;
+  vscode.window.setStatusBarMessage(
+    `Resumed ${agentKey}@${best.version}${acct} · ${usage} · ${terminalEntry.sessionId.slice(0, 8)}`,
+    5000
+  );
 }
 
 interface TerminalQuickPickItem extends vscode.QuickPickItem {
