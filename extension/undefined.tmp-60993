@@ -1,0 +1,12 @@
+{
+  "/var/folders/1h/ccy32kdj1fzb8p41_d8xbw6w0000gn/T/foreman-windowid-fix-6yI6Rr/live-terminals.json-60993": {
+    "at": "2026-04-22T22:58:35.131Z",
+    "entries": [
+      {
+        "sessionId": "sess-60993-0",
+        "pid": 159993,
+        "kind": "claude"
+      }
+    ]
+  }
+}
