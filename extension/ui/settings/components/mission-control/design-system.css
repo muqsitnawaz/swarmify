@@ -2343,7 +2343,10 @@
 }
 
 .sw-task-detail-repo-suggest-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   width: 100%;
   text-align: left;
   padding: 5px 8px;
@@ -2357,4 +2360,20 @@
 
 .sw-task-detail-repo-suggest-item:hover {
   background: var(--ds-bg-recessed);
+}
+
+.sw-task-detail-repo-suggest-item.recent .sw-task-detail-repo-suggest-name {
+  font-weight: 600;
+}
+
+.sw-task-detail-repo-suggest-badge {
+  font-family: "Geist Mono", monospace;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  padding: 2px 5px;
+  border-radius: 3px;
+  background: var(--brand);
+  color: white;
 }
