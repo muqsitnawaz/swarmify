@@ -88,6 +88,7 @@ export default function App() {
   const [skillsStatus, setSkillsStatus] = useState<SkillsStatus | null>(null)
   const [activeTab, setActiveTab] = useState<TabKey>('floor')
   const [showGuide, setShowGuide] = useState(false)
+  const [openDispatchTrigger, setOpenDispatchTrigger] = useState(0)
   const [tasks, setTasks] = useState<TaskSummary[]>([])
   const [tasksLoading, setTasksLoading] = useState(false)
   const [tasksLoaded, setTasksLoaded] = useState(false)
@@ -173,6 +174,10 @@ export default function App() {
     const handleMessage = (event: MessageEvent) => {
       const message = event.data
       switch (message.type) {
+        case 'openDispatchModal':
+          setActiveTab('floor')
+          setOpenDispatchTrigger((n) => n + 1)
+          break
         case 'init':
           setSettings(message.settings)
           setRunningCounts(message.runningCounts)
@@ -639,6 +644,7 @@ export default function App() {
           unifiedTasksLoading={unifiedTasksLoading}
           onDispatch={handleDispatchSwarm}
           onNavigate={setActiveTab}
+          openDispatchTrigger={openDispatchTrigger}
         />
       )}
 

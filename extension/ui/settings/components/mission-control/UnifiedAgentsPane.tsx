@@ -407,13 +407,17 @@ interface UnifiedAgentsPaneProps {
   unifiedTasksLoading: boolean
   onDispatch: () => void
   onNavigate?: (tab: 'floor' | 'bench' | 'panel') => void
+  openDispatchTrigger?: number
 }
 
-export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks, unifiedTasksLoading, onDispatch, onNavigate }: UnifiedAgentsPaneProps) {
+export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks, unifiedTasksLoading, onDispatch, onNavigate, openDispatchTrigger }: UnifiedAgentsPaneProps) {
   const [newMenuOpen, setNewMenuOpen] = useState(false)
   const [recentOpen, setRecentOpen] = useState(false)
   const [statPopover, setStatPopover] = useState<'shipped' | 'open' | 'running' | 'nextup' | 'files' | null>(null)
   const [dispatchOpen, setDispatchOpen] = useState(false)
+  useEffect(() => {
+    if (openDispatchTrigger !== undefined && openDispatchTrigger > 0) setDispatchOpen(true)
+  }, [openDispatchTrigger])
   const [activeFilter, setActiveFilter] = useState<'all' | 'local' | 'cloud'>('all')
   const [pendingDispatches, setPendingDispatches] = useState<PendingDispatch[]>([])
   const [tick, setTick] = useState(0)
