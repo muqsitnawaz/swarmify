@@ -36,12 +36,21 @@ interface RegistryFile {
   [windowId: string]: { at: string; entries: LiveTerminal[] };
 }
 
+/**
+ * Build a windowId string from the available identifiers. Exported so it can
+ * be unit-tested against real-world inputs (notably VSCodium's redacted
+ * sessionId placeholder, which collides across windows).
+ */
+export function computeWindowId(sessionId: string | undefined, pid: number): string {
+  return `${sessionId || pid}`;
+}
+
 let ownWindowId: string | undefined;
 function getOwnWindowId(): string {
   if (ownWindowId) return ownWindowId;
   // sessionId is a VS Code per-window unique id; machineId would merge all
   // windows, which is the opposite of what we want.
-  ownWindowId = `${vscode.env.sessionId || process.pid}`;
+  ownWindowId = computeWindowId(vscode.env.sessionId, process.pid);
   return ownWindowId;
 }
 
