@@ -5,11 +5,14 @@ import { Icon } from './icons'
 import { relTime, taskNameToTitle, swarmOverallStatus, shortDuration } from './types'
 import { postMessage } from '../../hooks'
 import { ExtLink } from '../common'
+import { renderTodoDescription } from '../../utils/markdown'
+import { CMD_PALETTE_EVENTS } from './CommandPalette'
 import {
   isTerminalActive,
   isTerminalJustSpawned,
   reconcilePending,
   pruneExpiredPending,
+  markTimedOutPending,
   filterDispatchedTaskIds,
   optimisticActivityLabel,
   PENDING_DISPATCH_TTL_MS,
@@ -429,8 +432,13 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     if (pendingDispatches.length === 0) return
     const now = Date.now()
     setPendingDispatches((prev) => {
-      const pruned = pruneExpiredPending(prev, now)
-      return pruned.length === prev.length ? prev : pruned
+      // Two-step lifecycle: flip pending→timedOut at TTL (user sees the
+      // warning), then fully remove once retention window has also passed.
+      // Both functions return the same reference when nothing changes, so
+      // the setState is a no-op in the steady state.
+      const flipped = markTimedOutPending(prev, now)
+      const pruned = pruneExpiredPending(flipped, now)
+      return pruned
     })
   }, [tick, pendingDispatches])
 
@@ -490,6 +498,34 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     return () => window.removeEventListener('mousedown', handler)
   }, [statPopover])
 
+  // Listen for command-palette-dispatched events. We can't call into
+  // App.tsx's state from here, and we don't want to lift detailTask
+  // state up a level just for the palette — so the palette fires
+  // window-level CustomEvents and we pick them up here.
+  useEffect(() => {
+    const onOpenTask = (e: Event) => {
+      const ev = e as CustomEvent<{ taskId: string }>
+      const taskId = ev.detail?.taskId
+      if (!taskId) return
+      const task = unifiedTasks.find((t) => t.id === taskId)
+      if (!task) return
+      setDetailSiblings([])
+      setDetailTask(task)
+    }
+    const onFocusTerm = (e: Event) => {
+      const ev = e as CustomEvent<{ terminalId: string }>
+      const id = ev.detail?.terminalId
+      if (!id) return
+      postMessage({ type: 'focusTerminal', terminalId: id })
+    }
+    window.addEventListener(CMD_PALETTE_EVENTS.openTaskDetail, onOpenTask)
+    window.addEventListener(CMD_PALETTE_EVENTS.focusTerminal, onFocusTerm)
+    return () => {
+      window.removeEventListener(CMD_PALETTE_EVENTS.openTaskDetail, onOpenTask)
+      window.removeEventListener(CMD_PALETTE_EVENTS.focusTerminal, onFocusTerm)
+    }
+  }, [unifiedTasks])
+
   const baseItems = useMemo(() => buildUnifiedList(terminals, tasks), [terminals, tasks])
 
   // Reconcile: drop a pending dispatch once a matching real terminal/task appears.
@@ -503,21 +539,27 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
 
   const optimisticItems = useMemo<UnifiedAgent[]>(() => {
     void tick
-    return pendingDispatches.map((p) => ({
-      kind: p.target === 'cloud' ? 'cloud' : 'terminal',
-      id: p.id,
-      agentType: p.agentType,
-      displayName: p.taskIdentifier || p.title.slice(0, 40),
-      activity: optimisticActivityLabel(p),
-      active: true,
-      duration: '',
-      timestamp: new Date(p.createdAt).toISOString(),
-      status: 'running',
-      files: [],
-      toolCalls: 0,
-      mode: p.target === 'cloud' ? 'cloud' : 'edit',
-      cloudProvider: p.target === 'cloud' ? 'anthropic' : null,
-    }))
+    return pendingDispatches.map((p) => {
+      const timedOut = (p.status ?? 'pending') === 'timedOut'
+      return {
+        kind: p.target === 'cloud' ? 'cloud' : 'terminal',
+        id: p.id,
+        agentType: p.agentType,
+        displayName: p.taskIdentifier || p.title.slice(0, 40),
+        activity: optimisticActivityLabel(p),
+        // Timed-out entries stay "active" so they render in the Active list
+        // rather than drop off the UI — the status: 'failed' styling makes
+        // them visually distinct (red LED + muted card).
+        active: true,
+        duration: '',
+        timestamp: new Date(p.createdAt).toISOString(),
+        status: timedOut ? 'failed' : 'running',
+        files: [],
+        toolCalls: 0,
+        mode: p.target === 'cloud' ? 'cloud' : 'edit',
+        cloudProvider: p.target === 'cloud' ? 'anthropic' : null,
+      }
+    })
   }, [pendingDispatches, tick])
 
   const items = useMemo(() => [...optimisticItems, ...baseItems], [optimisticItems, baseItems])
@@ -1117,6 +1159,9 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
           task={detailTask}
           tasks={detailSiblings.length > 0 ? detailSiblings : undefined}
           onClose={() => { setDetailTask(null); setDetailSiblings([]) }}
+          onBack={detailSiblings.length > 0
+            ? () => { setDetailTask(null); setDetailSiblings([]); setDispatchOpen(true) }
+            : undefined}
           onTaskSwitch={(next) => setDetailTask(next)}
           onDispatch={({ agent, target, cloudProvider, branch, codexEnv, notify }) => {
             handleDispatchTask(detailTask, agent, target, undefined, cloudProvider, notify, branch, codexEnv)
@@ -2123,10 +2168,36 @@ type DispatchPrefs = {
   lastCodexEnv: string
   /** Most-recently-dispatched repos, newest first. Capped at MRU_MAX. */
   recentRepos: string[]
+  /**
+   * Per-task-type overrides for agent/target/cloudProvider. Keyed by the
+   * task's type bucket (see `taskTypeKey`) — e.g. `docs` tasks remember
+   * Gemini while `engineering` tasks remember Claude without either
+   * leaking into the other. Missing keys fall back to the global
+   * `lastAgent`/`lastTarget`/`lastCloudProvider` fields above.
+   */
+  byTaskType?: Record<string, Partial<Pick<DispatchPrefs, 'lastAgent' | 'lastTarget' | 'lastCloudProvider'>>>
 }
 
 const DISPATCH_PREFS_KEY = 'swarmify.dispatchPrefs.v1'
 const MRU_MAX = 10
+const RESERVED_LABEL_PREFIXES = ['repo:', 'agent:', 'priority:']
+
+/**
+ * Derive a stable "task type" bucket from a task's metadata, used as the
+ * key in `DispatchPrefs.byTaskType`. Strategy: pick the first label that
+ * isn't a reserved routing label (repo:, agent:, priority:). Falls back
+ * to `task.source` (linear / github / markdown) so tasks without useful
+ * labels still get a source-level override.
+ */
+function taskTypeKey(task: UnifiedTask): string {
+  const labels = (task.metadata.labels || []).map((l) => (typeof l === 'string' ? l.toLowerCase() : ''))
+  for (const l of labels) {
+    if (!l) continue
+    if (RESERVED_LABEL_PREFIXES.some((p) => l.startsWith(p))) continue
+    return l
+  }
+  return task.source || 'default'
+}
 
 function loadDispatchPrefs(): DispatchPrefs {
   try {
@@ -2136,6 +2207,23 @@ function loadDispatchPrefs(): DispatchPrefs {
     return { ...defaultPrefs(), ...parsed }
   } catch {
     return defaultPrefs()
+  }
+}
+
+/**
+ * Merge the global prefs with any per-task-type overrides. Returns prefs
+ * with agent/target/cloudProvider taking from the type-specific bucket
+ * when present, falling back to the global defaults otherwise.
+ */
+function prefsForTask(p: DispatchPrefs, task: UnifiedTask): DispatchPrefs {
+  const key = taskTypeKey(task)
+  const override = p.byTaskType?.[key]
+  if (!override) return p
+  return {
+    ...p,
+    lastAgent: override.lastAgent ?? p.lastAgent,
+    lastTarget: override.lastTarget ?? p.lastTarget,
+    lastCloudProvider: override.lastCloudProvider ?? p.lastCloudProvider,
   }
 }
 
@@ -2149,6 +2237,7 @@ function defaultPrefs(): DispatchPrefs {
     notifyChannel: 'ios',
     lastCodexEnv: '',
     recentRepos: [],
+    byTaskType: {},
   }
 }
 
@@ -2256,13 +2345,18 @@ function TaskSwitcher({ current, tasks, onPick }: {
   )
 }
 
-function TaskDetailModal({ task, tasks, onClose, onDispatch, onTaskSwitch }: {
+function TaskDetailModal({ task, tasks, onClose, onBack, onDispatch, onTaskSwitch }: {
   task: UnifiedTask
   // Sibling tasks for the in-header switcher. When provided, the modal
   // shows a search input that filters these and lets the user jump to
   // another task without closing the modal.
   tasks?: UnifiedTask[]
   onClose: () => void
+  // When provided, renders a "Back" button in the header that returns
+  // the user to wherever they came from (e.g. DispatchModal list). No
+  // button is rendered when the modal is opened directly from a queue
+  // card — in that case there's no "back" to go to.
+  onBack?: () => void
   onDispatch: (args: {
     agent: string
     target: 'local' | 'cloud'
@@ -2275,9 +2369,15 @@ function TaskDetailModal({ task, tasks, onClose, onDispatch, onTaskSwitch }: {
   onTaskSwitch?: (task: UnifiedTask) => void
 }) {
   const prefs = useRef<DispatchPrefs>(loadDispatchPrefs())
-  const [agent, setAgent] = useState(prefs.current.lastAgent)
-  const [target, setTarget] = useState<'local' | 'cloud'>(prefs.current.lastTarget)
-  const [cloudProvider, setCloudProvider] = useState<CloudProviderId>(prefs.current.lastCloudProvider)
+  // Resolve per-task-type overrides at mount so e.g. `docs` tasks default
+  // to Gemini while `engineering` tasks default to Claude, without the
+  // two bleeding into each other. Falls back to global defaults when the
+  // task's type has never been dispatched before.
+  const seed = useMemo(() => prefsForTask(prefs.current, task), [task])
+  const typeKey = useMemo(() => taskTypeKey(task), [task])
+  const [agent, setAgent] = useState(seed.lastAgent)
+  const [target, setTarget] = useState<'local' | 'cloud'>(seed.lastTarget)
+  const [cloudProvider, setCloudProvider] = useState<CloudProviderId>(seed.lastCloudProvider)
   const [branch, setBranch] = useState('')
   const [codexEnv, setCodexEnv] = useState(prefs.current.lastCodexEnv)
   const [notifyOnQuestion, setNotifyOnQuestion] = useState(prefs.current.notifyOnQuestion)
@@ -2342,6 +2442,16 @@ function TaskDetailModal({ task, tasks, onClose, onDispatch, onTaskSwitch }: {
   // only saved inside handleDispatch, which meant a half-configured modal
   // dismissed via Cancel/Escape would lose the user's choices on reopen.
   useEffect(() => {
+    const byTaskType = { ...(prefs.current.byTaskType || {}) }
+    // Persist the routing triple (agent/target/cloudProvider) under the
+    // current task's type bucket so next time a task of the same type
+    // opens, those are the seeded defaults. Notify/codexEnv stay global
+    // because they're user-preference, not task-class.
+    byTaskType[typeKey] = {
+      lastAgent: agent,
+      lastTarget: target,
+      lastCloudProvider: cloudProvider,
+    }
     const next: DispatchPrefs = {
       lastAgent: agent,
       lastTarget: target,
@@ -2351,10 +2461,25 @@ function TaskDetailModal({ task, tasks, onClose, onDispatch, onTaskSwitch }: {
       notifyChannel,
       lastCodexEnv: codexEnv,
       recentRepos: prefs.current.recentRepos,
+      byTaskType,
     }
     saveDispatchPrefs(next)
     prefs.current = next
-  }, [agent, target, cloudProvider, notifyOnQuestion, notifyOnFinish, notifyChannel, codexEnv])
+  }, [agent, target, cloudProvider, notifyOnQuestion, notifyOnFinish, notifyChannel, codexEnv, typeKey])
+
+  // Re-seed state when the displayed task changes (via TaskSwitcher).
+  // Without this, switching from a `docs` task to an `engineering` task
+  // would keep the docs task's agent/target selection.
+  const lastTypeKeyRef = useRef(typeKey)
+  useEffect(() => {
+    if (lastTypeKeyRef.current === typeKey) return
+    lastTypeKeyRef.current = typeKey
+    const override = prefs.current.byTaskType?.[typeKey]
+    if (!override) return
+    if (override.lastAgent) setAgent(override.lastAgent)
+    if (override.lastTarget) setTarget(override.lastTarget)
+    if (override.lastCloudProvider) setCloudProvider(override.lastCloudProvider)
+  }, [typeKey])
 
   const singleRepo = selectedRepos.length === 1 ? selectedRepos[0] : ''
   const branchInfo = singleRepo ? branchesByRepo[singleRepo] : undefined
@@ -2465,6 +2590,18 @@ function TaskDetailModal({ task, tasks, onClose, onDispatch, onTaskSwitch }: {
       <div className="sw-task-detail-modal" onMouseDown={(e) => e.stopPropagation()}>
         <div className="sw-task-detail-head">
           <div className="sw-task-detail-head-top">
+            {onBack && (
+              <button
+                type="button"
+                className="sw-btn ghost sm"
+                onClick={onBack}
+                title="Back to dispatch list"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginRight: 6 }}
+              >
+                <span aria-hidden="true">&larr;</span>
+                <span>Back</span>
+              </button>
+            )}
             <span className={`sw-queue-priority-led ${priorityCls}`} />
             {task.metadata.identifier && (
               <span className="sw-queue-badge">{task.metadata.identifier}</span>
@@ -2489,7 +2626,9 @@ function TaskDetailModal({ task, tasks, onClose, onDispatch, onTaskSwitch }: {
 
         <div className="sw-task-detail-body">
           {task.description ? (
-            <pre className="sw-task-detail-desc">{task.description}</pre>
+            <div className="sw-task-detail-desc">
+              {renderTodoDescription(task.description, false)}
+            </div>
           ) : (
             <div className="sw-task-detail-desc sw-task-detail-desc-empty">No description.</div>
           )}

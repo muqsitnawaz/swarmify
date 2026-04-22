@@ -30,7 +30,7 @@ import { useSystemTheme, getVsCodeApi, getIcons, postMessage } from './hooks'
 import { validateAliasName } from './utils'
 
 // New layout shell
-import { TopBar, StatusBar, MissionControlTab } from './components/mission-control'
+import { TopBar, StatusBar, MissionControlTab, CommandPalette } from './components/mission-control'
 import type { TabKey } from './components/mission-control'
 
 // Tab components (legacy, for Bench and Panel)
@@ -87,6 +87,7 @@ export default function App() {
   // Skills and tab state
   const [skillsStatus, setSkillsStatus] = useState<SkillsStatus | null>(null)
   const [activeTab, setActiveTab] = useState<TabKey>('floor')
+  const [cmdKOpen, setCmdKOpen] = useState(false)
   const [showGuide, setShowGuide] = useState(false)
   const [openDispatchTrigger, setOpenDispatchTrigger] = useState(0)
   const [tasks, setTasks] = useState<TaskSummary[]>([])
@@ -317,6 +318,23 @@ export default function App() {
     }, 10_000)
     return () => clearInterval(interval)
   }, [activeTab, tasksLoaded])
+
+  // Global ⌘K / Ctrl+K opens the command palette. `stopPropagation` +
+  // `preventDefault` are intentional — VS Code's webview otherwise
+  // intercepts the chord for quick-open (files), which is exactly the
+  // behavior the old top-bar search button had and the reason users
+  // thought the palette wasn't wired up.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault()
+        e.stopPropagation()
+        setCmdKOpen((o) => !o)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   useEffect(() => {
     if (!selectedAgentType || agentTerminals.length === 0) return
@@ -614,7 +632,7 @@ export default function App() {
         onTabChange={setActiveTab}
         activeSwarmCount={activeSwarms.length}
         isLightTheme={isLightTheme}
-        onOpenSearch={() => vscode.postMessage({ type: 'executeCommand', command: 'workbench.action.quickOpen' })}
+        onOpenSearch={() => setCmdKOpen(true)}
         onOpenSettings={() => setActiveTab('panel')}
         onToggleTheme={() => vscode.postMessage({ type: 'executeCommand', command: 'workbench.action.toggleLightDarkThemes' })}
       />
@@ -737,6 +755,15 @@ export default function App() {
       )}
 
       <ForemanOrb vscode={vscode} />
+
+      {cmdKOpen && (
+        <CommandPalette
+          tasks={unifiedTasks}
+          terminals={allTerminals}
+          onClose={() => setCmdKOpen(false)}
+          onSwitchTab={(tab) => { setCmdKOpen(false); setActiveTab(tab) }}
+        />
+      )}
 
       <StatusBar
         activeSwarmCount={activeSwarms.length}

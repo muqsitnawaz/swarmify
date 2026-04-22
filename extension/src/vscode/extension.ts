@@ -14,6 +14,7 @@ import * as settings from './settings.vscode';
 import * as swarm from './swarm.vscode';
 import * as notifications from './notifications.vscode';
 import * as terminals from './terminals.vscode';
+import * as sessionTracker from './sessionTracker';
 import { buildAgentTerminalEnv } from '../core/terminals';
 import {
   AgentsViewJsonAgent,
@@ -505,6 +506,12 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // Initialize terminal readiness event tracking (shell integration + close cleanup)
   readiness.initReadiness(context);
+
+  sessionTracker.initSessionTracker(context);
+  sessionTracker.onSessionChanged((terminal, _oldId, newId) => {
+    terminals.setSessionId(terminal, newId);
+    updateStatusBarForTerminal(terminal, context.extensionPath);
+  });
 
   // Cross-window live-terminal registry: every VS Code window publishes its
   // agent terminals to a shared JSON file so the Foreman (and future tools)
