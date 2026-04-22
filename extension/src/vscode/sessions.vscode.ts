@@ -493,8 +493,32 @@ export async function getSessionPathBySessionId(
       return await findFileBySessionId(root, sessionId, 4);
     }
     case 'gemini': {
-      const root = path.join(homedir(), '.gemini', 'sessions');
-      return await findFileBySessionId(root, sessionId, 3);
+      // Gemini stores chats at ~/.gemini/tmp/{projectHash}/chats/session-*.json.
+      // Filenames embed the first 8 chars of sessionId; fall back to JSON scan
+      // if the shorthand doesn't match (e.g. duplicate suffixes across projects).
+      const tmpRoot = path.join(homedir(), '.gemini', 'tmp');
+      const projects = await safeReaddir(tmpRoot);
+      const shortId = sessionId.slice(0, 8);
+      const candidates: string[] = [];
+      for (const project of projects) {
+        if (!project.isDirectory()) continue;
+        const chatsDir = path.join(tmpRoot, project.name, 'chats');
+        const entries = await safeReaddir(chatsDir);
+        for (const entry of entries) {
+          if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
+          const filePath = path.join(chatsDir, entry.name);
+          if (entry.name.endsWith(`-${shortId}.json`)) return filePath;
+          candidates.push(filePath);
+        }
+      }
+      for (const filePath of candidates) {
+        try {
+          const raw = await fs.readFile(filePath, 'utf-8');
+          const parsed = JSON.parse(raw);
+          if (parsed?.sessionId === sessionId) return filePath;
+        } catch { }
+      }
+      return undefined;
     }
     case 'opencode': {
       // OpenCode stores messages in ~/.local/share/opencode/storage/message/{sessionId}/
