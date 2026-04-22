@@ -29,7 +29,6 @@ Meet the future of IDEs. Swarmify turns your editor into an IAE — orchestrate 
 | `agents-mcp/` | @swarmify/agents-mcp | MCP server for spawning agents |
 | `extension/` | swarm-ext | VS Code/Cursor extension |
 | `prompts/` | - | Slash commands for all agents |
-| `extension/src/core/mcp/` | - | MCP client implementations (GitHub, Linear, auth, storage) |
 
 ## Core Concepts
 
@@ -188,14 +187,6 @@ Extracts both env vars from VS Code terminals at startup:
   - Dashboard with Overview, Swarm, Prompts, Guide tabs
   - Tmux mode for per-tab splits (Cmd+Shift+H/V)
   - Autogit for automated commits (Ctrl+Shift+G)
-
-### extension/src/core/mcp/
-MCP client implementations for:
-- GitHub (`github-client.ts`)
-- Linear (`linear-client.ts`)
-- Auth (`auth.ts`)
-- Storage (`storage.ts`)
-- Base client (`client.ts`)
 
 ## Behavior Tables
 
