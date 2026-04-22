@@ -7,10 +7,12 @@ import {
   isTerminalActive,
   reconcilePending,
   pruneExpiredPending,
+  markTimedOutPending,
   filterDispatchedTaskIds,
   optimisticActivityLabel,
   resolveReposFromLabels,
   PENDING_DISPATCH_TTL_MS,
+  TIMED_OUT_RETENTION_MS,
   JUST_SPAWNED_WINDOW_MS,
   type PendingDispatch,
 } from './dispatch'
@@ -208,24 +210,71 @@ describe('pruneExpiredPending', () => {
     expect(out).toHaveLength(1)
   })
 
-  test('drops entries past TTL', () => {
+  test('entry past TTL but within retention is still kept (timeout warning visible)', () => {
+    // Previously this dropped at TTL boundary. New semantics: warning stays
+    // visible for ttl + retention so silent cloud-dispatch failures surface.
     const pending = [makePending({ createdAt: FIXED_NOW - PENDING_DISPATCH_TTL_MS - 1 })]
     const out = pruneExpiredPending(pending, FIXED_NOW)
-    expect(out).toHaveLength(0)
+    expect(out).toHaveLength(1)
   })
 
-  test('exact-TTL entry is dropped (inclusive boundary)', () => {
-    const pending = [makePending({ createdAt: FIXED_NOW - PENDING_DISPATCH_TTL_MS })]
+  test('entry past TTL + retention is fully removed', () => {
+    const pending = [makePending({ createdAt: FIXED_NOW - PENDING_DISPATCH_TTL_MS - TIMED_OUT_RETENTION_MS - 1 })]
     const out = pruneExpiredPending(pending, FIXED_NOW)
     expect(out).toHaveLength(0)
   })
 
-  test('mixed list keeps only fresh', () => {
+  test('exact-retention-boundary entry is removed (inclusive)', () => {
+    const pending = [makePending({ createdAt: FIXED_NOW - PENDING_DISPATCH_TTL_MS - TIMED_OUT_RETENTION_MS })]
+    const out = pruneExpiredPending(pending, FIXED_NOW)
+    expect(out).toHaveLength(0)
+  })
+
+  test('mixed list keeps entries still within retention window', () => {
     const fresh = makePending({ id: 'fresh', createdAt: FIXED_NOW - 10_000 })
-    const stale = makePending({ id: 'stale', createdAt: FIXED_NOW - 60_000 })
+    const stale = makePending({
+      id: 'stale',
+      createdAt: FIXED_NOW - PENDING_DISPATCH_TTL_MS - TIMED_OUT_RETENTION_MS - 1_000,
+    })
     const out = pruneExpiredPending([fresh, stale], FIXED_NOW)
     expect(out).toHaveLength(1)
     expect(out[0].id).toBe('fresh')
+  })
+})
+
+describe('markTimedOutPending', () => {
+  test('fresh entry stays pending', () => {
+    const pending = [makePending({ createdAt: FIXED_NOW - 5_000 })]
+    const out = markTimedOutPending(pending, FIXED_NOW)
+    expect(out).toBe(pending)
+  })
+
+  test('entry past TTL flips to timedOut (and only that entry)', () => {
+    const fresh = makePending({ id: 'fresh', createdAt: FIXED_NOW - 5_000 })
+    const stale = makePending({ id: 'stale', createdAt: FIXED_NOW - PENDING_DISPATCH_TTL_MS - 1 })
+    const out = markTimedOutPending([fresh, stale], FIXED_NOW)
+    expect(out).not.toBe([fresh, stale])
+    expect(out.find((p) => p.id === 'fresh')?.status ?? 'pending').toBe('pending')
+    expect(out.find((p) => p.id === 'stale')?.status).toBe('timedOut')
+  })
+
+  test('already-timedOut entry is not re-flipped (preserves identity)', () => {
+    const t = { ...makePending({ createdAt: FIXED_NOW - PENDING_DISPATCH_TTL_MS - 1 }), status: 'timedOut' as const }
+    const out = markTimedOutPending([t], FIXED_NOW)
+    expect(out).toBe([t].length === 1 ? out : out) // same ref semantics checked below
+    expect(out[0]).toBe(t)
+  })
+
+  test('exact-TTL boundary entry flips (inclusive)', () => {
+    const pending = [makePending({ createdAt: FIXED_NOW - PENDING_DISPATCH_TTL_MS })]
+    const out = markTimedOutPending(pending, FIXED_NOW)
+    expect(out[0].status).toBe('timedOut')
+  })
+
+  test('empty list returns same reference', () => {
+    const pending: PendingDispatch[] = []
+    const out = markTimedOutPending(pending, FIXED_NOW)
+    expect(out).toBe(pending)
   })
 })
 
@@ -282,6 +331,24 @@ describe('optimisticActivityLabel', () => {
     const label = optimisticActivityLabel(p)
     const inner = label.slice('Starting... ('.length, -1)
     expect(inner).toHaveLength(40)
+  })
+
+  test('timedOut cloud dispatch surfaces the timeout message', () => {
+    const p: PendingDispatch = {
+      ...makePending({ target: 'cloud', taskIdentifier: 'RUSH-461', targetRepo: 'muqsitnawaz/agents' }),
+      status: 'timedOut',
+    }
+    expect(optimisticActivityLabel(p)).toBe(
+      'Dispatch timed out — check Rush Cloud terminal (RUSH-461 -> muqsitnawaz/agents)',
+    )
+  })
+
+  test('timedOut local dispatch surfaces the timeout message', () => {
+    const p: PendingDispatch = {
+      ...makePending({ target: 'local', taskIdentifier: 'RUSH-461' }),
+      status: 'timedOut',
+    }
+    expect(optimisticActivityLabel(p)).toBe('Dispatch timed out — check terminal (RUSH-461)')
   })
 })
 

@@ -9,9 +9,25 @@ export type PendingDispatch = {
   title: string
   createdAt: number
   targetRepo?: string
+  /**
+   * 'pending' = dispatched, waiting for a matching terminal/task to appear
+   * 'timedOut' = TTL elapsed with no match — treated as a failure signal,
+   * surfaced to the user as a dismissable warning so silent cloud-dispatch
+   * failures (wrong repo, auth, pod-alloc timeout) are visible instead of
+   * just disappearing. Defaults to 'pending' when undefined.
+   */
+  status?: 'pending' | 'timedOut'
 }
 
-export const PENDING_DISPATCH_TTL_MS = 30000
+// Pending lifetime: we wait up to TTL_MS for a matching agent to appear,
+// then flip the entry to `timedOut` (still visible as a warning). The
+// entry is fully removed once TTL + RETENTION_MS has elapsed, or when
+// the user clicks dismiss. 30s was too tight — Rush Cloud cold starts
+// regularly take 60–90s and were silently dropping out of the UI mid-
+// startup. 180s covers common cold-start latency without making real
+// failures feel permanent.
+export const PENDING_DISPATCH_TTL_MS = 180_000
+export const TIMED_OUT_RETENTION_MS = 300_000
 export const JUST_SPAWNED_WINDOW_MS = 15000
 
 export function isTerminalJustSpawned(createdAt: number | undefined, now: number): boolean {
@@ -58,12 +74,47 @@ export function reconcilePending(
   return pending.filter((p) => !consumed.has(p.id))
 }
 
+/**
+ * Flip entries past `ttlMs` from `pending` to `timedOut` instead of
+ * dropping them. Keeps the warning visible so the user knows the
+ * dispatch didn't materialize (e.g. Rush Cloud never allocated a pod).
+ * Already-`timedOut` entries pass through unchanged. Returns the same
+ * reference when no transitions occurred so React can bail out cheaply.
+ */
+export function markTimedOutPending(
+  pending: PendingDispatch[],
+  now: number,
+  ttlMs = PENDING_DISPATCH_TTL_MS,
+): PendingDispatch[] {
+  if (pending.length === 0) return pending
+  let changed = false
+  const next = pending.map((p) => {
+    const status = p.status ?? 'pending'
+    if (status === 'pending' && now - p.createdAt >= ttlMs) {
+      changed = true
+      return { ...p, status: 'timedOut' as const }
+    }
+    return p
+  })
+  return changed ? next : pending
+}
+
+/**
+ * Fully remove entries once their retention window has elapsed. A
+ * `timedOut` entry stays visible for `ttlMs + retentionMs` total, so
+ * the user has time to notice the warning and dispatch again (or
+ * dismiss manually). Same-reference short-circuit for React.
+ */
 export function pruneExpiredPending(
   pending: PendingDispatch[],
   now: number,
-  ttlMs = PENDING_DISPATCH_TTL_MS
+  ttlMs = PENDING_DISPATCH_TTL_MS,
+  retentionMs = TIMED_OUT_RETENTION_MS,
 ): PendingDispatch[] {
-  return pending.filter((p) => now - p.createdAt < ttlMs)
+  if (pending.length === 0) return pending
+  const cutoff = ttlMs + retentionMs
+  const next = pending.filter((p) => now - p.createdAt < cutoff)
+  return next.length === pending.length ? pending : next
 }
 
 export function filterDispatchedTaskIds<T extends { id: string }>(
@@ -77,6 +128,11 @@ export function filterDispatchedTaskIds<T extends { id: string }>(
 export function optimisticActivityLabel(p: PendingDispatch): string {
   const label = p.taskIdentifier || p.title.slice(0, 40)
   const suffix = p.targetRepo ? ` -> ${p.targetRepo}` : ''
+  if ((p.status ?? 'pending') === 'timedOut') {
+    return p.target === 'cloud'
+      ? `Dispatch timed out — check Rush Cloud terminal (${label}${suffix})`
+      : `Dispatch timed out — check terminal (${label})`
+  }
   return p.target === 'cloud'
     ? `Queuing on Rush Cloud... (${label}${suffix})`
     : `Starting... (${label})`

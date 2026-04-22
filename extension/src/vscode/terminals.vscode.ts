@@ -23,6 +23,7 @@ import {
   canonicalToConfigPrefix,
   SessionAgentType
 } from '../core/utils';
+import { registerTerminal as registerSessionTracker } from './sessionTracker';
 
 /**
  * Extract identification options from a VS Code terminal.
@@ -354,8 +355,25 @@ export function setSessionId(terminal: vscode.Terminal, sessionId: string): void
 
     // Persist to disk
     schedulePersist();
+
+    maybeRegisterWithSessionTracker(terminal, entry.agentType, sessionId);
   } else {
     console.error(`[TERMINALS] FAILED to set sessionId - terminal "${terminal.name}" not found in registry. This may indicate a race condition.`);
+  }
+}
+
+function maybeRegisterWithSessionTracker(
+  terminal: vscode.Terminal,
+  agentType: SessionAgentType | undefined,
+  sessionId: string,
+): void {
+  if (agentType !== 'claude' && agentType !== 'codex') return;
+  const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  if (!workspacePath) return;
+  try {
+    registerSessionTracker(terminal, agentType, workspacePath, sessionId);
+  } catch (err) {
+    console.error('[TERMINALS] sessionTracker.registerTerminal failed', err);
   }
 }
 
@@ -366,6 +384,10 @@ export function setAgentType(terminal: vscode.Terminal, agentType: SessionAgentT
 
     // Persist to disk
     schedulePersist();
+
+    if (entry.sessionId) {
+      maybeRegisterWithSessionTracker(terminal, agentType, entry.sessionId);
+    }
   } else {
     console.error(`[TERMINALS] FAILED to set agentType - terminal "${terminal.name}" not found in registry.`);
   }
