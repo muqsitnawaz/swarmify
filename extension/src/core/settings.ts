@@ -73,6 +73,7 @@ export interface AgentSettings {
   notifications?: NotificationSettings;
   showWelcomeScreen: boolean;       // Open dashboard on VS Code startup
   taskSources: TaskSourceSettings;  // Task sources for Tasks tab
+  githubOwner?: string;             // Default GitHub owner for cloud dispatch (e.g. "muqsitnawaz")
 }
 
 export interface EditorPreferences {

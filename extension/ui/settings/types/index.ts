@@ -166,6 +166,7 @@ export interface AgentSettings {
   notifications?: NotificationSettings
   showWelcomeScreen: boolean
   taskSources: TaskSourceSettings
+  githubOwner?: string
 }
 
 // Running counts
