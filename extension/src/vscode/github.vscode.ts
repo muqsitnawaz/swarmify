@@ -58,7 +58,7 @@ export async function fetchGitHubTasks(context: vscode.ExtensionContext): Promis
       labels: issue.labels,
       assignee: issue.assignees?.[0],
       createdAt: issue.createdAt,
-    }));
+    }, repo));
   } catch (err) {
     console.error('[GITHUB] Error fetching tasks:', err);
     return [];

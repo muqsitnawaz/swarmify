@@ -184,6 +184,19 @@ function modeLabel(item: UnifiedAgent): string {
   return item.mode || 'edit'
 }
 
+function kindBadge(kind: UnifiedAgent['kind']): string {
+  switch (kind) {
+    case 'terminal': return 'terminal'
+    case 'headless': return 'headless'
+    case 'cloud': return 'cloud'
+    case 'team': return 'team'
+  }
+}
+
+function statusLabel(status: UnifiedAgent['status']): string {
+  return status
+}
+
 // Throughput counter -- live pulsing sparkline for LLM output tok/s
 function ThroughputCounter({ tokensPerSec }: { tokensPerSec: number }) {
   const BAR_COUNT = 24
@@ -419,6 +432,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     if (openDispatchTrigger !== undefined && openDispatchTrigger > 0) setDispatchOpen(true)
   }, [openDispatchTrigger])
   const [activeFilter, setActiveFilter] = useState<'all' | 'local' | 'cloud'>('all')
+  const [expandedAgentId, setExpandedAgentId] = useState<string | null>(null)
   const [pendingDispatches, setPendingDispatches] = useState<PendingDispatch[]>([])
   const [tick, setTick] = useState(0)
   const [repoPicker, setRepoPicker] = useState<{
@@ -553,13 +567,43 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     [pendingDispatches]
   )
 
-  // Queue: urgent/high tasks that are todo (exclude tasks currently being dispatched)
-  const queueTasks = useMemo(() => {
+  // Queue eligible pool: urgent/high todo tasks not currently being dispatched.
+  // Project filter is applied on top of this for the NEXT UP strip.
+  const queueEligible = useMemo(() => {
     const eligible = unifiedTasks.filter(
       (t) => t.status === 'todo' && (t.priority === 'urgent' || t.priority === 'high')
     )
-    return filterDispatchedTaskIds(eligible, pendingTaskIds).slice(0, 4)
+    return filterDispatchedTaskIds(eligible, pendingTaskIds)
   }, [unifiedTasks, pendingTaskIds])
+
+  const [queueProjectFilter, setQueueProjectFilter] = useState<string>('all')
+
+  // Distinct Linear project names present in the eligible queue. Used to
+  // populate the filter dropdown; when fewer than 2 projects are present we
+  // hide the control entirely.
+  const queueProjects = useMemo(() => {
+    const seen = new Set<string>()
+    for (const t of queueEligible) {
+      const p = t.metadata.project
+      if (p) seen.add(p)
+    }
+    return Array.from(seen).sort()
+  }, [queueEligible])
+
+  // When the current filter's project disappears from the eligible pool
+  // (e.g. the last task in that project got dispatched), drop back to "all".
+  useEffect(() => {
+    if (queueProjectFilter !== 'all' && !queueProjects.includes(queueProjectFilter)) {
+      setQueueProjectFilter('all')
+    }
+  }, [queueProjectFilter, queueProjects])
+
+  const queueTasks = useMemo(() => {
+    const filtered = queueProjectFilter === 'all'
+      ? queueEligible
+      : queueEligible.filter((t) => t.metadata.project === queueProjectFilter)
+    return filtered.slice(0, 4)
+  }, [queueEligible, queueProjectFilter])
 
   // Intake queue: cloud teammates that a cloud provider flagged as
   // 'input_required'. Surface one banner per team; submit pipes through to
@@ -859,20 +903,42 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
       )}
 
       {/* Next Up -- scheduled / urgent tasks about to run */}
-      {queueTasks.length > 0 && (
+      {queueEligible.length > 0 && (
         <div className="sw-queue-section" ref={nextUpSectionRef}>
           <div className="sw-section-header-row">
             <span className="sw-section-label">Next Up</span>
             <span className="sw-section-count-pill">{queueTasks.length}</span>
             <span className="sw-section-hint">Click a card to configure and dispatch</span>
             <span className="sw-section-line" />
+            {queueProjects.length >= 2 && (
+              <select
+                className="sw-queue-project-select mono"
+                value={queueProjectFilter}
+                onChange={(e) => setQueueProjectFilter(e.target.value)}
+                aria-label="Filter Next Up by Linear project"
+              >
+                <option value="all">All projects</option>
+                {queueProjects.map((p) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            )}
           </div>
 
-          <div className="sw-queue-cards">
-            {queueTasks.map((task) => (
-              <DispatchCard key={task.id} task={task} onOpen={setDetailTask} />
-            ))}
-          </div>
+          {queueTasks.length > 0 ? (
+            <div className="sw-queue-cards">
+              {queueTasks.map((task) => (
+                <DispatchCard key={task.id} task={task} onOpen={setDetailTask} />
+              ))}
+            </div>
+          ) : (
+            <div className="sw-queue-empty">
+              No tasks in project <b>{queueProjectFilter}</b>.{' '}
+              <button type="button" className="sw-link-btn" onClick={() => setQueueProjectFilter('all')}>
+                Show all projects
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -937,16 +1003,45 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
             </button>
           </div>
 
-          <div className="sw-agent-strips">
-            {activeItems
-              .filter((item) => activeFilter === 'all' || (activeFilter === 'cloud' ? item.kind === 'cloud' : item.kind !== 'cloud'))
-              .map((item) => (
-                <AgentStrip key={item.id} item={item} onFocus={handleFocusTerminal} onKill={handleKill} />
-              ))}
-            {activeItems.length > 0 && activeItems.filter((i) => activeFilter === 'all' || (activeFilter === 'cloud' ? i.kind === 'cloud' : i.kind !== 'cloud')).length === 0 && (
-              <div className="sw-active-filter-empty">No {activeFilter} agents running.</div>
-            )}
-          </div>
+          {(() => {
+            const visibleActive = activeItems.filter((item) => activeFilter === 'all' || (activeFilter === 'cloud' ? item.kind === 'cloud' : item.kind !== 'cloud'))
+            const selected = expandedAgentId ? visibleActive.find((i) => i.id === expandedAgentId) ?? null : null
+            const strips = (
+              <div className="sw-agent-strips">
+                {visibleActive.map((item) => (
+                  <AgentStrip
+                    key={item.id}
+                    item={item}
+                    selected={expandedAgentId === item.id}
+                    onSelect={(id) => setExpandedAgentId(expandedAgentId === id ? null : id)}
+                    onFocus={handleFocusTerminal}
+                    onKill={handleKill}
+                    onRetry={handleRetry}
+                  />
+                ))}
+                {activeItems.length > 0 && visibleActive.length === 0 && (
+                  <div className="sw-active-filter-empty">No {activeFilter} agents running.</div>
+                )}
+              </div>
+            )
+            if (selected) {
+              return (
+                <div className="sw-agent-strips-with-detail">
+                  {strips}
+                  <div className="sw-unified-detail-pane">
+                    <DetailPane
+                      item={selected}
+                      onClose={() => setExpandedAgentId(null)}
+                      onFocusTerminal={handleFocusTerminal}
+                      onRetry={handleRetry}
+                      onKill={handleKill}
+                    />
+                  </div>
+                </div>
+              )
+            }
+            return strips
+          })()}
         </>
       )}
 
@@ -1635,9 +1730,11 @@ function FactoryBadges({ item }: { item: UnifiedAgent }) {
   return <div className="sw-strip-factory-badges">{badges}</div>
 }
 
-function AgentStrip({ item, dimmed, onFocus, onKill, onRetry }: {
+function AgentStrip({ item, dimmed, selected, onSelect, onFocus, onKill, onRetry }: {
   item: UnifiedAgent
   dimmed?: boolean
+  selected?: boolean
+  onSelect?: (id: string) => void
   onFocus: (t: TerminalInfo) => void
   onKill?: (taskName: string) => void
   onRetry?: (taskName: string) => void
@@ -1646,8 +1743,15 @@ function AgentStrip({ item, dimmed, onFocus, onKill, onRetry }: {
   const abbr = agentAbbr(item.agentType)
   const mode = modeLabel(item)
 
+  const stop = (e: React.MouseEvent) => e.stopPropagation()
+
   return (
-    <div className={`sw-agent-strip ${dimmed ? 'dimmed' : ''}`}>
+    <div
+      className={`sw-agent-strip ${dimmed ? 'dimmed' : ''} ${selected ? 'selected' : ''} ${onSelect ? 'clickable' : ''}`}
+      onClick={onSelect ? () => onSelect(item.id) : undefined}
+      role={onSelect ? 'button' : undefined}
+      tabIndex={onSelect ? 0 : undefined}
+    >
       <div className={`sw-strip-color-bar ${item.agentType.toLowerCase()}`} />
       <div className={`sw-strip-led ${item.status === 'running' ? 'green' : item.status === 'failed' ? 'red' : 'gray'}`} />
       <div className="sw-strip-identity">
@@ -1676,25 +1780,312 @@ function AgentStrip({ item, dimmed, onFocus, onKill, onRetry }: {
         {item.linearIssue && <span className="sw-tag-linear">{item.linearIssue}</span>}
         {item.prUrl && <span className="sw-tag-pr">#{item.prUrl.match(/\/pull\/(\d+)/)?.[1] || 'PR'}</span>}
       </div>
-      <div className="sw-strip-actions">
+      <div className="sw-strip-actions" onClick={stop}>
         {item.terminal && (
-          <button className="sw-btn-strip sw-btn-focus" onClick={() => onFocus(item.terminal!)}>Focus</button>
+          <button className="sw-btn-strip sw-btn-focus" onClick={(e) => { e.stopPropagation(); onFocus(item.terminal!) }}>Focus</button>
         )}
         {item.active && item.swarm && onKill && (
-          <button className="sw-btn-strip sw-btn-kill" onClick={() => onKill(item.swarm!.task_name)}>Kill</button>
+          <button className="sw-btn-strip sw-btn-kill" onClick={(e) => { e.stopPropagation(); onKill(item.swarm!.task_name) }}>Kill</button>
         )}
         {!item.active && item.swarm && onRetry && (
-          <button className="sw-btn-strip sw-btn-focus" onClick={() => onRetry(item.swarm!.task_name)}>Retry</button>
+          <button className="sw-btn-strip sw-btn-focus" onClick={(e) => { e.stopPropagation(); onRetry(item.swarm!.task_name) }}>Retry</button>
         )}
       </div>
     </div>
   )
 }
 
+function DetailPane({ item, onClose, onFocusTerminal, onRetry, onKill }: {
+  item: UnifiedAgent
+  onClose: () => void
+  onFocusTerminal: (t: TerminalInfo) => void
+  onRetry: (taskName: string) => void
+  onKill: (taskName: string) => void
+}) {
+  const isActive = item.active
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
+      <div className="sw-mc-pane-head">
+        <AgentAvatar id={item.agentType} size={20} />
+        <span style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+          {item.displayName}
+        </span>
+        <span className={`sw-unified-kind-badge ${item.kind}`}>{kindBadge(item.kind)}</span>
+        {item.cloudProvider && <span className="mono sw-unified-provider">{item.cloudProvider}</span>}
+        <div className="sw-spacer" />
+        {item.swarm && (
+          <>
+            <button className="sw-btn secondary sm" onClick={() => onRetry(item.swarm!.task_name)}>
+              <Icon name="refresh" size={11} />
+              Retry
+            </button>
+            {isActive && (
+              <button className="sw-btn danger sm" onClick={() => onKill(item.swarm!.task_name)}>
+                <Icon name="x" size={11} />
+                Kill
+              </button>
+            )}
+          </>
+        )}
+        {item.terminal && (
+          <button className="sw-btn secondary sm" onClick={() => onFocusTerminal(item.terminal!)}>
+            <Icon name="terminal" size={11} />
+            Focus
+          </button>
+        )}
+        <button className="sw-btn secondary sm" onClick={onClose} aria-label="Close detail pane">
+          <Icon name="x" size={11} />
+        </button>
+      </div>
+
+      <div className="sw-mc-pane-body">
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+          {item.duration && <span className="sw-pill mono">{item.duration}</span>}
+          <span className="sw-pill">{relTime(item.timestamp)}</span>
+          {item.status !== 'idle' && (
+            <span className={`sw-badge ${item.status === 'completed' ? 'ok' : item.status}`}>
+              {statusLabel(item.status)}
+            </span>
+          )}
+          {item.prUrl && (
+            <a href={item.prUrl} target="_blank" rel="noreferrer" className="mono" style={{ fontSize: 11, color: 'var(--brand)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <Icon name="external" size={10} /> PR
+            </a>
+          )}
+        </div>
+
+        {item.terminal && <TerminalExpandedDetail terminal={item.terminal} onFocus={onFocusTerminal} />}
+        {item.kind === 'team' && item.swarm && <TeamDetail swarm={item.swarm} onRetry={onRetry} onKill={onKill} />}
+        {(item.kind === 'headless' || item.kind === 'cloud') && item.agent && (
+          <AgentDetailView agent={item.agent} swarm={item.swarm} onRetry={onRetry} onKill={onKill} />
+        )}
+      </div>
+    </div>
+  )
+}
+
+function TerminalExpandedDetail({ terminal, onFocus }: { terminal: TerminalInfo; onFocus: (t: TerminalInfo) => void }) {
+  return (
+    <div className="sw-unified-detail-content">
+      {terminal.firstUserMessage && (
+        <div className="sw-unified-detail-section">
+          <div className="sw-section-label">Task</div>
+          <div className="sw-unified-detail-text">{terminal.firstUserMessage}</div>
+        </div>
+      )}
+      {terminal.quickSummary && (
+        <div className="sw-unified-detail-section">
+          <div className="sw-section-label">Activity</div>
+          <div className="sw-unified-detail-stats">
+            {terminal.quickSummary.filesEdited > 0 && <span>{terminal.quickSummary.filesEdited} files edited</span>}
+            {terminal.quickSummary.toolCalls > 0 && <span>{terminal.quickSummary.toolCalls} tool calls</span>}
+            {terminal.quickSummary.webSearches > 0 && <span>{terminal.quickSummary.webSearches} web searches</span>}
+          </div>
+        </div>
+      )}
+      {terminal.recentFiles && terminal.recentFiles.length > 0 && (
+        <div className="sw-unified-detail-section">
+          <div className="sw-section-label">Recent files</div>
+          <div className="sw-unified-detail-files">
+            {terminal.recentFiles.slice(0, 5).map((f) => (
+              <span key={f} className="mono sw-unified-file-pill">{f.split('/').pop()}</span>
+            ))}
+          </div>
+        </div>
+      )}
+      <div className="sw-unified-detail-actions">
+        <button className="sw-btn secondary sm" onClick={() => onFocus(terminal)}>
+          <Icon name="terminal" size={11} />
+          Focus terminal
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function TeamDetail({ swarm, onRetry, onKill }: { swarm: TaskSummary; onRetry: (n: string) => void; onKill: (n: string) => void }) {
+  const isActive = swarm.status_counts.running > 0
+  return (
+    <div className="sw-unified-detail-content">
+      <div className="sw-unified-detail-section">
+        <div className="sw-section-label">Agents</div>
+        <div className="sw-unified-team-agents">
+          {swarm.agents.map((a) => {
+            const statusClass = a.status === 'running' ? 'running' : a.status === 'completed' ? 'ok' : a.status === 'failed' ? 'failed' : 'idle'
+            const lastAction = a.bash_commands?.slice(-1)[0] || a.files_modified?.slice(-1)[0] || a.last_messages?.slice(-1)[0]?.slice(0, 80) || ''
+            return (
+              <div key={a.agent_id} className="sw-unified-team-agent">
+                <AgentAvatar id={a.agent_type} size={16} />
+                <span style={{ fontSize: 12, fontWeight: 550, textTransform: 'capitalize' }}>{a.agent_type}</span>
+                <span className={`sw-badge ${statusClass}`}>{a.status}</span>
+                <div className="sw-spacer" />
+                {a.duration && <span className="mono" style={{ fontSize: 10.5, color: 'var(--ds-text-dim)' }}>{a.duration}</span>}
+                {a.pr_url && (
+                  <a href={a.pr_url} target="_blank" rel="noreferrer" className="mono" style={{ fontSize: 10.5, color: 'var(--brand)' }} onClick={(e) => e.stopPropagation()}>
+                    <Icon name="external" size={10} /> PR
+                  </a>
+                )}
+                {lastAction && (
+                  <div className="mono" style={{ fontSize: 10.5, color: 'var(--ds-text-dim)', gridColumn: '1 / -1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingLeft: 24 }}>
+                    {lastAction}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+      <div className="sw-unified-detail-actions">
+        <button className="sw-btn secondary sm" onClick={() => onRetry(swarm.task_name)}>
+          <Icon name="refresh" size={11} />
+          Retry
+        </button>
+        {isActive && (
+          <button className="sw-btn danger sm" onClick={() => onKill(swarm.task_name)}>
+            <Icon name="x" size={11} />
+            Kill
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function AgentDetailView({ agent, swarm, onRetry, onKill }: { agent: AgentDetail; swarm?: TaskSummary; onRetry: (n: string) => void; onKill: (n: string) => void }) {
+  const isActive = agent.status === 'running'
+  const isCloud = agent.mode === 'cloud' || !!agent.cloud_provider
+  const allFiles = [...(agent.files_created || []), ...(agent.files_modified || [])]
+
+  if (isCloud) {
+    return (
+      <div className="sw-unified-detail-content">
+        {agent.repo_owner && agent.repo_name && (
+          <div className="sw-unified-detail-section">
+            <div className="sw-section-label">Repository</div>
+            <div className="mono" style={{ fontSize: 12 }}>{agent.repo_owner}/{agent.repo_name}</div>
+          </div>
+        )}
+        {agent.prompt && (
+          <div className="sw-unified-detail-section">
+            <div className="sw-section-label">Task</div>
+            <div className="sw-unified-detail-text sw-cloud-prompt">{agent.prompt}</div>
+          </div>
+        )}
+        {agent.cloud_summary && (
+          <div className="sw-unified-detail-section">
+            <div className="sw-section-label">Output</div>
+            <pre className="sw-cloud-log mono">{agent.cloud_summary}</pre>
+          </div>
+        )}
+        {!agent.cloud_summary && isActive && (
+          <div className="sw-unified-detail-section">
+            <div className="sw-section-label">Output</div>
+            <div className="sw-unified-detail-text" style={{ color: 'var(--ds-text-dim)', fontStyle: 'italic' }}>
+              Agent is running, no output yet...
+            </div>
+          </div>
+        )}
+        {swarm && (
+          <div className="sw-unified-detail-actions">
+            <button className="sw-btn secondary sm" onClick={() => onRetry(swarm.task_name)}>
+              <Icon name="refresh" size={11} />
+              Retry
+            </button>
+            {isActive && (
+              <button className="sw-btn danger sm" onClick={() => onKill(swarm.task_name)}>
+                <Icon name="x" size={11} />
+                Stop
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="sw-unified-detail-content">
+      {agent.prompt && (
+        <div className="sw-unified-detail-section">
+          <div className="sw-section-label">Task</div>
+          <div className="sw-unified-detail-text">{agent.prompt.slice(0, 500)}</div>
+        </div>
+      )}
+      {agent.last_messages && agent.last_messages.length > 0 && (
+        <div className="sw-unified-detail-section">
+          <div className="sw-section-label">Latest</div>
+          <div className="sw-unified-detail-text mono" style={{ fontSize: 11 }}>
+            {agent.last_messages[agent.last_messages.length - 1]?.slice(0, 300)}
+          </div>
+        </div>
+      )}
+      {allFiles.length > 0 && (
+        <div className="sw-unified-detail-section">
+          <div className="sw-section-label">Files ({allFiles.length})</div>
+          <div className="sw-unified-detail-files">
+            {allFiles.slice(0, 8).map((f) => (
+              <span key={f} className="mono sw-unified-file-pill">{f.split('/').pop()}</span>
+            ))}
+            {allFiles.length > 8 && <span className="mono" style={{ fontSize: 10.5, color: 'var(--ds-text-dim)' }}>+{allFiles.length - 8} more</span>}
+          </div>
+        </div>
+      )}
+      {swarm && (
+        <div className="sw-unified-detail-actions">
+          <button className="sw-btn secondary sm" onClick={() => onRetry(swarm.task_name)}>
+            <Icon name="refresh" size={11} />
+            Retry
+          </button>
+          {isActive && (
+            <button className="sw-btn danger sm" onClick={() => onKill(swarm.task_name)}>
+              <Icon name="x" size={11} />
+              Stop
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Format a Linear dueDate (YYYY-MM-DD) into short human text for the card.
+// Returns null when no date. Uses local-day comparison so "Due today" lines up
+// with the user's calendar rather than UTC midnight.
+function formatDueDate(iso: string | undefined): { label: string; tone: 'overdue' | 'soon' | 'normal' } | null {
+  if (!iso) return null
+  const parts = iso.split('T')[0].split('-')
+  if (parts.length < 3) return null
+  const y = Number(parts[0]), m = Number(parts[1]), d = Number(parts[2])
+  if (!y || !m || !d) return null
+  const due = new Date(y, m - 1, d)
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const diffDays = Math.round((due.getTime() - today.getTime()) / 86400000)
+  if (diffDays < 0) {
+    const n = Math.abs(diffDays)
+    return { label: n === 1 ? 'Overdue 1d' : `Overdue ${n}d`, tone: 'overdue' }
+  }
+  if (diffDays === 0) return { label: 'Due today', tone: 'soon' }
+  if (diffDays === 1) return { label: 'Due tomorrow', tone: 'soon' }
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  const label = `Due ${MONTHS[m - 1]} ${d}`
+  return { label, tone: diffDays <= 3 ? 'soon' : 'normal' }
+}
+
 // Dispatch card with agent picker
 function DispatchCard({ task, onOpen }: { task: UnifiedTask; onOpen: (task: UnifiedTask) => void }) {
   const priorityCls = task.priority === 'urgent' ? 'urgent' : task.priority === 'high' ? 'high' : 'medium'
   const priorityLabel = task.priority ? task.priority.charAt(0).toUpperCase() + task.priority.slice(1) : 'Medium'
+  const repo = task.metadata.repo
+  const due = formatDueDate(task.metadata.dueDate)
+  const assignee = task.metadata.assignee
+  const isAgentAssignee = task.metadata.assigneeKind === 'agent'
+  const repoHref = repo ? `https://github.com/${repo}` : null
+  const shortDesc = task.description?.trim().replace(/\s+/g, ' ').slice(0, 120) || null
+
+  const stopOpen = (e: React.MouseEvent) => { e.stopPropagation() }
+
   return (
     <button type="button" className="sw-queue-card sw-queue-card-clickable" onClick={() => onOpen(task)}>
       <div className="sw-queue-card-header">
@@ -1703,8 +2094,38 @@ function DispatchCard({ task, onOpen }: { task: UnifiedTask; onOpen: (task: Unif
         <span className={`sw-queue-priority-label ${priorityCls}`}>{priorityLabel}</span>
       </div>
       <div className="sw-queue-title">{task.title}</div>
-      {task.description && (
-        <div className="sw-queue-desc">{task.description.slice(0, 160)}</div>
+      {(repo || due) && (
+        <div className="sw-queue-meta-row">
+          {repoHref ? (
+            <a
+              className="sw-queue-repo-chip mono"
+              href={repoHref}
+              target="_blank"
+              rel="noreferrer"
+              onClick={stopOpen}
+              onMouseDown={stopOpen}
+              title={`Open ${repo} on GitHub`}
+            >
+              {repo}
+            </a>
+          ) : repo ? (
+            <span className="sw-queue-repo-chip mono">{repo}</span>
+          ) : null}
+          {due && <span className={`sw-queue-due ${due.tone}`}>{due.label}</span>}
+        </div>
+      )}
+      {shortDesc && <div className="sw-queue-desc sw-queue-desc-oneline">{shortDesc}</div>}
+      {assignee && (
+        <div className="sw-queue-assignee">
+          {isAgentAssignee ? (
+            <>
+              <AgentAvatar id={assignee.toLowerCase()} size={14} />
+              <span className="sw-queue-assignee-name">{assignee}</span>
+            </>
+          ) : (
+            <span className="sw-queue-assignee-name">@{assignee}</span>
+          )}
+        </div>
       )}
     </button>
   )

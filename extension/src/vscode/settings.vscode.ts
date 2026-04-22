@@ -79,7 +79,7 @@ function inferOwnerFromGhCli(): Promise<string | null> {
 // 2. Workspace git remote owner
 // 3. `gh api user` login
 // 4. null -> caller prompts the user
-async function resolveGithubOwner(
+export async function resolveGithubOwner(
   workspacePath: string | undefined,
   settings: AgentSettings
 ): Promise<string | null> {
