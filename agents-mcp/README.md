@@ -64,8 +64,14 @@ With this server, every MCP client gets the same capabilities. Mix models based 
 You control the cost tradeoffs. Expensive models for planning, fast models for execution.
 
 **4 tools:** `Spawn`, `Status`, `Stop`, `Tasks`
-**3 modes:** `plan` (read-only), `edit` (can write), `ralph` (autonomous)
+**Modes:** `plan` (read-only), `edit` (can write), `cloud` (run on remote infra, claude/codex only). `ralph` is deprecated and will be removed in 0.4.0.
 **Background processes:** Agents run headless, survive IDE restarts
+
+## Deprecations
+
+- **ralph mode** is deprecated as of 0.3.0 and will be removed in 0.4.0. Spawns still work but emit a warning on stderr. Migrate to a normal `spawn` with a task-list prompt, or use agents-cli's `oracle` / `supervisor` primitives.
+- **effort vocabulary** changed from `fast | default | detailed` to `low | medium | high | xhigh | max | auto`. Legacy values are still accepted and map to `low | medium | high` for back-compat.
+- **Storage path** moved from `~/.agents/teams/` to `~/.agents/teams/`. Old directory is left untouched; orphaned completed agents from 0.2.x no longer appear in status/tasks.
 
 ## Quick Start
 
@@ -158,9 +164,9 @@ Start an agent on a task. Returns immediately with agent ID.
 | `task_name` | Yes | Groups related agents (e.g., "auth-feature") |
 | `agent_type` | Yes | `claude`, `codex`, `gemini`, or `cursor` |
 | `prompt` | Yes | The task for the agent |
-| `mode` | No | `plan` (default), `edit`, or `ralph` |
+| `mode` | No | `plan` (default), `edit`, `cloud` (claude/codex only). `ralph` is deprecated. |
 | `cwd` | No | Working directory |
-| `effort` | No | `fast`, `default`, or `detailed` |
+| `effort` | No | `low`, `medium` (default), `high`, `xhigh`, `max`, `auto`. Legacy `fast`/`default`/`detailed` still accepted. |
 
 ### Status
 
@@ -198,11 +204,14 @@ List all tasks sorted by most recent activity. Defaults to 10.
 | --- | --- | --- | --- |
 | `plan` | Read-only | No | Research, code review |
 | `edit` | Read + Write | No | Implementation, fixes |
-| `ralph` | Full | Yes | Autonomous via RALPH.md |
+| `cloud` | Remote | No | Claude / Codex cloud runs, open a PR when done |
+| `ralph` | Full | Yes | DEPRECATED — removed in 0.4.0. Autonomous via RALPH.md |
 
 Default is `plan` for safety. Pass `mode='edit'` when agents need to modify files.
 
-### Ralph Mode
+### Ralph Mode (deprecated)
+
+**Deprecated in 0.3.0, will be removed in 0.4.0.** A deprecation warning is written to stderr on each ralph spawn. Migrate to a normal `spawn` with a task-list prompt, or use agents-cli's `oracle` / `supervisor` primitives.
 
 Ralph mode spawns one agent with full permissions to autonomously work through tasks in a `RALPH.md` file. The agent reads the file, picks tasks logically, marks them complete, and continues until done.
 
@@ -261,7 +270,7 @@ Orchestrator                     SubAgent
      |                              |
      |                         writes to stdout
      |                              |
-     |                         ~/.agents/swarm/agents/{id}/stdout.log
+     |                         ~/.agents/teams/agents/{id}/stdout.log
      |                              |
      +-- Status -----------------> reads log, parses events
      |                              |
@@ -273,7 +282,7 @@ Orchestrator                     SubAgent
 Each agent writes to its own log file (`stdout.log`). The Status tool reads these logs, normalizes events across different agent formats, and returns a summary. This design means:
 
 - **Persistence**: Agents survive IDE restarts. Reconnect via Status/Tasks.
-- **Debugging**: Full logs available at `~/.agents/swarm/agents/{id}/`
+- **Debugging**: Full logs available at `~/.agents/teams/agents/{id}/`
 - **No shared state**: Agents don't talk to each other directly. The orchestrator coordinates.
 
 ### Storage
@@ -301,7 +310,7 @@ Data lives at `~/.agents/`:
 
 ## Configuration
 
-Config lives at `~/.agents/swarm/config.json`. See [AGENTS.md](./AGENTS.md) for full config reference.
+Config lives at `~/.agents/teams/config.json`. See [AGENTS.md](./AGENTS.md) for full config reference.
 
 ## Environment Variables
 

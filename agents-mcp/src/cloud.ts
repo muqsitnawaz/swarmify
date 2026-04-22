@@ -3,8 +3,13 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 import { randomUUID } from 'crypto';
-import { AgentProcess, AgentStatus, getAgentsDir, checkCliAvailable } from './agents.js';
-import { AgentType } from './parsers.js';
+import {
+  AgentProcess,
+  AgentStatus,
+  getAgentsDir,
+  checkCliAvailable,
+  type AgentType,
+} from '@phnx-labs/agents-cli/teams';
 
 // Cloud mode supported agents and their providers
 // Claude: `claude --remote -p "prompt"` creates a web session on claude.ai
@@ -149,7 +154,7 @@ export async function spawnCloudAgent(
     agentType,
     prompt,
     resolvedCwd,
-    'cloud',
+    'cloud' as any,
     null,
     AgentStatus.RUNNING,
     new Date(),
