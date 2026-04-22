@@ -38,7 +38,7 @@ import { BenchTab } from './components/bench'
 import { PanelTab } from './components/panel'
 import { GuideTab } from './components/tabs/GuideTab'
 import { ApiKeyDialog } from './components/common/OAuthDialog'
-import { ForemanTab } from './components/foreman'
+import { ForemanOrb } from './components/foreman'
 
 const vscode = getVsCodeApi()
 const icons = getIcons() as IconConfig
@@ -684,11 +684,6 @@ export default function App() {
         />
       )}
 
-      {/* Foreman (voice coordinator) */}
-      {activeTab === 'foreman' && (
-        <ForemanTab vscode={vscode} />
-      )}
-
       {/* Panel (settings - 2-column sidebar layout) */}
       {activeTab === 'panel' && (
         <PanelTab
@@ -740,6 +735,8 @@ export default function App() {
           onClose={handleGitHubAuthCancel}
         />
       )}
+
+      <ForemanOrb vscode={vscode} />
 
       <StatusBar
         activeSwarmCount={activeSwarms.length}
