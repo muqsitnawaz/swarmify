@@ -26,6 +26,7 @@ test('single working claude', () => {
       },
     ],
     [],
+    [],
     now
   );
   expect(d.agents).toHaveLength(1);
@@ -48,6 +49,7 @@ test('two claudes rolls up to plural count', () => {
       { name: 'Codex - ui', lastActivityMs: now - 5_000 },
     ],
     [],
+    [],
     now
   );
   expect(d.summary).toContain('2 claude');
@@ -65,6 +67,7 @@ test('long idle agent becomes concern with label', () => {
         lastActivityMs: now - 5 * 60_000,
       },
     ],
+    [],
     [],
     now
   );
@@ -92,6 +95,7 @@ test('long paths get shortened', () => {
         recentFiles: ['/Users/muqsit/deep/project/src/components/Thing.tsx'],
       },
     ],
+    [],
     [],
     now
   );
