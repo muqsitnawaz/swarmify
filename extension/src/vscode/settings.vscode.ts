@@ -625,6 +625,15 @@ export async function saveSettings(context: vscode.ExtensionContext, settings: A
 }
 
 // Open the settings webview panel
+export function openPanelAndDispatch(context: vscode.ExtensionContext): void {
+  const alreadyOpen = !!settingsPanel;
+  openPanel(context);
+  // Small delay so the webview is ready to receive messages on cold open.
+  setTimeout(() => {
+    settingsPanel?.webview.postMessage({ type: 'openDispatchModal' });
+  }, alreadyOpen ? 0 : 500);
+}
+
 export function openPanel(context: vscode.ExtensionContext): void {
   if (settingsPanel) {
     settingsPanel.reveal();

@@ -443,6 +443,12 @@
         "mac": "cmd+shift+d"
       },
       {
+        "command": "agents.dispatchTask",
+        "key": "ctrl+d",
+        "mac": "cmd+d",
+        "when": "!editorTextFocus && !terminalFocus"
+      },
+      {
         "command": "agents.quickLaunch1",
         "key": "ctrl+shift+1",
         "mac": "cmd+shift+1"
