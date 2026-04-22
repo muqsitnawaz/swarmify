@@ -7,6 +7,7 @@ import {
   pruneExpiredPending,
   filterDispatchedTaskIds,
   optimisticActivityLabel,
+  resolveReposFromLabels,
   PENDING_DISPATCH_TTL_MS,
   JUST_SPAWNED_WINDOW_MS,
   type PendingDispatch,
