@@ -20,10 +20,12 @@ import {
   AgentsViewJsonVersion,
   pickBestVersion,
   sessionUsedPercent,
-  inlineContinueInstructions,
+  buildLaunchCommand,
+  buildResumeInput,
 } from '../core/resumeInBest';
 import * as os from 'os';
 import * as fsSync from 'fs';
+import { randomUUID } from 'crypto';
 import * as workbench from './workbench.vscode';
 import { ensureSymlinksOnWorkspaceOpen, createSymlinksCodebaseWide } from './agentlinks.vscode';
 import {
@@ -1253,7 +1255,9 @@ async function openSingleAgent(
     terminals.register(terminal, terminalId, agentConfig, pid, context);
     readiness.registerTerminal(terminal);
     if (command) {
-      readiness.armAgentReady(terminal);
+      readiness.armAgentReady(terminal, agentKey && sessionId
+        ? { agentKey, sessionId, cwd }
+        : {});
     }
 
     // Track session ID and agent type for all terminals (not just prewarmed)
@@ -1322,7 +1326,9 @@ async function openSingleAgent(
     } else {
       terminal.sendText(command);
     }
-    readiness.armAgentReady(terminal);
+    readiness.armAgentReady(terminal, agentKey && sessionId
+      ? { agentKey, sessionId, cwd }
+      : {});
   }
 
   // OpenCode: Detect session ID asynchronously after spawn
@@ -1804,7 +1810,11 @@ async function resumeSession(context: vscode.ExtensionContext) {
   } else {
     terminal.sendText(resumeCmd);
   }
-  readiness.armAgentReady(terminal);
+  readiness.armAgentReady(terminal, {
+    agentKey,
+    sessionId: session.id,
+    cwd: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
+  });
 
   terminal.show();
   vscode.window.setStatusBarMessage(`Resuming ${agentKey}${session.version ? `@${session.version}` : ''} · ${session.shortId}`, 3000);
@@ -1879,80 +1889,119 @@ async function resumeCurrentInBestProfile(context: vscode.ExtensionContext) {
   );
 
   const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
-  // Launch the target version FRESH — `claude -r <id>` only finds sessions
-  // stored in the target version's own home, so cross-version resume via
-  // `-r` fails. Instead we let the agent start normally and then type
-  // `/continue <id>` (or inline instructions if the slash command isn't
-  // synced to this version's home).
-  const launchCmd = `${builtIn.command}@${best.version}`;
-  const sessionId = terminalEntry.sessionId;
+
+  // The OLD session id lives in the terminal we're resuming FROM — it
+  // belongs to whatever version's home originally created it. We pass
+  // this to /continue so the new agent loads that transcript.
+  const oldSessionId = terminalEntry.sessionId;
+
+  // Generate a NEW session id for the fresh claude process. Passing it
+  // via `--session-id` does two things:
+  //   1. Claude creates its jsonl at a path readiness can predict, so
+  //      fs.watch fires `agentReady` the moment the TUI is live — much
+  //      more reliable than polling process state, which was firing
+  //      during the shim/node startup window BEFORE Claude was actually
+  //      accepting input (that's why /continue was landing at zsh).
+  //   2. The terminal's AGENT_SESSION_ID stays consistent with the UUID
+  //      Claude actually uses, so session tracking doesn't drift.
+  // Only Claude supports `--session-id` right now; other agents fall
+  // back to reusing the old id and the generic ps/pgrep probe.
+  const supportsSessionIdFlag = agentKey === 'claude';
+  const newSessionId = supportsSessionIdFlag ? randomUUID() : oldSessionId;
+  const launchCmd = buildLaunchCommand(
+    builtIn.command,
+    best.version,
+    agentKey,
+    supportsSessionIdFlag ? newSessionId : null,
+  );
 
   const terminalId = terminals.nextId(builtIn.prefix);
-  const title = buildTerminalTitle(agentConfig.title, undefined, context, sessionId);
+  const title = buildTerminalTitle(agentConfig.title, undefined, context, newSessionId);
   const terminal = vscode.window.createTerminal({
     iconPath: agentConfig.iconPath,
     location: { viewColumn: vscode.ViewColumn.Active },
     name: title,
-    env: buildAgentTerminalEnv(terminalId, sessionId, workspacePath),
+    env: buildAgentTerminalEnv(terminalId, newSessionId, workspacePath),
     isTransient: true,
   });
 
   const pid = await terminal.processId;
   terminals.register(terminal, terminalId, agentConfig, pid, context);
   readiness.registerTerminal(terminal);
-  terminals.setSessionId(terminal, sessionId);
+  terminals.setSessionId(terminal, newSessionId);
   terminals.setAgentType(terminal, agentKey);
   startAutoLabelPollerForTerminal(terminal, context);
 
-  // Decide resume input — prefer /continue if the slash command is synced
-  // to this version's home; otherwise inline the full instructions.
+  // /continue takes the OLD session id (the transcript we want to load),
+  // not the new one (which is just the container for the fresh process).
+  // Prefer the /continue slash command if it's synced to this version's
+  // home; otherwise inline the full instructions.
   const versionHomeCommand = path.join(
     os.homedir(), '.agents', 'versions', agentKey, best.version,
     'home', '.claude', 'commands', 'continue.md'
   );
   const hasContinueCmd = fsSync.existsSync(versionHomeCommand);
 
-  let resumeInput: string;
-  if (hasContinueCmd) {
-    resumeInput = `/continue ${sessionId}`;
-  } else {
+  let centralContinueMdBody: string | null = null;
+  if (!hasContinueCmd) {
     const centralCommand = path.join(os.homedir(), '.agents', 'commands', 'continue.md');
     try {
-      const body = fsSync.readFileSync(centralCommand, 'utf-8');
-      resumeInput = inlineContinueInstructions(body, sessionId);
+      centralContinueMdBody = fsSync.readFileSync(centralCommand, 'utf-8');
     } catch {
-      resumeInput = `Resume previous work by loading session ${sessionId}. Run \`agents sessions ${sessionId}\` to load the transcript, assess current state, then continue working.`;
+      centralContinueMdBody = null;
     }
   }
+  const resumeInput = buildResumeInput(oldSessionId, hasContinueCmd, centralContinueMdBody);
 
-  // IMPORTANT: use sendText for BOTH the launch and the resume input.
-  // Mixing shellIntegration.executeCommand (launch) with sendText (resume)
-  // reorders them — executeCommand waits for a shell-integration
-  // handshake while sendText writes to the pty immediately, so the
-  // resume input lands at the shell prompt before the launch command
-  // executes and zsh tries to run `/continue …` as a file. sendText
-  // writes go through the pty FIFO, so ordering is guaranteed.
+  const t0 = Date.now();
+  const elapsed = () => `t+${Date.now() - t0}ms`;
+  console.log(`[RESUME-IN-BEST] ${elapsed()} starting — agent=${agentKey}@${best.version} oldSession=${oldSessionId.slice(0, 8)} newSession=${newSessionId.slice(0, 8)} cmdSynced=${hasContinueCmd}`);
+
   try {
     await readiness.waitFor(terminal, 'promptReady');
+    console.log(`[RESUME-IN-BEST] ${elapsed()} promptReady — sending launch: ${launchCmd}`);
   } catch (err) {
-    console.warn(`[READINESS] promptReady wait failed: ${err}`);
+    console.warn(`[RESUME-IN-BEST] ${elapsed()} promptReady wait FAILED: ${err} — sending launch anyway`);
   }
   terminal.sendText(launchCmd);
-  readiness.armAgentReady(terminal);
+  // Pass the NEW session id so readiness can watch for its jsonl file
+  // appearing — that's the signal that Claude's TUI is live and accepting
+  // input on the pty.
+  readiness.armAgentReady(terminal, {
+    agentKey,
+    sessionId: newSessionId,
+    cwd: workspacePath,
+  });
   terminal.show();
 
   // Send the resume input only after the agent CLI is actually idle on the
   // pty. Replaces a hardcoded 6s guess that was unreliable on slow machines
   // (never enough) and wasteful on fast ones (always too much).
+  // Claude Code's TUI uses Ink (React for CLI) which puts stdin in raw mode
+  // and watches for `\r` as Enter. VS Code's `sendText(text, true)` appends
+  // `\n` on macOS, which types into the input box but does NOT submit.
+  // Explicit two-step: type the payload with shouldExecute=false, then
+  // separately send `\r` to signal Enter. Precedent: tmux.ts:71 uses tmux's
+  // `send-keys … Enter` keyword for the same reason.
+  const submitToTui = () => {
+    terminal.sendText(resumeInput, false);
+    terminal.sendText('\r', false);
+  };
   readiness.waitFor(terminal, 'agentReady').then(
-    () => terminal.sendText(resumeInput),
-    () => terminal.sendText(resumeInput),
+    () => {
+      console.log(`[RESUME-IN-BEST] ${elapsed()} agentReady — sending resume input (${resumeInput.length} chars): ${resumeInput.slice(0, 80)}${resumeInput.length > 80 ? '…' : ''}`);
+      submitToTui();
+    },
+    (err) => {
+      console.warn(`[RESUME-IN-BEST] ${elapsed()} agentReady wait FAILED: ${err} — sending resume input anyway`);
+      submitToTui();
+    },
   );
 
   const acct = best.email ? ` (${best.email})` : '';
   const usage = `${sessionUsedPercent(best)}% session`;
   vscode.window.setStatusBarMessage(
-    `Resumed ${agentKey}@${best.version}${acct} · ${usage} · ${sessionId.slice(0, 8)}`,
+    `Resumed ${agentKey}@${best.version}${acct} · ${usage} · ${newSessionId.slice(0, 8)}`,
     5000
   );
 }
@@ -2214,7 +2263,9 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
         } else {
           terminal.sendText(command);
         }
-        readiness.armAgentReady(terminal);
+        readiness.armAgentReady(terminal, agentKey && sessionId
+          ? { agentKey, sessionId, cwd }
+          : {});
       }
       totalCount++;
     }
@@ -2497,7 +2548,9 @@ async function clearActiveTerminal(context: vscode.ExtensionContext) {
 
       // 8. Restart agent with new session
       terminal.sendText('clear && ' + command);
-      readiness.armAgentReady(terminal);
+      readiness.armAgentReady(terminal, agentKey && newSessionId
+        ? { agentKey, sessionId: newSessionId, cwd }
+        : {});
 
       // 9. Update status bar
       updateStatusBarForTerminal(terminal, context.extensionPath);
@@ -2562,7 +2615,11 @@ async function reloadActiveTerminal(context: vscode.ExtensionContext) {
     }
 
     terminal.sendText(`clear && ${resumeCommand}`);
-    readiness.armAgentReady(terminal);
+    readiness.armAgentReady(terminal, {
+      agentKey: agentType,
+      sessionId,
+      cwd: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
+    });
 
     updateStatusBarForTerminal(terminal, context.extensionPath);
   } catch (error) {
@@ -2717,7 +2774,11 @@ async function restoreAgentTerminals(context: vscode.ExtensionContext): Promise<
         } else {
           terminal.sendText(resumeCmd);
         }
-        readiness.armAgentReady(terminal);
+        readiness.armAgentReady(terminal, {
+          agentKey: session.agentType,
+          sessionId: session.sessionId,
+          cwd: workspacePath,
+        });
       }
     }
   }
@@ -2776,7 +2837,11 @@ async function reopenLastClosedSession(context: vscode.ExtensionContext): Promis
       } else {
         terminal.sendText(resumeCmd);
       }
-      readiness.armAgentReady(terminal);
+      readiness.armAgentReady(terminal, {
+        agentKey: closed.agentType,
+        sessionId: closed.sessionId,
+        cwd: workspacePath,
+      });
     }
   }
 

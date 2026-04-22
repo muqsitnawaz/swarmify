@@ -5,6 +5,8 @@ import {
   pickBestVersion,
   sessionUsedPercent,
   inlineContinueInstructions,
+  buildLaunchCommand,
+  buildResumeInput,
   AgentsViewJsonAgent,
   AgentsViewJsonVersion,
 } from './resumeInBest';
@@ -166,6 +168,58 @@ Run \`agents sessions $ARGUMENTS\` to load the transcript.`;
   test('handles empty session id', () => {
     const out = inlineContinueInstructions('Run with $ARGUMENTS here.', '');
     expect(out).toBe('Run with  here.');
+  });
+});
+
+describe('buildLaunchCommand', () => {
+  test('claude gets --session-id with the new uuid', () => {
+    const cmd = buildLaunchCommand('claude', '2.1.111', 'claude', 'abc-123');
+    expect(cmd).toBe('claude@2.1.111 --session-id abc-123');
+  });
+
+  test('claude without a new session id omits the flag', () => {
+    const cmd = buildLaunchCommand('claude', '2.1.111', 'claude', null);
+    expect(cmd).toBe('claude@2.1.111');
+  });
+
+  test('codex does NOT get --session-id even if one is passed', () => {
+    const cmd = buildLaunchCommand('codex', '0.116.0', 'codex', 'abc-123');
+    expect(cmd).toBe('codex@0.116.0');
+  });
+
+  test('gemini, cursor, opencode similarly skip the flag', () => {
+    expect(buildLaunchCommand('gemini', '1.0', 'gemini', 'x')).toBe('gemini@1.0');
+    expect(buildLaunchCommand('cursor-agent', '2.0', 'cursor', 'x')).toBe('cursor-agent@2.0');
+    expect(buildLaunchCommand('opencode', '3.0', 'opencode', 'x')).toBe('opencode@3.0');
+  });
+});
+
+describe('buildResumeInput', () => {
+  test('uses /continue when the slash command is synced', () => {
+    const input = buildResumeInput('old-abc', true, null);
+    expect(input).toBe('/continue old-abc');
+  });
+
+  test('inlines continue.md body when slash command is missing', () => {
+    const md = `---\ndescription: test\n---\n\nResume work: $ARGUMENTS`;
+    const input = buildResumeInput('old-xyz', false, md);
+    expect(input).toContain('Resume work: old-xyz');
+    expect(input).not.toContain('$ARGUMENTS');
+    expect(input).not.toContain('description:');
+  });
+
+  test('falls back to terse instructions when continue.md cannot be read', () => {
+    const input = buildResumeInput('old-fallback', false, null);
+    expect(input).toContain('old-fallback');
+    expect(input).toContain('agents sessions old-fallback');
+  });
+
+  test('always uses the OLD session id, never a new one', () => {
+    // This is a regression guard — the new session id is for the fresh
+    // claude process's container; /continue must load the OLD transcript.
+    const input = buildResumeInput('OLD-ID', true, null);
+    expect(input).toBe('/continue OLD-ID');
+    expect(input).not.toContain('NEW');
   });
 });
 
