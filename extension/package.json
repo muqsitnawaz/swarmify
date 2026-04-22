@@ -3,7 +3,7 @@
   "displayName": "Agents",
   "publisher": "swarmify",
   "description": "Turn your IDE into an Integrated Agents Environment. Run Claude, Codex, Gemini, and Cursor at scale with keyboard-first navigation.",
-  "version": "0.8.29",
+  "version": "0.8.30",
   "license": "MIT",
   "author": "Muqsit Nawaz <dev@muqsitnawaz.com>",
   "icon": "assets/agents.png",
@@ -249,6 +249,10 @@
       {
         "command": "agents.sessionResume",
         "title": "Agents: Session Resume"
+      },
+      {
+        "command": "agents.resumeCurrentInBestProfile",
+        "title": "Agents: Resume Current Session in Best Profile"
       }
     ],
     "configuration": {
@@ -463,6 +467,11 @@
         "command": "agents.continueInNew",
         "key": "ctrl+shift+y",
         "mac": "cmd+shift+y"
+      },
+      {
+        "command": "agents.resumeCurrentInBestProfile",
+        "key": "ctrl+shift+j",
+        "mac": "cmd+shift+j"
       }
     ]
   },
