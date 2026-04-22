@@ -63,6 +63,10 @@
         "title": "Agents: Dashboard"
       },
       {
+        "command": "agents.dispatchTask",
+        "title": "Agents: Dispatch a Task"
+      },
+      {
         "command": "agents.settings",
         "title": "Agents: Settings"
       },

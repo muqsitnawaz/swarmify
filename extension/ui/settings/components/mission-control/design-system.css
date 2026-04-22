@@ -1882,6 +1882,13 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.sw-dispatch-modal-foot-id {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--ds-text-dim);
+  font-weight: 500;
+}
 
 .sw-dispatch-modal-foot-actions {
   display: flex;
