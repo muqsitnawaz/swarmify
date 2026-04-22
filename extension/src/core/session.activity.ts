@@ -23,9 +23,19 @@ type AgentType = 'claude' | 'codex' | 'gemini';
 
 /**
  * Compute output-token throughput over a rolling window.
- * Parses the tail of a Claude JSONL session and sums usage.output_tokens
- * from assistant entries whose timestamp falls within the last `windowSec` seconds.
- * Returns tokens-per-second across that window.
+ *
+ * Parses the agent's session log, sums output tokens (plus reasoning/thoughts
+ * tokens when the format reports them separately) from entries whose timestamp
+ * falls within the last `windowSec` seconds, and returns tokens-per-second.
+ *
+ * Formats:
+ *   - Claude: JSONL. Each assistant turn is `{type: 'assistant', timestamp,
+ *     message: {usage: {output_tokens}}}`.
+ *   - Codex:  JSONL. Each token_count event is `{type: 'event_msg', timestamp,
+ *     payload: {type: 'token_count', info: {last_token_usage: {output_tokens,
+ *     reasoning_output_tokens}}}}`. `last_token_usage` is per-turn (not cumulative).
+ *   - Gemini: Single JSON object. `{messages: [{type: 'gemini', timestamp,
+ *     tokens: {output, thoughts}}]}`. Caller must pass the whole file.
  */
 export function computeOutputTokensPerSec(
   sessionContent: string,
@@ -33,25 +43,47 @@ export function computeOutputTokensPerSec(
   windowSec: number = 60,
   now: number = Date.now()
 ): number {
-  if (agentType !== 'claude') return 0;
   const cutoff = now - windowSec * 1000;
-  const lines = sessionContent.split(/\r?\n/);
   let total = 0;
+  if (agentType === 'gemini') {
+    try {
+      const d = JSON.parse(sessionContent);
+      const messages = Array.isArray(d?.messages) ? d.messages : [];
+      for (const m of messages) {
+        if (m?.type !== 'gemini') continue;
+        const ts = typeof m.timestamp === 'string' ? Date.parse(m.timestamp) : 0;
+        if (!ts || ts < cutoff) continue;
+        const out = typeof m?.tokens?.output === 'number' ? m.tokens.output : 0;
+        const thoughts = typeof m?.tokens?.thoughts === 'number' ? m.tokens.thoughts : 0;
+        total += out + thoughts;
+      }
+    } catch { }
+    return total / windowSec;
+  }
+  const lines = sessionContent.split(/\r?\n/);
   for (let i = lines.length - 1; i >= 0; i--) {
     const line = lines[i];
     if (!line || line[0] !== '{') continue;
-    if (!line.includes('"output_tokens"')) continue;
+    if (!line.includes('output_tokens')) continue;
     try {
       const d = JSON.parse(line);
-      if (d?.type !== 'assistant') continue;
       const ts = typeof d.timestamp === 'string' ? Date.parse(d.timestamp) : 0;
-      if (!ts || ts < cutoff) {
-        if (ts && ts < cutoff) break;
-        continue;
+      if (!ts) continue;
+      if (ts < cutoff) break;
+      if (agentType === 'claude') {
+        if (d?.type !== 'assistant') continue;
+        const out = typeof d?.message?.usage?.output_tokens === 'number' ? d.message.usage.output_tokens : 0;
+        total += out;
+      } else if (agentType === 'codex') {
+        if (d?.type !== 'event_msg') continue;
+        const payload = d?.payload;
+        if (payload?.type !== 'token_count') continue;
+        const last = payload?.info?.last_token_usage;
+        if (!last) continue;
+        const out = typeof last.output_tokens === 'number' ? last.output_tokens : 0;
+        const reasoning = typeof last.reasoning_output_tokens === 'number' ? last.reasoning_output_tokens : 0;
+        total += out + reasoning;
       }
-      const usage = d?.message?.usage;
-      const out = typeof usage?.output_tokens === 'number' ? usage.output_tokens : 0;
-      total += out;
     } catch { }
   }
   return total / windowSec;
