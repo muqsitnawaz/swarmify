@@ -63,7 +63,7 @@ export async function startForemanAudio(
     [
       '-hide_banner', '-loglevel', 'error',
       '-autoexit', '-nodisp',
-      '-f', 's16le', '-ar', String(SAMPLE_RATE), '-ac', '1',
+      '-f', 's16le', '-ar', String(SAMPLE_RATE), '-ch_layout', 'mono',
       '-probesize', '32', '-fflags', 'nobuffer',
       '-i', 'pipe:0',
     ],
