@@ -20,12 +20,13 @@ import {
   readSessionEvents,
   listCloudTasks,
   listTeams,
-  openSessionIdsFromIde,
+  getLastSourcesError,
   SessionLite,
   SessionEvent,
   CloudTaskLite,
   TeamLite,
 } from './foreman.sources';
+import { readLiveTerminals, LiveTerminal } from './foreman.registry';
 
 export const FOREMAN_MODEL = 'gpt-realtime';
 export const FOREMAN_VOICE = 'cedar';
@@ -121,19 +122,35 @@ export async function mintEphemeralKey(apiKey: string): Promise<{ clientSecret: 
   return { clientSecret: value, expiresAt };
 }
 
-// Pulls the three source-of-truth systems in parallel (local sessions via
-// agents-cli SQLite + FTS5, cloud dispatches, team DAGs), cross-references
-// local sessions with open VS Code terminals for the "open-in-IDE" flag, and
-// hands the union to the pure digest builder.
+// Two canonical sources for "what's on the factory floor":
+//   1. Live terminals across EVERY IDE window (from the shared registry) -
+//      authoritative for "actually running right now"
+//   2. Local session metadata from agents-cli (topic, project, gitBranch,
+//      tokenCount) - enrichment only, agents-cli doesn't know pid liveness
+// Plus two auxiliary sources: cloud dispatches and team DAGs.
 export async function computeBriefing(_workspacePath?: string): Promise<ForemanDigest> {
-  const [local, cloud, teams] = await Promise.all([
+  const live = readLiveTerminals();
+  const liveIds = new Set(live.map((t) => t.sessionId));
+
+  const [sessions, cloud, teams] = await Promise.all([
     listLocalSessions({ since: '2h', limit: 30, all: true }),
     listCloudTasks(),
     listTeams(),
   ]);
 
-  const openIds = openSessionIdsFromIde();
-  const agents: ForemanTerminal[] = local.map((s) => sessionToForemanTerminal(s, openIds));
+  // Merge: every live terminal becomes an agent. Enrich with session metadata
+  // if agents-cli has it (matched by sessionId).
+  const sessionsById = new Map(sessions.map((s) => [s.id, s] as const));
+  const agents: ForemanTerminal[] = live.map((t) =>
+    liveTerminalToForemanTerminal(t, sessionsById.get(t.sessionId))
+  );
+  // Also include recently-active sessions that AREN'T currently open as live
+  // terminals - they may have been closed in the last 2h and are worth
+  // mentioning as "just finished" context.
+  for (const s of sessions) {
+    if (liveIds.has(s.id)) continue;
+    agents.push(sessionToForemanTerminal(s, false));
+  }
 
   const cloudDigest: ForemanCloudTask[] = cloud
     .filter((c) => c.status === 'running' || c.status === 'needs_review' || c.status === 'completed')
@@ -156,10 +173,20 @@ export async function computeBriefing(_workspacePath?: string): Promise<ForemanD
     failed: t.failed,
   }));
 
-  return buildForemanDigest(agents, cloudDigest, teamDigest);
+  const digest = buildForemanDigest(agents, cloudDigest, teamDigest);
+  // If every source came back empty AND the sources layer logged an error,
+  // surface it so the foreman can narrate the real problem instead of saying
+  // "floor is empty" when the floor is actually unreachable.
+  if (agents.length === 0 && cloudDigest.length === 0 && teamDigest.length === 0) {
+    const err = getLastSourcesError();
+    if (err) {
+      digest.concerns.unshift(`agents-cli unreachable: ${err}`);
+    }
+  }
+  return digest;
 }
 
-function sessionToForemanTerminal(s: SessionLite, openIds: Set<string>): ForemanTerminal {
+function sessionToForemanTerminal(s: SessionLite, openInIde: boolean): ForemanTerminal {
   const startedAt = s.timestamp ? Date.parse(s.timestamp) : null;
   return {
     name: expand(s.agent),
@@ -167,12 +194,35 @@ function sessionToForemanTerminal(s: SessionLite, openIds: Set<string>): Foreman
     label: s.label ?? null,
     sessionId: s.id,
     project: s.project ?? null,
-    openInIde: openIds.has(s.id),
+    openInIde,
     startedAtMs: startedAt,
-    lastActivityMs: startedAt, // refined by focus() which reads event tail
+    lastActivityMs: startedAt,
     lastTool: null,
-    status: null,              // derived from lastActivity; idle until focus() refines
+    status: null,
     task: s.topic ?? null,
+    recentFiles: [],
+    recentTools: [],
+    filesEdited: 0,
+    toolCalls: 0,
+  };
+}
+
+// Primary path: a live VS Code terminal is definitely running. If agents-cli
+// has session metadata for its sessionId, merge it in for project/topic/etc.
+function liveTerminalToForemanTerminal(t: LiveTerminal, s?: SessionLite): ForemanTerminal {
+  const startedAt = s?.timestamp ? Date.parse(s.timestamp) : t.startedAtMs;
+  return {
+    name: expand(t.kind),
+    kind: t.kind,
+    label: t.label ?? s?.label ?? null,
+    sessionId: t.sessionId,
+    project: s?.project ?? (t.cwd ? t.cwd.split('/').pop() ?? null : null),
+    openInIde: true,
+    startedAtMs: startedAt,
+    lastActivityMs: startedAt,
+    lastTool: null,
+    status: 'working',     // a live pid means working by definition
+    task: s?.topic ?? null,
     recentFiles: [],
     recentTools: [],
     filesEdited: 0,
@@ -217,7 +267,7 @@ export async function computeFocus(who: string, _workspacePath?: string): Promis
 
   const events = await readSessionEvents(match.id, 30);
   const tail = summarizeTail(events);
-  const openIds = openSessionIdsFromIde();
+  const openIds = new Set(readLiveTerminals().map((t) => t.sessionId));
   const startedMs = match.timestamp ? Date.parse(match.timestamp) : Date.now();
   const lastActivityMs = tail.lastEventAtMs ?? startedMs;
 
