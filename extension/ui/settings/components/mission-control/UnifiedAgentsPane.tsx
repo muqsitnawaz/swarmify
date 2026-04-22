@@ -850,6 +850,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
           <div className="sw-section-header-row">
             <span className="sw-section-label">Next Up</span>
             <span className="sw-section-count-pill">{queueTasks.length}</span>
+            <span className="sw-section-hint">Click a card to configure and dispatch</span>
             <span className="sw-section-line" />
           </div>
 
@@ -1607,9 +1608,8 @@ function DispatchCard({ task, onOpen }: { task: UnifiedTask; onOpen: (task: Unif
       </div>
       <div className="sw-queue-title">{task.title}</div>
       {task.description && (
-        <div className="sw-queue-desc">{task.description.slice(0, 140)}</div>
+        <div className="sw-queue-desc">{task.description.slice(0, 160)}</div>
       )}
-      <div className="sw-queue-card-hint">Click to configure and dispatch</div>
     </button>
   )
 }
