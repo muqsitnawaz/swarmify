@@ -1752,6 +1752,25 @@ function TaskDetailModal({ task, onClose, onDispatch }: {
     postMessage({ type: 'fetchGithubBranches', repo })
   }, [selectedRepos, branchesByRepo])
 
+  // Persist selections on EVERY change so that closing the modal without
+  // clicking Dispatch still remembers what the user picked. Previously we
+  // only saved inside handleDispatch, which meant a half-configured modal
+  // dismissed via Cancel/Escape would lose the user's choices on reopen.
+  useEffect(() => {
+    const next: DispatchPrefs = {
+      lastAgent: agent,
+      lastTarget: target,
+      lastCloudProvider: cloudProvider,
+      notifyOnQuestion,
+      notifyOnFinish,
+      notifyChannel,
+      lastCodexEnv: codexEnv,
+      recentRepos: prefs.current.recentRepos,
+    }
+    saveDispatchPrefs(next)
+    prefs.current = next
+  }, [agent, target, cloudProvider, notifyOnQuestion, notifyOnFinish, notifyChannel, codexEnv])
+
   const singleRepo = selectedRepos.length === 1 ? selectedRepos[0] : ''
   const branchInfo = singleRepo ? branchesByRepo[singleRepo] : undefined
   const branchesForRepo = branchInfo?.branches || []
@@ -1833,17 +1852,15 @@ function TaskDetailModal({ task, onClose, onDispatch }: {
   )
 
   const handleDispatch = () => {
+    // All other prefs are already persisted by the on-change effect above.
+    // Dispatch only needs to bump the MRU repo list, which is the only
+    // thing that should change on an actual dispatch (vs idle selection).
     const next: DispatchPrefs = {
-      lastAgent: agent,
-      lastTarget: target,
-      lastCloudProvider: cloudProvider,
-      notifyOnQuestion,
-      notifyOnFinish,
-      notifyChannel,
-      lastCodexEnv: codexEnv,
+      ...prefs.current,
       recentRepos: bumpRecentRepos(prefs.current.recentRepos, selectedRepos),
     }
     saveDispatchPrefs(next)
+    prefs.current = next
     onDispatch({
       agent,
       target,
