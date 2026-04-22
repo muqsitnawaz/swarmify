@@ -26,6 +26,9 @@ import * as workbench from './workbench.vscode';
 import * as theme from './theme.vscode';
 import { buildAgentTerminalEnv } from '../core/terminals';
 import * as foreman from './foreman.vscode';
+import { startForemanAudio, ForemanAudioSession } from './foreman.audio';
+
+let foremanSession: ForemanAudioSession | undefined;
 
 // Get GitHub repo from git remote (returns "username/repo" or null)
 function getGitHubRepo(workspacePath: string): Promise<string | null> {
@@ -1299,40 +1302,43 @@ export function openPanel(context: vscode.ExtensionContext): void {
           settingsPanel?.webview.postMessage({ type: 'factoryConfigData', config: updated });
         }
         break;
-      case 'foreman.getEphemeralKey': {
+      case 'foreman.startSession': {
+        if (foremanSession) {
+          foremanSession.close();
+          foremanSession = undefined;
+        }
         try {
           const apiKey = foreman.getOpenAIApiKey();
-          const { clientSecret } = await foreman.mintEphemeralKey(apiKey);
-          settingsPanel?.webview.postMessage({
-            type: 'foreman.ephemeralKeyData',
-            clientSecret,
-            model: foreman.FOREMAN_MODEL,
-            sessionUpdate: foreman.buildSessionUpdate(),
+          if (!apiKey) throw new Error('OpenAI API key not configured. Set agents.openaiApiKey in Settings.');
+          const wsFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+          foremanSession = await startForemanAudio(apiKey, {
+            onStatus: (status, detail) => {
+              settingsPanel?.webview.postMessage({ type: 'foreman.status', status, detail });
+            },
+            onTranscript: (role, text, final) => {
+              settingsPanel?.webview.postMessage({ type: 'foreman.transcript', role, text, final });
+            },
+            onToolCall: async (callId, name, args) => {
+              try {
+                const result = await foreman.runForemanTool(name, args, wsFolder);
+                foremanSession?.sendToolResult(callId, result);
+              } catch (err: any) {
+                foremanSession?.sendToolResult(callId, { error: err?.message ?? String(err) });
+              }
+            },
           });
         } catch (err: any) {
           settingsPanel?.webview.postMessage({
-            type: 'foreman.ephemeralKeyError',
-            error: err?.message ?? String(err),
+            type: 'foreman.status',
+            status: 'error',
+            detail: err?.message ?? String(err),
           });
         }
         break;
       }
-      case 'foreman.toolCall': {
-        const wsFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        try {
-          const result = await foreman.runForemanTool(message.name, message.args, wsFolder);
-          settingsPanel?.webview.postMessage({
-            type: 'foreman.toolResult',
-            callId: message.callId,
-            result,
-          });
-        } catch (err: any) {
-          settingsPanel?.webview.postMessage({
-            type: 'foreman.toolResult',
-            callId: message.callId,
-            result: { error: err?.message ?? String(err) },
-          });
-        }
+      case 'foreman.stopSession': {
+        foremanSession?.close();
+        foremanSession = undefined;
         break;
       }
     }
