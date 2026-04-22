@@ -717,6 +717,29 @@ export function openPanel(context: vscode.ExtensionContext): void {
         settingsPanel?.webview.postMessage({ type: 'githubOwnerUpdated', owner });
         break;
       }
+      case 'fetchGithubRepos': {
+        // List repos under the resolved owner so the Task Detail modal's repo
+        // picker can offer suggestions. Uses `gh repo list` — inherits the
+        // user's gh auth; no separate token needed.
+        const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        const settings = getSettings(context);
+        const owner = await resolveGithubOwner(workspacePath, settings);
+        if (!owner) {
+          settingsPanel?.webview.postMessage({ type: 'githubReposList', owner: '', repos: [] });
+          break;
+        }
+        const repos: string[] = await new Promise((resolve) => {
+          exec(
+            `gh repo list ${owner} --limit 200 --json nameWithOwner -q '.[].nameWithOwner'`,
+            (err, stdout) => {
+              if (err || !stdout) { resolve([]); return; }
+              resolve(stdout.split('\n').map((s) => s.trim()).filter(Boolean));
+            },
+          );
+        });
+        settingsPanel?.webview.postMessage({ type: 'githubReposList', owner, repos });
+        break;
+      }
       case 'enableSwarm':
         settingsPanel?.webview.postMessage({ type: 'swarmInstallStart' });
         await swarm.setupSwarmIntegration(context, (swarmStatus) => {

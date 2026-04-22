@@ -1664,6 +1664,7 @@ function TaskDetailModal({ task, onClose, onDispatch }: {
     cloudProvider: CloudProviderId
     branch: string
     codexEnv: string
+    targetRepos: string[]
     notify: { onQuestion: boolean; onFinish: boolean; channel: string }
   }) => void
 }) {
@@ -1677,11 +1678,59 @@ function TaskDetailModal({ task, onClose, onDispatch }: {
   const [notifyOnFinish, setNotifyOnFinish] = useState(prefs.current.notifyOnFinish)
   const [notifyChannel, setNotifyChannel] = useState(prefs.current.notifyChannel)
 
+  // Seed selected repos from Linear `repo:<name>` labels. Repo picker lets
+  // user add/remove; suggestions come from `gh repo list <owner>`.
+  const initialRepos = useMemo(() => {
+    const labelRepos = (task.metadata.labels || []).filter((l) => l.startsWith('repo:')).map((l) => l.slice(5))
+    return labelRepos
+  }, [task.metadata.labels])
+  const [selectedRepos, setSelectedRepos] = useState<string[]>(initialRepos)
+  const [repoOwner, setRepoOwner] = useState<string>('')
+  const [availableRepos, setAvailableRepos] = useState<string[]>([])
+  const [repoInput, setRepoInput] = useState('')
+  const [repoSuggestOpen, setRepoSuggestOpen] = useState(false)
+
   useEffect(() => {
     const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', esc)
-    return () => window.removeEventListener('keydown', esc)
+    postMessage({ type: 'fetchGithubRepos' })
+    const onMsg = (event: MessageEvent) => {
+      const msg = event.data
+      if (!msg || typeof msg !== 'object') return
+      if (msg.type === 'githubReposList') {
+        setRepoOwner(typeof msg.owner === 'string' ? msg.owner : '')
+        setAvailableRepos(Array.isArray(msg.repos) ? msg.repos : [])
+      }
+    }
+    window.addEventListener('message', onMsg)
+    return () => {
+      window.removeEventListener('keydown', esc)
+      window.removeEventListener('message', onMsg)
+    }
   }, [onClose])
+
+  const addRepo = (raw: string) => {
+    const trimmed = raw.trim()
+    if (!trimmed) return
+    // Accept bare name (suffix owner/) or owner/name
+    const full = trimmed.includes('/') ? trimmed : (repoOwner ? `${repoOwner}/${trimmed}` : trimmed)
+    if (selectedRepos.includes(full)) return
+    setSelectedRepos((prev) => [...prev, full])
+    setRepoInput('')
+    setRepoSuggestOpen(false)
+  }
+
+  const removeRepo = (name: string) => {
+    setSelectedRepos((prev) => prev.filter((r) => r !== name))
+  }
+
+  const repoSuggestions = useMemo(() => {
+    const q = repoInput.trim().toLowerCase()
+    return availableRepos
+      .filter((r) => !selectedRepos.includes(r))
+      .filter((r) => !q || r.toLowerCase().includes(q))
+      .slice(0, 8)
+  }, [availableRepos, selectedRepos, repoInput])
 
   const runTarget: 'local' | 'rush' | 'codex' = target === 'local' ? 'local' : cloudProvider === 'codex' ? 'codex' : 'rush'
 
@@ -1706,13 +1755,13 @@ function TaskDetailModal({ task, onClose, onDispatch }: {
 
   const priorityCls = task.priority === 'urgent' ? 'urgent' : task.priority === 'high' ? 'high' : 'medium'
   const priorityLabel = task.priority ? task.priority.charAt(0).toUpperCase() + task.priority.slice(1) : 'Medium'
-  const labels = task.metadata.labels || []
-  const repoLabels = labels.filter((l) => l.startsWith('repo:')).map((l) => l.slice(5))
 
   const createdAt = (task as UnifiedTask & { createdAt?: string }).createdAt
   const createdRel = createdAt ? relTime(new Date(createdAt).getTime()) : null
 
-  const canDispatch = runTarget !== 'codex' || codexEnv.trim().length > 0
+  const canDispatch = (runTarget !== 'codex' || codexEnv.trim().length > 0) && (
+    runTarget === 'local' || selectedRepos.length > 0 || runTarget === 'rush' || runTarget === 'codex'
+  )
 
   const handleDispatch = () => {
     const next: DispatchPrefs = {
@@ -1731,6 +1780,7 @@ function TaskDetailModal({ task, onClose, onDispatch }: {
       cloudProvider,
       branch: branch.trim(),
       codexEnv: codexEnv.trim(),
+      targetRepos: selectedRepos,
       notify: { onQuestion: notifyOnQuestion, onFinish: notifyOnFinish, channel: notifyChannel },
     })
   }
@@ -1800,18 +1850,69 @@ function TaskDetailModal({ task, onClose, onDispatch }: {
           </div>
 
           {runTarget !== 'local' && (
-            <div className="sw-task-detail-row">
-              <label className="sw-task-detail-label">Repository</label>
-              <div className="sw-task-detail-value">
-                {repoLabels.length > 0 ? (
-                  <span className="sw-task-detail-repos">
-                    {repoLabels.map((r) => (
-                      <span key={r} className="sw-task-detail-repo-pill">{r}</span>
-                    ))}
-                    <span className="sw-task-detail-hint">from labels</span>
-                  </span>
-                ) : (
-                  <span className="sw-task-detail-hint">workspace repo (auto)</span>
+            <div className="sw-task-detail-row sw-task-detail-row-repos">
+              <label className="sw-task-detail-label">
+                {runTarget === 'rush' ? 'Repositories' : 'Repository'}
+              </label>
+              <div className="sw-task-detail-repos-picker">
+                <div className="sw-task-detail-repo-chips">
+                  {selectedRepos.map((r) => (
+                    <span key={r} className="sw-task-detail-repo-chip">
+                      {r}
+                      <button
+                        type="button"
+                        className="sw-task-detail-repo-chip-x"
+                        onClick={() => removeRepo(r)}
+                        aria-label={`Remove ${r}`}
+                      >
+                        <Icon name="x" size={10} />
+                      </button>
+                    </span>
+                  ))}
+                  {selectedRepos.length === 0 && (
+                    <span className="sw-task-detail-hint">
+                      {runTarget === 'rush' ? 'Add one or more repos' : 'Add a repo'}
+                    </span>
+                  )}
+                </div>
+                <div className="sw-task-detail-repo-input-wrap">
+                  <input
+                    type="text"
+                    className="sw-task-detail-input"
+                    placeholder={repoOwner ? `${repoOwner}/repo or paste owner/repo` : 'owner/repo'}
+                    value={repoInput}
+                    onChange={(e) => { setRepoInput(e.target.value); setRepoSuggestOpen(true) }}
+                    onFocus={() => setRepoSuggestOpen(true)}
+                    onBlur={() => setTimeout(() => setRepoSuggestOpen(false), 150)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && repoInput.trim()) {
+                        e.preventDefault()
+                        addRepo(repoInput)
+                      }
+                      if (runTarget === 'codex' && selectedRepos.length >= 1) {
+                        // Codex Cloud rejects multi-repo — block typing more.
+                        e.preventDefault()
+                      }
+                    }}
+                    disabled={runTarget === 'codex' && selectedRepos.length >= 1}
+                  />
+                  {repoSuggestOpen && repoSuggestions.length > 0 && (
+                    <div className="sw-task-detail-repo-suggest">
+                      {repoSuggestions.map((r) => (
+                        <button
+                          key={r}
+                          type="button"
+                          className="sw-task-detail-repo-suggest-item"
+                          onMouseDown={(e) => { e.preventDefault(); addRepo(r) }}
+                        >
+                          {r}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {runTarget === 'codex' && (
+                  <div className="sw-task-detail-hint">Codex Cloud: one repo per task (env bundles multi-repo).</div>
                 )}
               </div>
             </div>
