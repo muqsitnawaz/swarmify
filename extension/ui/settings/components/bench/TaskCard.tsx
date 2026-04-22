@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import type { TaskSource, UnifiedTask, TodoItem } from '../../types'
+import type { TaskSource, UnifiedTask } from '../../types'
 
 function relativeTime(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime()
@@ -17,13 +17,11 @@ function relativeTime(iso: string): string {
 }
 
 const SOURCE_CLASS: Record<TaskSource, string> = {
-  markdown: 'md',
   linear: 'ln',
   github: 'gh',
 }
 
 const SOURCE_LABEL: Record<TaskSource, string> = {
-  markdown: 'MD',
   linear: 'LN',
   github: 'GH',
 }
@@ -35,8 +33,6 @@ export interface FlatTask {
   description?: string
   status: 'todo' | 'in_progress' | 'done'
   priority?: 'urgent' | 'high' | 'medium' | 'low'
-  todoItem?: TodoItem
-  filePath?: string
   metadata?: UnifiedTask['metadata']
 }
 

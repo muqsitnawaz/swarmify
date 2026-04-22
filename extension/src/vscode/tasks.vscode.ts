@@ -1,10 +1,9 @@
 // VS Code integration for unified task management
-// Aggregates tasks from multiple sources (markdown, Linear, GitHub)
+// Aggregates tasks from Linear + GitHub.
 
 import * as vscode from 'vscode';
 import { TaskSource, TaskSourceSettings } from '../core/settings';
-import { UnifiedTask, CycleInfo, markdownToUnifiedTask, groupTasksBySource } from '../core/tasks';
-import { discoverTodoFiles } from './todos.vscode';
+import { UnifiedTask, CycleInfo, groupTasksBySource } from '../core/tasks';
 import { fetchLinearTasks, isLinearAvailable } from './linear.vscode';
 import { fetchGitHubTasks, isGitHubAvailable } from './github.vscode';
 
@@ -15,7 +14,6 @@ export interface TaskFetchResult {
 
 // Detect which task sources are available based on MCP configuration
 export async function detectAvailableSources(context: vscode.ExtensionContext): Promise<{
-  markdown: boolean;
   linear: boolean;
   github: boolean;
 }> {
@@ -24,11 +22,7 @@ export async function detectAvailableSources(context: vscode.ExtensionContext): 
     isGitHubAvailable(context)
   ]);
 
-  return {
-    markdown: true,  // Always available
-    linear,
-    github
-  };
+  return { linear, github };
 }
 
 // Fetch tasks from all enabled sources
@@ -39,17 +33,6 @@ export async function fetchAllTasks(
   const tasks: UnifiedTask[] = [];
   let cycleInfo: CycleInfo | null = null;
   const fetchPromises: Promise<void>[] = [];
-
-  // Fetch markdown tasks
-  if (enabledSources.markdown) {
-    fetchPromises.push(
-      fetchMarkdownTasks().then(mdTasks => {
-        tasks.push(...mdTasks);
-      }).catch(err => {
-        console.error('[TASKS] Error fetching markdown tasks:', err);
-      })
-    );
-  }
 
   // Fetch Linear tasks
   if (enabledSources.linear) {
@@ -77,20 +60,6 @@ export async function fetchAllTasks(
   await Promise.all(fetchPromises);
 
   return { tasks, cycleInfo };
-}
-
-// Fetch tasks from markdown files (TODO.md, RALPH.md, etc.)
-async function fetchMarkdownTasks(): Promise<UnifiedTask[]> {
-  const todoFiles = await discoverTodoFiles();
-  const tasks: UnifiedTask[] = [];
-
-  for (const file of todoFiles) {
-    for (const item of file.items) {
-      tasks.push(markdownToUnifiedTask(item, file.path));
-    }
-  }
-
-  return tasks;
 }
 
 // Get tasks grouped by source for UI display

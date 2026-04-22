@@ -97,16 +97,14 @@ export interface NotificationSettings {
 }
 
 // Task source settings for multi-source Tasks tab
-export type TaskSource = 'markdown' | 'linear' | 'github';
+export type TaskSource = 'linear' | 'github';
 
 export interface TaskSourceSettings {
-  markdown: boolean;  // default: true (always available)
   linear: boolean;    // default: false (auto-enable if Linear MCP detected)
   github: boolean;    // default: false (auto-enable if GitHub MCP detected)
 }
 
 export const DEFAULT_TASK_SOURCE_SETTINGS: TaskSourceSettings = {
-  markdown: true,
   linear: false,
   github: false
 };

@@ -81,25 +81,11 @@ export interface PromptEntry {
 }
 
 // Task types
-export type TaskSource = 'markdown' | 'linear' | 'github'
+export type TaskSource = 'linear' | 'github'
 
 export interface TaskSourceSettings {
-  markdown: boolean
   linear: boolean
   github: boolean
-}
-
-export interface TodoItem {
-  title: string
-  description?: string
-  completed: boolean
-  line: number
-  planFile?: string
-}
-
-export interface TodoFile {
-  path: string
-  items: TodoItem[]
 }
 
 export interface UnifiedTask {
