@@ -1930,7 +1930,9 @@ function TerminalExpandedDetail({ terminal, onFocus }: { terminal: TerminalInfo;
       {terminal.firstUserMessage && (
         <div className="sw-unified-detail-section">
           <div className="sw-section-label">Task</div>
-          <div className="sw-unified-detail-text">{terminal.firstUserMessage}</div>
+          <div className="sw-unified-detail-text">
+            {renderTodoDescription(terminal.firstUserMessage, false)}
+          </div>
         </div>
       )}
       {terminal.quickSummary && (
@@ -2040,7 +2042,9 @@ function AgentDetailView({ agent, swarm, onRetry, onKill }: { agent: AgentDetail
         {agent.prompt && (
           <div className="sw-unified-detail-section">
             <div className="sw-section-label">Task</div>
-            <div className="sw-unified-detail-text sw-cloud-prompt">{agent.prompt}</div>
+            <div className="sw-unified-detail-text sw-cloud-prompt">
+              {renderTodoDescription(agent.prompt, false)}
+            </div>
           </div>
         )}
         {agent.cloud_summary && (
@@ -2080,7 +2084,9 @@ function AgentDetailView({ agent, swarm, onRetry, onKill }: { agent: AgentDetail
       {agent.prompt && (
         <div className="sw-unified-detail-section">
           <div className="sw-section-label">Task</div>
-          <div className="sw-unified-detail-text">{agent.prompt.slice(0, 500)}</div>
+          <div className="sw-unified-detail-text">
+            {renderTodoDescription(agent.prompt.slice(0, 500), false)}
+          </div>
         </div>
       )}
       {agent.last_messages && agent.last_messages.length > 0 && (
