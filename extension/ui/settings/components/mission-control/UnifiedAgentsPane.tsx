@@ -1358,18 +1358,21 @@ function GithubOwnerModal({ onClose, onSave }: {
 
 // In-webview dispatch modal -- replaces VS Code's native quick pick.
 // Supports single-row dispatch and multi-select batch dispatch.
-function DispatchModal({ tasks, loading, onClose, onDispatch, onDispatchBatch, onComplete }: {
+function DispatchModal({ tasks, loading, onClose, onDispatch, onDispatchBatch, onComplete, onOpenDetail }: {
   tasks: UnifiedTask[]
   loading: boolean
   onClose: () => void
   onDispatch: (task: UnifiedTask, agentType: string, target: 'local' | 'cloud') => void
   onDispatchBatch: (tasks: UnifiedTask[], agentType: string, target: 'local' | 'cloud') => void
   onComplete: () => void
+  // Called when the user clicks a single task row (not a checkbox). Parent
+  // closes this list modal and opens TaskDetailModal with the full config
+  // form + task-switcher so navigation between tasks stays fluid.
+  onOpenDetail: (task: UnifiedTask, siblings: UnifiedTask[]) => void
 }) {
   const [query, setQuery] = useState('')
   const [priorityFilter, setPriorityFilter] = useState<'all' | 'urgent' | 'high'>('all')
   const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null)
-  const [detailTaskId, setDetailTaskId] = useState<string | null>(null)
   const [checkedIds, setCheckedIds] = useState<Set<string>>(() => new Set())
   const [target, setTarget] = useState<'local' | 'cloud'>('local')
   const inputRef = useRef<HTMLInputElement>(null)
@@ -1404,18 +1407,12 @@ function DispatchModal({ tasks, loading, onClose, onDispatch, onDispatchBatch, o
       })
   }, [todoTasks, query, priorityFilter])
 
-  const detailTask = detailTaskId ? todoTasks.find((t) => t.id === detailTaskId) ?? null : null
-  const focusedTask = detailTask || filtered.find((t) => t.id === focusedTaskId) || filtered[0]
+  const focusedTask = filtered.find((t) => t.id === focusedTaskId) || filtered[0]
   const batchMode = checkedIds.size > 0
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (detailTaskId) setDetailTaskId(null)
-        else onClose()
-        return
-      }
-      if (detailTaskId) return
+      if (e.key === 'Escape') { onClose(); return }
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         if (filtered.length === 0) return
         e.preventDefault()
@@ -1427,12 +1424,12 @@ function DispatchModal({ tasks, loading, onClose, onDispatch, onDispatchBatch, o
       }
       if (e.key === 'Enter' && focusedTask && !batchMode) {
         e.preventDefault()
-        setDetailTaskId(focusedTask.id)
+        onOpenDetail(focusedTask, filtered)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onClose, detailTaskId, filtered, focusedTask, batchMode])
+  }, [onClose, filtered, focusedTask, batchMode, onOpenDetail])
 
   const toggleChecked = (id: string) => {
     setCheckedIds((prev) => {
@@ -1523,8 +1520,6 @@ function DispatchModal({ tasks, loading, onClose, onDispatch, onDispatchBatch, o
         <div className="sw-dispatch-modal-body">
           {loading ? (
             <div className="sw-dispatch-modal-empty">Loading tasks...</div>
-          ) : detailTask ? (
-            <TaskDetailView task={detailTask} onBack={() => setDetailTaskId(null)} />
           ) : filtered.length === 0 ? (
             <div className="sw-dispatch-modal-empty">
               {todoTasks.length === 0 ? 'No open tasks. Add one in Linear or the Bench tab.' : 'No tasks match your search.'}
@@ -1542,7 +1537,10 @@ function DispatchModal({ tasks, loading, onClose, onDispatch, onDispatchBatch, o
                       className={`sw-dispatch-modal-row ${isFocused ? 'selected' : ''} ${isChecked ? 'checked' : ''}`}
                       onClick={() => {
                         setFocusedTaskId(task.id)
-                        setDetailTaskId(task.id)
+                        // Hand off to parent: close this list modal and open
+                        // the rich TaskDetailModal with sibling tasks so the
+                        // switcher in its header is pre-populated.
+                        onOpenDetail(task, filtered)
                       }}
                     >
                       <label
@@ -2358,8 +2356,95 @@ function bumpRecentRepos(existing: string[], used: string[]): string[] {
   return out.slice(0, MRU_MAX)
 }
 
-function TaskDetailModal({ task, onClose, onDispatch }: {
+/**
+ * Compact search input + typeahead dropdown in the TaskDetailModal header.
+ * Lets the user jump between open tasks without closing the modal.
+ * Current task is excluded from results. Empty query surfaces the first
+ * 8 tasks so clicking the input gives an immediate browse list.
+ */
+function TaskSwitcher({ current, tasks, onPick }: {
+  current: UnifiedTask
+  tasks: UnifiedTask[]
+  onPick: (task: UnifiedTask) => void
+}) {
+  const [query, setQuery] = useState('')
+  const [open, setOpen] = useState(false)
+  const inputRef = useRef<HTMLInputElement | null>(null)
+  const results = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    const pool = tasks.filter((t) => t.id !== current.id)
+    const filtered = q
+      ? pool.filter((t) =>
+          t.title.toLowerCase().includes(q) ||
+          (t.metadata.identifier || '').toLowerCase().includes(q) ||
+          (t.description || '').toLowerCase().includes(q),
+        )
+      : pool
+    return filtered.slice(0, 8)
+  }, [tasks, current.id, query])
+  return (
+    <div className="sw-task-switcher" style={{ position: 'relative', marginLeft: 'auto', marginRight: 8 }}>
+      <input
+        ref={inputRef}
+        type="text"
+        className="sw-dispatch-modal-search-input"
+        placeholder={`Switch task (${tasks.length - 1} open)`}
+        value={query}
+        onChange={(e) => { setQuery(e.target.value); setOpen(true) }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && results[0]) {
+            e.preventDefault()
+            onPick(results[0])
+            setQuery('')
+            setOpen(false)
+          } else if (e.key === 'Escape') {
+            setOpen(false)
+          }
+        }}
+        style={{ width: 220, fontSize: 12 }}
+      />
+      {open && results.length > 0 && (
+        <div className="sw-task-detail-repo-suggest" style={{ width: 360, maxHeight: 320, overflowY: 'auto' }}>
+          {results.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              className="sw-task-detail-repo-suggest-item"
+              onMouseDown={(e) => {
+                e.preventDefault()
+                onPick(t)
+                setQuery('')
+                setOpen(false)
+              }}
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2, padding: '6px 10px' }}
+            >
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                {t.metadata.identifier && (
+                  <span className="sw-queue-badge" style={{ fontSize: 10 }}>{t.metadata.identifier}</span>
+                )}
+                {t.priority && (
+                  <span className={`sw-queue-priority-label ${t.priority === 'urgent' ? 'urgent' : t.priority === 'high' ? 'high' : 'medium'}`} style={{ fontSize: 10 }}>
+                    {t.priority.toUpperCase()}
+                  </span>
+                )}
+              </span>
+              <span style={{ fontSize: 12, fontWeight: 500 }}>{t.title.slice(0, 70)}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TaskDetailModal({ task, tasks, onClose, onDispatch, onTaskSwitch }: {
   task: UnifiedTask
+  // Sibling tasks for the in-header switcher. When provided, the modal
+  // shows a search input that filters these and lets the user jump to
+  // another task without closing the modal.
+  tasks?: UnifiedTask[]
   onClose: () => void
   onDispatch: (args: {
     agent: string
@@ -2370,6 +2455,7 @@ function TaskDetailModal({ task, onClose, onDispatch }: {
     targetRepos: string[]
     notify: { onQuestion: boolean; onFinish: boolean; channel: string }
   }) => void
+  onTaskSwitch?: (task: UnifiedTask) => void
 }) {
   const prefs = useRef<DispatchPrefs>(loadDispatchPrefs())
   const [agent, setAgent] = useState(prefs.current.lastAgent)
@@ -2529,6 +2615,9 @@ function TaskDetailModal({ task, onClose, onDispatch }: {
   const createdAt = (task as UnifiedTask & { createdAt?: string }).createdAt
   const createdRel = createdAt ? relTime(new Date(createdAt).getTime()) : null
 
+  // Show the task switcher only when there are sibling tasks to jump to.
+  const switcherEnabled = !!onTaskSwitch && !!tasks && tasks.length > 1
+
   const canDispatch = (runTarget !== 'codex' || codexEnv.trim().length > 0) && (
     runTarget === 'local' || selectedRepos.length > 0 || runTarget === 'rush' || runTarget === 'codex'
   )
@@ -2567,6 +2656,13 @@ function TaskDetailModal({ task, onClose, onDispatch }: {
             <span className="sw-task-detail-meta">
               {task.source}{createdRel ? ` - created ${createdRel}` : ''}
             </span>
+            {switcherEnabled && (
+              <TaskSwitcher
+                current={task}
+                tasks={tasks || []}
+                onPick={(t) => onTaskSwitch?.(t)}
+              />
+            )}
             <button className="sw-dispatch-modal-close" onClick={onClose} aria-label="Close">
               <Icon name="x" size={14} />
             </button>
