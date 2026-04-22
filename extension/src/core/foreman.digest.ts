@@ -16,6 +16,12 @@ export interface ForemanTerminal {
   lastActivityMs?: number | null;
   lastTool?: string | null;
   status?: 'idle' | 'working' | 'waiting' | 'blocked' | null;
+  task?: string | null;            // first user message - what they were asked to do
+  recentFiles?: string[];          // last 3-5 files touched
+  recentTools?: string[];          // last 3-5 tool names
+  lastFilePath?: string | null;
+  filesEdited?: number;
+  toolCalls?: number;
 }
 
 export interface ForemanAgentDigest {
@@ -25,12 +31,29 @@ export interface ForemanAgentDigest {
   elapsed: string;
   status: 'idle' | 'working' | 'waiting' | 'blocked';
   last_tool: string | null;
+  task: string | null;
+  recent_files: string[];
+  recent_tools: string[];
+  last_file: string | null;
+  files_edited: number;
+  tool_calls: number;
+}
+
+export interface ForemanCloudTask {
+  id: string;
+  provider: string;
+  agent: string;
+  status: string;
+  prompt: string;
+  repo: string | null;
+  updated: string;
 }
 
 export interface ForemanDigest {
   when: string;
   summary: string;
   agents: ForemanAgentDigest[];
+  cloud: ForemanCloudTask[];
   concerns: string[];
 }
 
@@ -56,6 +79,7 @@ function deriveStatus(t: ForemanTerminal, now: number): 'idle' | 'working' | 'wa
 
 export function buildForemanDigest(
   terminals: ForemanTerminal[],
+  cloud: ForemanCloudTask[] = [],
   now: number = Date.now()
 ): ForemanDigest {
   const agents: ForemanAgentDigest[] = [];
@@ -82,38 +106,65 @@ export function buildForemanDigest(
       elapsed: humanElapsed(elapsedMs),
       status,
       last_tool: t.lastTool ?? null,
+      task: (t.task ?? '').slice(0, 200) || null,
+      recent_files: (t.recentFiles ?? []).slice(0, 4).map(shortenPath),
+      recent_tools: (t.recentTools ?? []).slice(0, 4),
+      last_file: t.lastFilePath ? shortenPath(t.lastFilePath) : null,
+      files_edited: t.filesEdited ?? 0,
+      tool_calls: t.toolCalls ?? 0,
     });
 
     if (status === 'waiting' && elapsedMs > 10 * 60_000) {
-      concerns.push(`${kind} has been waiting for ${humanElapsed(elapsedMs)}`);
+      concerns.push(`${kind}${t.label ? ` "${t.label}"` : ''} waiting ${humanElapsed(elapsedMs)}`);
     }
     if (status === 'blocked') {
-      concerns.push(`${kind} blocked${t.lastTool ? ` on ${t.lastTool}` : ''}`);
+      concerns.push(`${kind}${t.label ? ` "${t.label}"` : ''} blocked${t.lastTool ? ` on ${t.lastTool}` : ''}`);
     }
   }
 
-  const summary = buildSummary(agents.length, kindCounts, statusCounts);
+  // Active cloud tasks stand out: they're running even when you close the IDE.
+  for (const c of cloud) {
+    if (c.status === 'running' || c.status === 'needs_review') {
+      concerns.push(`cloud ${c.agent} ${c.status} - ${(c.prompt || '').slice(0, 60)}`);
+    }
+  }
+
+  const summary = buildSummary(agents.length, kindCounts, statusCounts, cloud);
 
   return {
     when: new Date(now).toISOString(),
     summary,
     agents,
+    cloud,
     concerns,
   };
+}
+
+function shortenPath(p: string): string {
+  if (!p) return p;
+  const parts = p.split('/');
+  if (parts.length <= 3) return p;
+  return '.../' + parts.slice(-2).join('/');
 }
 
 function buildSummary(
   total: number,
   kindCounts: Record<string, number>,
-  statusCounts: { idle: number; working: number; waiting: number; blocked: number }
+  statusCounts: { idle: number; working: number; waiting: number; blocked: number },
+  cloud: ForemanCloudTask[]
 ): string {
-  if (total === 0) return 'floor is empty';
-  const kinds = Object.entries(kindCounts)
-    .sort((a, b) => b[1] - a[1])
-    .map(([k, n]) => (n > 1 ? `${n} ${k}` : k))
-    .join(', ');
-  const parts: string[] = [`${total} agent${total === 1 ? '' : 's'} on the floor`];
-  parts.push(kinds);
+  if (total === 0 && cloud.length === 0) return 'floor is empty';
+  const parts: string[] = [];
+  if (total > 0) {
+    const kinds = Object.entries(kindCounts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([k, n]) => (n > 1 ? `${n} ${k}` : k))
+      .join(', ');
+    parts.push(`${total} agent${total === 1 ? '' : 's'} local`);
+    parts.push(kinds);
+  }
+  const activeCloud = cloud.filter((c) => c.status === 'running' || c.status === 'needs_review').length;
+  if (activeCloud > 0) parts.push(`${activeCloud} cloud`);
   if (statusCounts.blocked > 0) parts.push(`${statusCounts.blocked} blocked`);
   else if (statusCounts.waiting > 0) parts.push(`${statusCounts.waiting} waiting`);
   return parts.join(' - ');
