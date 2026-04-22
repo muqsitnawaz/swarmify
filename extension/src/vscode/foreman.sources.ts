@@ -33,16 +33,15 @@ let lastResolveError: string | undefined;
 async function resolveAgentsBin(): Promise<string> {
   if (cachedAgentsBin) return cachedAgentsBin;
 
-  // FIRST: use the user's login shell. Its PATH reflects their own preference
-  // (nvm over brew etc) and it picks the version they're actively updating.
-  // A stale copy in /opt/homebrew/bin can lack recent subcommands (cloud,
-  // teams) even though it resolves as "a valid binary" - trusting the shell
-  // avoids that trap.
+  // Resolve via the user's shell without the `-l` (login) flag. Login shells
+  // run /etc/zprofile which prepends /opt/homebrew/bin via path_helper, which
+  // can pick an outdated brew install. A non-login invocation reads only
+  // .zshenv (where user-specific PATH like nvm lives) and gets the right one.
   try {
     const shell = process.env.SHELL || '/bin/zsh';
-    const { stdout } = await execAsync(`${shell} -lc 'command -v agents'`, { timeout: 5_000 });
+    const { stdout } = await execAsync(`${shell} -c 'command -v agents'`, { timeout: 5_000 });
     const p = stdout.trim();
-    if (p && fs.existsSync(p)) {
+    if (p && fs.existsSync(p) && await binHasCloudCommand(p)) {
       cachedAgentsBin = p;
       return p;
     }
@@ -60,15 +59,44 @@ async function resolveAgentsBin(): Promise<string> {
 
   for (const p of candidates) {
     try {
-      if (fs.existsSync(p) && fs.statSync(p).isFile()) {
-        cachedAgentsBin = p;
-        return p;
-      }
+      if (!fs.existsSync(p) || !fs.statSync(p).isFile()) continue;
+      if (!(await binHasCloudCommand(p))) continue;
+      cachedAgentsBin = p;
+      return p;
     } catch { /* next */ }
   }
 
-  lastResolveError = 'agents CLI not found via login shell or common locations (~/.agents/shims, nvm, /opt/homebrew, /usr/local)';
+  lastResolveError = 'no agents CLI with cloud/teams support found (needs v1.13.0+; found stale copies)';
   throw new Error(lastResolveError);
+}
+
+// Probe a candidate binary by running `<bin> cloud --help`. Old versions
+// don't ship the cloud command and return non-zero. Takes ~200ms; only
+// runs during cache miss, then we remember the winner.
+async function binHasCloudCommand(bin: string): Promise<boolean> {
+  try {
+    const augmented = buildBootstrapPath(bin);
+    await execAsync(`'${bin.replace(/'/g, `'\\''`)}' cloud --help`, {
+      timeout: 3_000,
+      env: { ...process.env, PATH: augmented },
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function buildBootstrapPath(binPath: string): string {
+  // Slim version used only for the --version probe. Just enough for the
+  // shebang `#!/usr/bin/env node` to find node.
+  const dirs = [path.dirname(binPath)];
+  try {
+    const nvmDir = path.join(os.homedir(), '.nvm', 'versions', 'node');
+    const versions = fs.readdirSync(nvmDir).sort().reverse();
+    if (versions[0]) dirs.push(path.join(nvmDir, versions[0], 'bin'));
+  } catch { /* no nvm */ }
+  dirs.push('/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin');
+  return dirs.join(':');
 }
 
 export function getLastSourcesError(): string | undefined {
