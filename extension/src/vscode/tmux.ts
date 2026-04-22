@@ -3,6 +3,7 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as vscode from 'vscode';
+import * as readiness from './terminalReadiness';
 
 interface TmuxTerminal {
   terminal: vscode.Terminal;
@@ -74,12 +75,14 @@ export function createTmuxTerminal(
 
   const tmuxInit = tmuxCommands.join(' && ');
 
-  // Some shells (e.g., with heavy profile scripts) take a moment to populate PATH.
-  // Delay sending tmux init so `tmux` resolves consistently instead of failing
-  // with "unknown command: tmux".
-  setTimeout(() => {
-    terminal.sendText(tmuxInit, true);
-  }, 2000);
+  // Wait for the shell's rc files to finish (PATH populated, aliases loaded)
+  // before sending the tmux init command. Falls back to a timeout so a slow or
+  // non-standard shell doesn't hang forever.
+  readiness.registerTerminal(terminal);
+  readiness.waitFor(terminal, 'promptReady').then(
+    () => terminal.sendText(tmuxInit, true),
+    () => terminal.sendText(tmuxInit, true)
+  );
 
   tmuxTerminals.set(terminal, {
     terminal,

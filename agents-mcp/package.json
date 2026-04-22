@@ -32,7 +32,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
-    "@swarmify/agents-cli": "file:../../agents-cli"
+    "@swarmify/agents-cli": "^1.13.0"
   },
   "devDependencies": {
     "@types/node": "^20.x",
