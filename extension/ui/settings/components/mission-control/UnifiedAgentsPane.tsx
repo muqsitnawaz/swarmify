@@ -1624,9 +1624,12 @@ type DispatchPrefs = {
   notifyOnFinish: boolean
   notifyChannel: string
   lastCodexEnv: string
+  /** Most-recently-dispatched repos, newest first. Capped at MRU_MAX. */
+  recentRepos: string[]
 }
 
 const DISPATCH_PREFS_KEY = 'swarmify.dispatchPrefs.v1'
+const MRU_MAX = 10
 
 function loadDispatchPrefs(): DispatchPrefs {
   try {
@@ -1648,11 +1651,29 @@ function defaultPrefs(): DispatchPrefs {
     notifyOnFinish: true,
     notifyChannel: 'ios',
     lastCodexEnv: '',
+    recentRepos: [],
   }
 }
 
 function saveDispatchPrefs(p: DispatchPrefs): void {
   try { localStorage.setItem(DISPATCH_PREFS_KEY, JSON.stringify(p)) } catch { /* ignore */ }
+}
+
+/** Push repos to the front of the MRU list, dedupe, cap at MRU_MAX. */
+function bumpRecentRepos(existing: string[], used: string[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const r of used) {
+    if (!r || seen.has(r)) continue
+    seen.add(r)
+    out.push(r)
+  }
+  for (const r of existing) {
+    if (!r || seen.has(r)) continue
+    seen.add(r)
+    out.push(r)
+  }
+  return out.slice(0, MRU_MAX)
 }
 
 function TaskDetailModal({ task, onClose, onDispatch }: {
@@ -1689,6 +1710,11 @@ function TaskDetailModal({ task, onClose, onDispatch }: {
   const [availableRepos, setAvailableRepos] = useState<string[]>([])
   const [repoInput, setRepoInput] = useState('')
   const [repoSuggestOpen, setRepoSuggestOpen] = useState(false)
+  const [branchSuggestOpen, setBranchSuggestOpen] = useState(false)
+  // Branches keyed by repo — cached per-modal-open so switching back to a
+  // repo that was already fetched is instant. Includes the repo's default
+  // branch so the UI can mark it.
+  const [branchesByRepo, setBranchesByRepo] = useState<Record<string, { branches: string[]; defaultBranch: string }>>({})
 
   useEffect(() => {
     const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -1701,6 +1727,12 @@ function TaskDetailModal({ task, onClose, onDispatch }: {
         setRepoOwner(typeof msg.owner === 'string' ? msg.owner : '')
         setAvailableRepos(Array.isArray(msg.repos) ? msg.repos : [])
       }
+      if (msg.type === 'githubBranchesList') {
+        const repo = typeof msg.repo === 'string' ? msg.repo : ''
+        const branches: string[] = Array.isArray(msg.branches) ? msg.branches : []
+        const defaultBranch: string = typeof msg.defaultBranch === 'string' ? msg.defaultBranch : ''
+        if (repo) setBranchesByRepo((prev) => ({ ...prev, [repo]: { branches, defaultBranch } }))
+      }
     }
     window.addEventListener('message', onMsg)
     return () => {
@@ -1708,6 +1740,32 @@ function TaskDetailModal({ task, onClose, onDispatch }: {
       window.removeEventListener('message', onMsg)
     }
   }, [onClose])
+
+  // When exactly one repo is selected, fetch its branches (cached).
+  // Multi-repo dispatch (Rush Cloud) passes a single --branch applied to all
+  // clones — we still let the user type, but don't fetch suggestions because
+  // branches differ per repo.
+  useEffect(() => {
+    if (selectedRepos.length !== 1) return
+    const repo = selectedRepos[0]
+    if (branchesByRepo[repo]) return
+    postMessage({ type: 'fetchGithubBranches', repo })
+  }, [selectedRepos, branchesByRepo])
+
+  const singleRepo = selectedRepos.length === 1 ? selectedRepos[0] : ''
+  const branchInfo = singleRepo ? branchesByRepo[singleRepo] : undefined
+  const branchesForRepo = branchInfo?.branches || []
+  const defaultBranch = branchInfo?.defaultBranch || ''
+  const branchSuggestions = useMemo(() => {
+    const q = branch.trim().toLowerCase()
+    const matches = branchesForRepo.filter((b) => !q || b.toLowerCase().includes(q))
+    // Pin the default branch to the top if it passes the filter.
+    if (defaultBranch && matches.includes(defaultBranch)) {
+      const rest = matches.filter((b) => b !== defaultBranch)
+      return [defaultBranch, ...rest].slice(0, 8)
+    }
+    return matches.slice(0, 8)
+  }, [branchesForRepo, branch, defaultBranch])
 
   const addRepo = (raw: string) => {
     const trimmed = raw.trim()
@@ -1726,10 +1784,21 @@ function TaskDetailModal({ task, onClose, onDispatch }: {
 
   const repoSuggestions = useMemo(() => {
     const q = repoInput.trim().toLowerCase()
-    return availableRepos
-      .filter((r) => !selectedRepos.includes(r))
-      .filter((r) => !q || r.toLowerCase().includes(q))
-      .slice(0, 8)
+    const recent = prefs.current.recentRepos.filter((r) =>
+      !selectedRepos.includes(r) && (!q || r.toLowerCase().includes(q))
+    )
+    const rest = availableRepos.filter((r) =>
+      !selectedRepos.includes(r) && !recent.includes(r) && (!q || r.toLowerCase().includes(q))
+    )
+    // Recently-used repos first (up to 3), then the rest from gh repo list.
+    // Mark recents so the UI can style/label them; cap total at 8.
+    const out: { repo: string; recent: boolean }[] = []
+    for (const r of recent.slice(0, 3)) out.push({ repo: r, recent: true })
+    for (const r of rest) {
+      if (out.length >= 8) break
+      out.push({ repo: r, recent: false })
+    }
+    return out
   }, [availableRepos, selectedRepos, repoInput])
 
   const runTarget: 'local' | 'rush' | 'codex' = target === 'local' ? 'local' : cloudProvider === 'codex' ? 'codex' : 'rush'
@@ -1772,6 +1841,7 @@ function TaskDetailModal({ task, onClose, onDispatch }: {
       notifyOnFinish,
       notifyChannel,
       lastCodexEnv: codexEnv,
+      recentRepos: bumpRecentRepos(prefs.current.recentRepos, selectedRepos),
     }
     saveDispatchPrefs(next)
     onDispatch({
@@ -1898,14 +1968,15 @@ function TaskDetailModal({ task, onClose, onDispatch }: {
                   />
                   {repoSuggestOpen && repoSuggestions.length > 0 && (
                     <div className="sw-task-detail-repo-suggest">
-                      {repoSuggestions.map((r) => (
+                      {repoSuggestions.map(({ repo, recent }) => (
                         <button
-                          key={r}
+                          key={repo}
                           type="button"
-                          className="sw-task-detail-repo-suggest-item"
-                          onMouseDown={(e) => { e.preventDefault(); addRepo(r) }}
+                          className={`sw-task-detail-repo-suggest-item ${recent ? 'recent' : ''}`}
+                          onMouseDown={(e) => { e.preventDefault(); addRepo(repo) }}
                         >
-                          {r}
+                          <span className="sw-task-detail-repo-suggest-name">{repo}</span>
+                          {recent && <span className="sw-task-detail-repo-suggest-badge">Recent</span>}
                         </button>
                       ))}
                     </div>
@@ -1934,13 +2005,44 @@ function TaskDetailModal({ task, onClose, onDispatch }: {
           {runTarget !== 'local' && (
             <div className="sw-task-detail-row">
               <label className="sw-task-detail-label">Branch</label>
-              <input
-                type="text"
-                className="sw-task-detail-input"
-                placeholder="main (default)"
-                value={branch}
-                onChange={(e) => setBranch(e.target.value)}
-              />
+              <div className="sw-task-detail-repo-input-wrap">
+                <input
+                  type="text"
+                  className="sw-task-detail-input"
+                  placeholder={
+                    selectedRepos.length > 1
+                      ? 'main (applied to all repos)'
+                      : defaultBranch
+                        ? `${defaultBranch} (default)`
+                        : 'main (default)'
+                  }
+                  value={branch}
+                  onChange={(e) => { setBranch(e.target.value); setBranchSuggestOpen(true) }}
+                  onFocus={() => setBranchSuggestOpen(true)}
+                  onBlur={() => setTimeout(() => setBranchSuggestOpen(false), 150)}
+                />
+                {branchSuggestOpen && branchSuggestions.length > 0 && (
+                  <div className="sw-task-detail-repo-suggest">
+                    {branchSuggestions.map((b) => {
+                      const isDefault = b === defaultBranch
+                      return (
+                        <button
+                          key={b}
+                          type="button"
+                          className={`sw-task-detail-repo-suggest-item ${isDefault ? 'recent' : ''}`}
+                          onMouseDown={(e) => { e.preventDefault(); setBranch(b); setBranchSuggestOpen(false) }}
+                        >
+                          <span className="sw-task-detail-repo-suggest-name">{b}</span>
+                          {isDefault && <span className="sw-task-detail-repo-suggest-badge">Default</span>}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+                {selectedRepos.length > 1 && (
+                  <div className="sw-task-detail-hint">One branch applies to every selected repo.</div>
+                )}
+              </div>
             </div>
           )}
 

@@ -740,6 +740,42 @@ export function openPanel(context: vscode.ExtensionContext): void {
         settingsPanel?.webview.postMessage({ type: 'githubReposList', owner, repos });
         break;
       }
+      case 'fetchGithubBranches': {
+        // List branches + default branch for a single repo so the Task Detail
+        // modal can surface a branch picker with the default marked.
+        const repo = typeof message.repo === 'string' ? message.repo.trim() : '';
+        if (!/^[^/\s]+\/[^/\s]+$/.test(repo)) {
+          settingsPanel?.webview.postMessage({
+            type: 'githubBranchesList', repo, branches: [], defaultBranch: '',
+          });
+          break;
+        }
+        const [branches, defaultBranch] = await Promise.all([
+          new Promise<string[]>((resolve) => {
+            exec(
+              `gh api --paginate "repos/${repo}/branches?per_page=100" -q '.[].name'`,
+              { maxBuffer: 4 * 1024 * 1024 },
+              (err, stdout) => {
+                if (err || !stdout) { resolve([]); return; }
+                resolve(stdout.split('\n').map((s) => s.trim()).filter(Boolean));
+              },
+            );
+          }),
+          new Promise<string>((resolve) => {
+            exec(
+              `gh api "repos/${repo}" -q '.default_branch'`,
+              (err, stdout) => {
+                if (err || !stdout) { resolve(''); return; }
+                resolve(stdout.trim());
+              },
+            );
+          }),
+        ]);
+        settingsPanel?.webview.postMessage({
+          type: 'githubBranchesList', repo, branches, defaultBranch,
+        });
+        break;
+      }
       case 'enableSwarm':
         settingsPanel?.webview.postMessage({ type: 'swarmInstallStart' });
         await swarm.setupSwarmIntegration(context, (swarmStatus) => {
