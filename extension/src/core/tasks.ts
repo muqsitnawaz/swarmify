@@ -16,11 +16,6 @@ export interface UnifiedTask {
 
 // Source-specific metadata
 export interface TaskMetadata {
-  // Markdown source
-  file?: string;                 // File path for markdown tasks
-  line?: number;                 // Line number in file
-
-  // Linear/GitHub source
   identifier?: string;           // Linear: PROJ-123, GitHub: #42
   url?: string;                  // Web URL to task
   labels?: string[];             // Labels/tags
@@ -38,33 +33,9 @@ export interface CycleInfo {
 
 // Source badge display info
 export const SOURCE_BADGES: Record<TaskSource, { label: string; color: string }> = {
-  markdown: { label: 'MD', color: '#6366f1' },  // Indigo
   linear: { label: 'LN', color: '#5e6ad2' },    // Linear purple
   github: { label: 'GH', color: '#238636' }     // GitHub green
 };
-
-// Convert markdown todo item to UnifiedTask
-export function markdownToUnifiedTask(
-  item: {
-    title: string;
-    completed: boolean;
-    description?: string;
-    line: number;
-  },
-  filePath: string
-): UnifiedTask {
-  return {
-    id: `md:${filePath}:${item.line}`,
-    source: 'markdown',
-    title: item.title,
-    description: item.description,
-    status: item.completed ? 'done' : 'todo',
-    metadata: {
-      file: filePath,
-      line: item.line
-    }
-  };
-}
 
 // Convert Linear issue to UnifiedTask
 export function linearToUnifiedTask(issue: {

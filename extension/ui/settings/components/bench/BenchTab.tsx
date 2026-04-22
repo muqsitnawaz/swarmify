@@ -11,8 +11,6 @@ import type {
   CycleInfo,
   IconConfig,
   TaskSource,
-  TodoFile,
-  TodoItem,
   UnifiedTask,
   WorkspaceConfig,
 } from '../../types'
@@ -23,10 +21,8 @@ const SOURCE_ORDER: Record<string, number> = {
 }
 
 interface BenchTabProps {
-  todoFiles: TodoFile[]
   unifiedTasks: UnifiedTask[]
   cycleInfo: CycleInfo | null
-  todoLoading: boolean
   unifiedTasksLoading: boolean
   expandedSources: Set<TaskSource>
   availableSources: { linear: boolean; github: boolean }
@@ -44,7 +40,6 @@ interface BenchTabProps {
   icons: IconConfig
   isLightTheme: boolean
   onToggleSource: (source: TaskSource) => void
-  onSpawnTodo: (item: TodoItem, filePath: string) => void
   onSpawnAgentForTask: (task: UnifiedTask) => void
   onRefreshTasks: () => void
   onRefreshContext: () => void
@@ -65,10 +60,8 @@ const SOURCE_FILTERS: Array<{ key: TaskSource; label: string; cls: string }> = [
 
 export function BenchTab(props: BenchTabProps) {
   const {
-    todoFiles,
     unifiedTasks,
     cycleInfo,
-    todoLoading,
     unifiedTasksLoading,
     settings,
     dismissedTaskIds,
@@ -116,7 +109,7 @@ export function BenchTab(props: BenchTabProps) {
       })
 
     return items
-  }, [todoFiles, unifiedTasks, settings?.taskSources, dismissedTaskIds])
+  }, [unifiedTasks, settings?.taskSources, dismissedTaskIds])
 
   const filteredTasks = useMemo(
     () => flatTasks.filter(t => activeFilters.has(t.source)),
@@ -148,7 +141,7 @@ export function BenchTab(props: BenchTabProps) {
     postMessage({ type: 'openExternal', url })
   }
 
-  const isLoading = todoLoading || unifiedTasksLoading
+  const isLoading = unifiedTasksLoading
 
   return (
     <div className="sw-bench">

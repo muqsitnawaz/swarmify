@@ -10,7 +10,6 @@ import { AgentSettings, getDefaultSettings, CustomAgentConfig, SwarmAgentType, A
 import { readPromptsFromPath, writePromptsToPath, DEFAULT_PROMPTS } from '../core/prompts';
 import * as terminals from './terminals.vscode';
 import * as swarm from './swarm.vscode';
-import { discoverTodoFiles, spawnSwarmForTodo } from './todos.vscode';
 import { fetchAllTasks, detectAvailableSources } from './tasks.vscode';
 import { getBuiltInByTitle, configFromDef } from './agents.vscode';
 import { openSingleAgentWithQueue } from './extension';
@@ -894,15 +893,6 @@ export function openPanel(context: vscode.ExtensionContext): void {
           vscode.commands.executeCommand(commandId);
         }
         break;
-      case 'fetchTodoFiles':
-        try {
-          const todoFiles = await discoverTodoFiles();
-          settingsPanel?.webview.postMessage({ type: 'todoFilesData', files: todoFiles });
-        } catch (err) {
-          console.error('[SETTINGS] Error fetching todo files:', err);
-          settingsPanel?.webview.postMessage({ type: 'todoFilesData', files: [] });
-        }
-        break;
       case 'fetchUnifiedTasks':
         try {
           const currentSettings = getSettings(context);
@@ -944,16 +934,13 @@ export function openPanel(context: vscode.ExtensionContext): void {
           settingsPanel?.webview.postMessage({ type: 'taskSourcesData', sources: availableSources });
         } catch (err) {
           console.error('[SETTINGS] Error detecting task sources:', err);
-          settingsPanel?.webview.postMessage({ type: 'taskSourcesData', sources: { markdown: true, linear: false, github: false } });
+          settingsPanel?.webview.postMessage({ type: 'taskSourcesData', sources: { linear: false, github: false } });
         }
         break;
       case 'fetchSessions':
         const sessionsWorkspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         const sessions = await discoverRecentSessions(message.limit || 50, sessionsWorkspace);
         settingsPanel?.webview.postMessage({ type: 'sessionsData', sessions });
-        break;
-      case 'spawnSwarmForTodo':
-        await spawnSwarmForTodo(message.item, context);
         break;
       case 'getFloorThroughput': {
         const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
