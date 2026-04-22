@@ -8,6 +8,7 @@ export type PendingDispatch = {
   taskIdentifier: string
   title: string
   createdAt: number
+  targetRepo?: string
 }
 
 export const PENDING_DISPATCH_TTL_MS = 30000
@@ -75,7 +76,35 @@ export function filterDispatchedTaskIds<T extends { id: string }>(
 
 export function optimisticActivityLabel(p: PendingDispatch): string {
   const label = p.taskIdentifier || p.title.slice(0, 40)
+  const suffix = p.targetRepo ? ` -> ${p.targetRepo}` : ''
   return p.target === 'cloud'
-    ? `Queuing on Rush Cloud... (${label})`
+    ? `Queuing on Rush Cloud... (${label}${suffix})`
     : `Starting... (${label})`
+}
+
+/**
+ * Parse `repo:<name>` labels into fully-qualified `owner/name` repo strings.
+ * Returns all matches (a task can be tagged for multiple repos).
+ * Returns [] if the owner is unknown or no repo labels exist.
+ */
+export function resolveReposFromLabels(
+  labels: string[] | undefined,
+  owner: string | null | undefined,
+): string[] {
+  if (!labels || labels.length === 0) return []
+  if (!owner || !owner.trim()) return []
+  const cleanOwner = owner.trim()
+  const repos: string[] = []
+  const seen = new Set<string>()
+  for (const raw of labels) {
+    if (typeof raw !== 'string') continue
+    const match = raw.trim().match(/^repo:([A-Za-z0-9._-]+)$/)
+    if (!match) continue
+    const name = match[1]
+    const full = `${cleanOwner}/${name}`
+    if (seen.has(full)) continue
+    seen.add(full)
+    repos.push(full)
+  }
+  return repos
 }
