@@ -11,7 +11,7 @@ import {
   handleStatus,
   handleStop,
   type AgentStatusDetail,
-} from '@phnx-labs/agents-cli/teams';
+} from '@swarmify/agents-cli/teams';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

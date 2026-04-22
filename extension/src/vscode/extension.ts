@@ -64,6 +64,7 @@ import {
 } from './tmux';
 import { DEFAULT_DISPLAY_PREFERENCES } from '../core/settings';
 import * as prewarm from './prewarm.vscode';
+import * as readiness from './terminalReadiness';
 import { resolveAlias, isAgentInstalled } from '../core/agentModels';
 import { supportsPrewarming, buildResumeCommand, PREWARM_CONFIGS, PrewarmAgentType } from '../core/prewarm';
 import { needsPrewarming, generateClaudeSessionId, buildClaudeOpenCommand, listOpencodeSessions } from '../core/prewarm.simple';
@@ -533,6 +534,9 @@ export async function activate(context: vscode.ExtensionContext) {
   // Store context for deactivate
   extensionContext = context;
 
+  // Initialize terminal readiness event tracking (shell integration + close cleanup)
+  readiness.initReadiness(context);
+
   // Initialize session pre-warming (runs in background)
   setTimeout(() => {
     prewarm.initializePrewarming(context).catch(err => {
@@ -590,6 +594,7 @@ export async function activate(context: vscode.ExtensionContext) {
       }
 
       terminals.register(terminal, id, agentConfig, pid, context, info.label || undefined);
+      readiness.registerTerminal(terminal, { restored: true });
 
       if (identOpts.sessionId) {
         terminals.setSessionId(terminal, identOpts.sessionId);
@@ -1279,6 +1284,10 @@ async function openSingleAgent(
 
     const pid = await terminal.processId;
     terminals.register(terminal, terminalId, agentConfig, pid, context);
+    readiness.registerTerminal(terminal);
+    if (command) {
+      readiness.armAgentReady(terminal);
+    }
 
     // Track session ID and agent type for all terminals (not just prewarmed)
     if (sessionId) {
@@ -1320,6 +1329,7 @@ async function openSingleAgent(
 
   const pid = await terminal.processId;
   terminals.register(terminal, terminalId, agentConfig, pid, context);
+  readiness.registerTerminal(terminal);
 
   // Track session ID and agent type for all terminals (not just prewarmed)
   if (sessionId) {
@@ -1335,14 +1345,17 @@ async function openSingleAgent(
   }
 
   if (command) {
-    // Wait for shell to be ready before sending command
-    const shellReady = await waitForShellReady(terminal);
-    if (shellReady && terminal.shellIntegration) {
+    try {
+      await readiness.waitFor(terminal, 'promptReady');
+    } catch (err) {
+      console.warn(`[READINESS] promptReady wait failed: ${err}. Sending command anyway.`);
+    }
+    if (terminal.shellIntegration) {
       terminal.shellIntegration.executeCommand(command);
     } else {
-      // Fallback to sendText if shell integration not available
       terminal.sendText(command);
     }
+    readiness.armAgentReady(terminal);
   }
 
   // OpenCode: Detect session ID asynchronously after spawn
@@ -2441,13 +2454,18 @@ async function clearActiveTerminal(context: vscode.ExtensionContext) {
     await vscode.commands.executeCommand('workbench.action.terminal.sendSequence', {
       text: '\u0003'
     });
-    await new Promise(resolve => setTimeout(resolve, 200));
+    await new Promise(resolve => setTimeout(resolve, 100));
     await vscode.commands.executeCommand('workbench.action.terminal.sendSequence', {
       text: '\u0003'
     });
 
-    // Wait for process to terminate
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    // Wait for the agent to release the pty and the shell prompt to reappear
+    readiness.resetAfterAgentExit(terminal);
+    try {
+      await readiness.waitFor(terminal, 'promptReady');
+    } catch (err) {
+      console.warn(`[READINESS] promptReady wait after agent exit failed: ${err}`);
+    }
 
     try {
       // 2. Generate new IDs for fresh session
@@ -2497,6 +2515,7 @@ async function clearActiveTerminal(context: vscode.ExtensionContext) {
 
       // 8. Restart agent with new session
       terminal.sendText('clear && ' + command);
+      readiness.armAgentReady(terminal);
 
       // 9. Update status bar
       updateStatusBarForTerminal(terminal, context.extensionPath);
@@ -2550,12 +2569,18 @@ async function reloadActiveTerminal(context: vscode.ExtensionContext) {
       await vscode.commands.executeCommand('workbench.action.terminal.sendSequence', {
         text: seq
       });
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise(resolve => setTimeout(resolve, 100));
     }
 
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    readiness.resetAfterAgentExit(terminal);
+    try {
+      await readiness.waitFor(terminal, 'promptReady');
+    } catch (err) {
+      console.warn(`[READINESS] promptReady wait after agent exit failed: ${err}`);
+    }
 
     terminal.sendText(`clear && ${resumeCommand}`);
+    readiness.armAgentReady(terminal);
 
     updateStatusBarForTerminal(terminal, context.extensionPath);
   } catch (error) {

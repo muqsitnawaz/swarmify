@@ -6,7 +6,7 @@
 // Keep fields short — every extra token costs latency when the model reads
 // back.
 
-import { getTerminalDisplayInfo } from './utils';
+import { getTerminalDisplayInfo, prefixToAgentType, SHELL_TITLE } from './utils';
 
 export interface ForemanTerminal {
   name: string;
@@ -66,7 +66,8 @@ export function buildForemanDigest(
   for (const t of terminals) {
     const info = getTerminalDisplayInfo({ name: t.name });
     if (!info.isAgent || !info.prefix) continue;
-    const kind = info.prefix.toLowerCase();
+    if (info.prefix === SHELL_TITLE) continue;
+    const kind = prefixToAgentType(info.prefix) ?? info.prefix.toLowerCase();
     kindCounts[kind] = (kindCounts[kind] || 0) + 1;
 
     const startedMs = t.startedAtMs ?? t.lastActivityMs ?? now;

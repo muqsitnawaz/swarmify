@@ -38,6 +38,7 @@ import { BenchTab } from './components/bench'
 import { PanelTab } from './components/panel'
 import { GuideTab } from './components/tabs/GuideTab'
 import { ApiKeyDialog } from './components/common/OAuthDialog'
+import { ForemanTab } from './components/foreman'
 
 const vscode = getVsCodeApi()
 const icons = getIcons() as IconConfig
@@ -675,6 +676,11 @@ export default function App() {
           onConnectLinear={handleConnectLinear}
           onConnectGitHub={handleConnectGitHub}
         />
+      )}
+
+      {/* Foreman (voice coordinator) */}
+      {activeTab === 'foreman' && (
+        <ForemanTab vscode={vscode} />
       )}
 
       {/* Panel (settings - 2-column sidebar layout) */}
