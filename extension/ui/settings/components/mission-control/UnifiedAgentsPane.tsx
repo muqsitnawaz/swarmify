@@ -433,6 +433,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     identifier: string
     labels: string[]
   } | null>(null)
+  const [detailTask, setDetailTask] = useState<UnifiedTask | null>(null)
   const newMenuRef = useRef<HTMLDivElement>(null)
   const statPopoverRef = useRef<HTMLDivElement>(null)
   const nextUpSectionRef = useRef<HTMLDivElement>(null)
@@ -689,17 +690,25 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     agentType: string,
     target: 'local' | 'cloud' = 'local',
     targetRepos?: string[],
+    cloudProvider: 'rush' | 'codex' | 'factory' = 'rush',
+    notifyPrefs?: { onQuestion: boolean; onFinish: boolean; channel: string },
+    branch?: string,
+    codexEnv?: string,
   ) => {
     postMessage({
       type: 'dispatchTask',
       taskId: task.id,
       agentType,
       target,
+      cloudProvider,
       title: task.title,
       description: task.description || '',
       identifier: task.metadata.identifier || '',
       labels: task.metadata.labels || [],
       targetRepos: targetRepos || [],
+      branch: branch || '',
+      codexEnv: codexEnv || '',
+      notify: notifyPrefs || { onQuestion: false, onFinish: false, channel: '' },
     })
     const now = Date.now()
     const repoList = targetRepos && targetRepos.length > 0 ? targetRepos : [undefined]
@@ -846,7 +855,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
 
           <div className="sw-queue-cards">
             {queueTasks.map((task) => (
-              <DispatchCard key={task.id} task={task} onDispatch={handleDispatchTask} />
+              <DispatchCard key={task.id} task={task} onOpen={setDetailTask} />
             ))}
           </div>
         </div>
@@ -1000,6 +1009,16 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
             } as UnifiedTask
             handleDispatchTask(pseudoTask, repoPicker.agentType, 'cloud', selected)
             setRepoPicker(null)
+          }}
+        />
+      )}
+      {detailTask && (
+        <TaskDetailModal
+          task={detailTask}
+          onClose={() => setDetailTask(null)}
+          onDispatch={({ agent, target, cloudProvider, branch, codexEnv, notify }) => {
+            handleDispatchTask(detailTask, agent, target, undefined, cloudProvider, notify, branch, codexEnv)
+            setDetailTask(null)
           }}
         />
       )}
@@ -1576,28 +1595,11 @@ function AgentStrip({ item, dimmed, onFocus, onKill, onRetry }: {
 }
 
 // Dispatch card with agent picker
-function DispatchCard({ task, onDispatch }: { task: UnifiedTask; onDispatch: (task: UnifiedTask, agent: string, target: 'local' | 'cloud') => void }) {
-  const [selectedAgent, setSelectedAgent] = useState('claude')
-  const [target, setTarget] = useState<'local' | 'cloud'>('local')
-  const [dispatchedAt, setDispatchedAt] = useState<number | null>(null)
+function DispatchCard({ task, onOpen }: { task: UnifiedTask; onOpen: (task: UnifiedTask) => void }) {
   const priorityCls = task.priority === 'urgent' ? 'urgent' : task.priority === 'high' ? 'high' : 'medium'
   const priorityLabel = task.priority ? task.priority.charAt(0).toUpperCase() + task.priority.slice(1) : 'Medium'
-  const agents = [
-    { id: 'claude', abbr: 'CC' },
-    { id: 'codex', abbr: 'CX' },
-    { id: 'gemini', abbr: 'GX' },
-  ]
-
-  const handleClick = () => {
-    onDispatch(task, selectedAgent, target)
-    setDispatchedAt(Date.now())
-    setTimeout(() => setDispatchedAt(null), 2200)
-  }
-
-  const dispatched = dispatchedAt !== null
-
   return (
-    <div className="sw-queue-card">
+    <button type="button" className="sw-queue-card sw-queue-card-clickable" onClick={() => onOpen(task)}>
       <div className="sw-queue-card-header">
         <div className={`sw-queue-priority-led ${priorityCls}`} />
         <span className="sw-queue-badge">{task.metadata.identifier || task.id.slice(0, 8)}</span>
@@ -1605,40 +1607,283 @@ function DispatchCard({ task, onDispatch }: { task: UnifiedTask; onDispatch: (ta
       </div>
       <div className="sw-queue-title">{task.title}</div>
       {task.description && (
-        <div className="sw-queue-desc">{task.description.slice(0, 100)}</div>
+        <div className="sw-queue-desc">{task.description.slice(0, 140)}</div>
       )}
-      <div className="sw-queue-footer">
-        <div className="sw-queue-assign">
-          <span className="sw-queue-assign-label">Assign</span>
-          {agents.map((a) => (
-            <button
-              key={a.id}
-              className={`sw-queue-agent-pick ${a.id} ${selectedAgent === a.id ? 'selected' : ''}`}
-              onClick={() => setSelectedAgent(a.id)}
-            >
-              {a.abbr}
-            </button>
-          ))}
-        </div>
-        <div className="sw-queue-dispatch-row">
-          <div className="sw-dispatch-target" title="Where to run">
-            <button
-              type="button"
-              className={`sw-dispatch-target-btn xs ${target === 'local' ? 'active' : ''}`}
-              onClick={() => setTarget('local')}
-            >
-              Local
-            </button>
-            <button
-              type="button"
-              className={`sw-dispatch-target-btn xs ${target === 'cloud' ? 'active' : ''}`}
-              onClick={() => setTarget('cloud')}
-            >
-              Cloud
+      <div className="sw-queue-card-hint">Click to configure and dispatch</div>
+    </button>
+  )
+}
+
+type CloudProviderId = 'rush' | 'codex' | 'factory'
+
+type DispatchPrefs = {
+  lastAgent: string
+  lastTarget: 'local' | 'cloud'
+  lastCloudProvider: CloudProviderId
+  notifyOnQuestion: boolean
+  notifyOnFinish: boolean
+  notifyChannel: string
+  lastCodexEnv: string
+}
+
+const DISPATCH_PREFS_KEY = 'swarmify.dispatchPrefs.v1'
+
+function loadDispatchPrefs(): DispatchPrefs {
+  try {
+    const raw = localStorage.getItem(DISPATCH_PREFS_KEY)
+    if (!raw) return defaultPrefs()
+    const parsed = JSON.parse(raw)
+    return { ...defaultPrefs(), ...parsed }
+  } catch {
+    return defaultPrefs()
+  }
+}
+
+function defaultPrefs(): DispatchPrefs {
+  return {
+    lastAgent: 'claude',
+    lastTarget: 'local',
+    lastCloudProvider: 'rush',
+    notifyOnQuestion: true,
+    notifyOnFinish: true,
+    notifyChannel: 'ios',
+    lastCodexEnv: '',
+  }
+}
+
+function saveDispatchPrefs(p: DispatchPrefs): void {
+  try { localStorage.setItem(DISPATCH_PREFS_KEY, JSON.stringify(p)) } catch { /* ignore */ }
+}
+
+function TaskDetailModal({ task, onClose, onDispatch }: {
+  task: UnifiedTask
+  onClose: () => void
+  onDispatch: (args: {
+    agent: string
+    target: 'local' | 'cloud'
+    cloudProvider: CloudProviderId
+    branch: string
+    codexEnv: string
+    notify: { onQuestion: boolean; onFinish: boolean; channel: string }
+  }) => void
+}) {
+  const prefs = useRef<DispatchPrefs>(loadDispatchPrefs())
+  const [agent, setAgent] = useState(prefs.current.lastAgent)
+  const [target, setTarget] = useState<'local' | 'cloud'>(prefs.current.lastTarget)
+  const [cloudProvider, setCloudProvider] = useState<CloudProviderId>(prefs.current.lastCloudProvider)
+  const [branch, setBranch] = useState('')
+  const [codexEnv, setCodexEnv] = useState(prefs.current.lastCodexEnv)
+  const [notifyOnQuestion, setNotifyOnQuestion] = useState(prefs.current.notifyOnQuestion)
+  const [notifyOnFinish, setNotifyOnFinish] = useState(prefs.current.notifyOnFinish)
+  const [notifyChannel, setNotifyChannel] = useState(prefs.current.notifyChannel)
+
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', esc)
+    return () => window.removeEventListener('keydown', esc)
+  }, [onClose])
+
+  const runTarget: 'local' | 'rush' | 'codex' = target === 'local' ? 'local' : cloudProvider === 'codex' ? 'codex' : 'rush'
+
+  const modelsForTarget: Array<{ id: string; label: string }> = (() => {
+    if (runTarget === 'local') return [
+      { id: 'claude', label: 'Claude' },
+      { id: 'codex', label: 'Codex' },
+      { id: 'gemini', label: 'Gemini' },
+    ]
+    if (runTarget === 'rush') return [
+      { id: 'claude', label: 'Claude' },
+      { id: 'codex', label: 'Codex' },
+    ]
+    return [{ id: 'codex', label: 'Codex' }]
+  })()
+
+  useEffect(() => {
+    if (!modelsForTarget.some((m) => m.id === agent)) {
+      setAgent(modelsForTarget[0].id)
+    }
+  }, [runTarget, agent, modelsForTarget])
+
+  const priorityCls = task.priority === 'urgent' ? 'urgent' : task.priority === 'high' ? 'high' : 'medium'
+  const priorityLabel = task.priority ? task.priority.charAt(0).toUpperCase() + task.priority.slice(1) : 'Medium'
+  const labels = task.metadata.labels || []
+  const repoLabels = labels.filter((l) => l.startsWith('repo:')).map((l) => l.slice(5))
+
+  const createdAt = (task as UnifiedTask & { createdAt?: string }).createdAt
+  const createdRel = createdAt ? relTime(new Date(createdAt).getTime()) : null
+
+  const canDispatch = runTarget !== 'codex' || codexEnv.trim().length > 0
+
+  const handleDispatch = () => {
+    const next: DispatchPrefs = {
+      lastAgent: agent,
+      lastTarget: target,
+      lastCloudProvider: cloudProvider,
+      notifyOnQuestion,
+      notifyOnFinish,
+      notifyChannel,
+      lastCodexEnv: codexEnv,
+    }
+    saveDispatchPrefs(next)
+    onDispatch({
+      agent,
+      target,
+      cloudProvider,
+      branch: branch.trim(),
+      codexEnv: codexEnv.trim(),
+      notify: { onQuestion: notifyOnQuestion, onFinish: notifyOnFinish, channel: notifyChannel },
+    })
+  }
+
+  return (
+    <div className="sw-dispatch-modal-overlay" onMouseDown={onClose} role="dialog" aria-modal="true">
+      <div className="sw-task-detail-modal" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="sw-task-detail-head">
+          <div className="sw-task-detail-head-top">
+            <span className={`sw-queue-priority-led ${priorityCls}`} />
+            {task.metadata.identifier && (
+              <span className="sw-queue-badge">{task.metadata.identifier}</span>
+            )}
+            <span className={`sw-queue-priority-label ${priorityCls}`}>{priorityLabel}</span>
+            <span className="sw-task-detail-meta">
+              {task.source}{createdRel ? ` - created ${createdRel}` : ''}
+            </span>
+            <button className="sw-dispatch-modal-close" onClick={onClose} aria-label="Close">
+              <Icon name="x" size={14} />
             </button>
           </div>
-          <button className="sw-btn-dispatch" onClick={handleClick} disabled={dispatched}>
-            {dispatched ? `Sent to ${target}` : 'Dispatch'}
+          <div className="sw-task-detail-title">{task.title}</div>
+        </div>
+
+        <div className="sw-task-detail-body">
+          {task.description ? (
+            <pre className="sw-task-detail-desc">{task.description}</pre>
+          ) : (
+            <div className="sw-task-detail-desc sw-task-detail-desc-empty">No description.</div>
+          )}
+        </div>
+
+        <div className="sw-task-detail-form">
+          <div className="sw-task-detail-row">
+            <label className="sw-task-detail-label">Run on</label>
+            <div className="sw-task-detail-seg">
+              <button
+                type="button"
+                className={`sw-task-detail-seg-btn ${target === 'local' ? 'active' : ''}`}
+                onClick={() => setTarget('local')}
+              >Local</button>
+              <button
+                type="button"
+                className={`sw-task-detail-seg-btn ${target === 'cloud' && cloudProvider === 'rush' ? 'active' : ''}`}
+                onClick={() => { setTarget('cloud'); setCloudProvider('rush') }}
+              >Rush Cloud</button>
+              <button
+                type="button"
+                className={`sw-task-detail-seg-btn ${target === 'cloud' && cloudProvider === 'codex' ? 'active' : ''}`}
+                onClick={() => { setTarget('cloud'); setCloudProvider('codex') }}
+              >Codex Cloud</button>
+            </div>
+          </div>
+
+          <div className="sw-task-detail-row">
+            <label className="sw-task-detail-label">Model</label>
+            <div className="sw-task-detail-seg">
+              {modelsForTarget.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  className={`sw-task-detail-seg-btn ${agent === m.id ? 'active' : ''}`}
+                  onClick={() => setAgent(m.id)}
+                >{m.label}</button>
+              ))}
+            </div>
+          </div>
+
+          {runTarget !== 'local' && (
+            <div className="sw-task-detail-row">
+              <label className="sw-task-detail-label">Repository</label>
+              <div className="sw-task-detail-value">
+                {repoLabels.length > 0 ? (
+                  <span className="sw-task-detail-repos">
+                    {repoLabels.map((r) => (
+                      <span key={r} className="sw-task-detail-repo-pill">{r}</span>
+                    ))}
+                    <span className="sw-task-detail-hint">from labels</span>
+                  </span>
+                ) : (
+                  <span className="sw-task-detail-hint">workspace repo (auto)</span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {runTarget === 'codex' && (
+            <div className="sw-task-detail-row">
+              <label className="sw-task-detail-label">Codex env</label>
+              <input
+                type="text"
+                className="sw-task-detail-input"
+                placeholder="env_abc123"
+                value={codexEnv}
+                onChange={(e) => setCodexEnv(e.target.value)}
+              />
+            </div>
+          )}
+
+          {runTarget !== 'local' && (
+            <div className="sw-task-detail-row">
+              <label className="sw-task-detail-label">Branch</label>
+              <input
+                type="text"
+                className="sw-task-detail-input"
+                placeholder="main (default)"
+                value={branch}
+                onChange={(e) => setBranch(e.target.value)}
+              />
+            </div>
+          )}
+
+          <div className="sw-task-detail-row sw-task-detail-row-notify">
+            <label className="sw-task-detail-label">Notify me</label>
+            <div className="sw-task-detail-notify">
+              <label className="sw-task-detail-check">
+                <input
+                  type="checkbox"
+                  checked={notifyOnQuestion}
+                  onChange={(e) => setNotifyOnQuestion(e.target.checked)}
+                />
+                <span>When it asks a question</span>
+              </label>
+              <label className="sw-task-detail-check">
+                <input
+                  type="checkbox"
+                  checked={notifyOnFinish}
+                  onChange={(e) => setNotifyOnFinish(e.target.checked)}
+                />
+                <span>When it finishes</span>
+              </label>
+              <div className="sw-task-detail-channel">
+                <span className="sw-task-detail-hint">Channel</span>
+                <select
+                  className="sw-task-detail-input sw-task-detail-select"
+                  value={notifyChannel}
+                  onChange={(e) => setNotifyChannel(e.target.value)}
+                  disabled={!notifyOnQuestion && !notifyOnFinish}
+                >
+                  <option value="ios">iOS push</option>
+                  <option value="email">Email</option>
+                  <option value="linear">Linear comment</option>
+                  <option value="none">None</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="sw-task-detail-foot">
+          <button className="sw-btn secondary" onClick={onClose}>Cancel</button>
+          <button className="sw-btn-dispatch" onClick={handleDispatch} disabled={!canDispatch}>
+            Dispatch
           </button>
         </div>
       </div>

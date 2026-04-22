@@ -2042,3 +2042,236 @@
   cursor: default;
   pointer-events: none;
 }
+
+/* ============================================
+   TASK DETAIL MODAL - opened from a Next Up card
+   ============================================ */
+.sw-queue-card-clickable {
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  appearance: none;
+  transition: transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.sw-queue-card-clickable:hover {
+  border-color: var(--ds-border-strong);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-raised);
+}
+
+.sw-queue-card-hint {
+  margin-top: auto;
+  font-size: 9px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--ds-text-dim);
+  opacity: 0.7;
+}
+
+.sw-task-detail-modal {
+  width: min(640px, 94vw);
+  max-height: 84vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--ds-bg-panel);
+  border: 2px solid var(--ds-border-strong);
+  border-radius: 10px;
+  box-shadow: var(--shadow-lg), 0 0 0 1px var(--ds-border);
+  overflow: hidden;
+}
+
+.sw-task-detail-head {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--ds-border);
+  background: var(--ds-bg-inset);
+}
+
+.sw-task-detail-head-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sw-task-detail-meta {
+  margin-left: 8px;
+  font-size: 10px;
+  color: var(--ds-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.sw-task-detail-title {
+  margin-top: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ds-text);
+  line-height: 1.35;
+}
+
+.sw-task-detail-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--ds-border);
+  max-height: 34vh;
+}
+
+.sw-task-detail-desc {
+  margin: 0;
+  font-family: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--ds-text);
+}
+
+.sw-task-detail-desc-empty {
+  font-style: italic;
+  color: var(--ds-text-dim);
+}
+
+.sw-task-detail-form {
+  padding: 12px 16px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-bottom: 1px solid var(--ds-border);
+}
+
+.sw-task-detail-row {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  align-items: center;
+  gap: 12px;
+  min-height: 28px;
+}
+
+.sw-task-detail-row-notify {
+  align-items: start;
+}
+
+.sw-task-detail-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--ds-text-dim);
+}
+
+.sw-task-detail-seg {
+  display: inline-flex;
+  padding: 2px;
+  background: var(--ds-bg-recessed);
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow-inset);
+}
+
+.sw-task-detail-seg-btn {
+  border: 0;
+  background: transparent;
+  color: var(--ds-text-dim);
+  font-family: "Geist Mono", monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 5px 11px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.sw-task-detail-seg-btn:hover {
+  color: var(--ds-text);
+}
+
+.sw-task-detail-seg-btn.active {
+  background: var(--ds-bg-panel);
+  color: var(--ds-text);
+  box-shadow: var(--shadow-raised);
+}
+
+.sw-task-detail-input {
+  width: 100%;
+  padding: 5px 8px;
+  font-family: "Geist Mono", monospace;
+  font-size: 11px;
+  background: var(--ds-bg-recessed);
+  color: var(--ds-text);
+  border: 1px solid var(--ds-border);
+  border-radius: 4px;
+}
+
+.sw-task-detail-input:focus {
+  outline: none;
+  border-color: var(--brand);
+}
+
+.sw-task-detail-select {
+  padding-right: 24px;
+}
+
+.sw-task-detail-value {
+  font-size: 11px;
+  color: var(--ds-text);
+}
+
+.sw-task-detail-repos {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.sw-task-detail-repo-pill {
+  font-family: "Geist Mono", monospace;
+  font-size: 10px;
+  padding: 2px 7px;
+  background: var(--ds-bg-recessed);
+  border: 1px solid var(--ds-border);
+  border-radius: 3px;
+  color: var(--ds-text);
+}
+
+.sw-task-detail-hint {
+  font-size: 10px;
+  color: var(--ds-text-dim);
+  font-style: italic;
+}
+
+.sw-task-detail-notify {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sw-task-detail-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--ds-text);
+  cursor: pointer;
+}
+
+.sw-task-detail-channel {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.sw-task-detail-channel .sw-task-detail-input {
+  width: auto;
+  min-width: 140px;
+}
+
+.sw-task-detail-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  background: var(--ds-bg-inset);
+}
