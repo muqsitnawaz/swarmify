@@ -1,5 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
-import { connectForeman, ForemanSession } from './realtime'
+import React, { useEffect, useState } from 'react'
 
 interface ForemanTabProps {
   vscode: {
@@ -20,72 +19,34 @@ export function ForemanTab({ vscode }: ForemanTabProps) {
   const [conn, setConn] = useState<ConnState>('idle')
   const [error, setError] = useState<string | null>(null)
   const [transcript, setTranscript] = useState<TranscriptLine[]>([])
-  const sessionRef = useRef<ForemanSession | null>(null)
-  const pendingToolCalls = useRef<Map<string, string>>(new Map())
 
-  // Tool results from the extension host land here; forward to the model.
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       const m = event.data
-      if (m?.type === 'foreman.toolResult') {
-        const session = sessionRef.current
-        if (!session?.isOpen()) return
-        session.sendToolResult(m.callId, m.result)
-        pendingToolCalls.current.delete(m.callId)
-      } else if (m?.type === 'foreman.ephemeralKeyData') {
-        startSession(m.clientSecret, m.model, m.sessionUpdate)
-      } else if (m?.type === 'foreman.ephemeralKeyError') {
-        setConn('error')
-        setError(m.error || 'Failed to mint ephemeral key')
+      if (m?.type === 'foreman.status') {
+        setConn(m.status)
+        if (m.status === 'error') setError(m.detail ?? 'error')
+        else if (m.status === 'connected' || m.status === 'connecting') setError(null)
+      } else if (m?.type === 'foreman.transcript') {
+        setTranscript((prev) => appendTranscript(prev, m.role, m.text, m.final))
       }
     }
     window.addEventListener('message', onMessage)
-    return () => window.removeEventListener('message', onMessage)
-  }, [])
-
-  useEffect(() => {
     return () => {
-      sessionRef.current?.close()
-      sessionRef.current = null
+      window.removeEventListener('message', onMessage)
+      vscode.postMessage({ type: 'foreman.stopSession' })
     }
   }, [])
-
-  const startSession = async (clientSecret: string, model: string, sessionUpdate: Record<string, unknown>) => {
-    try {
-      const session = await connectForeman(clientSecret, model, sessionUpdate, {
-        onStatus: (status, detail) => {
-          setConn(status)
-          if (status === 'error') setError(detail ?? 'error')
-        },
-        onTranscript: (e) => {
-          setTranscript((prev) => appendTranscript(prev, e.role, e.text, e.final))
-        },
-        onToolCall: (e) => {
-          pendingToolCalls.current.set(e.callId, e.name)
-          vscode.postMessage({
-            type: 'foreman.toolCall',
-            callId: e.callId,
-            name: e.name,
-            args: e.args,
-          })
-        },
-      })
-      sessionRef.current = session
-    } catch (err: any) {
-      setConn('error')
-      setError(err?.message ?? String(err))
-    }
-  }
 
   const handleConnect = () => {
     setError(null)
+    setTranscript([])
     setConn('connecting')
-    vscode.postMessage({ type: 'foreman.getEphemeralKey' })
+    vscode.postMessage({ type: 'foreman.startSession' })
   }
 
   const handleDisconnect = () => {
-    sessionRef.current?.close()
-    sessionRef.current = null
+    vscode.postMessage({ type: 'foreman.stopSession' })
     setConn('closed')
   }
 
@@ -99,13 +60,13 @@ export function ForemanTab({ vscode }: ForemanTabProps) {
       </div>
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        {conn === 'connected' ? (
+        {conn === 'connected' || conn === 'connecting' ? (
           <button className="sw-btn" onClick={handleDisconnect}>
             Stop
           </button>
         ) : (
-          <button className="sw-btn" onClick={handleConnect} disabled={conn === 'connecting'}>
-            {conn === 'connecting' ? 'Connecting...' : 'Start conversation'}
+          <button className="sw-btn" onClick={handleConnect}>
+            Start conversation
           </button>
         )}
         <StatusDot state={conn} />
@@ -121,6 +82,7 @@ export function ForemanTab({ vscode }: ForemanTabProps) {
           border: '1px solid var(--ds-border)',
           borderRadius: 4,
           background: 'var(--ds-bg-panel)',
+          whiteSpace: 'pre-wrap',
         }}>
           {error}
         </div>
