@@ -83,10 +83,24 @@ export async function startForemanAudio(
 
   mic.on('error', (err) => events.onStatus?.('error', `ffmpeg: ${err.message}`));
   speaker.on('error', (err) => events.onStatus?.('error', `ffplay: ${err.message}`));
+  speaker.on('exit', (code, signal) => {
+    console.warn(`[foreman] ffplay exited code=${code} signal=${signal}`);
+    if (code !== 0 && code !== null) {
+      events.onStatus?.('error', `ffplay exited with code ${code}`);
+    }
+  });
   mic.stderr?.on('data', (buf: Buffer) => {
     // ffmpeg is chatty; only surface the first error chunk for debugging.
     const line = buf.toString().split('\n')[0];
     if (line && /error|invalid/i.test(line)) events.onStatus?.('error', `ffmpeg: ${line.slice(0, 120)}`);
+  });
+  speaker.stderr?.on('data', (buf: Buffer) => {
+    const text = buf.toString().trim();
+    if (text) console.warn('[foreman ffplay]', text.slice(0, 400));
+    const firstLine = text.split('\n')[0];
+    if (firstLine && /error|invalid|cannot|no such|not found|failed/i.test(firstLine)) {
+      events.onStatus?.('error', `ffplay: ${firstLine.slice(0, 160)}`);
+    }
   });
 
   ws.on('open', () => {
@@ -153,12 +167,32 @@ export async function startForemanAudio(
   };
 }
 
+let audioBytesReceived = 0;
+let audioChunksLogged = 0;
+
 function route(msg: any, speaker: ChildProcess, events: ForemanAudioEvents) {
   const type: string = msg?.type ?? '';
 
   if (type === 'response.audio.delta' && typeof msg.delta === 'string') {
     const pcm = Buffer.from(msg.delta, 'base64');
-    try { speaker.stdin?.write(pcm); } catch { /* broken pipe */ }
+    audioBytesReceived += pcm.length;
+    if (audioChunksLogged < 3) {
+      console.log(`[foreman] audio delta #${audioChunksLogged + 1}: ${pcm.length} bytes, speaker.stdin.writable=${speaker.stdin?.writable}, killed=${speaker.killed}`);
+      audioChunksLogged++;
+    }
+    try {
+      const ok = speaker.stdin?.write(pcm);
+      if (ok === false && audioChunksLogged <= 3) console.log('[foreman] ffplay stdin backpressure');
+    } catch (err) {
+      console.warn('[foreman] speaker.stdin.write threw:', err);
+    }
+    return;
+  }
+
+  if (type === 'response.audio.done') {
+    console.log(`[foreman] audio response done. total bytes: ${audioBytesReceived}`);
+    audioBytesReceived = 0;
+    audioChunksLogged = 0;
     return;
   }
 
