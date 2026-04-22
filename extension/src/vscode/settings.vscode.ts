@@ -25,6 +25,7 @@ import { scanMemoryFiles } from './contextFiles';
 import { fetchAllAgentModels, checkInstalledAgentsViaCli, resolveAlias } from '../core/agentModels';
 import * as workbench from './workbench.vscode';
 import * as theme from './theme.vscode';
+import { buildAgentTerminalEnv } from '../core/terminals';
 
 // Get GitHub repo from git remote (returns "username/repo" or null)
 function getGitHubRepo(workspacePath: string): Promise<string | null> {
@@ -47,13 +48,17 @@ function getGitHubRepo(workspacePath: string): Promise<string | null> {
   });
 }
 
-// Single shared terminal for all cloud dispatches. Opens as an editor tab so
-// it doesn't hijack the bottom panel; reused for subsequent dispatches so
-// firing 10 cloud tasks at once doesn't produce 10 terminals.
+// Single shared terminal for all cloud dispatches. Opens as an editor tab with
+// the Rush bird icon so it's recognizable; reused across dispatches so firing
+// 10 cloud tasks at once doesn't produce 10 terminals.
 const RUSH_CLOUD_TERMINAL_NAME = 'Rush Cloud';
+const RUSH_CLOUD_PREFIX = 'rc';
 let rushCloudTerminal: vscode.Terminal | undefined;
 
-function getOrCreateRushCloudTerminal(cwd: string): vscode.Terminal {
+async function getOrCreateRushCloudTerminal(
+  context: vscode.ExtensionContext,
+  cwd: string
+): Promise<vscode.Terminal> {
   if (rushCloudTerminal && rushCloudTerminal.exitStatus === undefined) {
     return rushCloudTerminal;
   }
@@ -64,16 +69,34 @@ function getOrCreateRushCloudTerminal(cwd: string): vscode.Terminal {
     rushCloudTerminal = existing;
     return existing;
   }
-  rushCloudTerminal = vscode.window.createTerminal({
+  const iconPath = theme.buildIconPath(context.extensionPath, 'rush.png');
+  const terminalId = terminals.nextId(RUSH_CLOUD_PREFIX);
+  const terminal = vscode.window.createTerminal({
     name: RUSH_CLOUD_TERMINAL_NAME,
     cwd,
+    iconPath,
+    env: buildAgentTerminalEnv(terminalId, null, cwd),
     location: {
       viewColumn: vscode.ViewColumn.Active,
       preserveFocus: true,
     },
     isTransient: true,
   });
-  return rushCloudTerminal;
+  const pid = await terminal.processId;
+  terminals.register(
+    terminal,
+    terminalId,
+    {
+      title: RUSH_CLOUD_TERMINAL_NAME,
+      command: '',
+      iconPath,
+      prefix: RUSH_CLOUD_PREFIX,
+    },
+    pid,
+    context,
+  );
+  rushCloudTerminal = terminal;
+  return terminal;
 }
 
 // Factory config: read/write ~/.agents/factory/config.json.
@@ -858,7 +881,7 @@ export function openPanel(context: vscode.ExtensionContext): void {
             break;
           }
           const safePrompt = prompt.replace(/'/g, `'\\''`);
-          const term = getOrCreateRushCloudTerminal(workspacePath);
+          const term = await getOrCreateRushCloudTerminal(context, workspacePath);
           term.sendText(`rush cloud run ${agentType} ${repo} -p '${safePrompt}'`);
           term.show(true);
           break;
