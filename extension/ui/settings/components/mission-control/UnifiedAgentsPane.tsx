@@ -1198,10 +1198,14 @@ function DispatchModal({ tasks, loading, onClose, onDispatch, onDispatchBatch, o
 
   useEffect(() => {
     inputRef.current?.focus()
-    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    const esc = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      if (detailTaskId) setDetailTaskId(null)
+      else onClose()
+    }
     window.addEventListener('keydown', esc)
     return () => window.removeEventListener('keydown', esc)
-  }, [onClose])
+  }, [onClose, detailTaskId])
 
   const todoTasks = useMemo(
     () => tasks.filter((t) => t.status === 'todo' || t.status === 'in_progress'),
@@ -1229,7 +1233,8 @@ function DispatchModal({ tasks, loading, onClose, onDispatch, onDispatchBatch, o
       })
   }, [todoTasks, query, priorityFilter])
 
-  const focusedTask = filtered.find((t) => t.id === focusedTaskId) || filtered[0]
+  const detailTask = detailTaskId ? todoTasks.find((t) => t.id === detailTaskId) ?? null : null
+  const focusedTask = detailTask || filtered.find((t) => t.id === focusedTaskId) || filtered[0]
   const batchMode = checkedIds.size > 0
 
   const toggleChecked = (id: string) => {
@@ -1321,6 +1326,8 @@ function DispatchModal({ tasks, loading, onClose, onDispatch, onDispatchBatch, o
         <div className="sw-dispatch-modal-body">
           {loading ? (
             <div className="sw-dispatch-modal-empty">Loading tasks...</div>
+          ) : detailTask ? (
+            <TaskDetailView task={detailTask} onBack={() => setDetailTaskId(null)} />
           ) : filtered.length === 0 ? (
             <div className="sw-dispatch-modal-empty">
               {todoTasks.length === 0 ? 'No open tasks. Add one in Linear or the Bench tab.' : 'No tasks match your search.'}
@@ -1335,7 +1342,10 @@ function DispatchModal({ tasks, loading, onClose, onDispatch, onDispatchBatch, o
                   <li key={task.id}>
                     <div
                       className={`sw-dispatch-modal-row ${isFocused ? 'selected' : ''} ${isChecked ? 'checked' : ''}`}
-                      onClick={() => setFocusedTaskId(task.id)}
+                      onClick={() => {
+                        setFocusedTaskId(task.id)
+                        setDetailTaskId(task.id)
+                      }}
                     >
                       <label
                         className="sw-dispatch-modal-check"
@@ -1419,6 +1429,46 @@ function DispatchModal({ tasks, loading, onClose, onDispatch, onDispatchBatch, o
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+function TaskDetailView({ task, onBack }: { task: UnifiedTask; onBack: () => void }) {
+  const pcls = task.priority === 'urgent' ? 'urgent' : task.priority === 'high' ? 'high' : 'medium'
+  const url = task.metadata.url as string | undefined
+  return (
+    <div className="sw-dispatch-modal-detail">
+      <button className="sw-dispatch-modal-detail-back" onClick={onBack} title="Back to list">
+        <span aria-hidden="true">&larr;</span>
+        <span>Back</span>
+      </button>
+      <div className="sw-dispatch-modal-detail-head">
+        <span className={`sw-dispatch-modal-led ${pcls}`} />
+        {task.metadata.identifier && (
+          <span className="sw-dispatch-modal-id">{task.metadata.identifier}</span>
+        )}
+        {task.priority && (
+          <span className={`sw-dispatch-modal-priority ${pcls}`}>
+            {task.priority.toUpperCase()}
+          </span>
+        )}
+      </div>
+      <div className="sw-dispatch-modal-detail-title">{task.title}</div>
+      {task.description && (
+        <div className="sw-dispatch-modal-detail-desc">{task.description}</div>
+      )}
+      {url && (
+        <a
+          className="sw-dispatch-modal-detail-link"
+          href={url}
+          onClick={(e) => {
+            e.preventDefault()
+            postMessage({ type: 'openExternal', url })
+          }}
+        >
+          Open in {url.includes('linear.app') ? 'Linear' : url.includes('github.com') ? 'GitHub' : 'browser'}
+        </a>
+      )}
     </div>
   )
 }
