@@ -439,14 +439,13 @@
       },
       {
         "command": "agents.configure",
-        "key": "ctrl+shift+d",
-        "mac": "cmd+shift+d"
+        "key": "ctrl+shift+f",
+        "mac": "cmd+shift+f"
       },
       {
         "command": "agents.dispatchTask",
-        "key": "ctrl+d",
-        "mac": "cmd+d",
-        "when": "!editorTextFocus && !terminalFocus"
+        "key": "ctrl+shift+d",
+        "mac": "cmd+shift+d"
       },
       {
         "command": "agents.quickLaunch1",
