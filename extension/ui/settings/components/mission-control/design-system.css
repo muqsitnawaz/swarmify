@@ -1314,6 +1314,42 @@
   background: color-mix(in srgb, var(--brand) 10%, transparent);
 }
 
+/* Cloud-dispatch timeout warnings — shown above the active list when a
+   dispatch never produced a matching agent within PENDING_DISPATCH_TTL_MS.
+   Styled warm (amber) to distinguish from outright failures (red) —
+   "probably failed, go check" not "definitely broken." */
+.sw-dispatch-timeout-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.sw-dispatch-timeout-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--r-md);
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  color: var(--ds-text);
+  font-size: 12px;
+}
+
+.sw-dispatch-timeout-row > :global(svg) {
+  color: #D4A72C;
+  flex-shrink: 0;
+}
+
+.sw-dispatch-timeout-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .sw-floor-agent-card-top {
   display: flex;
   align-items: center;
