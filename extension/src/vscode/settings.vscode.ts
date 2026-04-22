@@ -707,7 +707,7 @@ export function openPanel(context: vscode.ExtensionContext): void {
         // Compare display prefs to decide if we need to retitle open terminals
         const previous = getSettings(context);
         await saveSettings(context, message.settings);
-        maybeUpdateTerminalTitles(previous, message.settings);
+        await maybeUpdateTerminalTitles(previous, message.settings);
         break;
       case 'setGithubOwner': {
         const owner = typeof message.owner === 'string' ? message.owner.trim() : '';
@@ -1331,7 +1331,7 @@ function openGuide(context: vscode.ExtensionContext, guide: string): void {
 }
 
 // Update titles of existing agent terminals when display preferences change
-function maybeUpdateTerminalTitles(oldSettings: AgentSettings, newSettings: AgentSettings): void {
+async function maybeUpdateTerminalTitles(oldSettings: AgentSettings, newSettings: AgentSettings): Promise<void> {
   const oldDisplay = oldSettings.display ?? DEFAULT_DISPLAY_PREFERENCES;
   const newDisplay = newSettings.display ?? DEFAULT_DISPLAY_PREFERENCES;
 
@@ -1344,8 +1344,11 @@ function maybeUpdateTerminalTitles(oldSettings: AgentSettings, newSettings: Agen
 
   if (!changed) return;
 
+  // renameWithArg always targets the active terminal, so we must rename sequentially.
+  // Remember what was active and restore it at the end so focus isn't disturbed.
+  const previouslyActive = vscode.window.activeTerminal;
+
   for (const entry of terminals.getAllTerminals()) {
-    // Skip if we don't have an agent config
     const prefix = entry.agentConfig?.title || parseTerminalName(entry.terminal.name).prefix;
     if (!prefix) continue;
 
@@ -1358,7 +1361,11 @@ function maybeUpdateTerminalTitles(oldSettings: AgentSettings, newSettings: Agen
       display: newDisplay,
       sessionChunk: sessionChunk || null
     });
-    terminals.renameTerminal(entry.terminal, newTitle);
+    await terminals.renameTerminal(entry.terminal, newTitle);
+  }
+
+  if (previouslyActive && previouslyActive.exitStatus === undefined) {
+    previouslyActive.show(true);
   }
 }
 
