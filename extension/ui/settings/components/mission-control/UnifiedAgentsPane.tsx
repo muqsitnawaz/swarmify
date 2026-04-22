@@ -1360,6 +1360,7 @@ function DispatchModal({ tasks, loading, onClose, onDispatch, onDispatchBatch, o
                 return (
                   <li key={task.id}>
                     <div
+                      ref={isFocused ? (el) => el?.scrollIntoView({ block: 'nearest' }) : undefined}
                       className={`sw-dispatch-modal-row ${isFocused ? 'selected' : ''} ${isChecked ? 'checked' : ''}`}
                       onClick={() => {
                         setFocusedTaskId(task.id)
@@ -1398,19 +1399,13 @@ function DispatchModal({ tasks, loading, onClose, onDispatch, onDispatchBatch, o
           <div className="sw-dispatch-modal-foot">
             <div className="sw-dispatch-modal-foot-info">
               {batchMode ? (
-                <>
-                  <div className="sw-dispatch-modal-foot-title">{checkedIds.size} tasks selected</div>
-                  <div className="sw-dispatch-modal-foot-desc">
-                    Each task will be dispatched to its own agent, staggered by 120ms.
-                  </div>
-                </>
-              ) : focusedTask && (
-                <>
-                  <div className="sw-dispatch-modal-foot-title">{focusedTask.title}</div>
-                  {focusedTask.description && (
-                    <div className="sw-dispatch-modal-foot-desc">{focusedTask.description.slice(0, 180)}</div>
-                  )}
-                </>
+                <div className="sw-dispatch-modal-foot-title">
+                  {checkedIds.size} selected &middot; staggered 120ms
+                </div>
+              ) : focusedTask && focusedTask.metadata.identifier && (
+                <div className="sw-dispatch-modal-foot-title sw-dispatch-modal-foot-id">
+                  {focusedTask.metadata.identifier}
+                </div>
               )}
             </div>
             <div className="sw-dispatch-modal-foot-actions">
