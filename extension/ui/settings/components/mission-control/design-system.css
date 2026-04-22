@@ -1545,6 +1545,29 @@
   opacity: 0.6;
 }
 
+.sw-floor-agent-card.dimmed:hover {
+  opacity: 0.9;
+}
+
+.sw-floor-agent-card-retry {
+  font-family: "Geist Mono", monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--brand);
+  padding: 2px 8px;
+  border: 1px solid color-mix(in srgb, var(--brand) 40%, transparent);
+  border-radius: 3px;
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.sw-floor-agent-card-retry:hover {
+  background: color-mix(in srgb, var(--brand) 10%, transparent);
+}
+
 .sw-floor-agent-card-top {
   display: flex;
   align-items: center;

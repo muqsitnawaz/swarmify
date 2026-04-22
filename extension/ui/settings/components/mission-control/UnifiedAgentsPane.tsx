@@ -454,6 +454,10 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     labels: string[]
   } | null>(null)
   const [detailTask, setDetailTask] = useState<UnifiedTask | null>(null)
+  // Sibling tasks for TaskDetailModal's in-header switcher. Populated when
+  // the user hands off from DispatchModal; empty otherwise (direct task
+  // click from queue cards doesn't carry a sibling set).
+  const [detailSiblings, setDetailSiblings] = useState<UnifiedTask[]>([])
   const newMenuRef = useRef<HTMLDivElement>(null)
   const statPopoverRef = useRef<HTMLDivElement>(null)
   const nextUpSectionRef = useRef<HTMLDivElement>(null)
@@ -1093,9 +1097,16 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
           </button>
 
           {recentOpen && (
-            <div className="sw-agent-strips">
+            <div className="sw-floor-active-list">
               {recentItems.slice(0, 5).map((item) => (
-                <AgentStrip key={item.id} item={item} dimmed onFocus={handleFocusTerminal} onRetry={handleRetry} />
+                <AgentCard
+                  key={item.id}
+                  item={item}
+                  selected={false}
+                  onSelect={(id) => setExpandedAgentId(id)}
+                  dimmed
+                  onRetry={handleRetry}
+                />
               ))}
             </div>
           )}
@@ -1116,6 +1127,11 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
             })
           }}
           onComplete={() => setDispatchOpen(false)}
+          onOpenDetail={(task, siblings) => {
+            setDispatchOpen(false)
+            setDetailSiblings(siblings)
+            setDetailTask(task)
+          }}
         />
       )}
       {repoPicker && (
@@ -1142,10 +1158,13 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
       {detailTask && (
         <TaskDetailModal
           task={detailTask}
-          onClose={() => setDetailTask(null)}
+          tasks={detailSiblings.length > 0 ? detailSiblings : undefined}
+          onClose={() => { setDetailTask(null); setDetailSiblings([]) }}
+          onTaskSwitch={(next) => setDetailTask(next)}
           onDispatch={({ agent, target, cloudProvider, branch, codexEnv, notify }) => {
             handleDispatchTask(detailTask, agent, target, undefined, cloudProvider, notify, branch, codexEnv)
             setDetailTask(null)
+            setDetailSiblings([])
           }}
         />
       )}
@@ -1623,46 +1642,6 @@ function DispatchModal({ tasks, loading, onClose, onDispatch, onDispatchBatch, o
   )
 }
 
-function TaskDetailView({ task, onBack }: { task: UnifiedTask; onBack: () => void }) {
-  const pcls = task.priority === 'urgent' ? 'urgent' : task.priority === 'high' ? 'high' : 'medium'
-  const url = task.metadata.url as string | undefined
-  return (
-    <div className="sw-dispatch-modal-detail">
-      <button className="sw-dispatch-modal-detail-back" onClick={onBack} title="Back to list">
-        <span aria-hidden="true">&larr;</span>
-        <span>Back</span>
-      </button>
-      <div className="sw-dispatch-modal-detail-head">
-        <span className={`sw-dispatch-modal-led ${pcls}`} />
-        {task.metadata.identifier && (
-          <span className="sw-dispatch-modal-id">{task.metadata.identifier}</span>
-        )}
-        {task.priority && (
-          <span className={`sw-dispatch-modal-priority ${pcls}`}>
-            {task.priority.toUpperCase()}
-          </span>
-        )}
-      </div>
-      <div className="sw-dispatch-modal-detail-title">{task.title}</div>
-      {task.description && (
-        <div className="sw-dispatch-modal-detail-desc">{task.description}</div>
-      )}
-      {url && (
-        <a
-          className="sw-dispatch-modal-detail-link"
-          href={url}
-          onClick={(e) => {
-            e.preventDefault()
-            postMessage({ type: 'openExternal', url })
-          }}
-        >
-          Open in {url.includes('linear.app') ? 'Linear' : url.includes('github.com') ? 'GitHub' : 'browser'}
-        </a>
-      )}
-    </div>
-  )
-}
-
 // Agent horizontal strip
 /**
  * Inline banner for teammates waiting on human input.
@@ -1818,10 +1797,16 @@ function statusPhrase(item: UnifiedAgent): { word: string; tone: 'running' | 'id
   return { word: 'Idle', tone: 'idle', when: item.timestamp ? relTime(item.timestamp) : '' }
 }
 
-function AgentCard({ item, selected, onSelect }: {
+function AgentCard({ item, selected, onSelect, dimmed, onRetry }: {
   item: UnifiedAgent
   selected: boolean
   onSelect: (id: string) => void
+  // Recent/completed agents render with a muted appearance to distinguish
+  // them visually from currently-active ones.
+  dimmed?: boolean
+  // Only shown for completed/stopped swarm agents — lets the user rerun a
+  // finished task without re-dispatching through the modal.
+  onRetry?: (taskName: string) => void
 }) {
   const label = identityLabel(item)
   const status = statusPhrase(item)
@@ -1830,11 +1815,12 @@ function AgentCard({ item, selected, onSelect }: {
     : item.agentType.charAt(0).toUpperCase() + item.agentType.slice(1)
   const filesCount = item.files.length
   const hasCounts = item.toolCalls > 0 || filesCount > 0
+  const canRetry = !item.active && item.swarm && onRetry
 
   return (
     <button
       type="button"
-      className={`sw-floor-agent-card ${selected ? 'selected' : ''}`}
+      className={`sw-floor-agent-card ${selected ? 'selected' : ''} ${dimmed ? 'dimmed' : ''}`}
       onClick={() => onSelect(item.id)}
       aria-pressed={selected}
     >
@@ -1842,6 +1828,23 @@ function AgentCard({ item, selected, onSelect }: {
         <AgentAvatar id={item.agentType} size={24} />
         <span className="sw-floor-agent-card-name">{name}</span>
         <span className={`sw-floor-agent-card-chunk ${label.variant}`}>{label.text}</span>
+        {canRetry && (
+          <span
+            role="button"
+            tabIndex={0}
+            className="sw-floor-agent-card-retry"
+            onClick={(e) => { e.stopPropagation(); onRetry!(item.swarm!.task_name) }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault(); e.stopPropagation()
+                onRetry!(item.swarm!.task_name)
+              }
+            }}
+            title="Retry this task"
+          >
+            Retry
+          </span>
+        )}
       </div>
 
       <div className="sw-floor-agent-card-status-line">
