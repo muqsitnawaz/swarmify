@@ -417,6 +417,22 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   const [activeFilter, setActiveFilter] = useState<'all' | 'local' | 'cloud'>('all')
   const [pendingDispatches, setPendingDispatches] = useState<PendingDispatch[]>([])
   const [tick, setTick] = useState(0)
+  const [repoPicker, setRepoPicker] = useState<{
+    taskId: string
+    agentType: string
+    repos: string[]
+    title: string
+    description: string
+    identifier: string
+  } | null>(null)
+  const [ownerPicker, setOwnerPicker] = useState<{
+    taskId: string
+    agentType: string
+    title: string
+    description: string
+    identifier: string
+    labels: string[]
+  } | null>(null)
   const newMenuRef = useRef<HTMLDivElement>(null)
   const statPopoverRef = useRef<HTMLDivElement>(null)
   const nextUpSectionRef = useRef<HTMLDivElement>(null)
@@ -435,6 +451,35 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
       return pruned.length === prev.length ? prev : pruned
     })
   }, [tick, pendingDispatches])
+
+  // Listen for backend dispatch follow-ups (repo picker / owner picker prompts)
+  useEffect(() => {
+    const onMsg = (event: MessageEvent) => {
+      const msg = event.data
+      if (!msg || typeof msg !== 'object') return
+      if (msg.type === 'pickRepos') {
+        setRepoPicker({
+          taskId: String(msg.taskId || ''),
+          agentType: String(msg.agentType || 'claude'),
+          repos: Array.isArray(msg.repos) ? msg.repos.filter((r: unknown) => typeof r === 'string') : [],
+          title: String(msg.title || ''),
+          description: String(msg.description || ''),
+          identifier: String(msg.identifier || ''),
+        })
+      } else if (msg.type === 'needGithubOwner') {
+        setOwnerPicker({
+          taskId: String(msg.taskId || ''),
+          agentType: String(msg.agentType || 'claude'),
+          title: String(msg.title || ''),
+          description: String(msg.description || ''),
+          identifier: String(msg.identifier || ''),
+          labels: Array.isArray(msg.labels) ? msg.labels.filter((l: unknown) => typeof l === 'string') : [],
+        })
+      }
+    }
+    window.addEventListener('message', onMsg)
+    return () => window.removeEventListener('message', onMsg)
+  }, [])
 
   useEffect(() => {
     if (!newMenuOpen) return
@@ -639,7 +684,12 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     postMessage({ type: 'killSwarm', taskName })
   }
 
-  const handleDispatchTask = (task: UnifiedTask, agentType: string, target: 'local' | 'cloud' = 'local') => {
+  const handleDispatchTask = (
+    task: UnifiedTask,
+    agentType: string,
+    target: 'local' | 'cloud' = 'local',
+    targetRepos?: string[],
+  ) => {
     postMessage({
       type: 'dispatchTask',
       taskId: task.id,
@@ -648,17 +698,22 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
       title: task.title,
       description: task.description || '',
       identifier: task.metadata.identifier || '',
+      labels: task.metadata.labels || [],
+      targetRepos: targetRepos || [],
     })
-    const pending: PendingDispatch = {
-      id: `pending-${task.id}-${Date.now()}`,
+    const now = Date.now()
+    const repoList = targetRepos && targetRepos.length > 0 ? targetRepos : [undefined]
+    const pendings: PendingDispatch[] = repoList.map((repo, i) => ({
+      id: `pending-${task.id}-${now}-${i}`,
       agentType,
       target,
       taskId: task.id,
       taskIdentifier: task.metadata.identifier || '',
       title: task.title,
-      createdAt: Date.now(),
-    }
-    setPendingDispatches((prev) => [...prev, pending])
+      createdAt: now + i,
+      targetRepo: repo,
+    }))
+    setPendingDispatches((prev) => [...prev, ...pendings])
     setTimeout(() => {
       postMessage({ type: 'fetchAllTerminals' })
       postMessage({ type: 'fetchTasks' })
@@ -928,6 +983,177 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
           onComplete={() => setDispatchOpen(false)}
         />
       )}
+      {repoPicker && (
+        <RepoPickerModal
+          repos={repoPicker.repos}
+          taskIdentifier={repoPicker.identifier}
+          taskTitle={repoPicker.title}
+          onClose={() => setRepoPicker(null)}
+          onConfirm={(selected) => {
+            const pseudoTask: UnifiedTask = {
+              id: repoPicker.taskId,
+              source: 'linear',
+              title: repoPicker.title,
+              description: repoPicker.description,
+              status: 'todo',
+              metadata: { identifier: repoPicker.identifier },
+            } as UnifiedTask
+            handleDispatchTask(pseudoTask, repoPicker.agentType, 'cloud', selected)
+            setRepoPicker(null)
+          }}
+        />
+      )}
+      {ownerPicker && (
+        <GithubOwnerModal
+          onClose={() => setOwnerPicker(null)}
+          onSave={(owner) => {
+            postMessage({ type: 'setGithubOwner', owner })
+            const pseudoTask: UnifiedTask = {
+              id: ownerPicker.taskId,
+              source: 'linear',
+              title: ownerPicker.title,
+              description: ownerPicker.description,
+              status: 'todo',
+              metadata: { identifier: ownerPicker.identifier, labels: ownerPicker.labels },
+            } as UnifiedTask
+            setOwnerPicker(null)
+            // Re-fire the dispatch; backend will now succeed with the saved owner.
+            setTimeout(() => handleDispatchTask(pseudoTask, ownerPicker.agentType, 'cloud'), 200)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function RepoPickerModal({ repos, taskIdentifier, taskTitle, onClose, onConfirm }: {
+  repos: string[]
+  taskIdentifier: string
+  taskTitle: string
+  onClose: () => void
+  onConfirm: (selected: string[]) => void
+}) {
+  const [checked, setChecked] = useState<Set<string>>(() => new Set(repos))
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', esc)
+    return () => window.removeEventListener('keydown', esc)
+  }, [onClose])
+  const toggle = (r: string) => {
+    setChecked((prev) => {
+      const next = new Set(prev)
+      if (next.has(r)) next.delete(r); else next.add(r)
+      return next
+    })
+  }
+  const confirm = () => {
+    const selected = repos.filter((r) => checked.has(r))
+    if (selected.length === 0) return
+    onConfirm(selected)
+  }
+  return (
+    <div className="sw-dispatch-modal-overlay" onMouseDown={onClose} role="dialog" aria-modal="true">
+      <div className="sw-dispatch-modal" onMouseDown={(e) => e.stopPropagation()} style={{ maxWidth: 520 }}>
+        <div className="sw-dispatch-modal-head">
+          <span className="sw-dispatch-modal-title">
+            {taskIdentifier ? `${taskIdentifier} targets multiple repos` : 'Pick target repos'}
+          </span>
+          <span className="sw-dispatch-modal-sub">{taskTitle.slice(0, 80)}</span>
+          <button className="sw-dispatch-modal-close" onClick={onClose} aria-label="Close">
+            <Icon name="x" size={12} />
+          </button>
+        </div>
+        <div className="sw-dispatch-modal-body">
+          <ul className="sw-dispatch-modal-list">
+            {repos.map((r) => (
+              <li key={r}>
+                <div
+                  className={`sw-dispatch-modal-row ${checked.has(r) ? 'checked' : ''}`}
+                  onClick={() => toggle(r)}
+                  role="button"
+                >
+                  <input
+                    type="checkbox"
+                    className="sw-dispatch-modal-check"
+                    checked={checked.has(r)}
+                    onChange={() => toggle(r)}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                  <span className="sw-dispatch-modal-title-text">{r}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="sw-dispatch-modal-foot">
+          <div className="sw-dispatch-modal-foot-info">
+            <div className="sw-dispatch-modal-foot-desc">
+              Selected {checked.size} of {repos.length}. One cloud dispatch per selected repo.
+            </div>
+          </div>
+          <div className="sw-dispatch-modal-foot-actions">
+            <button className="sw-btn secondary sm" onClick={onClose}>Cancel</button>
+            <button className="sw-btn primary sm" disabled={checked.size === 0} onClick={confirm}>
+              Dispatch {checked.size > 0 ? checked.size : ''}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function GithubOwnerModal({ onClose, onSave }: {
+  onClose: () => void
+  onSave: (owner: string) => void
+}) {
+  const [value, setValue] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    inputRef.current?.focus()
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', esc)
+    return () => window.removeEventListener('keydown', esc)
+  }, [onClose])
+  const save = () => {
+    const owner = value.trim()
+    if (!owner) return
+    onSave(owner)
+  }
+  return (
+    <div className="sw-dispatch-modal-overlay" onMouseDown={onClose} role="dialog" aria-modal="true">
+      <div className="sw-dispatch-modal" onMouseDown={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
+        <div className="sw-dispatch-modal-head">
+          <span className="sw-dispatch-modal-title">GitHub owner needed</span>
+          <button className="sw-dispatch-modal-close" onClick={onClose} aria-label="Close">
+            <Icon name="x" size={12} />
+          </button>
+        </div>
+        <div className="sw-dispatch-modal-body" style={{ padding: 16 }}>
+          <div style={{ marginBottom: 10, fontSize: 12, opacity: 0.75 }}>
+            We couldn't infer your GitHub username from the workspace remote or `gh` CLI.
+            Set it once and it will be saved.
+          </div>
+          <input
+            ref={inputRef}
+            type="text"
+            placeholder="muqsitnawaz"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') save() }}
+            className="sw-dispatch-modal-search-input"
+            style={{ width: '100%', padding: '6px 8px' }}
+          />
+        </div>
+        <div className="sw-dispatch-modal-foot">
+          <div className="sw-dispatch-modal-foot-actions" style={{ marginLeft: 'auto' }}>
+            <button className="sw-btn secondary sm" onClick={onClose}>Cancel</button>
+            <button className="sw-btn primary sm" disabled={!value.trim()} onClick={save}>
+              Save & retry
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
