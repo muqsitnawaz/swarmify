@@ -4,6 +4,7 @@ import * as path from 'path';
 import {
   pickBestVersion,
   sessionUsedPercent,
+  inlineContinueInstructions,
   AgentsViewJsonAgent,
   AgentsViewJsonVersion,
 } from './resumeInBest';
@@ -127,6 +128,44 @@ describe('pickBestVersion — synthetic cases', () => {
       makeVersion({ version: 'has-session', windows: [{ key: 'session', usedPercent: 50, resetsAt: null }] }),
     ];
     expect(pickBestVersion(versions)!.version).toBe('has-session');
+  });
+});
+
+describe('inlineContinueInstructions', () => {
+  const REAL_CONTINUE_MD = `---
+description: Resume a previous task - load context via agents sessions, assess state, then continue working
+---
+
+Resume previous work: $ARGUMENTS
+
+You are picking up where a previous session left off.
+
+## Step 1: Load the prior session
+
+Run \`agents sessions $ARGUMENTS\` to load the transcript.`;
+
+  test('strips YAML frontmatter', () => {
+    const out = inlineContinueInstructions(REAL_CONTINUE_MD, 'abc123');
+    expect(out).not.toContain('description:');
+    expect(out).not.toMatch(/^---/);
+    expect(out.startsWith('Resume previous work:')).toBe(true);
+  });
+
+  test('substitutes $ARGUMENTS with session id everywhere', () => {
+    const out = inlineContinueInstructions(REAL_CONTINUE_MD, 'abc123');
+    expect(out).not.toContain('$ARGUMENTS');
+    expect(out).toContain('Resume previous work: abc123');
+    expect(out).toContain('agents sessions abc123');
+  });
+
+  test('handles body without frontmatter', () => {
+    const out = inlineContinueInstructions('Just content with $ARGUMENTS', 'xyz');
+    expect(out).toBe('Just content with xyz');
+  });
+
+  test('handles empty session id', () => {
+    const out = inlineContinueInstructions('Run with $ARGUMENTS here.', '');
+    expect(out).toBe('Run with  here.');
   });
 });
 

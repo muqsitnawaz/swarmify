@@ -20,7 +20,10 @@ import {
   AgentsViewJsonVersion,
   pickBestVersion,
   sessionUsedPercent,
+  inlineContinueInstructions,
 } from '../core/resumeInBest';
+import * as os from 'os';
+import * as fsSync from 'fs';
 import * as workbench from './workbench.vscode';
 import { ensureSymlinksOnWorkspaceOpen, createSymlinksCodebaseWide } from './agentlinks.vscode';
 import {
@@ -1890,36 +1893,75 @@ async function resumeCurrentInBestProfile(context: vscode.ExtensionContext) {
   );
 
   const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
-  const resumeCmd = buildVersionedResumeCommand(agentKey, terminalEntry.sessionId, best.version);
+  // Launch the target version FRESH — `claude -r <id>` only finds sessions
+  // stored in the target version's own home, so cross-version resume via
+  // `-r` fails. Instead we let the agent start normally and then type
+  // `/continue <id>` (or inline instructions if the slash command isn't
+  // synced to this version's home).
+  const launchCmd = `${builtIn.command}@${best.version}`;
+  const sessionId = terminalEntry.sessionId;
 
   const terminalId = terminals.nextId(builtIn.prefix);
-  const title = buildTerminalTitle(agentConfig.title, undefined, context, terminalEntry.sessionId);
+  const title = buildTerminalTitle(agentConfig.title, undefined, context, sessionId);
   const terminal = vscode.window.createTerminal({
     iconPath: agentConfig.iconPath,
     location: { viewColumn: vscode.ViewColumn.Active },
     name: title,
-    env: buildAgentTerminalEnv(terminalId, terminalEntry.sessionId, workspacePath),
+    env: buildAgentTerminalEnv(terminalId, sessionId, workspacePath),
     isTransient: true,
   });
 
   const pid = await terminal.processId;
   terminals.register(terminal, terminalId, agentConfig, pid, context);
-  terminals.setSessionId(terminal, terminalEntry.sessionId);
+  terminals.setSessionId(terminal, sessionId);
   terminals.setAgentType(terminal, agentKey);
   startAutoLabelPollerForTerminal(terminal, context);
 
+  // Step 1: launch the agent
   const shellReady = await waitForShellReady(terminal);
   if (shellReady && terminal.shellIntegration) {
-    terminal.shellIntegration.executeCommand(resumeCmd);
+    terminal.shellIntegration.executeCommand(launchCmd);
   } else {
-    terminal.sendText(resumeCmd);
+    terminal.sendText(launchCmd);
   }
 
   terminal.show();
+
+  // Step 2: decide resume input — prefer /continue if the slash command is
+  // synced to this version's home; otherwise inline the full instructions.
+  const versionHomeCommand = path.join(
+    os.homedir(), '.agents', 'versions', agentKey, best.version,
+    'home', '.claude', 'commands', 'continue.md'
+  );
+  const hasContinueCmd = fsSync.existsSync(versionHomeCommand);
+
+  let resumeInput: string;
+  if (hasContinueCmd) {
+    resumeInput = `/continue ${sessionId}`;
+  } else {
+    const centralCommand = path.join(os.homedir(), '.agents', 'commands', 'continue.md');
+    try {
+      const body = fsSync.readFileSync(centralCommand, 'utf-8');
+      resumeInput = inlineContinueInstructions(body, sessionId);
+    } catch {
+      // Last resort: tell the agent directly.
+      resumeInput = `Resume previous work by loading session ${sessionId}. Run \`agents sessions ${sessionId}\` to load the transcript, assess current state, then continue working.`;
+    }
+  }
+
+  // Step 3: wait for the TUI to come up, then type the resume input.
+  // 3 seconds is a conservative default — Claude Code's welcome screen
+  // usually renders in 1–2s. sendText appends a newline so the agent
+  // receives the command as a submitted message.
+  const AGENT_STARTUP_MS = 3000;
+  setTimeout(() => {
+    terminal.sendText(resumeInput);
+  }, AGENT_STARTUP_MS);
+
   const acct = best.email ? ` (${best.email})` : '';
   const usage = `${sessionUsedPercent(best)}% session`;
   vscode.window.setStatusBarMessage(
-    `Resumed ${agentKey}@${best.version}${acct} · ${usage} · ${terminalEntry.sessionId.slice(0, 8)}`,
+    `Resumed ${agentKey}@${best.version}${acct} · ${usage} · ${sessionId.slice(0, 8)}`,
     5000
   );
 }

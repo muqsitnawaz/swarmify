@@ -31,6 +31,21 @@ export function sessionUsedPercent(v: AgentsViewJsonVersion): number {
 }
 
 /**
+ * Convert the central `continue.md` body into a self-contained prompt for
+ * versions that don't have the slash command synced to their home dir.
+ * Strips the YAML frontmatter and substitutes `$ARGUMENTS` with the session
+ * id. Callers prefix with a resume marker so the agent treats it as one
+ * continuation task.
+ */
+export function inlineContinueInstructions(
+  continueMdBody: string,
+  sessionId: string
+): string {
+  const withoutFrontmatter = continueMdBody.replace(/^---[\s\S]*?\n---\s*\n/, '');
+  return withoutFrontmatter.replace(/\$ARGUMENTS/g, sessionId).trim();
+}
+
+/**
  * Pick the best signed-in version to resume into.
  *
  * Ranking:
