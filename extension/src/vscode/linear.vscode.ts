@@ -3,7 +3,8 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs';
 import * as path from 'path';
-import { UnifiedTask, CycleInfo, linearToUnifiedTask } from '../core/tasks';
+import { UnifiedTask, CycleInfo, linearToUnifiedTask, extractRepoNameFromLabels } from '../core/tasks';
+import { getSettings, resolveGithubOwner } from './settings.vscode';
 
 const execFileAsync = promisify(execFile);
 
@@ -47,18 +48,30 @@ export async function fetchLinearTasks(context: vscode.ExtensionContext): Promis
       ? { name: cycle.name, startsAt: cycle.startsAt, endsAt: cycle.endsAt }
       : null;
 
-    const tasks = issues.map(issue => linearToUnifiedTask({
-      id: issue.identifier,
-      identifier: issue.identifier,
-      title: issue.title,
-      description: issue.description,
-      state: issue.state,
-      priority: issue.priority,
-      url: issue.url || `https://linear.app/issue/${issue.identifier}`,
-      labels: issue.labels,
-      assignee: issue.assignee,
-      createdAt: issue.createdAt,
-    }));
+    // Resolve owner once so we can render "owner/repo" chips on each card.
+    // Falls through to null if no owner is configured — card just won't show a repo chip.
+    const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    const owner = await resolveGithubOwner(workspacePath, getSettings(context));
+
+    const tasks = issues.map(issue => {
+      const labels: string[] = (issue.labels?.nodes || []).map((n: any) => n.name);
+      const repoName = extractRepoNameFromLabels(labels);
+      const repo = repoName && owner ? `${owner}/${repoName}` : null;
+      return linearToUnifiedTask({
+        id: issue.identifier,
+        identifier: issue.identifier,
+        title: issue.title,
+        description: issue.description,
+        state: issue.state,
+        priority: issue.priority,
+        url: issue.url || `https://linear.app/issue/${issue.identifier}`,
+        labels: issue.labels,
+        assignee: issue.assignee,
+        project: issue.project,
+        dueDate: issue.dueDate,
+        createdAt: issue.createdAt,
+      }, repo);
+    });
 
     return { tasks, cycleInfo };
   } catch (err) {
