@@ -2100,9 +2100,16 @@ function DispatchCard({ task, onOpen }: { task: UnifiedTask; onOpen: (task: Unif
             <a
               className="sw-queue-repo-chip mono"
               href={repoHref}
-              target="_blank"
-              rel="noreferrer"
-              onClick={stopOpen}
+              onClick={(e) => {
+                // VS Code webviews don't reliably honor target="_blank" on
+                // anchor clicks — route through the extension host's
+                // openExternal handler, which uses vscode.env.openExternal.
+                // Also stop propagation so the card's onClick (opens the
+                // task detail modal) doesn't fire.
+                e.preventDefault()
+                e.stopPropagation()
+                if (repoHref) postMessage({ type: 'openExternal', url: repoHref })
+              }}
               onMouseDown={stopOpen}
               title={`Open ${repo} on GitHub`}
             >
