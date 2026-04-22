@@ -36,7 +36,6 @@ import { TopBar, StatusBar, MissionControlTab } from './components/mission-contr
 import type { TabKey } from './components/mission-control'
 
 // Tab components (legacy, for Bench and Panel)
-import { WorkspaceTab } from './components/tabs/WorkspaceTab'
 import { BenchTab } from './components/bench'
 import { PanelTab } from './components/panel'
 import { GuideTab } from './components/tabs/GuideTab'
