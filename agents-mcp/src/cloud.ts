@@ -9,7 +9,7 @@ import {
   getAgentsDir,
   checkCliAvailable,
   type AgentType,
-} from '@phnx-labs/agents-cli/teams';
+} from '@swarmify/agents-cli/teams';
 
 // Cloud mode supported agents and their providers
 // Claude: `claude --remote -p "prompt"` creates a web session on claude.ai
