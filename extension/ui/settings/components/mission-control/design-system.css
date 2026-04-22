@@ -2061,13 +2061,13 @@
   box-shadow: var(--shadow-raised);
 }
 
-.sw-queue-card-hint {
-  margin-top: auto;
+.sw-section-hint {
   font-size: 9px;
-  letter-spacing: 1px;
-  text-transform: uppercase;
+  font-weight: 500;
+  letter-spacing: 0.5px;
   color: var(--ds-text-dim);
-  opacity: 0.7;
+  font-style: italic;
+  margin-left: 4px;
 }
 
 .sw-task-detail-modal {
