@@ -115,9 +115,9 @@ Optimizes Status tool to minimize token usage:
 | `task_name` | Yes | Groups related agents (e.g., "auth-feature") |
 | `agent_type` | Yes | `claude`, `codex`, `gemini`, `cursor`, `opencode` |
 | `prompt` | Yes | Task for the agent |
-| `mode` | No | `plan` (read-only, default), `edit` (write), `ralph` (autonomous) |
+| `mode` | No | `plan` (read-only, default), `edit` (write), `cloud` (claude/codex remote), `ralph` (DEPRECATED — removed in 0.4.0) |
 | `cwd` | No | Working directory for agent |
-| `effort` | No | `fast`, `default`, `detailed` - maps to agent models |
+| `effort` | No | `low`, `medium` (default), `high`, `xhigh`, `max`, `auto`. Legacy `fast`/`default`/`detailed` still accepted. |
 
 **Returns immediately** with `agent_id`. Don't call Status right away - wait 2+ minutes for agent to do work.
 
@@ -187,7 +187,9 @@ For implementation, refactoring, fixes. Agent can write files.
 | Cursor | `-f` |
 | OpenCode | write permissions |
 
-### Ralph Mode (autonomous)
+### Ralph Mode (autonomous) — DEPRECATED
+
+**Deprecated in 0.3.0, will be removed in 0.4.0.** Spawns still work but emit a warning on stderr. Prefer a normal spawn with a task-list prompt, or use agents-cli's `oracle` / `supervisor` primitives.
 
 Spawns ONE agent with full permissions and instructions to work through all tasks in a `RALPH.md` file.
 
@@ -233,7 +235,7 @@ Checks which agent CLIs are installed using `checkCliAvailable()` in `agents.ts`
 
 ### Config Location
 
-**Primary:** `~/.agents/swarm/config.json`
+**Primary:** `~/.agents/teams/config.json`
 **Legacy fallback:** `~/.agents/config.json`, `~/.swarmify/agents/config.json`
 **Temp fallback:** `/tmp/agents/` (if others not writable)
 
@@ -301,7 +303,7 @@ Checks which agent CLIs are installed using `checkCliAvailable()` in `agents.ts`
 ### Directory Structure
 
 ```
-~/.agents/swarm/
+~/.agents/teams/
   config.json          # Agent configuration
   cache.json           # Version cache (12h TTL)
   agents/
@@ -314,7 +316,7 @@ Checks which agent CLIs are installed using `checkCliAvailable()` in `agents.ts`
 
 Located in `agents.ts`, called during AgentManager initialization:
 
-1. Reads all directories in `~/.agents/swarm/agents/`
+1. Reads all directories in `~/.agents/teams/agents/`
 2. Loads `metadata.json` for each
 3. Filters by age (cleans up older than cleanupAgeDays, default 7)
 4. Filters by `cwd` if `filterByCwd` is set
@@ -421,14 +423,14 @@ bun test
 | Variable | Description |
 |----------|-------------|
 | `AGENTS_MCP_DEFAULT_MODE` | Set default mode (`plan` or `edit`). Overrides server default. |
-| `AGENTS_MCP_RALPH_FILE` | Task file name for ralph mode (default: `RALPH.md`) |
-| `AGENTS_MCP_DISABLE_RALPH` | Disable ralph mode (set to `true` or `1`) |
+| `AGENTS_MCP_RALPH_FILE` | Task file name for ralph mode (default: `RALPH.md`). DEPRECATED. |
+| `AGENTS_MCP_DISABLE_RALPH` | Disable ralph mode (set to `true` or `1`). DEPRECATED. |
 
 ## Version Checking
 
 ### Version Cache
 
-Located at `~/.agents/swarm/cache.json`:
+Located at `~/.agents/teams/cache.json`:
 ```json
 {
   "version": {

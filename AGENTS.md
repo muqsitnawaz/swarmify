@@ -47,7 +47,7 @@ Meet the future of IDEs. Swarmify turns your editor into an IAE — orchestrate 
 |------|-------------|-------------|----------|
 | `plan` | Read-only | No | Research, exploration, code review |
 | `edit` | Read + Write | No | Implementation, refactoring, fixes |
-| `ralph` | Full yolo | Yes | Autonomous iteration through RALPH.md tasks |
+| `ralph` | Full yolo | Yes | DEPRECATED in agents-mcp 0.3.0, removed in 0.4.0 |
 
 Default is `plan` for safety.
 
@@ -162,9 +162,9 @@ Extracts both env vars from VS Code terminals at startup:
 | Item | Location |
 |------|----------|
 | Extension settings | VS Code globalState |
-| Swarm config | `~/.agents/swarm/config.json` |
+| Swarm config | `~/.agents/teams/config.json` |
 | Agent prompts | `~/.swarmify/agents/prompts.json` |
-| Agent logs | `~/.agents/swarm/agents/{id}/stdout.log` |
+| Agent logs | `~/.agents/teams/agents/{id}/stdout.log` |
 | Claude session files | `~/.claude/projects/{workspace}/*.jsonl` |
 | Codex session files | `~/.codex/sessions/{year}/{month}/{day}/*.jsonl` |
 | Gemini session files | `~/.gemini/sessions/*.jsonl` |
@@ -175,8 +175,8 @@ Extracts both env vars from VS Code terminals at startup:
 - MCP server for spawning agents (Spawn, Status, Stop, Tasks tools)
 - Auto-discovers which agent CLIs are installed at startup
 - Agents run as detached background processes (survive IDE restarts)
-- Storage: `~/.agents/swarm/`
-- Config: `~/.agents/swarm/config.json`
+- Storage: `~/.agents/teams/`
+- Config: `~/.agents/teams/config.json`
 
 ### extension (swarm-ext)
 - VS Code extension for managing agent terminals
@@ -221,7 +221,9 @@ When spawning agents:
 5. Include concrete examples of expected output/structure
 6. Agents execute, you architect - never delegate exploration
 
-## Ralph Mode
+## Ralph Mode (DEPRECATED)
+
+**Deprecated in agents-mcp 0.3.0, removed in 0.4.0.** Spawns still work but emit a stderr warning. Prefer a normal spawn with a task-list prompt, or use agents-cli's `oracle` / `supervisor` primitives.
 
 Ralph mode spawns ONE agent with full permissions and instructions to autonomously work through all tasks in a `RALPH.md` file.
 

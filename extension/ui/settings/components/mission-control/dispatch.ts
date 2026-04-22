@@ -82,6 +82,31 @@ export function optimisticActivityLabel(p: PendingDispatch): string {
     : `Starting... (${label})`
 }
 
+export type CloudProvider = 'rush' | 'codex' | 'factory'
+
+/**
+ * Build the shell command we send to the Rush Cloud terminal for a cloud
+ * dispatch. 'rush' routes through `rush cloud run` (legacy, Rush-specific).
+ * Any other provider routes through the cloud-agnostic `agents cloud run
+ * --provider X` so Codex/Factory get the same repo-picker UX.
+ *
+ * `safePrompt` must already be escaped for single-quote embedding by the
+ * caller (`prompt.replace(/'/g, "'\\''")`). The repos list is joined with
+ * repeatable `--repo` flags.
+ */
+export function buildCloudDispatchCommand(input: {
+  provider: CloudProvider
+  agentType: string
+  repos: string[]
+  safePrompt: string
+}): string {
+  const repoFlags = input.repos.map((r) => `--repo ${r}`).join(' ')
+  if (input.provider === 'rush') {
+    return `rush cloud run ${input.agentType} ${repoFlags} -p '${input.safePrompt}'`
+  }
+  return `agents cloud run --provider ${input.provider} --agent ${input.agentType} ${repoFlags} -p '${input.safePrompt}'`
+}
+
 /**
  * Parse `repo:<name>` labels into fully-qualified `owner/name` repo strings.
  * Returns all matches (a task can be tagged for multiple repos).

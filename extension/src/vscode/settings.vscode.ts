@@ -928,6 +928,15 @@ export function openPanel(context: vscode.ExtensionContext): void {
       case 'dispatchTask': {
         const agentType = typeof message.agentType === 'string' ? message.agentType : 'claude';
         const target = message.target === 'cloud' ? 'cloud' : 'local';
+        // Cloud provider picks which backend we shell out to. 'rush' keeps
+        // the legacy `rush cloud run` path so existing users see no change.
+        // Any other value routes through `agents cloud run --provider X` so
+        // new providers (codex, factory) go through the agents-cli
+        // abstraction instead of a rush-specific binary.
+        const cloudProvider: 'rush' | 'codex' | 'factory' =
+          message.cloudProvider === 'codex' ? 'codex'
+            : message.cloudProvider === 'factory' ? 'factory'
+              : 'rush';
         const title = typeof message.title === 'string' ? message.title : '';
         const description = typeof message.description === 'string' ? message.description : '';
         const identifier = typeof message.identifier === 'string' ? message.identifier : '';
@@ -1003,10 +1012,18 @@ export function openPanel(context: vscode.ExtensionContext): void {
           const term = await getOrCreateRushCloudTerminal(context, workspacePath || process.cwd());
           // Single dispatch with repeatable --repo flags. The cloud agent
           // clones each repo into /workspace/<owner>/<name>/ and can commit
-          // to any of them. Firing N separate `rush cloud run` invocations
-          // would produce N disconnected pods that can't coordinate.
+          // to any of them. Firing N separate invocations would produce N
+          // disconnected pods that can't coordinate.
           const repoFlags = targetRepos.map((r) => `--repo ${r}`).join(' ');
-          term.sendText(`rush cloud run ${agentType} ${repoFlags} -p '${safePrompt}'`);
+          if (cloudProvider === 'rush') {
+            term.sendText(`rush cloud run ${agentType} ${repoFlags} -p '${safePrompt}'`);
+          } else {
+            // Route non-rush providers through the agents-cli abstraction so
+            // codex/factory get the same repo-picker UX with a provider flag.
+            term.sendText(
+              `agents cloud run --provider ${cloudProvider} --agent ${agentType} ${repoFlags} -p '${safePrompt}'`,
+            );
+          }
           term.show(true);
           break;
         }

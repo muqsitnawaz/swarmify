@@ -3,8 +3,13 @@
  * Run with: bun run tests/test_messages_live.ts
  */
 
-import { AgentManager, checkCliAvailable } from '../src/agents.js';
-import { handleSpawn, handleStatus, handleStop } from '../src/api.js';
+import {
+  AgentManager,
+  checkCliAvailable,
+  handleSpawn,
+  handleStatus,
+  handleStop,
+} from '@phnx-labs/agents-cli/teams';
 
 async function main() {
   const [available] = checkCliAvailable('gemini');
