@@ -94,8 +94,15 @@ export function BenchTab(props: BenchTabProps) {
       return true
     })
 
+    const priorityRank: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 }
     filteredUnified
-      .sort((a, b) => SOURCE_ORDER[a.source] - SOURCE_ORDER[b.source])
+      .sort((a, b) => {
+        const sourceDiff = SOURCE_ORDER[a.source] - SOURCE_ORDER[b.source]
+        if (sourceDiff !== 0) return sourceDiff
+        const ra = a.priority ? priorityRank[a.priority] ?? 99 : 99
+        const rb = b.priority ? priorityRank[b.priority] ?? 99 : 99
+        return ra - rb
+      })
       .forEach(task => {
         items.push({
           id: task.id,

@@ -7,13 +7,25 @@
 //      which forwards it to the realtime model as a tool result.
 
 import * as vscode from 'vscode';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import * as terminals from './terminals.vscode';
-import { buildForemanDigest, ForemanDigest, ForemanTerminal, ForemanCloudTask } from '../core/foreman.digest';
+import {
+  buildForemanDigest,
+  ForemanDigest,
+  ForemanTerminal,
+  ForemanCloudTask,
+  ForemanTeamRollup,
+} from '../core/foreman.digest';
 import { prefixToAgentType } from '../core/utils';
-
-const execAsync = promisify(exec);
+import {
+  listLocalSessions,
+  readSessionEvents,
+  listCloudTasks,
+  listTeams,
+  openSessionIdsFromIde,
+  SessionLite,
+  SessionEvent,
+  CloudTaskLite,
+  TeamLite,
+} from './foreman.sources';
 
 export const FOREMAN_MODEL = 'gpt-realtime';
 export const FOREMAN_VOICE = 'cedar';

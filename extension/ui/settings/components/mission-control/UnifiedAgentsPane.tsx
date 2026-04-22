@@ -1209,16 +1209,23 @@ function DispatchModal({ tasks, loading, onClose, onDispatch, onDispatchBatch, o
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return todoTasks.filter((t) => {
-      if (priorityFilter === 'urgent' && t.priority !== 'urgent') return false
-      if (priorityFilter === 'high' && t.priority !== 'high' && t.priority !== 'urgent') return false
-      if (!q) return true
-      return (
-        t.title.toLowerCase().includes(q) ||
-        (t.metadata.identifier || '').toLowerCase().includes(q) ||
-        (t.description || '').toLowerCase().includes(q)
-      )
-    })
+    const priorityRank: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 }
+    return todoTasks
+      .filter((t) => {
+        if (priorityFilter === 'urgent' && t.priority !== 'urgent') return false
+        if (priorityFilter === 'high' && t.priority !== 'high' && t.priority !== 'urgent') return false
+        if (!q) return true
+        return (
+          t.title.toLowerCase().includes(q) ||
+          (t.metadata.identifier || '').toLowerCase().includes(q) ||
+          (t.description || '').toLowerCase().includes(q)
+        )
+      })
+      .sort((a, b) => {
+        const ra = a.priority ? priorityRank[a.priority] ?? 99 : 99
+        const rb = b.priority ? priorityRank[b.priority] ?? 99 : 99
+        return ra - rb
+      })
   }, [todoTasks, query, priorityFilter])
 
   const focusedTask = filtered.find((t) => t.id === focusedTaskId) || filtered[0]
