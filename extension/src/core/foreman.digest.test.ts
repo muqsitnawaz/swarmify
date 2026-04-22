@@ -34,9 +34,9 @@ test('two claudes rolls up to plural count', () => {
   const now = 1_700_000_000_000;
   const d = buildForemanDigest(
     [
-      { name: 'Claude a', lastActivityMs: now - 5_000 },
-      { name: 'Claude b', lastActivityMs: now - 5_000 },
-      { name: 'Codex c', lastActivityMs: now - 5_000 },
+      { name: 'Claude - auth', lastActivityMs: now - 5_000 },
+      { name: 'Claude - api', lastActivityMs: now - 5_000 },
+      { name: 'Codex - ui', lastActivityMs: now - 5_000 },
     ],
     now
   );
@@ -49,7 +49,7 @@ test('long idle agent becomes concern', () => {
   const d = buildForemanDigest(
     [
       {
-        name: 'Gemini x',
+        name: 'Gemini - staging',
         startedAtMs: now - 15 * 60_000,
         lastActivityMs: now - 5 * 60_000,
       },

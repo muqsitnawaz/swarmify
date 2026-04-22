@@ -19,7 +19,7 @@ import {
   type AgentConfig,
   type AgentType,
   type EffortLevel,
-} from '@phnx-labs/agents-cli/teams';
+} from '@swarmify/agents-cli/teams';
 import { resolveLedger } from './ledger/index.js';
 import { spawnCloudAgent, isCloudSupported, extractPrUrl } from './cloud.js';
 import { isDangerousPath, getRalphConfig, buildRalphPrompt } from './ralph.js';

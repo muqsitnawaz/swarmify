@@ -1,0 +1,1 @@
+export { ForemanTab } from './ForemanTab'

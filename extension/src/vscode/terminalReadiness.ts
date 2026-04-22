@@ -68,9 +68,18 @@ export function initReadiness(context: vscode.ExtensionContext): void {
   context.subscriptions.push(closeDisposable);
 }
 
+export interface RegisterOptions {
+  // When true, the terminal was restored after an IDE reload and its agent is
+  // already running. Mark all events as fired immediately; do not probe.
+  restored?: boolean;
+}
+
 // Register a terminal at creation time. Kicks off tabReady + shellReady probes.
 // Idempotent: calling twice on the same terminal is a no-op.
-export function registerTerminal(terminal: vscode.Terminal): void {
+export function registerTerminal(
+  terminal: vscode.Terminal,
+  opts: RegisterOptions = {}
+): void {
   if (registry.has(terminal)) return;
 
   const r: Registered = {
@@ -80,18 +89,27 @@ export function registerTerminal(terminal: vscode.Terminal): void {
     disposables: [],
     timers: [],
     watchers: [],
-    agentArmed: false,
+    agentArmed: opts.restored === true,
   };
   registry.set(terminal, r);
 
+  if (opts.restored) {
+    // Resolve pid for completeness but skip all probes — the agent is up.
+    Promise.resolve(terminal.processId).then((pid) => {
+      if (pid) r.pid = pid;
+    }, () => { /* ignore */ });
+    markEvent(r.entry, 'agentReady');
+    return;
+  }
+
   // tabReady: resolves as soon as the pty is allocated.
-  terminal.processId.then((pid) => {
+  Promise.resolve(terminal.processId).then((pid) => {
     if (!pid) return;
     r.pid = pid;
     markEvent(r.entry, 'tabReady');
     startShellReadyProbe(r);
     startPromptReadyFallbackProbe(r);
-  }).catch(() => {
+  }, () => {
     // Terminal was disposed before pid resolved.
   });
 }

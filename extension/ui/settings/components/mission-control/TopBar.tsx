@@ -1,7 +1,7 @@
 import React from 'react'
 import { Icon } from './icons'
 
-export type TabKey = 'floor' | 'bench' | 'panel'
+export type TabKey = 'floor' | 'bench' | 'foreman' | 'panel'
 
 interface TopBarProps {
   version?: string
@@ -51,6 +51,12 @@ export function TopBar({
           onClick={() => onTabChange('bench')}
         >
           Bench
+        </button>
+        <button
+          className={`sw-tab ${activeTab === 'foreman' ? 'active' : ''}`}
+          onClick={() => onTabChange('foreman')}
+        >
+          Foreman
         </button>
         <button
           className={`sw-tab ${activeTab === 'panel' ? 'active' : ''}`}

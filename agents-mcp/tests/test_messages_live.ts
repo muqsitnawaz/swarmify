@@ -9,7 +9,7 @@ import {
   handleSpawn,
   handleStatus,
   handleStop,
-} from '@phnx-labs/agents-cli/teams';
+} from '@swarmify/agents-cli/teams';
 
 async function main() {
   const [available] = checkCliAvailable('gemini');

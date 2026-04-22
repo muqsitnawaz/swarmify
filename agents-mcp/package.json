@@ -32,7 +32,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
-    "@phnx-labs/agents-cli": "file:../../agents-cli"
+    "@swarmify/agents-cli": "file:../../agents-cli"
   },
   "devDependencies": {
     "@types/node": "^20.x",
