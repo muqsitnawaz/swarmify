@@ -46,6 +46,47 @@ export function inlineContinueInstructions(
 }
 
 /**
+ * Build the shell command that launches the target agent version. For Claude
+ * we pin the session id via `--session-id <uuid>` so the jsonl appears at a
+ * predictable path — lets `armAgentReady` fs.watch fire at the exact moment
+ * the TUI is live instead of guessing from process state. Other agents don't
+ * support the flag today; newSessionId is ignored for them.
+ */
+export function buildLaunchCommand(
+  agentBinary: string,
+  version: string,
+  agentKey: string,
+  newSessionId: string | null
+): string {
+  const base = `${agentBinary}@${version}`;
+  if (agentKey === 'claude' && newSessionId) {
+    return `${base} --session-id ${newSessionId}`;
+  }
+  return base;
+}
+
+/**
+ * Build the text the resume flow types into the agent's TUI prompt to make
+ * it load the OLD session's transcript. Prefers the `/continue` slash
+ * command when it's synced to the target version's home; falls back to the
+ * inlined body of the central continue.md; last resort is a terse
+ * instruction string.
+ */
+export function buildResumeInput(
+  oldSessionId: string,
+  hasContinueCmd: boolean,
+  centralContinueMdBody: string | null
+): string {
+  if (hasContinueCmd) {
+    return `/continue ${oldSessionId}`;
+  }
+  if (centralContinueMdBody) {
+    return inlineContinueInstructions(centralContinueMdBody, oldSessionId);
+  }
+  return `Resume previous work by loading session ${oldSessionId}. Run \`agents sessions ${oldSessionId}\` to load the transcript, assess current state, then continue working.`;
+}
+
+/**
  * Pick the best signed-in version to resume into.
  *
  * Ranking:
