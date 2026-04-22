@@ -506,6 +506,12 @@ export async function activate(context: vscode.ExtensionContext) {
   // Initialize terminal readiness event tracking (shell integration + close cleanup)
   readiness.initReadiness(context);
 
+  // Cross-window live-terminal registry: every VS Code window publishes its
+  // agent terminals to a shared JSON file so the Foreman (and future tools)
+  // can see the factory state across all windows. Keepalive every 15s; also
+  // fires on open/close.
+  initForemanRegistry(context);
+
   // Initialize session pre-warming (runs in background)
   setTimeout(() => {
     prewarm.initializePrewarming(context).catch(err => {
@@ -2851,6 +2857,26 @@ async function reopenLastClosedSession(context: vscode.ExtensionContext): Promis
 
   terminal.show();
   console.log(`[REOPEN] Reopened session: ${closed.sessionId} (${closed.agentType})`);
+}
+
+function initForemanRegistry(context: vscode.ExtensionContext): void {
+  // Lazy import to avoid loading the registry before activate() fires.
+  const registry = require('./foreman.registry') as typeof import('./foreman.registry');
+  let timer: NodeJS.Timeout | undefined;
+  const publish = async () => {
+    try {
+      const snap = await registry.snapshotOwnTerminals();
+      registry.publishLiveTerminals(snap);
+    } catch { /* best effort */ }
+  };
+  context.subscriptions.push(
+    vscode.window.onDidOpenTerminal(() => { void publish(); }),
+    vscode.window.onDidCloseTerminal(() => { void publish(); }),
+    vscode.window.onDidChangeTerminalState(() => { void publish(); }),
+  );
+  timer = setInterval(publish, 15_000);
+  context.subscriptions.push({ dispose: () => { if (timer) clearInterval(timer); } });
+  void publish();
 }
 
 export async function deactivate(): Promise<void> {
