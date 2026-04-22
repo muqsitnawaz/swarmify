@@ -94,6 +94,17 @@ async function resolveGithubOwner(
   return null;
 }
 
+// True when the task identifier looks like a Linear ticket (e.g. RUSH-461).
+// Linear-sourced cloud dispatches never silently fall back to the workspace
+// repo — the workspace is often a different codebase than the ticket targets
+// (e.g. dispatching RUSH-461 from the swarmify workspace must NOT default to
+// muqsitnawaz/swarmify). Mirrored in ui/settings/components/mission-control/
+// dispatch.ts for the webview — keep in sync.
+function isLinearSourcedTask(identifier: string | null | undefined): boolean {
+  if (typeof identifier !== 'string') return false;
+  return /^[A-Z][A-Z0-9]*-\d+$/.test(identifier.trim());
+}
+
 // Parse repo:<name> labels from a task, combine with the resolved owner.
 // Returns all resolved repos (a task can target multiple repos).
 function resolveReposFromLabels(labels: string[] | undefined, owner: string | null): string[] {
@@ -1026,8 +1037,14 @@ export function openPanel(context: vscode.ExtensionContext): void {
           } else {
             const owner = await resolveGithubOwner(workspacePath, currentSettings);
             targetRepos = resolveReposFromLabels(labels, owner);
+            const isLinear = isLinearSourcedTask(identifier);
 
-            if (targetRepos.length === 0 && workspacePath) {
+            // Workspace-repo fallback is only safe for non-Linear tasks
+            // (markdown, ad-hoc) where the workspace IS the target. Linear
+            // tasks must resolve via explicit `repo:<name>` label or through
+            // the picker — silently dispatching RUSH-* to the current
+            // workspace caused RUSH-461 to go to swarmify instead of agents.
+            if (targetRepos.length === 0 && !isLinear && workspacePath) {
               const workspaceRepo = await getGitHubRepo(workspacePath);
               if (workspaceRepo) targetRepos = [workspaceRepo];
             }
@@ -1045,6 +1062,51 @@ export function openPanel(context: vscode.ExtensionContext): void {
               break;
             }
 
+            // Linear task with no repo label: show the picker with the
+            // owner's full gh repo list so the user picks explicitly. No
+            // pre-selection — forces a conscious choice, avoids the "I
+            // clicked Dispatch and it went to the wrong repo" footgun.
+            if (targetRepos.length === 0 && isLinear && owner) {
+              const ghRepos: string[] = await new Promise((resolve) => {
+                exec(
+                  `gh repo list ${owner} --limit 200 --json nameWithOwner -q '.[].nameWithOwner'`,
+                  (err, stdout) => {
+                    if (err || !stdout) { resolve([]); return; }
+                    resolve(stdout.split('\n').map((s) => s.trim()).filter(Boolean));
+                  },
+                );
+              });
+              const workspaceRepo = workspacePath ? await getGitHubRepo(workspacePath) : null;
+              // Float the workspace repo to the top (common case: user is
+              // working in a monorepo that IS the target) so they can
+              // one-click confirm without scrolling 100+ repos.
+              const ordered = workspaceRepo && ghRepos.includes(workspaceRepo)
+                ? [workspaceRepo, ...ghRepos.filter((r) => r !== workspaceRepo)]
+                : ghRepos.length > 0
+                  ? ghRepos
+                  : workspaceRepo
+                    ? [workspaceRepo]
+                    : [];
+              if (ordered.length === 0) {
+                vscode.window.showErrorMessage(
+                  `Cloud dispatch: no repos found under ${owner}. Add a \`repo:<name>\` Linear label or check gh auth.`,
+                );
+                break;
+              }
+              settingsPanel?.webview.postMessage({
+                type: 'pickRepos',
+                taskId: message.taskId,
+                agentType,
+                repos: ordered,
+                preSelected: [],
+                title,
+                description,
+                identifier,
+                labels,
+              });
+              break;
+            }
+
             if (targetRepos.length === 0) {
               vscode.window.showErrorMessage(
                 'Cloud dispatch: could not resolve a target repo. Add a `repo:<name>` Linear label, or open the repo as the workspace.'
@@ -1058,6 +1120,7 @@ export function openPanel(context: vscode.ExtensionContext): void {
                 taskId: message.taskId,
                 agentType,
                 repos: targetRepos,
+                preSelected: targetRepos,
                 title,
                 description,
                 identifier,
