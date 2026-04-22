@@ -4,6 +4,16 @@ import { AgentAvatar, agentShortChunk } from './AgentAvatar'
 import { Icon } from './icons'
 import { relTime, taskNameToTitle, swarmOverallStatus, shortDuration } from './types'
 import { postMessage } from '../../hooks'
+import {
+  isTerminalActive,
+  isTerminalJustSpawned,
+  reconcilePending,
+  pruneExpiredPending,
+  filterDispatchedTaskIds,
+  optimisticActivityLabel,
+  PENDING_DISPATCH_TTL_MS,
+  type PendingDispatch,
+} from './dispatch'
 
 const NEW_AGENT_MENU: Array<{ agent: string; name: string; abbr: string; keys: string[] }> = [
   { agent: 'claude', name: 'Claude', abbr: 'CC', keys: ['Cmd', 'Shift', 'A'] },
@@ -61,9 +71,8 @@ function buildUnifiedList(terminals: TerminalInfo[], tasks: TaskSummary[]): Unif
   const now = Date.now()
   for (const t of terminals) {
     const chunk = agentShortChunk(t.sessionId) || (t.id ?? '').slice(-8)
-    const ageMs = now - (t.createdAt || 0)
-    const isJustSpawned = ageMs >= 0 && ageMs < 15000
-    const isActive = t.status === 'running' || !!t.currentActivity || isJustSpawned
+    const justSpawned = isTerminalJustSpawned(t.createdAt, now)
+    const isActive = isTerminalActive(t, now)
     const files: string[] = []
     if (t.recentFiles) files.push(...t.recentFiles.slice(0, 5))
     items.push({
@@ -71,7 +80,7 @@ function buildUnifiedList(terminals: TerminalInfo[], tasks: TaskSummary[]): Unif
       id: `term-${t.id}`,
       agentType: t.agentType,
       displayName: `${t.agentType}-${chunk}`,
-      activity: t.currentActivity || t.label || (isJustSpawned ? 'Starting...' : t.status === 'idle' ? 'idle' : t.role ?? 'terminal'),
+      activity: t.currentActivity || t.label || (justSpawned ? 'Starting...' : t.status === 'idle' ? 'idle' : t.role ?? 'terminal'),
       active: isActive,
       duration: t.firstMessageTimestamp ? relTime(t.firstMessageTimestamp) : '',
       timestamp: t.lastActivityTimestamp || new Date(t.createdAt).toISOString(),
@@ -238,40 +247,130 @@ function shortPrLabel(url: string): string {
   }
 }
 
-interface PrPopoverItem {
-  key: string
-  title: string
-  url: string
-  agentType: string
-  timestamp: string
+type StatPopoverKey = 'shipped' | 'open' | 'running' | 'nextup' | 'files'
+
+function statPopoverTitle(key: StatPopoverKey): string {
+  switch (key) {
+    case 'shipped': return 'Shipped today'
+    case 'open': return 'Open PRs'
+    case 'running': return 'Running agents'
+    case 'nextup': return 'Next up'
+    case 'files': return 'Files today'
+  }
 }
 
-function PrPopover({
+function statPopoverEmptyLabel(key: StatPopoverKey): string {
+  switch (key) {
+    case 'shipped': return 'No PRs shipped yet'
+    case 'open': return 'No open PRs'
+    case 'running': return 'No running agents'
+    case 'nextup': return 'Queue is empty'
+    case 'files': return 'No files touched today'
+  }
+}
+
+interface BuildRowsCtx {
+  activeItems: UnifiedAgent[]
+  queueTasks: UnifiedTask[]
+  filesToday: string[]
+  shippedPRs: Array<{ key: string; title: string; url: string; agentType: string; timestamp: string }>
+  openPRs: Array<{ key: string; title: string; url: string; agentType: string; timestamp: string }>
+  onOpenExternal: (url: string) => void
+  onFocusTerminal: (terminalId: string) => void
+  onOpenFile: (path: string) => void
+}
+
+function buildStatPopoverRows(key: StatPopoverKey, ctx: BuildRowsCtx): StatPopoverRow[] {
+  switch (key) {
+    case 'shipped':
+    case 'open': {
+      const prs = key === 'shipped' ? ctx.shippedPRs : ctx.openPRs
+      return prs.map((pr) => ({
+        key: pr.key,
+        icon: <AgentAvatar id={pr.agentType} size={16} />,
+        title: pr.title,
+        subtitle: shortPrLabel(pr.url),
+        onClick: () => ctx.onOpenExternal(pr.url),
+      }))
+    }
+    case 'running': {
+      return ctx.activeItems.map((item) => {
+        const terminalId = item.kind === 'terminal' ? item.terminal?.id : undefined
+        const action = terminalId
+          ? () => ctx.onFocusTerminal(terminalId)
+          : item.prUrl
+            ? () => ctx.onOpenExternal(item.prUrl as string)
+            : undefined
+        return {
+          key: item.id,
+          icon: <AgentAvatar id={item.agentType} size={16} />,
+          title: item.displayName,
+          subtitle: item.activity.slice(0, 48),
+          onClick: action,
+          disabled: !action,
+        }
+      })
+    }
+    case 'nextup': {
+      return ctx.queueTasks.map((task) => ({
+        key: task.id,
+        title: task.title,
+        subtitle: task.metadata.identifier || undefined,
+        onClick: task.metadata.url ? () => ctx.onOpenExternal(task.metadata.url as string) : undefined,
+        disabled: !task.metadata.url,
+      }))
+    }
+    case 'files': {
+      return ctx.filesToday.map((path) => {
+        const base = path.split('/').pop() || path
+        const dir = path.slice(0, path.length - base.length).replace(/\/$/, '')
+        return {
+          key: path,
+          title: base,
+          subtitle: dir || undefined,
+          onClick: () => ctx.onOpenFile(path),
+        }
+      })
+    }
+  }
+}
+
+interface StatPopoverRow {
+  key: string
+  icon?: React.ReactNode
+  title: string
+  subtitle?: string
+  disabled?: boolean
+  onClick?: () => void
+}
+
+function StatPopover({
   title,
-  prs,
-  onOpen,
+  rows,
+  emptyLabel,
 }: {
   title: string
-  prs: PrPopoverItem[]
-  onOpen: (url: string) => void
+  rows: StatPopoverRow[]
+  emptyLabel: string
 }) {
   return (
     <div className="sw-floor-pr-popover" role="menu">
       <div className="sw-floor-pr-popover-head">{title}</div>
-      {prs.length === 0 ? (
-        <div className="sw-floor-pr-popover-empty">No PRs</div>
+      {rows.length === 0 ? (
+        <div className="sw-floor-pr-popover-empty">{emptyLabel}</div>
       ) : (
         <div className="sw-floor-pr-popover-list">
-          {prs.map((pr) => (
+          {rows.map((row) => (
             <button
-              key={pr.key}
+              key={row.key}
               type="button"
               className="sw-floor-pr-popover-row"
-              onClick={() => onOpen(pr.url)}
+              onClick={row.onClick}
+              disabled={row.disabled || !row.onClick}
             >
-              <AgentAvatar id={pr.agentType} size={16} />
-              <span className="sw-floor-pr-popover-title">{pr.title}</span>
-              <span className="sw-floor-pr-popover-num">{shortPrLabel(pr.url)}</span>
+              {row.icon}
+              <span className="sw-floor-pr-popover-title">{row.title}</span>
+              {row.subtitle && <span className="sw-floor-pr-popover-num">{row.subtitle}</span>}
             </button>
           ))}
         </div>
@@ -310,27 +409,16 @@ interface UnifiedAgentsPaneProps {
   onNavigate?: (tab: 'floor' | 'bench' | 'panel') => void
 }
 
-type PendingDispatch = {
-  id: string
-  agentType: string
-  target: 'local' | 'cloud'
-  taskId: string
-  taskIdentifier: string
-  title: string
-  createdAt: number
-}
-
-const PENDING_DISPATCH_TTL_MS = 30000
-
 export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks, unifiedTasksLoading, onDispatch, onNavigate }: UnifiedAgentsPaneProps) {
   const [newMenuOpen, setNewMenuOpen] = useState(false)
   const [recentOpen, setRecentOpen] = useState(false)
-  const [prPopover, setPrPopover] = useState<'shipped' | 'open' | null>(null)
+  const [statPopover, setStatPopover] = useState<'shipped' | 'open' | 'running' | 'nextup' | 'files' | null>(null)
   const [dispatchOpen, setDispatchOpen] = useState(false)
   const [pendingDispatches, setPendingDispatches] = useState<PendingDispatch[]>([])
   const [tick, setTick] = useState(0)
   const newMenuRef = useRef<HTMLDivElement>(null)
-  const prPopoverRef = useRef<HTMLDivElement>(null)
+  const statPopoverRef = useRef<HTMLDivElement>(null)
+  const nextUpSectionRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (pendingDispatches.length === 0) return
@@ -341,10 +429,10 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   useEffect(() => {
     if (pendingDispatches.length === 0) return
     const now = Date.now()
-    const stale = pendingDispatches.filter((p) => now - p.createdAt >= PENDING_DISPATCH_TTL_MS)
-    if (stale.length > 0) {
-      setPendingDispatches((prev) => prev.filter((p) => now - p.createdAt < PENDING_DISPATCH_TTL_MS))
-    }
+    setPendingDispatches((prev) => {
+      const pruned = pruneExpiredPending(prev, now)
+      return pruned.length === prev.length ? prev : pruned
+    })
   }, [tick, pendingDispatches])
 
   useEffect(() => {
@@ -357,55 +445,33 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   }, [newMenuOpen])
 
   useEffect(() => {
-    if (!prPopover) return
+    if (!statPopover) return
     const handler = (e: MouseEvent) => {
-      if (prPopoverRef.current && !prPopoverRef.current.contains(e.target as Node)) setPrPopover(null)
+      if (statPopoverRef.current && !statPopoverRef.current.contains(e.target as Node)) setStatPopover(null)
     }
     window.addEventListener('mousedown', handler)
     return () => window.removeEventListener('mousedown', handler)
-  }, [prPopover])
+  }, [statPopover])
 
   const baseItems = useMemo(() => buildUnifiedList(terminals, tasks), [terminals, tasks])
 
   // Reconcile: drop a pending dispatch once a matching real terminal/task appears.
-  // Local: match by agentType on a terminal created at/after the pending dispatch.
-  // Cloud: match by agentType on a swarm task started at/after the pending dispatch.
   useEffect(() => {
     if (pendingDispatches.length === 0) return
     setPendingDispatches((prev) => {
-      if (prev.length === 0) return prev
-      const consumed = new Set<string>()
-      for (const p of prev) {
-        if (p.target === 'local') {
-          const match = terminals.find((t) =>
-            t.agentType === p.agentType && (t.createdAt || 0) >= p.createdAt - 1000
-          )
-          if (match) consumed.add(p.id)
-        } else {
-          const match = tasks.find((task) =>
-            task.agents.some((a) =>
-              a.agent_type === p.agentType &&
-              a.started_at &&
-              new Date(a.started_at).getTime() >= p.createdAt - 1000
-            )
-          )
-          if (match) consumed.add(p.id)
-        }
-      }
-      if (consumed.size === 0) return prev
-      return prev.filter((p) => !consumed.has(p.id))
+      const next = reconcilePending(prev, terminals, tasks)
+      return next.length === prev.length ? prev : next
     })
   }, [terminals, tasks, pendingDispatches])
 
   const optimisticItems = useMemo<UnifiedAgent[]>(() => {
     void tick
-    const now = Date.now()
     return pendingDispatches.map((p) => ({
       kind: p.target === 'cloud' ? 'cloud' : 'terminal',
       id: p.id,
       agentType: p.agentType,
       displayName: p.taskIdentifier || p.title.slice(0, 40),
-      activity: p.target === 'cloud' ? `Queuing on Rush Cloud... (${p.taskIdentifier || p.title.slice(0, 40)})` : `Starting... (${p.taskIdentifier || p.title.slice(0, 40)})`,
+      activity: optimisticActivityLabel(p),
       active: true,
       duration: '',
       timestamp: new Date(p.createdAt).toISOString(),
@@ -427,13 +493,12 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   )
 
   // Queue: urgent/high tasks that are todo (exclude tasks currently being dispatched)
-  const queueTasks = useMemo(() =>
-    unifiedTasks
-      .filter((t) => t.status === 'todo' && (t.priority === 'urgent' || t.priority === 'high'))
-      .filter((t) => !pendingTaskIds.has(t.id))
-      .slice(0, 4),
-    [unifiedTasks, pendingTaskIds]
-  )
+  const queueTasks = useMemo(() => {
+    const eligible = unifiedTasks.filter(
+      (t) => t.status === 'todo' && (t.priority === 'urgent' || t.priority === 'high')
+    )
+    return filterDispatchedTaskIds(eligible, pendingTaskIds).slice(0, 4)
+  }, [unifiedTasks, pendingTaskIds])
 
   // Intake queue: cloud teammates that a cloud provider flagged as
   // 'input_required'. Surface one banner per team; submit pipes through to
@@ -460,10 +525,12 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     return fileSet.size
   }, [items])
 
+  // Open PRs: items with a prUrl whose PR is not merged/completed.
+  // swarmOverallStatus treats status === 'completed' as 'merged', so we exclude those.
   const openPRs = useMemo(
     () =>
       items
-        .filter((i) => i.prUrl)
+        .filter((i) => i.prUrl && i.status !== 'completed')
         .map((i) => ({
           key: i.id,
           title: i.displayName,
@@ -501,7 +568,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   const prsShippedToday = shippedPRs.length
 
   // Files touched today: unique files across agents that had activity today.
-  const filesTouchedToday = useMemo(() => {
+  const filesToday = useMemo(() => {
     const startOfDay = new Date()
     startOfDay.setHours(0, 0, 0, 0)
     const startMs = startOfDay.getTime()
@@ -515,8 +582,9 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
         for (const f of a.files_modified || []) set.add(f)
       }
     }
-    return set.size
+    return Array.from(set).sort()
   }, [tasks])
+  const filesTouchedToday = filesToday.length
 
   const backlogRemaining = useMemo(() => {
     const todoCount = unifiedTasks.filter((t) => t.status === 'todo').length
@@ -602,29 +670,60 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
       <div className="sw-floor-header">
         <div className="sw-floor-title">Factory Floor</div>
         <div className="sw-floor-header-right">
-          <div className="sw-floor-stat-bar" ref={prPopoverRef}>
-            <span><b>{activeItems.length}</b> running</span>
-            <span className="sw-stat-sep">·</span>
-            <span><b>{queueTasks.length}</b> next up</span>
-            <span className="sw-stat-sep">·</span>
-            <span title="Unique files touched by agents today"><b>{filesTouchedToday}</b> files today</span>
+          <div className="sw-floor-stat-bar" ref={statPopoverRef}>
+            <button
+              type="button"
+              className={`sw-floor-stat-btn${statPopover === 'running' ? ' active' : ''}`}
+              title="Active agents"
+              disabled={activeItems.length === 0}
+              onClick={() => setStatPopover(statPopover === 'running' ? null : 'running')}
+            >
+              <b>{activeItems.length}</b> running
+            </button>
             <span className="sw-stat-sep">·</span>
             <button
               type="button"
-              className={`sw-floor-stat-btn${prPopover === 'shipped' ? ' active' : ''}`}
+              className={`sw-floor-stat-btn${statPopover === 'nextup' ? ' active' : ''}`}
+              title="Next up in the queue"
+              disabled={queueTasks.length === 0}
+              onClick={() => {
+                if (statPopover === 'nextup') {
+                  setStatPopover(null)
+                } else {
+                  setStatPopover('nextup')
+                  nextUpSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                }
+              }}
+            >
+              <b>{queueTasks.length}</b> next up
+            </button>
+            <span className="sw-stat-sep">·</span>
+            <button
+              type="button"
+              className={`sw-floor-stat-btn${statPopover === 'files' ? ' active' : ''}`}
+              title="Unique files touched by agents today"
+              disabled={filesTouchedToday === 0}
+              onClick={() => setStatPopover(statPopover === 'files' ? null : 'files')}
+            >
+              <b>{filesTouchedToday}</b> files today
+            </button>
+            <span className="sw-stat-sep">·</span>
+            <button
+              type="button"
+              className={`sw-floor-stat-btn${statPopover === 'shipped' ? ' active' : ''}`}
               title="PRs shipped today (completed with pr_url)"
               disabled={prsShippedToday === 0}
-              onClick={() => setPrPopover(prPopover === 'shipped' ? null : 'shipped')}
+              onClick={() => setStatPopover(statPopover === 'shipped' ? null : 'shipped')}
             >
               <b>{prsShippedToday}</b> PRs shipped
             </button>
             <span className="sw-stat-sep">·</span>
             <button
               type="button"
-              className={`sw-floor-stat-btn${prPopover === 'open' ? ' active' : ''}`}
+              className={`sw-floor-stat-btn${statPopover === 'open' ? ' active' : ''}`}
               title="Open PRs across all active and recent agents"
               disabled={totalPRs === 0}
-              onClick={() => setPrPopover(prPopover === 'open' ? null : 'open')}
+              onClick={() => setStatPopover(statPopover === 'open' ? null : 'open')}
             >
               <b>{totalPRs}</b> PRs open
             </button>
@@ -641,14 +740,29 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
                 </button>
               </>
             )}
-            {prPopover && (
-              <PrPopover
-                title={prPopover === 'shipped' ? 'Shipped today' : 'Open PRs'}
-                prs={prPopover === 'shipped' ? shippedPRs : openPRs}
-                onOpen={(url) => {
-                  postMessage({ type: 'openExternal', url })
-                  setPrPopover(null)
-                }}
+            {statPopover && (
+              <StatPopover
+                title={statPopoverTitle(statPopover)}
+                emptyLabel={statPopoverEmptyLabel(statPopover)}
+                rows={buildStatPopoverRows(statPopover, {
+                  activeItems,
+                  queueTasks,
+                  filesToday,
+                  shippedPRs,
+                  openPRs,
+                  onOpenExternal: (url) => {
+                    postMessage({ type: 'openExternal', url })
+                    setStatPopover(null)
+                  },
+                  onFocusTerminal: (id) => {
+                    postMessage({ type: 'focusTerminal', terminalId: id })
+                    setStatPopover(null)
+                  },
+                  onOpenFile: (path) => {
+                    postMessage({ type: 'openTerminalFile', path })
+                    setStatPopover(null)
+                  },
+                })}
               />
             )}
           </div>
@@ -667,7 +781,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
 
       {/* Next Up -- scheduled / urgent tasks about to run */}
       {queueTasks.length > 0 && (
-        <div className="sw-queue-section">
+        <div className="sw-queue-section" ref={nextUpSectionRef}>
           <div className="sw-section-header-row">
             <span className="sw-section-label">Next Up</span>
             <span className="sw-section-count-pill">{queueTasks.length}</span>

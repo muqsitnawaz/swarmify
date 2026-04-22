@@ -453,7 +453,7 @@ export function openPanel(context: vscode.ExtensionContext): void {
   // Check for orphaned dashboard tab (extension restarted but tab survived)
   for (const group of vscode.window.tabGroups.all) {
     for (const tab of group.tabs) {
-      if (tab.input instanceof vscode.TabInputWebview && tab.label === 'Agents') {
+      if (tab.input instanceof vscode.TabInputWebview && tab.label === 'Factory') {
         return;
       }
     }
@@ -461,7 +461,7 @@ export function openPanel(context: vscode.ExtensionContext): void {
 
   settingsPanel = vscode.window.createWebviewPanel(
     'agentsSettings',
-    'Agents',
+    'Factory',
     vscode.ViewColumn.One,
     {
       enableScripts: true,
