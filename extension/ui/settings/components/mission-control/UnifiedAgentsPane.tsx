@@ -1088,8 +1088,10 @@ function AgentStrip({ item, dimmed, onFocus, onKill, onRetry }: {
 }
 
 // Dispatch card with agent picker
-function DispatchCard({ task, onDispatch }: { task: UnifiedTask; onDispatch: (task: UnifiedTask, agent: string) => void }) {
+function DispatchCard({ task, onDispatch }: { task: UnifiedTask; onDispatch: (task: UnifiedTask, agent: string, target: 'local' | 'cloud') => void }) {
   const [selectedAgent, setSelectedAgent] = useState('claude')
+  const [target, setTarget] = useState<'local' | 'cloud'>('local')
+  const [dispatchedAt, setDispatchedAt] = useState<number | null>(null)
   const priorityCls = task.priority === 'urgent' ? 'urgent' : task.priority === 'high' ? 'high' : 'medium'
   const priorityLabel = task.priority ? task.priority.charAt(0).toUpperCase() + task.priority.slice(1) : 'Medium'
   const agents = [
@@ -1097,6 +1099,14 @@ function DispatchCard({ task, onDispatch }: { task: UnifiedTask; onDispatch: (ta
     { id: 'codex', abbr: 'CX' },
     { id: 'gemini', abbr: 'GX' },
   ]
+
+  const handleClick = () => {
+    onDispatch(task, selectedAgent, target)
+    setDispatchedAt(Date.now())
+    setTimeout(() => setDispatchedAt(null), 2200)
+  }
+
+  const dispatched = dispatchedAt !== null
 
   return (
     <div className="sw-queue-card">
@@ -1122,7 +1132,27 @@ function DispatchCard({ task, onDispatch }: { task: UnifiedTask; onDispatch: (ta
             </button>
           ))}
         </div>
-        <button className="sw-btn-dispatch" onClick={() => onDispatch(task, selectedAgent)}>Dispatch</button>
+        <div className="sw-queue-dispatch-row">
+          <div className="sw-dispatch-target" title="Where to run">
+            <button
+              type="button"
+              className={`sw-dispatch-target-btn xs ${target === 'local' ? 'active' : ''}`}
+              onClick={() => setTarget('local')}
+            >
+              Local
+            </button>
+            <button
+              type="button"
+              className={`sw-dispatch-target-btn xs ${target === 'cloud' ? 'active' : ''}`}
+              onClick={() => setTarget('cloud')}
+            >
+              Cloud
+            </button>
+          </div>
+          <button className="sw-btn-dispatch" onClick={handleClick} disabled={dispatched}>
+            {dispatched ? `Sent to ${target}` : 'Dispatch'}
+          </button>
+        </div>
       </div>
     </div>
   )

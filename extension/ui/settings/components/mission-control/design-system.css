@@ -1960,3 +1960,21 @@
   color: var(--ds-text);
   box-shadow: var(--shadow-raised);
 }
+
+.sw-dispatch-target-btn.xs {
+  font-size: 9px;
+  padding: 2px 7px;
+  letter-spacing: 0.5px;
+}
+
+.sw-queue-dispatch-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sw-btn-dispatch:disabled {
+  opacity: 0.65;
+  cursor: default;
+  pointer-events: none;
+}
