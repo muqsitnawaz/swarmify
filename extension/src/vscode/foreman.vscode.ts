@@ -7,24 +7,35 @@
 //      which forwards it to the realtime model as a tool result.
 
 import * as vscode from 'vscode';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import * as terminals from './terminals.vscode';
-import { buildForemanDigest, ForemanDigest, ForemanTerminal } from '../core/foreman.digest';
+import { buildForemanDigest, ForemanDigest, ForemanTerminal, ForemanCloudTask } from '../core/foreman.digest';
 import { prefixToAgentType } from '../core/utils';
+
+const execAsync = promisify(exec);
 
 export const FOREMAN_MODEL = 'gpt-realtime';
 export const FOREMAN_VOICE = 'cedar';
 
 export const FOREMAN_SYSTEM_PROMPT = `You are Foreman, the voice coordinator of a factory of AI coding agents.
 
-Persona: dry, brief, Chicago-foreman energy. Sentences clip. No filler. Opinions when asked.
+Persona: dry, brief. Clipped sentences. No filler words. No adjectives without facts.
+Never say "grinding away", "humming along", "going well", "everything's on track" -
+those are content-free. If you have no specifics, say so: "nothing concrete yet".
 
-When the user speaks, call the briefing tool to know the state before answering.
-Lead with the unexpected thing, then color. Never recite what's obvious.
-Never offer to open or click things for the user - that's what their hands are for.
-Your job is to bring synthesized information, not operate the UI.
+Always call the briefing tool first. If the user asks about one agent, call focus next.
 
-If nothing is new since the last check, say so and stop.
-Keep replies under 25 words unless the user asks to expand.`.trim();
+Answering rules:
+- Lead with the SPECIFIC thing: the task, the file, the tool, the elapsed time.
+- Example good: "Claude is 12 minutes into the auth refactor, last edited jwt.ts."
+- Example bad: "Claude's been grinding for 12 minutes, humming along."
+- Never summarize as "all good" - say exactly which agent is on which task.
+- Use labels when present ("Philip Music"), kinds when not ("claude", "codex").
+- Never narrate what the UI already shows. Bring the fact, not the tour.
+- If no info: "no visible activity yet" - don't pad with speculation.
+
+Length: 1-2 sentences default. Expand only if asked.`.trim();
 
 export interface ForemanTool {
   type: 'function';
@@ -37,8 +48,20 @@ export const FOREMAN_TOOLS: ForemanTool[] = [
   {
     type: 'function',
     name: 'briefing',
-    description: 'Returns a digest of the current state of the factory floor: active agents, how long each has been running, who is blocked. Call this before answering any question about the floor.',
+    description: 'Returns a digest of the current factory floor: each active agent with label, kind, elapsed time, status, current task (what they were asked to do), recent files touched, recent tools called, and any cloud dispatches. Call this first for any question about overall state.',
     parameters: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    type: 'function',
+    name: 'focus',
+    description: 'Returns deep detail on one agent by its label or kind (e.g. "claude", "Philip Music"). Use when the user asks about a specific agent. Includes full task description, all recent files and tools, elapsed time, status.',
+    parameters: {
+      type: 'object',
+      properties: {
+        who: { type: 'string', description: 'Agent label, kind (claude/codex/gemini), or session id prefix.' },
+      },
+      required: ['who'],
+    },
   },
 ];
 
@@ -78,9 +101,18 @@ export async function mintEphemeralKey(apiKey: string): Promise<{ clientSecret: 
   return { clientSecret: value, expiresAt };
 }
 
-// Walk the live terminals across all known agent types and project them onto
-// the shape the digest builder expects. Ignores non-agent terminals naturally.
+// Walk the live terminals across all known agent types, pull rich per-agent
+// details (task, recent files, recent tools), and query the cloud dispatch
+// list. Returns a single digest the model can narrate in one sentence.
 export async function computeBriefing(workspacePath?: string): Promise<ForemanDigest> {
+  const [localAgents, cloud] = await Promise.all([
+    collectLocalAgents(workspacePath),
+    collectCloudTasks(),
+  ]);
+  return buildForemanDigest(localAgents, cloud);
+}
+
+async function collectLocalAgents(workspacePath?: string): Promise<ForemanTerminal[]> {
   const kinds = ['claude', 'codex', 'gemini', 'opencode', 'cursor'];
   const all: ForemanTerminal[] = [];
 
@@ -95,11 +127,75 @@ export async function computeBriefing(workspacePath?: string): Promise<ForemanDi
         lastActivityMs: d.lastActivityTimestamp ? Date.parse(d.lastActivityTimestamp) : d.createdAt,
         lastTool: d.currentActivity ?? null,
         status: mapStatus(d.status),
+        task: d.firstUserMessage ?? null,
+        recentFiles: d.recentFiles ?? [],
+        recentTools: d.recentTools ?? [],
+        lastFilePath: d.lastFilePath ?? null,
+        filesEdited: d.quickSummary?.filesEdited ?? 0,
+        toolCalls: d.quickSummary?.toolCalls ?? 0,
       });
     }
   }
+  return all;
+}
 
-  return buildForemanDigest(all);
+// Pulls cloud tasks via the agents-cli. Cheap, fast, no auth to manage here -
+// agents-cli already owns credentials. 2-second timeout so the briefing tool
+// never blocks the voice turn for long.
+async function collectCloudTasks(): Promise<ForemanCloudTask[]> {
+  try {
+    const { stdout } = await execAsync('agents cloud list --json', { timeout: 2_000 });
+    const raw = JSON.parse(stdout);
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .map((r: any): ForemanCloudTask => ({
+        id: String(r.id ?? ''),
+        provider: String(r.provider ?? ''),
+        agent: String(r.agent ?? ''),
+        status: String(r.status ?? ''),
+        prompt: String(r.prompt ?? '').slice(0, 200),
+        repo: r.repo ? String(r.repo) : null,
+        updated: String(r.updatedAt ?? r.createdAt ?? ''),
+      }))
+      .filter((r) => r.status === 'running' || r.status === 'needs_review' || r.status === 'completed')
+      .slice(0, 10);
+  } catch {
+    return [];
+  }
+}
+
+// Deep detail for one agent. Match by label (case-insensitive substring),
+// kind, or session id prefix. Returns null if no match so the model can say
+// "no agent like that".
+export async function computeFocus(who: string, workspacePath?: string): Promise<unknown> {
+  const digest = await computeBriefing(workspacePath);
+  const q = (who ?? '').trim().toLowerCase();
+  if (!q) return { error: 'no query' };
+
+  const match = digest.agents.find((a) => {
+    if (a.label && a.label.toLowerCase().includes(q)) return true;
+    if (a.kind.toLowerCase() === q) return true;
+    if (a.id.toLowerCase().startsWith(q)) return true;
+    return false;
+  });
+
+  if (!match) {
+    return { error: `no agent matching "${who}"`, available: digest.agents.map((a) => a.label ?? a.kind) };
+  }
+
+  return {
+    kind: match.kind,
+    label: match.label,
+    elapsed: match.elapsed,
+    status: match.status,
+    task: match.task,
+    last_tool: match.last_tool,
+    last_file: match.last_file,
+    recent_files: match.recent_files,
+    recent_tools: match.recent_tools,
+    files_edited: match.files_edited,
+    tool_calls: match.tool_calls,
+  };
 }
 
 function prefixExpand(kind: string): string {
@@ -131,12 +227,18 @@ export function getOpenAIApiKey(): string {
 // result the webview can forward back to the model as function_call_output.
 export async function runForemanTool(
   name: string,
-  _args: unknown,
+  args: unknown,
   workspacePath?: string
 ): Promise<unknown> {
   switch (name) {
     case 'briefing':
       return computeBriefing(workspacePath);
+    case 'focus': {
+      const who = (args && typeof args === 'object' && 'who' in args)
+        ? String((args as { who?: unknown }).who ?? '')
+        : '';
+      return computeFocus(who, workspacePath);
+    }
     default:
       throw new Error(`Unknown Foreman tool: ${name}`);
   }

@@ -64,6 +64,55 @@ integration event) and POSIX tools (`ps`, `pgrep`, `fs.watch`) — no proposed
 APIs, nothing fork-specific. The detection works identically in VS Code,
 VSCodium, and Cursor.
 
+## State Machine
+
+```
+                           ┌──────────────┐
+                           │  (not yet    │
+                           │  registered) │
+                           └──────┬───────┘
+                                  │ registerTerminal(t)
+                                  ▼
+                   ┌──────────────────────────────┐
+                   │  all: null                   │
+                   │  {tab, shell, prompt, agent} │
+                   └──────────────┬───────────────┘
+                                  │ processId resolves
+                                  ▼
+                   ┌──────────────────────────────┐
+                   │  tabReadyAt: t₀              │
+                   └──────────────┬───────────────┘
+                                  │ ps -o comm= matches shell
+                                  ▼
+                   ┌──────────────────────────────┐
+                   │  +shellReadyAt: t₁           │
+                   └──────────────┬───────────────┘
+                                  │ shell-integration event
+                                  │ OR pgrep idle × 2
+                                  ▼
+          ┌──────────────────────────────────────────────┐
+          │  +promptReadyAt: t₂                          │◀───┐
+          └────────────────────┬─────────────────────────┘    │
+                               │ armAgentReady(...) called    │  resetAfterAgentExit(t)
+                               │ + session file appears       │  (after ^C^C)
+                               │   OR child S-state × 10      │  clears prompt+agent
+                               │     AND runtime ≥ 2500ms     │  keeps tab+shell
+                               ▼                              │
+          ┌──────────────────────────────────────────────┐    │
+          │  +agentReadyAt: t₃ (TERMINAL STATE)          │────┘
+          └────────────────────┬─────────────────────────┘
+                               │ onDidCloseTerminal
+                               ▼
+                   ┌──────────────────────────────┐
+                   │  disposed: true              │
+                   │  (rejects pending waiters)   │
+                   └──────────────────────────────┘
+
+  Cascade rule: markEvent(E) sets all events ordered ≤ E that are still null.
+  Reset rule:   resetFrom(promptReady) clears promptReady + agentReady,
+                keeps tabReady + shellReady (pty and shell still alive).
+```
+
 ## Architecture
 
 ```
@@ -124,81 +173,250 @@ The two layers are intentional:
 - **Glue** (`swarmify/extension/src/vscode/terminalReadiness.ts`) — VS Code
   integration. Owns the per-terminal registry, probes, and `fs.watch`ers.
 
-## Lifecycle
+## User Flow: Continue
 
-### Fresh spawn
-
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│ openSingleAgent (extension.ts:1200 region)                           │
-│                                                                      │
-│  createTerminal(...)                                                 │
-│  readiness.registerTerminal(terminal)                                │
-│      │                                                               │
-│      ▼                                                               │
-│  terminal.processId ─► markEvent(tabReady)                           │
-│                       │                                              │
-│                       ├─► start ps probe ─► shellReady               │
-│                       └─► start pgrep probe ─► promptReady           │
-│                       (shell integration event also fires promptReady)│
-│                                                                      │
-│  await readiness.waitFor(terminal, 'promptReady')                    │
-│      └─► terminal.sendText(agentLaunchCommand)                       │
-│                                                                      │
-│  readiness.armAgentReady(terminal, { agentKey, sessionId, cwd })     │
-│      │                                                               │
-│      ├─► fs.watch session roots (fast path)                          │
-│      └─► start agentReady probe (fallback)                           │
-│                                                                      │
-│  (optional) await readiness.waitFor(terminal, 'agentReady')          │
-│      └─► terminal.sendText(followUpInput)  // e.g. /continue <id>    │
-└──────────────────────────────────────────────────────────────────────┘
-```
-
-### Resume / reload (after `^C^C`)
-
-The agent CLI is killed, but the shell and the VS Code terminal survive.
+The concrete user-visible flow. User has a running Claude tab out of context
+budget; wants to continue the same session in a newer Claude version.
 
 ```
-┌──────────────────────────────────────────────────────────────────────┐
-│ clearActiveTerminal / reloadActiveTerminal                           │
-│                                                                      │
-│  sendSequence '\u0003'  (Ctrl+C)                                     │
-│  sleep 100ms                                                         │
-│  sendSequence '\u0003'  (second Ctrl+C)                              │
-│                                                                      │
-│  readiness.resetAfterAgentExit(terminal)                             │
-│      ├─► clears promptReadyAt + agentReadyAt                         │
-│      ├─► keeps tabReadyAt + shellReadyAt (pty still alive)           │
-│      └─► restarts pgrep probe                                        │
-│                                                                      │
-│  await readiness.waitFor(terminal, 'promptReady')                    │
-│      ◀── pgrep probe fires when shell has no children                │
-│                                                                      │
-│  terminal.sendText(`clear && ${resumeCmd}`)                          │
-│  readiness.armAgentReady(terminal, { agentKey, sessionId, cwd })     │
-└──────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│  ①  User sees:  "Claude 2.1.110 · session abc12345 · 98% context"        │
+│      Muscle memory:  Cmd+Shift+Alt+C  →  "Continue in best version"      │
+│                                                                          │
+│  ②  Extension picks Claude 2.1.112 (best by version, signed in)          │
+│      Spawns new terminal tab, icon flips to spinner                      │
+│                                                                          │
+│  ③  Tab shows:                                                           │
+│      ┌─────────────────────────────────────────┐                         │
+│      │  CC - abc12345                          │ ← new tab, focused      │
+│      ├─────────────────────────────────────────┤                         │
+│      │  ~/src/foo %                            │ ← shell prompt ready    │
+│      │  $ claude@2.1.112                       │ ← launch typed          │
+│      │  Claude Code v2.1.112                   │                         │
+│      │  Welcome to Opus 4.7...                 │                         │
+│      │  > _                                    │ ← TUI idle              │
+│      └─────────────────────────────────────────┘                         │
+│                                                                          │
+│  ④  Extension types `/continue abc12345` into the TUI                    │
+│      ┌─────────────────────────────────────────┐                         │
+│      │  > /continue abc12345_                  │ ← lands in input box    │
+│      └─────────────────────────────────────────┘                         │
+│                                                                          │
+│  ⑤  Claude resumes, picks up where session left off                      │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
-The old code used `setTimeout(200)` + `setTimeout(1500)` — arbitrary. The new
-code fires as soon as `pgrep -P <shell_pid>` reports zero children for two
-consecutive 150 ms polls, typically within 300–500 ms of the second `^C` on a
-warm machine.
+What goes wrong without readiness events: step ④ fires before step ③'s TUI is
+actually drawn. Bytes hit Claude's stdin while it's still in boot; Claude
+discards them. User sees an empty `>` prompt and thinks Continue is broken.
+See the [Problem](#problem) timeline.
 
-### Restored terminal (after IDE reload)
+## Sequence: Fresh Spawn
 
-VS Code remembers terminal tabs across reload. When a tab reappears with the
-agent already running, we skip all probes:
+Concrete message timing for `openSingleAgent` launching Claude. Columns are
+actors; arrows are calls/events; the time axis runs downward.
 
 ```
-onDidOpenTerminal (extension.ts:566-603)
-  if (identified as agent terminal)
-    readiness.registerTerminal(terminal, { restored: true })
-        └─► markEvent(agentReady)   // cascades tab/shell/prompt
+Extension      VSCode         OS           shell      fs.watch    StateMachine
+  host         Terminal   (ps/pgrep)      (zsh)      (FSWatcher)  (ReadinessEntry)
+    │             │             │           │            │              │
+    │─createTerminal()──────────▶            │            │              │
+    │◀────Terminal obj──────────             │            │              │
+    │                                                                     │
+    │─registerTerminal(t)────────────────────────────────────────────────▶│
+    │                                                    createEntry() ──▶│
+    │                                                                     │
+    │─await t.processId─▶                                                  │
+    │◀──pid=12345──────                                                    │
+    │                                                                     │
+    │────────────────────markEvent('tabReady', t₀)───────────────────────▶│
+    │                                                                     │
+    │─spawn ps probe─▶                                                     │
+    │                 ps -p 12345 -o comm=                                 │
+    │                            ─── "zsh\n" ────▶                         │
+    │────────────────────markEvent('shellReady', t₁)─────────────────────▶│
+    │                                                                     │
+    │─spawn pgrep probe─▶                                                  │
+    │                (every 150ms)                                         │
+    │                 pgrep -P 12345                                       │
+    │                            ─── "12346" ───▶  (.zshrc running)       │
+    │                 pgrep -P 12345                                       │
+    │                            ─── "" ─────────▶  (idle tick 1/2)       │
+    │                 pgrep -P 12345                                       │
+    │                            ─── "" ─────────▶  (idle tick 2/2) ✓    │
+    │                                                                     │
+    │  (parallel path) onDidChangeTerminalShellIntegration fires           │
+    │◀───── event(terminal=t) ────                                         │
+    │                                                                     │
+    │────────────────────markEvent('promptReady', t₂)────────────────────▶│
+    │                                                                     │
+    │─waitFor('promptReady')──────────────────────────────────────────────▶│
+    │◀─── resolve ────────────────────────────────────────────────────────│
+    │                                                                     │
+    │─t.sendText("claude --session-id abc12345")─▶                         │
+    │                                        ◀── bytes to pty             │
+    │                                           zsh forks shim             │
+    │                                           shim execs claude          │
+    │                                                                     │
+    │─armAgentReady(t, {agentKey, sessionId, cwd})───────────────────────▶│
+    │                                                    set agentArmed=T │
+    │─spawn session-file watcher (fast path)─────────────────▶             │
+    │                                           fs.watch(~/.claude/...)    │
+    │                                                                     │
+    │─spawn agent probe (fallback)─▶                                       │
+    │                (every 150ms)                                         │
+    │                 pgrep -P 12345                                       │
+    │                            ─── "12346" ───▶ (child exists)           │
+    │                 ps -p 12346 -o stat=                                 │
+    │                            ─── "S+\n" ────▶ (network I/O sleep)      │
+    │                             (idle tick 1/10, childFirstSeen=t₃)     │
+    │                                                                     │
+    │                             [~1200ms of stable S-state polls]       │
+    │                                                                     │
+    │                                        claude writes session file   │
+    │                                        at ~/.claude/projects/.../   │
+    │                                        abc12345.jsonl               │
+    │                                                       ── event ──▶  │
+    │                                           FAST PATH WINS            │
+    │────────────────────markEvent('agentReady', t₄)─────────────────────▶│
+    │                                                                     │
+    │─waitFor('agentReady')───────────────────────────────────────────────▶│
+    │◀─── resolve ────────────────────────────────────────────────────────│
+    │                                                                     │
+    │─t.sendText("/continue abc12345")─▶                                   │
+    │                                        ◀── bytes to claude's stdin  │
+    │                                           TUI processes input       │
+    ▼             ▼             ▼           ▼            ▼              ▼
+  time (ms):  0    50   200   400   1000  1500  2000  2500  3000  3500  4000
+              └tab└shell└───.zshrc──┘     └────claude boots────┘   └ready┘
+                                    └prompt
 ```
 
-No pgrep, no ps, no wait — the agent is definitionally past boot, so all four
-events are marked fired immediately.
+## Sequence: Resume (Ctrl+C twice)
+
+The "restart the same agent" flow — the one that most needed fixing. Agent
+CLI is running a long operation; user hits Cmd+Shift+R to reset.
+
+```
+Extension      VSCode          OS       claude CLI      zsh        StateMachine
+    │             │             │           │            │              │
+    │  ── precondition ──                                                 │
+    │  entry.state = { tabReady: t₀, shellReady: t₁,                      │
+    │                  promptReady: t₂, agentReady: t₄ }                  │
+    │  claude is running as pid 12346 (child of shell pid 12345)          │
+    │                                                                     │
+    │─sendSequence('\u0003')──▶                                            │
+    │                                        SIGINT ───▶│                 │
+    │                                        (claude shows "Interrupted") │
+    │─sleep 100ms                                                          │
+    │─sendSequence('\u0003')──▶                                            │
+    │                                        SIGINT ───▶│                 │
+    │                                        (claude exits)                │
+    │                                                    │                 │
+    │                                                    zsh back at prompt│
+    │                                                                     │
+    │─resetAfterAgentExit(t)──────────────────────────────────────────────▶│
+    │                                              resetFrom('promptReady')│
+    │                                              state = { tab: t₀,     │
+    │                                                        shell: t₁,   │
+    │                                                        prompt:null, │
+    │                                                        agent: null }│
+    │                                              restart pgrep probe    │
+    │                                                                     │
+    │                                 pgrep -P 12345                      │
+    │                                      ─── "" ─────▶ (idle 1/2)       │
+    │                                 pgrep -P 12345                      │
+    │                                      ─── "" ─────▶ (idle 2/2) ✓    │
+    │────────────────────markEvent('promptReady', t₅)────────────────────▶│
+    │                                                                     │
+    │─waitFor('promptReady')──────────────────────────────────────────────▶│
+    │◀─── resolve ────────────────────────────────────────────────────────│
+    │                                                                     │
+    │─t.sendText("clear && claude -r abc12345")─▶                          │
+    │                                                    │                 │
+    │                                        new claude ◀ zsh forks        │
+    │                                                                     │
+    │─armAgentReady(t, {agentKey, sessionId, cwd})───────────────────────▶│
+    │  [same as Fresh Spawn from here]                                    │
+    ▼             ▼             ▼           ▼            ▼              ▼
+```
+
+Before: `setTimeout(200)` + `setTimeout(1500)` = **1700ms fixed wait**,
+fragile on slow machines and wasteful on fast ones. After: typically
+300–500ms on a warm machine, up to a 30s timeout on a pathologically slow one.
+
+## Restored terminal (after IDE reload)
+
+VS Code persists terminal tabs across reload. When a tab reappears via
+`vscode.window.onDidOpenTerminal` *and* the extension identifies it as an
+agent terminal, the agent is already running — we skip all probes:
+
+```
+Extension host                       ReadinessEntry
+    │                                      │
+    │  onDidOpenTerminal(t)                │
+    │  ← recognized as agent ───           │
+    │                                      │
+    │─registerTerminal(t, {restored:true})─▶
+    │                               skip probes
+    │                               markEvent('agentReady')
+    │                                  └─ cascades to tab/shell/prompt
+    │                                      │
+    ▼                                      ▼
+```
+
+No pgrep, no ps, no fs.watch. All four events fire immediately.
+
+## Data Flow
+
+Every signal source → a shape of data → a deterministic transformation → a
+specific state mutation. Ambiguity in either direction is a bug.
+
+```
+┌─────────────────────────┬──────────────────────────────┬────────────────────────────────────────┬────────────────────────────┐
+│ Signal Source           │ Data Shape                   │ Transformation                         │ State Mutation             │
+├─────────────────────────┼──────────────────────────────┼────────────────────────────────────────┼────────────────────────────┤
+│ terminal.processId      │ Promise<number | undefined>  │ await → number pid                     │ markEvent('tabReady')      │
+│   (vscode API)          │                              │   null → give up silently              │                            │
+├─────────────────────────┼──────────────────────────────┼────────────────────────────────────────┼────────────────────────────┤
+│ ps -p <pid> -o comm=    │ stdout: "zsh\n"              │ trim + basename                        │ markEvent('shellReady')    │
+│   (every 50ms, 2s cap)  │   or:   "-zsh\n"             │   → split('/').pop() → "zsh"           │                            │
+│                         │   or:   "bash\n"             │   → KNOWN_SHELLS.has('zsh') ? ✓ : ✗    │                            │
+├─────────────────────────┼──────────────────────────────┼────────────────────────────────────────┼────────────────────────────┤
+│ onDidChangeTerminal     │ event { terminal: Terminal } │ if terminal === r.terminal → match     │ markEvent('promptReady')   │
+│   ShellIntegration      │                              │                                        │                            │
+│   (global listener)     │                              │                                        │                            │
+├─────────────────────────┼──────────────────────────────┼────────────────────────────────────────┼────────────────────────────┤
+│ pgrep -P <shell_pid>    │ stdout: "12346\n" (busy)     │ trim → "" | "pid" | "pid1\npid2"       │ markEvent('promptReady')   │
+│   (every 150ms)         │   or:   "" (idle)            │ if "" → consecutiveIdle++              │   (when idle × 2)          │
+│                         │   exit 1 = zero matches      │   else  → consecutiveIdle = 0          │                            │
+│                         │                              │ if consecutiveIdle ≥ 2 → fire          │                            │
+├─────────────────────────┼──────────────────────────────┼────────────────────────────────────────┼────────────────────────────┤
+│ pgrep -P <shell_pid>    │ stdout: "12346\n"            │ first child pid = 12346                │ (feeds agent-state probe)  │
+│   (every 150ms)         │   no child → reset counter   │ childFirstSeenAt = now()               │                            │
+│                         │                              │                                        │                            │
+│ ps -p <child> -o stat=  │ stdout: "S\n"   (idle sleep) │ startsWith('S') → idle                 │ markEvent('agentReady')    │
+│   (every 150ms)         │   or:   "R+\n"  (running)    │ if idle AND (                          │   (when                    │
+│                         │   or:   "D\n"   (I/O wait)   │   consecutiveIdle ≥ 10 AND             │    both conditions         │
+│                         │                              │   now() - childFirstSeenAt ≥ 2500ms    │    simultaneously true)    │
+│                         │                              │ ) → fire                               │                            │
+├─────────────────────────┼──────────────────────────────┼────────────────────────────────────────┼────────────────────────────┤
+│ fs.watch(root, recur..) │ event(type, filename)        │ filename.toLowerCase()                 │ markEvent('agentReady')    │
+│   roots per agent:      │   filename may be null on    │   .includes(sessionId.toLowerCase())   │   (fast path; races        │
+│   Claude:               │   some platforms — ignore    │ → match = true → fire                  │    with fallback probe)    │
+│     ~/.claude/projects  │                              │                                        │                            │
+│     ~/.agents/versions/ │                              │                                        │                            │
+│       claude/*/home/... │                              │                                        │                            │
+│   Codex:  ~/.codex/...  │                              │                                        │                            │
+│   Gemini: ~/.gemini/... │                              │                                        │                            │
+└─────────────────────────┴──────────────────────────────┴────────────────────────────────────────┴────────────────────────────┘
+```
+
+The cascade rule applies at the mutation step: `markEvent('promptReady')`
+also sets `tabReadyAt` and `shellReadyAt` if they're still null. So a late
+arrival of `shellReady` after `promptReady` is a no-op — the state is already
+correct, just with a slightly different attribution of when the shell was
+detected.
 
 ## Detection Mechanics
 
