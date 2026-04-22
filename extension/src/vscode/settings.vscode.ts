@@ -710,6 +710,35 @@ export function openPanel(context: vscode.ExtensionContext): void {
       case 'spawnSwarmForTodo':
         await spawnSwarmForTodo(message.item, context);
         break;
+      case 'getFloorThroughput': {
+        const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        const all = terminals.getAllTerminals();
+        const { computeOutputTokensPerSec } = await import('../core/session.activity');
+        let total = 0;
+        await Promise.all(all.map(async (t) => {
+          if (t.terminal.exitStatus !== undefined) return;
+          const agentType = (t.agentType || '').toLowerCase();
+          if (!t.sessionId || agentType !== 'claude') return;
+          try {
+            const sessionPath = await getSessionPathBySessionId(t.sessionId, 'claude', workspacePath);
+            if (!sessionPath) return;
+            const stat = await fs.promises.stat(sessionPath);
+            const size = stat.size;
+            const readStart = Math.max(0, size - 256 * 1024);
+            const fh = await fs.promises.open(sessionPath, 'r');
+            try {
+              const buf = Buffer.alloc(size - readStart);
+              await fh.read(buf, 0, buf.length, readStart);
+              const content = buf.toString('utf-8');
+              total += computeOutputTokensPerSec(content, 'claude', 60);
+            } finally {
+              await fh.close();
+            }
+          } catch { }
+        }));
+        settingsPanel?.webview.postMessage({ type: 'floorThroughputData', tokensPerSec: Math.round(total) });
+        break;
+      }
       case 'dispatchTask': {
         const agentType = typeof message.agentType === 'string' ? message.agentType : 'claude';
         const target = message.target === 'cloud' ? 'cloud' : 'local';
