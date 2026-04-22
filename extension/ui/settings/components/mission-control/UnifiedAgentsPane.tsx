@@ -1198,14 +1198,7 @@ function DispatchModal({ tasks, loading, onClose, onDispatch, onDispatchBatch, o
 
   useEffect(() => {
     inputRef.current?.focus()
-    const esc = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
-      if (detailTaskId) setDetailTaskId(null)
-      else onClose()
-    }
-    window.addEventListener('keydown', esc)
-    return () => window.removeEventListener('keydown', esc)
-  }, [onClose, detailTaskId])
+  }, [])
 
   const todoTasks = useMemo(
     () => tasks.filter((t) => t.status === 'todo' || t.status === 'in_progress'),
@@ -1236,6 +1229,32 @@ function DispatchModal({ tasks, loading, onClose, onDispatch, onDispatchBatch, o
   const detailTask = detailTaskId ? todoTasks.find((t) => t.id === detailTaskId) ?? null : null
   const focusedTask = detailTask || filtered.find((t) => t.id === focusedTaskId) || filtered[0]
   const batchMode = checkedIds.size > 0
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (detailTaskId) setDetailTaskId(null)
+        else onClose()
+        return
+      }
+      if (detailTaskId) return
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        if (filtered.length === 0) return
+        e.preventDefault()
+        const currentIdx = filtered.findIndex((t) => t.id === (focusedTask?.id || ''))
+        const step = e.key === 'ArrowDown' ? 1 : -1
+        const nextIdx = currentIdx < 0 ? 0 : (currentIdx + step + filtered.length) % filtered.length
+        setFocusedTaskId(filtered[nextIdx].id)
+        return
+      }
+      if (e.key === 'Enter' && focusedTask && !batchMode) {
+        e.preventDefault()
+        setDetailTaskId(focusedTask.id)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose, detailTaskId, filtered, focusedTask, batchMode])
 
   const toggleChecked = (id: string) => {
     setCheckedIds((prev) => {
