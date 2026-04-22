@@ -181,7 +181,7 @@ budget; wants to continue the same session in a newer Claude version.
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
 │  ①  User sees:  "Claude 2.1.110 · session abc12345 · 98% context"        │
-│      Muscle memory:  Cmd+Shift+Alt+C  →  "Continue in best version"      │
+│      Muscle memory:  Cmd+Shift+J      →  "Continue in best version"      │
 │                                                                          │
 │  ②  Extension picks Claude 2.1.112 (best by version, signed in)          │
 │      Spawns new terminal tab, icon flips to spinner                      │
@@ -294,8 +294,8 @@ Extension      VSCode         OS           shell      fs.watch    StateMachine
 
 ## Sequence: Resume (Ctrl+C twice)
 
-The "restart the same agent" flow — the one that most needed fixing. Agent
-CLI is running a long operation; user hits Cmd+Shift+R to reset.
+The "restart with a fresh session" flow — the one that most needed fixing.
+Agent CLI is running; user hits Cmd+Shift+C (clear) or Cmd+Shift+R (reload).
 
 ```
 Extension      VSCode          OS       claude CLI      zsh        StateMachine
@@ -562,10 +562,10 @@ goes through this API. Greppable list:
 | `openSingleAgent` (tmux branch) | `extension.ts` | editor-terminal spawn with tmux splits |
 | `openSingleAgent` (non-tmux) | `extension.ts` | editor-terminal spawn, direct VS Code terminal |
 | `resumeSession` | `extension.ts` | `claude -r <id>` on the active terminal |
-| `resumeCurrentInBestProfile` | `extension.ts` | the Continue flow — launches in best version, sends `/continue <id>` after `agentReady` |
+| `resumeCurrentInBestProfile` | `extension.ts` | `Cmd+Shift+J` — the Continue flow, launches in best version, sends `/continue <id>` after `agentReady` |
 | `openAgentTerminals` | `extension.ts` | startup auto-open of configured agent counts |
-| `clearActiveTerminal` | `extension.ts` | `Cmd+Shift+R` / Resume with fresh session |
-| `reloadActiveTerminal` | `extension.ts` | Reload — restart agent against same session |
+| `clearActiveTerminal` | `extension.ts` | `Cmd+Shift+C` — clear with fresh session |
+| `reloadActiveTerminal` | `extension.ts` | `Cmd+Shift+R` — reload against same session |
 | `restoreAgentTerminals` | `extension.ts` | post-reload session restore |
 | `reopenLastClosedSession` | `extension.ts` | reopen the most recently closed agent tab |
 | `createTmuxTerminal` | `tmux.ts` | tmux session init — replaces hardcoded `setTimeout(2000)` |
@@ -606,9 +606,9 @@ Pure state machine: 15 unit tests in
 idempotency, timeouts, reset/re-arm, dispose, concurrent waiter dedup.
 
 End-to-end: install the extension (`bash scripts/install.sh`), spawn a
-Claude/Codex/Gemini tab, trigger Resume (`Cmd+Shift+R`), trigger Continue.
-Watch the `[READINESS]` and `[RESUME-IN-BEST]` log lines in the extension host
-output channel for timing breakdowns.
+Claude/Codex/Gemini tab, trigger Reload (`Cmd+Shift+R`), clear (`Cmd+Shift+C`),
+and Continue (`Cmd+Shift+J`). Watch the `[READINESS]` and `[RESUME-IN-BEST]`
+log lines in the extension host output channel for timing breakdowns.
 
 ## Future Work
 
