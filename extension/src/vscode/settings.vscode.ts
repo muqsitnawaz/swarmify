@@ -47,6 +47,97 @@ function getGitHubRepo(workspacePath: string): Promise<string | null> {
   });
 }
 
+// Single shared terminal for all cloud dispatches. Opens as an editor tab so
+// it doesn't hijack the bottom panel; reused for subsequent dispatches so
+// firing 10 cloud tasks at once doesn't produce 10 terminals.
+const RUSH_CLOUD_TERMINAL_NAME = 'Rush Cloud';
+let rushCloudTerminal: vscode.Terminal | undefined;
+
+function getOrCreateRushCloudTerminal(cwd: string): vscode.Terminal {
+  if (rushCloudTerminal && rushCloudTerminal.exitStatus === undefined) {
+    return rushCloudTerminal;
+  }
+  const existing = vscode.window.terminals.find(
+    (t) => t.name === RUSH_CLOUD_TERMINAL_NAME && t.exitStatus === undefined
+  );
+  if (existing) {
+    rushCloudTerminal = existing;
+    return existing;
+  }
+  rushCloudTerminal = vscode.window.createTerminal({
+    name: RUSH_CLOUD_TERMINAL_NAME,
+    cwd,
+    location: {
+      viewColumn: vscode.ViewColumn.Active,
+      preserveFocus: true,
+    },
+    isTransient: true,
+  });
+  return rushCloudTerminal;
+}
+
+// Factory config: read/write ~/.agents/factory/config.json.
+// Kept in this module so the panel can edit it via `factoryConfigRead` /
+// `factoryConfigWrite` without needing to shell out to the agents CLI. The
+// CLI and panel share the exact same file, so either side sees the other's
+// writes.
+const DEFAULT_FACTORY_CONFIG = {
+  cloud_priority: ['rush', 'codex', 'local'] as const,
+  auto_detect_repo: true,
+  default_planner_agent: 'codex' as const,
+  supervisor_interval_seconds: 8,
+};
+const VALID_PROVIDERS = new Set(['rush', 'codex', 'factory', 'local']);
+const VALID_AGENTS = new Set(['claude', 'codex', 'gemini', 'cursor', 'opencode']);
+
+function factoryConfigFilePath(): string {
+  return path.join(homedir(), '.agents', 'factory', 'config.json');
+}
+
+function sanitizeFactoryConfig(raw: Record<string, unknown>, prev: Record<string, unknown>): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...prev };
+
+  const priority = raw.cloud_priority;
+  if (Array.isArray(priority)) {
+    const clean = priority.filter((p) => typeof p === 'string' && VALID_PROVIDERS.has(p));
+    const deduped = Array.from(new Set(clean as string[]));
+    if (deduped.length > 0) next.cloud_priority = deduped;
+  }
+
+  if (typeof raw.auto_detect_repo === 'boolean') {
+    next.auto_detect_repo = raw.auto_detect_repo;
+  }
+
+  if (typeof raw.default_planner_agent === 'string' && VALID_AGENTS.has(raw.default_planner_agent)) {
+    next.default_planner_agent = raw.default_planner_agent;
+  }
+
+  if (typeof raw.supervisor_interval_seconds === 'number' && raw.supervisor_interval_seconds >= 1) {
+    next.supervisor_interval_seconds = Math.floor(raw.supervisor_interval_seconds);
+  }
+
+  return next;
+}
+
+async function readFactoryConfigSafe(): Promise<Record<string, unknown>> {
+  try {
+    const raw = await fs.promises.readFile(factoryConfigFilePath(), 'utf-8');
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return sanitizeFactoryConfig(parsed, { ...DEFAULT_FACTORY_CONFIG });
+  } catch {
+    return { ...DEFAULT_FACTORY_CONFIG };
+  }
+}
+
+async function writeFactoryConfigSafe(patch: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const current = await readFactoryConfigSafe();
+  const merged = sanitizeFactoryConfig(patch, current);
+  const p = factoryConfigFilePath();
+  await fs.promises.mkdir(path.dirname(p), { recursive: true });
+  await fs.promises.writeFile(p, JSON.stringify(merged, null, 2));
+  return merged;
+}
+
 function resolveEditorPath(pathValue: string): string | null {
   if (!pathValue) return null;
   if (path.isAbsolute(pathValue)) return pathValue;
@@ -766,11 +857,10 @@ export function openPanel(context: vscode.ExtensionContext): void {
             vscode.window.showErrorMessage('Cloud dispatch requires a GitHub remote on the workspace.');
             break;
           }
-          const term = vscode.window.createTerminal({ name: `rush cloud ${agentType}`, cwd: workspacePath });
           const safePrompt = prompt.replace(/'/g, `'\\''`);
+          const term = getOrCreateRushCloudTerminal(workspacePath);
           term.sendText(`rush cloud run ${agentType} ${repo} -p '${safePrompt}'`);
-          term.show();
-          vscode.window.showInformationMessage(`Dispatched to Rush Cloud: ${agentType} on ${repo}`);
+          term.show(true);
           break;
         }
 
@@ -984,6 +1074,18 @@ export function openPanel(context: vscode.ExtensionContext): void {
           const escaped = message.text.replace(/"/g, '\\"').replace(/\$/g, '\\$');
           term.sendText(`agents factory answer "${message.teamId}" "${escaped}"`, true);
           term.show();
+        }
+        break;
+      case 'factoryConfigRead':
+        settingsPanel?.webview.postMessage({
+          type: 'factoryConfigData',
+          config: await readFactoryConfigSafe(),
+        });
+        break;
+      case 'factoryConfigWrite':
+        if (message.config && typeof message.config === 'object') {
+          const updated = await writeFactoryConfigSafe(message.config as Record<string, unknown>);
+          settingsPanel?.webview.postMessage({ type: 'factoryConfigData', config: updated });
         }
         break;
     }

@@ -1965,6 +1965,9 @@ export async function openSingleAgentWithQueue(
     await prewarm.recordTerminalSession(context, terminalId, sessionId, agentKey, cwd);
   }
 
+  // Pull focus from the webview so the terminal tab becomes the visible one.
+  terminal.show(false);
+
   // Queue messages
   for (const msg of messages) {
     terminals.queueMessage(terminal, msg);
