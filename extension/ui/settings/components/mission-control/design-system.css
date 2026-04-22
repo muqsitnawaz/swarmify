@@ -1739,6 +1739,7 @@
 
 .sw-queue-cards {
   display: flex;
+  align-items: flex-start;
   gap: 12px;
   overflow-x: auto;
   padding-bottom: 6px;
@@ -1749,6 +1750,7 @@
 
 .sw-queue-card {
   flex-shrink: 0;
+  align-self: flex-start;
   width: 280px;
   padding: 14px 16px;
   background: var(--ds-bg-panel);
