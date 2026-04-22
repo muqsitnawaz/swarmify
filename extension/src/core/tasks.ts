@@ -20,8 +20,33 @@ export interface TaskMetadata {
   url?: string;                  // Web URL to task
   labels?: string[];             // Labels/tags
   assignee?: string;             // Assigned user
+  assigneeKind?: 'user' | 'agent'; // 'agent' if name matches a known CLI agent
   state?: string;                // Raw state from source
   createdAt?: string;            // ISO 8601 creation timestamp
+  dueDate?: string;              // ISO 8601 due date (YYYY-MM-DD from Linear)
+  project?: string;              // Linear project name (undefined for GitHub)
+  repo?: string;                 // "owner/repo" — resolved at fetch time
+}
+
+// A Linear user whose name matches one of these is treated as an agent, so the
+// card renders an agent chip rather than a @mention. Case-insensitive match.
+const AGENT_ASSIGNEE_PATTERN = /^(claude|codex|gemini|cursor|opencode)$/i;
+
+export function detectAssigneeKind(name: string | undefined | null): 'user' | 'agent' | undefined {
+  if (!name) return undefined;
+  return AGENT_ASSIGNEE_PATTERN.test(name.trim()) ? 'agent' : 'user';
+}
+
+// Extract the first repo:<name> label value. Pure — does not resolve owner.
+// Callers combine with an owner (resolved in the VS Code layer) to form owner/repo.
+export function extractRepoNameFromLabels(labels: string[] | undefined): string | null {
+  if (!labels) return null;
+  for (const raw of labels) {
+    if (typeof raw !== 'string') continue;
+    const m = raw.trim().match(/^repo:([A-Za-z0-9._-]+)$/);
+    if (m) return m[1];
+  }
+  return null;
 }
 
 // Active cycle info from Linear
@@ -37,19 +62,25 @@ export const SOURCE_BADGES: Record<TaskSource, { label: string; color: string }>
   github: { label: 'GH', color: '#238636' }     // GitHub green
 };
 
-// Convert Linear issue to UnifiedTask
-export function linearToUnifiedTask(issue: {
-  id: string;
-  identifier: string;
-  title: string;
-  description?: string;
-  state: { name: string; type: string };
-  priority: number;
-  url: string;
-  labels?: { nodes: { name: string }[] };
-  assignee?: { name: string };
-  createdAt?: string;
-}): UnifiedTask {
+// Convert Linear issue to UnifiedTask.
+// `repo` is the pre-resolved "owner/name" string (caller resolves owner), or null.
+export function linearToUnifiedTask(
+  issue: {
+    id: string;
+    identifier: string;
+    title: string;
+    description?: string;
+    state: { name: string; type: string };
+    priority: number;
+    url: string;
+    labels?: { nodes: { name: string }[] };
+    assignee?: { name: string };
+    project?: { name: string } | null;
+    dueDate?: string | null;
+    createdAt?: string;
+  },
+  repo: string | null = null,
+): UnifiedTask {
   // Map Linear priority (0=none, 1=urgent, 2=high, 3=medium, 4=low)
   const priorityMap: Record<number, UnifiedTask['priority']> = {
     1: 'urgent',
@@ -67,6 +98,9 @@ export function linearToUnifiedTask(issue: {
     canceled: 'done'
   };
 
+  const labels = issue.labels?.nodes.map(l => l.name);
+  const assignee = issue.assignee?.name;
+
   return {
     id: `linear:${issue.id}`,
     source: 'linear',
@@ -77,26 +111,34 @@ export function linearToUnifiedTask(issue: {
     metadata: {
       identifier: issue.identifier,
       url: issue.url,
-      labels: issue.labels?.nodes.map(l => l.name),
-      assignee: issue.assignee?.name,
+      labels,
+      assignee,
+      assigneeKind: detectAssigneeKind(assignee),
       state: issue.state.name,
       createdAt: issue.createdAt,
+      dueDate: issue.dueDate ?? undefined,
+      project: issue.project?.name ?? undefined,
+      repo: repo ?? undefined,
     }
   };
 }
 
-// Convert GitHub issue to UnifiedTask
-export function githubToUnifiedTask(issue: {
-  id: number;
-  number: number;
-  title: string;
-  body?: string;
-  state: string;
-  html_url: string;
-  labels?: { name: string }[];
-  assignee?: { login: string };
-  createdAt?: string;
-}): UnifiedTask {
+// Convert GitHub issue to UnifiedTask. `repo` is the detected "owner/name".
+export function githubToUnifiedTask(
+  issue: {
+    id: number;
+    number: number;
+    title: string;
+    body?: string;
+    state: string;
+    html_url: string;
+    labels?: { name: string }[];
+    assignee?: { login: string };
+    createdAt?: string;
+  },
+  repo: string | null = null,
+): UnifiedTask {
+  const assignee = issue.assignee?.login;
   return {
     id: `github:${issue.id}`,
     source: 'github',
@@ -107,9 +149,11 @@ export function githubToUnifiedTask(issue: {
       identifier: `#${issue.number}`,
       url: issue.html_url,
       labels: issue.labels?.map(l => l.name),
-      assignee: issue.assignee?.login,
+      assignee,
+      assigneeKind: detectAssigneeKind(assignee),
       state: issue.state,
       createdAt: issue.createdAt,
+      repo: repo ?? undefined,
     }
   };
 }
