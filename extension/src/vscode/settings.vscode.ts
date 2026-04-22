@@ -741,6 +741,7 @@ export function openPanel(context: vscode.ExtensionContext): void {
           const safePrompt = prompt.replace(/'/g, `'\\''`);
           term.sendText(`rush cloud run ${agentType} ${repo} -p '${safePrompt}'`);
           term.show();
+          vscode.window.showInformationMessage(`Dispatched to Rush Cloud: ${agentType} on ${repo}`);
           break;
         }
 
