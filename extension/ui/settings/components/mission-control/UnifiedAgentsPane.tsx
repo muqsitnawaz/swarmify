@@ -414,6 +414,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   const [recentOpen, setRecentOpen] = useState(false)
   const [statPopover, setStatPopover] = useState<'shipped' | 'open' | 'running' | 'nextup' | 'files' | null>(null)
   const [dispatchOpen, setDispatchOpen] = useState(false)
+  const [activeFilter, setActiveFilter] = useState<'all' | 'local' | 'cloud'>('all')
   const [pendingDispatches, setPendingDispatches] = useState<PendingDispatch[]>([])
   const [tick, setTick] = useState(0)
   const newMenuRef = useRef<HTMLDivElement>(null)
@@ -802,6 +803,28 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
           <div className="sw-section-header-row">
             <span className="sw-section-label">Active</span>
             <span className="sw-section-count-pill">{activeItems.length}</span>
+            <div className="sw-active-filter" role="tablist" aria-label="Filter active agents">
+              {(['all', 'local', 'cloud'] as const).map((key) => {
+                const count = key === 'all'
+                  ? activeItems.length
+                  : key === 'cloud'
+                    ? activeItems.filter((i) => i.kind === 'cloud').length
+                    : activeItems.filter((i) => i.kind !== 'cloud').length
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    role="tab"
+                    aria-selected={activeFilter === key}
+                    className={`sw-active-filter-btn ${activeFilter === key ? 'active' : ''}`}
+                    onClick={() => setActiveFilter(key)}
+                  >
+                    {key === 'all' ? 'All' : key === 'local' ? 'Local' : 'Cloud'}
+                    <span className="sw-active-filter-count">{count}</span>
+                  </button>
+                )
+              })}
+            </div>
             <span className="sw-section-line" />
             <div style={{ position: 'relative' }} ref={newMenuRef}>
               <button className="sw-btn secondary sm" onClick={() => setNewMenuOpen((o) => !o)}>
@@ -836,9 +859,14 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
           </div>
 
           <div className="sw-agent-strips">
-            {activeItems.map((item) => (
-              <AgentStrip key={item.id} item={item} onFocus={handleFocusTerminal} onKill={handleKill} />
-            ))}
+            {activeItems
+              .filter((item) => activeFilter === 'all' || (activeFilter === 'cloud' ? item.kind === 'cloud' : item.kind !== 'cloud'))
+              .map((item) => (
+                <AgentStrip key={item.id} item={item} onFocus={handleFocusTerminal} onKill={handleKill} />
+              ))}
+            {activeItems.length > 0 && activeItems.filter((i) => activeFilter === 'all' || (activeFilter === 'cloud' ? i.kind === 'cloud' : i.kind !== 'cloud')).length === 0 && (
+              <div className="sw-active-filter-empty">No {activeFilter} agents running.</div>
+            )}
           </div>
         </>
       )}
