@@ -7,6 +7,7 @@ import { postMessage } from '../../hooks'
 import { ExtLink } from '../common'
 import { renderTodoDescription } from '../../utils/markdown'
 import { CMD_PALETTE_EVENTS } from './CommandPalette'
+import { CloudActivityFeed } from './CloudActivityFeed'
 import {
   isTerminalActive,
   isTerminalJustSpawned,
@@ -2047,18 +2048,16 @@ function AgentDetailView({ agent, swarm, onRetry, onKill }: { agent: AgentDetail
             </div>
           </div>
         )}
-        {agent.cloud_summary && (
+        {(agent.cloud_summary || isActive) && (
           <div className="sw-unified-detail-section">
-            <div className="sw-section-label">Output</div>
-            <pre className="sw-cloud-log mono">{agent.cloud_summary}</pre>
-          </div>
-        )}
-        {!agent.cloud_summary && isActive && (
-          <div className="sw-unified-detail-section">
-            <div className="sw-section-label">Output</div>
-            <div className="sw-unified-detail-text" style={{ color: 'var(--ds-text-dim)', fontStyle: 'italic' }}>
-              Agent is running, no output yet...
-            </div>
+            <div className="sw-section-label">Activity</div>
+            {agent.cloud_summary ? (
+              <CloudActivityFeed summary={agent.cloud_summary} />
+            ) : (
+              <div className="sw-unified-detail-text" style={{ color: 'var(--ds-text-dim)', fontStyle: 'italic' }}>
+                Agent is running, no output yet...
+              </div>
+            )}
           </div>
         )}
         {swarm && (
