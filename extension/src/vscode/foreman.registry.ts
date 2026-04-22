@@ -18,6 +18,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import * as vscode from 'vscode';
+import { computeWindowId } from '../core/foreman.windowId';
 
 const REGISTRY_DIR = path.join(os.homedir(), '.agents', 'swarmify');
 const REGISTRY_FILE = path.join(REGISTRY_DIR, 'live-terminals.json');
@@ -36,20 +37,12 @@ interface RegistryFile {
   [windowId: string]: { at: string; entries: LiveTerminal[] };
 }
 
-/**
- * Build a windowId string from the available identifiers. Exported so it can
- * be unit-tested against real-world inputs (notably VSCodium's redacted
- * sessionId placeholder, which collides across windows).
- */
-export function computeWindowId(sessionId: string | undefined, pid: number): string {
-  return `${sessionId || pid}`;
-}
-
 let ownWindowId: string | undefined;
 function getOwnWindowId(): string {
   if (ownWindowId) return ownWindowId;
-  // sessionId is a VS Code per-window unique id; machineId would merge all
-  // windows, which is the opposite of what we want.
+  // VSCodium strips telemetry and replaces vscode.env.sessionId with the
+  // literal "someValue.sessionId" for every window — sessionId alone collides
+  // across windows. process.pid is per-extension-host so it disambiguates.
   ownWindowId = computeWindowId(vscode.env.sessionId, process.pid);
   return ownWindowId;
 }
