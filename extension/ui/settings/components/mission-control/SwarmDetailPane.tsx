@@ -3,6 +3,7 @@ import type { Swarm } from './types'
 import { taskNameToTitle, swarmShortId, relTime } from './types'
 import { AgentAvatar } from './AgentAvatar'
 import { Icon } from './icons'
+import { ExtLink } from '../common'
 
 interface SwarmDetailPaneProps {
   swarm: Swarm | null
@@ -104,16 +105,14 @@ export function SwarmDetailPane({ swarm, onRetry, onKill, onCopyId }: SwarmDetai
                   {summarizeAgent(a)}
                 </div>
                 {a.pr_url && (
-                  <a
+                  <ExtLink
                     href={a.pr_url}
-                    target="_blank"
-                    rel="noreferrer"
                     className="mono"
                     style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 6, fontSize: 11, color: 'var(--brand)' }}
                   >
                     <Icon name="external" size={10} />
                     PR
-                  </a>
+                  </ExtLink>
                 )}
               </div>
             )

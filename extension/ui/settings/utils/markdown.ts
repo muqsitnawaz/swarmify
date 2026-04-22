@@ -2,6 +2,7 @@ import React from 'react'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { TODO_MARKDOWN_ALLOWED_TAGS, TODO_MARKDOWN_ALLOWED_ATTRS } from '../constants'
+import { postMessage } from '../hooks'
 
 /**
  * Escape HTML special characters
@@ -53,8 +54,23 @@ export function renderTodoDescription(desc: string, clamp: boolean = true): Reac
     ALLOWED_ATTR: TODO_MARKDOWN_ALLOWED_ATTRS
   })
   const className = clamp ? 'todo-md todo-md-clamp' : 'todo-md'
+  // Delegate anchor clicks to the extension host's openExternal handler.
+  // Anchors inside dangerouslySetInnerHTML don't get React synthetic click
+  // handling, but clicks still bubble to the wrapping div — so we intercept
+  // here. VS Code webviews don't reliably honor target="_blank" on raw DOM
+  // anchors, so every external link must route through vscode.env.openExternal.
+  const onClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const anchor = (e.target as HTMLElement | null)?.closest?.('a[href]') as HTMLAnchorElement | null
+    if (!anchor) return
+    const url = anchor.getAttribute('href')
+    if (!url || url.startsWith('#')) return
+    e.preventDefault()
+    e.stopPropagation()
+    postMessage({ type: 'openExternal', url })
+  }
   return React.createElement('div', {
     className,
+    onClick,
     dangerouslySetInnerHTML: { __html: safe }
   })
 }

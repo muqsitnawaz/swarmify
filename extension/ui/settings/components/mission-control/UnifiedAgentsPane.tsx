@@ -4,6 +4,7 @@ import { AgentAvatar, agentShortChunk } from './AgentAvatar'
 import { Icon } from './icons'
 import { relTime, taskNameToTitle, swarmOverallStatus, shortDuration } from './types'
 import { postMessage } from '../../hooks'
+import { ExtLink } from '../common'
 import {
   isTerminalActive,
   isTerminalJustSpawned,
@@ -1858,9 +1859,9 @@ function DetailPane({ item, onClose, onFocusTerminal, onRetry, onKill }: {
             </span>
           )}
           {item.prUrl && (
-            <a href={item.prUrl} target="_blank" rel="noreferrer" className="mono" style={{ fontSize: 11, color: 'var(--brand)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <ExtLink href={item.prUrl} className="mono" style={{ fontSize: 11, color: 'var(--brand)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
               <Icon name="external" size={10} /> PR
-            </a>
+            </ExtLink>
           )}
         </div>
 
@@ -1931,9 +1932,9 @@ function TeamDetail({ swarm, onRetry, onKill }: { swarm: TaskSummary; onRetry: (
                 <div className="sw-spacer" />
                 {a.duration && <span className="mono" style={{ fontSize: 10.5, color: 'var(--ds-text-dim)' }}>{a.duration}</span>}
                 {a.pr_url && (
-                  <a href={a.pr_url} target="_blank" rel="noreferrer" className="mono" style={{ fontSize: 10.5, color: 'var(--brand)' }} onClick={(e) => e.stopPropagation()}>
+                  <ExtLink href={a.pr_url} className="mono" style={{ fontSize: 10.5, color: 'var(--brand)' }}>
                     <Icon name="external" size={10} /> PR
-                  </a>
+                  </ExtLink>
                 )}
                 {lastAction && (
                   <div className="mono" style={{ fontSize: 10.5, color: 'var(--ds-text-dim)', gridColumn: '1 / -1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingLeft: 24 }}>
@@ -2106,24 +2107,14 @@ function DispatchCard({ task, onOpen }: { task: UnifiedTask; onOpen: (task: Unif
       {(repo || due) && (
         <div className="sw-queue-meta-row">
           {repoHref ? (
-            <a
+            <ExtLink
               className="sw-queue-repo-chip mono"
               href={repoHref}
-              onClick={(e) => {
-                // VS Code webviews don't reliably honor target="_blank" on
-                // anchor clicks — route through the extension host's
-                // openExternal handler, which uses vscode.env.openExternal.
-                // Also stop propagation so the card's onClick (opens the
-                // task detail modal) doesn't fire.
-                e.preventDefault()
-                e.stopPropagation()
-                if (repoHref) postMessage({ type: 'openExternal', url: repoHref })
-              }}
               onMouseDown={stopOpen}
               title={`Open ${repo} on GitHub`}
             >
               {repo}
-            </a>
+            </ExtLink>
           ) : repo ? (
             <span className="sw-queue-repo-chip mono">{repo}</span>
           ) : null}

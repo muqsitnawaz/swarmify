@@ -3,6 +3,7 @@ import type { Swarm } from './types'
 import { taskNameToTitle, relTime, swarmOverallStatus } from './types'
 import { AgentAvatar } from './AgentAvatar'
 import { Icon } from './icons'
+import { ExtLink } from '../common'
 
 interface CompletedSwarmsPaneProps {
   swarms: Swarm[]
@@ -71,16 +72,13 @@ export function CompletedSwarmsPane({ swarms, onClear, onSelect }: CompletedSwar
                   </span>
                 )}
                 {pr && (
-                  <a
+                  <ExtLink
                     href={pr}
-                    target="_blank"
-                    rel="noreferrer"
                     className="mono"
                     style={{ marginLeft: 'auto', fontSize: 10.5, color: 'var(--brand)' }}
-                    onClick={(e) => e.stopPropagation()}
                   >
                     PR
-                  </a>
+                  </ExtLink>
                 )}
               </div>
             </div>

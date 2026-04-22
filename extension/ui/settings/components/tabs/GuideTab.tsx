@@ -1,6 +1,6 @@
 import React from 'react'
-import { ExternalLink } from 'lucide-react'
-import { SectionHeader } from '../common'
+import { ExternalLink as ExternalLinkIcon } from 'lucide-react'
+import { SectionHeader, ExtLink } from '../common'
 
 const WORKFLOW_STEPS = [
   {
@@ -104,15 +104,13 @@ Task → Plan → Approval → Execution
       <section>
         <SectionHeader>Learn More</SectionHeader>
         <div className="space-y-2">
-          <a
+          <ExtLink
             href="https://github.com/muqsitnawaz/swarmify"
-            target="_blank"
-            rel="noopener noreferrer"
             className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--muted)] hover:bg-[var(--muted-foreground)]/10 transition-colors"
           >
-            <ExternalLink className="w-4 h-4 text-[var(--muted-foreground)]" />
+            <ExternalLinkIcon className="w-4 h-4 text-[var(--muted-foreground)]" />
             <span className="text-sm">GitHub</span>
-          </a>
+          </ExtLink>
         </div>
       </section>
     </div>
