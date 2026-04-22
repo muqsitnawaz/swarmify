@@ -5,11 +5,24 @@ import {
   InitializeRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import { AgentManager, checkAllClis, ensureGeminiPlanMode } from './agents.js';
-import { AgentType } from './parsers.js';
-import { handleSpawn, handleStatus, handleStop, handleTasks } from './api.js';
-import { readConfig, type AgentConfig } from './persistence.js';
+import * as path from 'path';
+import * as fs from 'fs/promises';
+import {
+  AgentManager,
+  checkAllClis,
+  ensureGeminiPlanMode,
+  handleSpawn,
+  handleStatus,
+  handleStop,
+  handleTasks,
+  readConfig,
+  type AgentConfig,
+  type AgentType,
+  type EffortLevel,
+} from '@phnx-labs/agents-cli/teams';
 import { resolveLedger } from './ledger/index.js';
+import { spawnCloudAgent, isCloudSupported, extractPrUrl } from './cloud.js';
+import { isDangerousPath, getRalphConfig, buildRalphPrompt } from './ralph.js';
 import {
   buildVersionNotice,
   detectClientFromName,
@@ -62,6 +75,24 @@ function withVersionNotice(description: string): string {
   return description + buildVersionNotice();
 }
 
+// Accept either the legacy vocab (fast|default|detailed) or the current one
+// (low|medium|high|xhigh|max|auto). Legacy values are mapped so cached agent
+// instructions that hardcode `effort: "default"` continue to work.
+const LEGACY_EFFORT_MAP: Record<string, EffortLevel> = {
+  fast: 'low',
+  default: 'medium',
+  detailed: 'high',
+};
+
+function resolveEffort(input: unknown): EffortLevel {
+  if (typeof input !== 'string') return 'medium';
+  const lower = input.trim().toLowerCase();
+  if (LEGACY_EFFORT_MAP[lower]) return LEGACY_EFFORT_MAP[lower];
+  const valid: EffortLevel[] = ['low', 'medium', 'high', 'xhigh', 'max', 'auto'];
+  if (valid.includes(lower as EffortLevel)) return lower as EffortLevel;
+  return 'medium';
+}
+
 function buildSpawnDescription(): string {
   const agentList = enabledAgents
     .map((agent, i) => `${i + 1}. ${agent} - ${agentDescriptions[agent]}`)
@@ -78,12 +109,12 @@ Task names can be reused to group multiple agents under the same task.
 MODE PARAMETER (required for writes):
 - mode='edit' - Agent CAN modify files (use this for implementation tasks)
 - mode='plan' - Agent is READ-ONLY (default, use for research/exploration)
-- mode='ralph' - YOLO mode: Agent autonomously works through all tasks in RALPH.md until done. Requires cwd and RALPH.md file.
 - mode='cloud' - Run agent on cloud infrastructure (Claude remote, Codex cloud). Agent creates a PR when done. Supported: claude, codex. NOT supported: gemini, cursor, opencode.
-
-RALPH MODE: Spawns ONE agent with full permissions and instructions to work through RALPH.md. The agent reads the task file, understands the system, picks tasks logically, completes them, marks checkboxes, and continues until all tasks are checked. The orchestrator can spawn multiple ralph agents in parallel for different directories/task files.
+- mode='ralph' - DEPRECATED (removed in 0.4.0). Autonomous execution through RALPH.md. Emits a warning. Prefer a normal spawn with a task-list prompt.
 
 CLOUD MODE: Runs the agent on the platform's cloud infrastructure instead of locally. Enables long-running tasks that survive laptop sleep/shutdown. The agent automatically creates a PR with its changes when done. Poll with Status to track progress and get the PR URL.
+
+EFFORT PARAMETER: 'low' (cheapest/fastest), 'medium' (default), 'high', 'xhigh', 'max', 'auto'. Legacy values 'fast'/'default'/'detailed' are still accepted and map to 'low'/'medium'/'high'.
 
 WAIT BEFORE CHECKING STATUS: After spawning all agents for this task, sleep for at least 2 minutes before checking status. Use: Bash(sleep 120 && echo "Done waiting on Swarm agents. Let's check status") timeout: 2m 30s
 
@@ -154,13 +185,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             mode: {
               type: 'string',
-              enum: ['plan', 'edit', 'ralph', 'cloud'],
-              description: "'edit' allows file modifications, 'plan' is read-only (default), 'ralph' is autonomous execution through RALPH.md tasks, 'cloud' runs on cloud infrastructure (claude/codex only).",
+              enum: ['plan', 'edit', 'cloud', 'ralph'],
+              description: "'edit' allows file modifications, 'plan' is read-only (default), 'cloud' runs on cloud infrastructure (claude/codex only), 'ralph' is DEPRECATED (removed in 0.4.0).",
             },
             effort: {
               type: 'string',
-              enum: ['fast', 'default', 'detailed'],
-              description: "Effort level: 'fast' is quickest/cheapest, 'default' is balanced (default), 'detailed' is max-capability.",
+              enum: ['low', 'medium', 'high', 'xhigh', 'max', 'auto'],
+              description: "Effort level. 'medium' is default. Legacy values 'fast'/'default'/'detailed' are accepted for back-compat.",
             },
           },
           required: ['task_name', 'agent_type', 'prompt'],
@@ -310,6 +341,105 @@ Use this to record what you tried, what failed, and why — so later teammates (
   };
 });
 
+async function spawnRalphAgent(
+  taskName: string,
+  agentType: AgentType,
+  prompt: string,
+  cwd: string | null,
+  effort: EffortLevel,
+  parentSessionId: string | null,
+  workspaceDir: string | null
+): Promise<{ task_name: string; agent_id: string; agent_type: string; status: string; started_at: string }> {
+  process.stderr.write(
+    '[agents-mcp] WARNING: ralph mode is deprecated and will be removed in 0.4.0. ' +
+    "Prefer a normal spawn with a task-list prompt, or use agents-cli's oracle/supervisor primitives.\n"
+  );
+
+  if (!cwd) {
+    throw new Error('Ralph mode requires a cwd parameter');
+  }
+
+  const resolvedCwd = path.resolve(cwd);
+  if (isDangerousPath(resolvedCwd)) {
+    throw new Error('Ralph mode in home or system directory is risky. Use a project directory.');
+  }
+
+  const ralphConfig = getRalphConfig();
+  const ralphFilePath = path.join(resolvedCwd, ralphConfig.ralphFile);
+  try {
+    await fs.access(ralphFilePath);
+  } catch {
+    throw new Error(`${ralphConfig.ralphFile} not found in ${resolvedCwd}. Create it first.`);
+  }
+
+  const ralphPrompt = buildRalphPrompt(prompt, ralphFilePath);
+
+  // Ralph runs with full write perms; map to 'edit' since the Mode union no
+  // longer carries a dedicated 'ralph' value.
+  const agent = await manager.spawn(
+    taskName,
+    agentType,
+    ralphPrompt,
+    cwd,
+    'edit',
+    effort,
+    parentSessionId,
+    workspaceDir
+  );
+
+  console.error(`[ralph] Spawned ${agentType} agent ${agent.agentId} for autonomous execution`);
+
+  return {
+    task_name: taskName,
+    agent_id: agent.agentId,
+    agent_type: agent.agentType,
+    status: agent.status,
+    started_at: agent.startedAt.toISOString(),
+  };
+}
+
+async function spawnCloudTeammate(
+  taskName: string,
+  agentType: AgentType,
+  prompt: string,
+  cwd: string | null,
+  effort: EffortLevel,
+  parentSessionId: string | null,
+  workspaceDir: string | null
+): Promise<{ task_name: string; agent_id: string; agent_type: string; status: string; started_at: string }> {
+  if (!isCloudSupported(agentType)) {
+    throw new Error(
+      `Cloud mode is not supported for ${agentType}. Supported agents: claude, codex.`
+    );
+  }
+
+  const config = await readConfig();
+  const agentConfig = config.agentConfigs[agentType];
+  const resolvedModel = agentConfig?.model ?? '';
+
+  const agent = await spawnCloudAgent(
+    taskName,
+    agentType,
+    prompt,
+    cwd,
+    resolvedModel,
+    parentSessionId,
+    workspaceDir
+  );
+
+  manager.registerAgent(agent);
+
+  console.error(`[cloud] Spawned ${agentType} cloud agent ${agent.agentId} for task "${taskName}"`);
+
+  return {
+    task_name: taskName,
+    agent_id: agent.agentId,
+    agent_type: agent.agentType,
+    status: agent.status,
+    started_at: agent.startedAt.toISOString(),
+  };
+}
+
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
   const normalizedName = name.toLowerCase();
@@ -323,17 +453,42 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
       const parentSessionId = getParentSessionIdFromEnv();
       const workspaceDir = getWorkspaceFromEnv();
-      result = await handleSpawn(
-        manager,
-        args.task_name as string,
-        args.agent_type as AgentType,
-        args.prompt as string,
-        (args.cwd as string) || null,
-        (args.mode as string) || null,
-        (args.effort as 'fast' | 'default' | 'detailed') || 'default',
-        parentSessionId,
-        workspaceDir
-      );
+      const modeArg = (args.mode as string | null) || null;
+      const effort = resolveEffort(args.effort);
+
+      if (modeArg === 'ralph') {
+        result = await spawnRalphAgent(
+          args.task_name as string,
+          args.agent_type as AgentType,
+          args.prompt as string,
+          (args.cwd as string) || null,
+          effort,
+          parentSessionId,
+          workspaceDir
+        );
+      } else if (modeArg === 'cloud') {
+        result = await spawnCloudTeammate(
+          args.task_name as string,
+          args.agent_type as AgentType,
+          args.prompt as string,
+          (args.cwd as string) || null,
+          effort,
+          parentSessionId,
+          workspaceDir
+        );
+      } else {
+        result = await handleSpawn(
+          manager,
+          args.task_name as string,
+          args.agent_type as AgentType,
+          args.prompt as string,
+          (args.cwd as string) || null,
+          modeArg,
+          effort,
+          parentSessionId,
+          workspaceDir
+        );
+      }
     } else if (normalizedName === 'status') {
       if (!args) {
         throw new Error('Missing arguments for status');
@@ -345,6 +500,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         args.since as string | undefined,
         (args.parent_session_id as string | undefined) || null
       );
+
+      // Backfill PR URLs for any cloud agents that just completed
+      const resultAny = result as any;
+      if (resultAny && Array.isArray(resultAny.agents)) {
+        for (const a of resultAny.agents) {
+          if (a.mode === 'cloud' && !a.pr_url && Array.isArray(a._events)) {
+            const prUrl = extractPrUrl(a._events);
+            if (prUrl) a.pr_url = prUrl;
+          }
+        }
+      }
     } else if (normalizedName === 'stop') {
       if (!args) {
         throw new Error('Missing arguments for stop');

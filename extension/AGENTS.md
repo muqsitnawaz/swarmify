@@ -1,432 +1,50 @@
 # Agents Extension
 
-VS Code extension for multi-agent coding. Spawns AI terminals (Claude, Codex, Gemini, Cursor, OpenCode) with keyboard shortcuts.
+VS Code extension for multi-agent coding. Spawns AI terminals (Claude, Codex, Gemini, Cursor, OpenCode) as editor tabs with keyboard shortcuts, and dispatches work to Rush Cloud.
 
-## Architecture
+This file is a **map**, not the territory. Keep it a short paragraph per area plus pointers. Read the actual code for current details.
+
+## Layout
 
 ```
-/src/core              Pure functions (no VS Code dependencies)
-/src/core/handoff.ts     Handoff context extraction and prompt formatting
-/src/vscode            VS Code integration (commands, webviews)
-/src/vscode/ui/.tmp   Webview state files
-/ui/settings            Dashboard webview (React + Vite)
-/ui/editor             Custom markdown editor components
-/assets                 Icons
+/src/core       Pure functions (no VS Code dependencies; unit-tested here)
+/src/vscode     VS Code integration (commands, webviews, terminal tracking)
+/ui/settings    Dashboard webview (React + Vite) — includes Factory Floor
+/ui/editor      Custom markdown editor components
+/assets         Icons (agent logos, rush bird, etc.)
+/tests          Real-service tests (no mocks)
 ```
 
-## Commands
+## Building + Testing
 
 ```bash
-bun run compile    # Build everything
-bun test           # 166 tests, no mocks
+bun run compile   # tsc + vite build for both webviews
+bun test          # Full test suite, no mocks
+bash scripts/install.sh <version>   # Package .vsix and install to Cursor + Code + Codium
 ```
 
-## Key Paths
+## Areas (and where to look)
 
-| Item | Location |
-|------|----------|
-| Settings | VS Code globalState |
-| Prompts | `~/.swarmify/agents/prompts.yaml` |
-| Swarm config | `~/.agents/swarm/config.json` |
-| Workspace config | `.swarmify/config.yaml` (workspace root) |
-| Claude sessions | `~/.claude/projects/{workspace}/*.jsonl` |
-| Codex sessions | `~/.codex/sessions/{year}/{month}/{day}/*.jsonl` |
-| Gemini sessions | `~/.gemini/sessions/*.jsonl` |
-| OpenCode sessions | `~/.local/share/opencode/storage/session/{projectHash}/*.json` |
-
-## Gotchas
-
-- **Webview reload**: Set `retainContextWhenHidden: true` or panel reloads on focus loss.
-- **Terminal tracking**: `countRunning()` scans all VS Code terminals by name. Internal map (`editorTerminals`) may be stale after restart - scan `vscode.window.terminals` directly when needed.
-- **Agent ID formats**: UI uses `claude`, AgentConfig uses `Claude`, terminal names use `CC`. Map between them carefully.
-- **Prefix constants**: CC=Claude, CX=Codex, GX=Gemini, OC=OpenCode, CR=Cursor, SH=Shell (in `utils.ts`).
-- **Tmux socket pinning**: Each tmux session uses a dedicated socket (`/tmp/agents-tmux-{session}.sock`) to ensure `terminal.sendText()` and `execAsync()` talk to the same server. Split operations use `execAsync()` directly to bypass terminal input (avoids Claude capturing keystrokes).
-- **Autogit AI key**: Requires `openaiApiKey` in settings for AI-generated commit messages. Without it, only basic diff is shown.
-- **Autogit controls**: `disableAutopush` skips git push after commit. `disableAutocommit` only stages changes and generates message, doesn't commit.
-- **Claude pre-warm exit**: Claude requires special exit sequence (Esc + Ctrl+C + Ctrl+C) to cleanly terminate session.
-- **Session pooling**: Prewarming maintains available sessions in pool for instant hand-off. Sessions expire after timeout.
-- **OpenCode session detection**: Unlike other agents, OpenCode session ID is detected 3s after spawn by comparing `opencode session list` before/after. Status bar updates async.
-
-## Terminal Titles
-
-Terminal tab titles are constructed from prefix + sessionChunk + label. User preferences control display:
-
-| Setting | Effect |
-|---------|--------|
-| `showFullAgentNames` | `CC` vs `Claude` |
-| `showSessionIdInTitles` | Include first 8 chars of session UUID |
-| `showLabelsInTitles` | Include user-set label |
-| `labelReplacesTitle` | Label replaces full title vs appends with dash |
-
-**Label behavior:**
-
-| showLabelsInTitles | labelReplacesTitle | Session | Label | Result |
-|--------------------|-------------------|---------|-------|--------|
-| false | any | any | any | `Claude` or `Claude 12345678` |
-| true | false (default) | no | yes | `Claude - auth feature` |
-| true | false (default) | yes | yes | `Claude 12345678 - auth feature` |
-| true | true | no | yes | `auth feature` |
-| true | true | yes | yes | `Claude 12345678 - auth feature` |
-
-**Key identifiers** (stored in terminal env vars):
-- `AGENT_TERMINAL_ID`: Internal tracking ID (`CC-1705123456789-1`)
-- `AGENT_SESSION_ID`: CLI session UUID (`4a78949e-xxxx-xxxx-xxxx-xxxxxxxxxxxx`)
-- `sessionChunk`: First 8 chars of sessionId, shown in tab title
-
-**Session restoration**: `scanExisting()` extracts both env vars at startup to restore session tracking for terminals that survived VS Code restart.
+| Area | Start here |
+|---|---|
+| Agent spawn flow + editor-tab terminals | `src/vscode/extension.ts` (`openSingleAgent`, `openSingleAgentWithQueue`) |
+| Terminal registry + session IDs | `src/vscode/terminals.vscode.ts` |
+| Settings shape + defaults | `src/core/settings.ts` (AgentSettings interface) |
+| Agent metadata (titles, prefixes, icons) | `src/core/agents.ts` (`BUILT_IN_AGENTS`) |
+| Session activity parsing (per-agent formats) | `src/core/session.activity.ts` |
+| Prewarming pool | `src/core/prewarm.ts`, `src/vscode/prewarm.vscode.ts` |
+| Autogit | `src/core/git.ts`, `src/vscode/git.vscode.ts` |
+| Unified task aggregation (markdown / Linear / GitHub) | `src/core/tasks.ts`, `src/vscode/tasks.vscode.ts` |
+| Handoff across agents | `src/core/handoff.ts` |
+| Custom .md editor (TipTap) | `src/vscode/customEditor.ts`, `/ui/editor/extensions/` |
+| Swarm MCP integration | `src/vscode/swarm.vscode.ts`, `src/core/swarm.detect.ts` |
+| Factory Floor (dashboard, dispatch) | `ui/settings/components/mission-control/` |
+| Cloud dispatch resolver (label parsing, repo/owner) | `ui/settings/components/mission-control/dispatch.ts` + `src/vscode/settings.vscode.ts` (`case 'dispatchTask'`) |
 
 ## Keybindings
 
-| Shortcut | Action |
-|----------|--------|
-| Cmd+Shift+G | Autogit (stage, generate commit, commit, push) |
-| Cmd+Shift+A | New Agent |
-| Cmd+Shift+B | New Secondary Agent |
-| Cmd+Shift+L | Label terminal |
-| Cmd+Shift+C | Clear terminal |
-| Cmd+Shift+N | New Task |
-| Cmd+Shift+H | Handoff (from Command Palette) |
-| Cmd+Shift+S | New Shell (SH) |
-| Cmd+Shift+I | Open Agent |
-| Cmd+Shift+H | Horizontal split (tmux mode) |
-| Cmd+Shift+V | Vertical split (tmux mode) |
-| Cmd+Shift+' | Open Prompts |
-| Cmd+Shift+X | New Codex (CX) |
-| Cmd+Shift+M | New Gemini (GX) |
-| Cmd+Shift+U | New Cursor (CR) |
-| Cmd+Shift+D | Dashboard |
+The canonical list is `package.json` → `contributes.keybindings`. Read it there; don't let this doc drift.
 
-## Autogit
+## Non-obvious gotchas worth knowing before you edit
 
-Git integration for automated commits. Stages changes, generates commit message via AI, commits, and pushes.
-
-**Files:** `src/core/git.ts`, `src/vscode/git.vscode.ts`
-
-**Features:**
-- Stage all changed files
-- Generate commit message using AI (OpenAI API or OpenRouter)
-- Commit with generated message
-- Push to remote (optional via `disableAutopush`)
-
-**Configuration:**
-- `agents.commitMessageExamples`: Array of example commit messages to guide AI style
-- `agents.ignoreFiles`: Comma-separated patterns to ignore in diffs (default: node_modules,dist,build,out,.git,*.lock,bun.lock,package-lock.json)
-- `agents.openaiApiKey`: API key for commit message generation
-- `agents.disableAutopush`: Skip push after commit (default: false)
-- `agents.disableAutocommit`: Only stage and generate message, don't commit (default: false)
-
-**Command:** `agents.autogit` (Ctrl+Shift+G / Cmd+Shift+G)
-
-**Implementation:**
-- Parses git diff output for changed files
-- Sends diff to AI model with system prompt based on commitMessageExamples
-- Stages files, commits with message, pushes unless disabled
-- Uses `shouldIgnoreFile()` to filter ignored patterns
-
-## Prewarming
-
-Session pre-warming for instant agent startup. Maintains pool of ready-to-use agent sessions.
-
-**Files:** `src/core/prewarm.ts`, `src/core/prewarm.simple.ts`, `src/vscode/prewarm.vscode.ts`
-
-**Supported Agents:** Claude, Codex, Gemini, Cursor, OpenCode
-
-**Commands:** `agents.enableWarming`, `agents.disableWarming`
-
-**Architecture:**
-- Background processes maintain available sessions per agent type
-- Session pool tracks available vs pending creation
-- Terminal-to-session mapping for crash recovery
-- Each agent has specific pre-warm config (command, status command, session ID pattern, exit sequence, resume command)
-
-**Pre-warm configurations:**
-- **Claude**: Uses `/status` command, requires Esc+Ctrl+C+Ctrl+C exit sequence, resumes via `claude -r {sessionId}`
-- **Codex**: Standard session management (prewarmed from pool)
-- **Gemini**: Standard session management (prewarmed from pool)
-- **Cursor**: Standard session management (prewarmed from pool)
-- **OpenCode**: Session IDs use `ses_xxx` format (not UUID), resumes via `opencode -s {sessionId}`, sessions listed via `opencode session list`. Session ID detected async 3s after spawn by comparing session lists (no prewarming)
-
-**Session types:**
-- `PrewarmedSession`: Ready-to-handoff session with agentType, sessionId, createdAt, workingDirectory
-- `SessionPoolState`: Pool with available sessions and pending count
-- `TerminalSessionMapping`: Terminal-to-session mapping for recovery
-
-## Tasks System
-
-Unified task management from multiple sources. Aggregates tasks into single interface.
-
-**Files:** `src/core/tasks.ts`, `src/vscode/tasks.vscode.ts`
-
-**Command:** `agents.newTask` (Ctrl+Shift+N / Cmd+Shift+N)
-
-Opens a task picker to select a task from TODO.md, RALPH.md, Linear, or GitHub sources. When a task is selected, opens a new default agent with the task details. Clipboard content (if any) is automatically added as context to the selected task.
-
-If no tasks are found, falls back to a free-form input prompt (original behavior).
-
-**Sources:**
-- **Markdown**: Tasks from .md files (checkboxes, TODO comments)
-- **Linear**: Issues fetched via MCP client
-- **GitHub**: Issues fetched via MCP client
-
-**Task interface:**
-```typescript
-{
-  id: string;              // Unique identifier
-  source: 'markdown' | 'linear' | 'github';
-  title: string;           // Task title
-  description?: string;     // Optional description
-  status: 'todo' | 'in_progress' | 'done';
-  priority?: 'urgent' | 'high' | 'medium' | 'low';
-  metadata: {
-    file?: string;         // For markdown: file path
-    line?: number;         // For markdown: line number
-    identifier?: string;   // For Linear/GitHub: PROJ-123 or #42
-    url?: string;         // Web URL
-    labels?: string[];     // Labels/tags
-    assignee?: string;     // Assigned user
-    state?: string;        // Raw state from source
-  }
-}
-```
-
-**Source badges:**
-- MD (Markdown): Indigo (#6366f1)
-- LN (Linear): Purple (#5e6ad2)
-- GH (GitHub): Green (#238636)
-
-**Functions:**
-- `markdownToUnifiedTask()`: Convert markdown todo to UnifiedTask
-- `linearToUnifiedTask()`: Convert Linear issue to UnifiedTask (maps priority 1-4 to urgent-low)
-- `githubToUnifiedTask()`: Convert GitHub issue to UnifiedTask
-- `groupTasksBySource()`: Group by source for organized display
-- `filterTasksByStatus()`: Filter by todo/in_progress/done
-
-## Handoff Command
-
-Transfer task context from one agent to another.
-
-**Files:** `src/core/handoff.ts`, `src/vscode/extension.ts`
-
-**Command:** `agents.handoff` (Command Palette only)
-
-Reads the last 10 messages from the current agent's session and finds the most recent Claude plan file (if agent is Claude). Shows a searchable quick pick of all available agents (excluding the current one), then opens a new agent in edit mode with formatted handoff context.
-
-**Handoff prompt format:**
-```markdown
-Please take over this task from {agent_name}.
-
-<recent_messages>
-User: {last_user_message}
-Assistant: {last_assistant_message}
-...
-</recent_messages>
-
-<current_plan>
-{plan_content}
-</current_plan>
-```
-
-**Features:**
-- Extracts last 10 messages from session file
-- Finds most recent plan from `~/.claude/plans/` (for Claude agents only)
-- Shows all built-in and custom agents in searchable list
-- Excludes current agent from selection
-- Opens new agent in edit mode
-- Graceful error handling if no session or plan found
-
-**Session parsing supports:**
-- Claude: `{"type":"user","message":{"role":"user","content":[...]}}`
-- Claude: `{"type":"assistant","message":{"role":"assistant","content":[...]}}`
-- Codex: `{"type":"response_item","payload":{"type":"function_call",...}}`
-- Gemini: `{"type":"message","role":"user",...}`
-
-## Custom Markdown Editor
-
-Custom editor for .md files with agent-specific features.
-
-**Files:** `src/vscode/customEditor.ts`
-
-**Registration:** `agents.markdownEditor` viewType, handles `*.md` files (priority: default)
-
-**Features:**
-- Agent-specific markdown parsing
-- Integrated with extension commands
-- Custom rendering for TODO lists
-
-## Notifications
-
-Notification system for agent events.
-
-**Files:** `src/vscode/notifications.vscode.ts`
-
-**Command:** `agents.enableNotifications`
-
-## Setup Commands
-
-Install and configure agent CLIs.
-
-**Commands:**
-- `agents.setupClaude`: Setup Claude CLI
-- `agents.setupCodex`: Setup Codex CLI
-- `agents.setupGemini`: Setup Gemini CLI
-
-**Implementation:** Each command guides through installation via npm/pnpm/yarn and configures CLI for use with extension.
-
-## View Controls
-
-Toggle visibility of agent-related views.
-
-**Commands:**
-- `agents.enableView`: Enable agent view
-- `agents.disableView`: Disable agent view
-
-## Dashboard Tabs
-
-### Overview
-- Running agents (clickable to focus terminal)
-- Recent Tasks from all sources (markdown, Linear, GitHub)
-- Keyboard shortcuts reference
-
-### Swarm
-- Integration status per agent (CLI available, MCP enabled, Command installed)
-- Agent toggles (enable/disable for spawning)
-- Open on Startup option
-- Tasks list from agents-mcp server
-
-### Prompts
-- Saved prompts with favorites
-- Quick access to slash commands
-
-### Guide
-- Quick start steps for new users
-
-## Every swarm starts with `/swarm` in your IDE
-
-MCP server integration for multi-agent orchestration. `/swarm` describes the task and Mix of Agents; the extension connects to `@swarmify/agents-mcp` to execute it.
-
-**Files:** `src/vscode/swarm.vscode.ts`, `src/core/swarm.detect.ts`
-
-**Configuration:**
-- Per-agent toggles in Dashboard > Swarm
-- Open on Startup preference
-- Auto-discovery of installed agent CLIs
-- MCP client status checking
-
-**Detection:**
-- Checks CLI availability: `claude`, `codex`, `gemini`, `cursor-agent`, `opencode`
-- Checks MCP integration status: `isAgentMcpEnabled(agentType)`
-- Checks swarm command installation: `isAgentCommandInstalled(agentType, 'swarm')`
-
-**Integration:**
-- Uses @modelcontextprotocol/sdk for MCP client
-- Fetches tasks from agents-mcp server
-- Displays task status in Dashboard
-
-## Testing
-
-```bash
-bun run compile    # Build everything
-bun test           # Run all tests
-```
-
-**Test files** (no mocks, real services only):
-- `tests/agents.test.ts` - Agent configuration and spawning
-- `tests/git.test.ts` - Git integration and commit generation
-- `tests/sessions.activity.test.ts` - Session file parsing
-- `tests/terminals.test.ts` - Terminal tracking and management
-- `tests/prewarm.test.ts` - Session pre-warming
-- `tests/settings.test.ts` - Settings storage and retrieval
-
-**Test fixtures:** `src/core/testdata/` directory
-
-## Session Activity Parsing
-
-Live activity extraction from agent session files. Shows what the agent is currently doing in Dashboard terminal cards (e.g., "Reading auth.ts", "Running npm test").
-
-**Architecture** (`src/core/session.activity.ts`):
-- Reads tail of session JSONL files (last 32-64KB)
-- Parses from end to find most recent tool activity
-- Agent-specific parsers handle different event formats
-- Maps raw events to unified activity types
-
-**Activity types**: `reading`, `editing`, `running`, `thinking`, `waiting`, `completed`
-
-**Agent formats** (critical - each agent logs differently):
-
-| Agent | Tool Call Event | Tool Name Field | Args Field |
-|-------|-----------------|-----------------|------------|
-| Claude | `type: "assistant"` with `message.content[].type: "tool_use"` | `name` (Read, Edit, Bash, etc.) | `input` object |
-| Codex | `type: "response_item"` with `payload.type: "function_call"` | `payload.name` (shell_command, etc.) | `payload.arguments` (JSON string!) |
-| Gemini | `type: "tool_call"` | `tool_name` | `parameters` object |
-| Cursor | Similar to Gemini, uses stream-json format | `tool_name` | `parameters` object |
-
-**Codex gotcha**: Arguments are a JSON STRING, not an object. Must `JSON.parse(payload.arguments)` to extract command/path.
-
-**Session file locations**:
-- Claude: `~/.claude/projects/{workspace}/*.jsonl`
-- Codex: `~/.codex/sessions/{year}/{month}/{day}/*.jsonl`
-- Gemini: `~/.gemini/sessions/*.jsonl`
-- OpenCode: `~/.local/share/opencode/storage/session/{projectHash}/*.json` (messages in `storage/message/{sessionId}/`, content in `storage/part/{messageId}/`)
-- Cursor: `~/.cursor/chats/{hash}/{uuid}/store.db` (SQLite with blobs table)
-
-**Cursor SQLite blob format** (critical):
-- The `blobs` table contains mixed data: some blobs are JSON, others are binary (protobuf/metadata)
-- JSON blobs start with `0x7B` (`{`) - these contain chat messages with `role` and `content` fields
-- Binary blobs start with `0x0A`, `0x1A`, `0x12` etc - skip these
-- User message content is an array: `[{type: "text", text: "..."}]`
-- First user message often contains `<user_info>` context - look for `<user_query>` tags for actual query
-- Uses `better-sqlite3` for reading (native SQLite bindings)
-
-**OpenCode 3-level storage**:
-- Session metadata: `storage/session/{sessionId}.json`
-- Message metadata: `storage/message/{sessionId}/msg_xxx.json` (contains `role`, `id`)
-- Message content: `storage/part/{messageId}/prt_xxx.json` (contains actual `text`)
-
-**Implementation details**:
-- `getSessionPreviewInfo()`: Reads tail of session file and parses for recent activity
-- `getOpenCodeSessionPreviewInfo()`: Reads OpenCode's 3-level JSON storage structure
-- `getCursorSessionPreviewInfo()`: Reads Cursor's SQLite database (better-sqlite3)
-- `getSessionPathBySessionId()`: Locates session file by searching known directories
-- File size filtering (minimum 5KB) to skip empty sessions
-- Sort by modification time to find most recent
-
-**Testing**: E2E tests in `tests/sessions.activity.test.ts` use real session files. Filter by 5KB minimum size and sort by mtime to find substantial recent sessions.
-
-## Factory Floor Dispatch
-
-Dispatch flow from the Factory Floor webview (Dispatch button, Next Up cards) down to the real terminal / cloud run.
-
-**Entry points** (all route to the same backend handler):
-- `DispatchModal` (top-level Dispatch button, single + batch) — `ui/settings/components/mission-control/UnifiedAgentsPane.tsx`
-- `DispatchCard` (Next Up row) — same file
-- Both call `handleDispatchTask(task, agentType, target, targetRepos?)` which posts `{ type: 'dispatchTask', labels, targetRepos, ... }` to the extension
-
-**Backend handler**: `src/vscode/settings.vscode.ts` `case 'dispatchTask'`
-
-**Local path** (`target === 'local'`):
-- Builds `prompt` = `title \n\n description \n\n Reference: <id>`
-- Resolves agent config, calls `openSingleAgentWithQueue(context, agentConfig, [prompt])`
-- `extension.ts:openSingleAgentWithQueue` creates a transient editor-tab terminal with `ViewColumn.Active` + `preserveFocus: false` + explicit `terminal.show(false)` so it takes focus from the webview column (matches Cmd+Shift+A behavior)
-
-**Cloud path** (`target === 'cloud'`):
-1. Resolve GitHub owner via fallback chain (`resolveGithubOwner`):
-   - `settings.githubOwner` (Panel-editable)
-   - Workspace git remote owner
-   - `gh api user -q .login`
-   - null → webview gets `needGithubOwner` message, shows `GithubOwnerModal`
-2. Parse `repo:<name>` labels via `resolveReposFromLabels(labels, owner)` → `owner/name[]`
-3. If 0 repos from labels → fall back to workspace remote
-4. If 2+ repos → webview gets `pickRepos` message, shows `RepoPickerModal` → user picks subset → re-dispatch with `targetRepos` override
-5. For each resolved repo, `rush cloud run <agent> <owner/repo> -p '<prompt>'` is sent to a single shared **Rush Cloud** editor tab (`getOrCreateRushCloudTerminal` singleton with the Rush bird icon). 10 cloud dispatches = 1 terminal tab with 10 commands logged in order.
-
-**Optimistic UI + reconciliation** — `ui/settings/components/mission-control/dispatch.ts` (pure, tested):
-- `handleDispatchTask` pushes a `PendingDispatch` row into Active immediately (`Starting... (RUSH-362)` for local, `Queuing on Rush Cloud... (RUSH-362 -> muqsitnawaz/agents)` for cloud)
-- `reconcilePending(pending, terminals, tasks)` runs on every terminals/tasks update. Local: match by `agentType` on a terminal created at/after the dispatch time. Cloud: match by `agent_type` on a swarm task started at/after. Matching pending rows are dropped and the real row takes over.
-- `pruneExpiredPending` GCs any stuck pending rows after `PENDING_DISPATCH_TTL_MS` (30s).
-- `isTerminalActive(t, now)` uses a 15s trust window — newly-spawned terminals with no session file yet are still shown in Active as `Starting...` instead of landing in the Recent bucket.
-- `filterDispatchedTaskIds` removes dispatched task ids from the Next Up queue immediately.
-
-**Settings**:
-- `AgentSettings.githubOwner?: string` — persisted in VS Code globalState. Panel → "Cloud Dispatch" section edits it.
-
-**Tests**: `ui/settings/components/mission-control/dispatch.test.ts` covers trust-window, reconciliation, TTL prune, label-filter, optimistic label composition, and `resolveReposFromLabels` (46 tests, no mocks — pure-function coverage).
+Terminal tracking spans two worlds (VS Code API + an internal map that can go stale across restarts) — always cross-check `vscode.window.terminals` when reconciling. Three name formats for agent types live in different layers (UI/config/prefix); `src/core/utils.ts` is the reference. Webviews need `retainContextWhenHidden: true` or they reload on focus loss. Beyond that, read the code — the mechanics change faster than this file should.

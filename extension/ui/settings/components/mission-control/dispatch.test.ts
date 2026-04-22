@@ -1,6 +1,7 @@
 import { describe, test, expect } from 'bun:test'
 import type { TaskSummary, TerminalDetail, AgentDetail } from '../../types'
 import {
+  buildCloudDispatchCommand,
   isTerminalJustSpawned,
   isTerminalActive,
   reconcilePending,
@@ -341,5 +342,65 @@ describe('resolveReposFromLabels', () => {
   test('rejects slashes in repo label (prevents owner injection)', () => {
     expect(resolveReposFromLabels(['repo:evil/other-owner/target'], 'muqsitnawaz'))
       .toEqual([])
+  })
+})
+
+describe('buildCloudDispatchCommand', () => {
+  test('rush provider uses legacy `rush cloud run` form', () => {
+    const cmd = buildCloudDispatchCommand({
+      provider: 'rush',
+      agentType: 'claude',
+      repos: ['muqsitnawaz/agents'],
+      safePrompt: 'fix it',
+    })
+    expect(cmd).toBe(`rush cloud run claude --repo muqsitnawaz/agents -p 'fix it'`)
+  })
+
+  test('rush multi-repo sends repeatable --repo flags in order', () => {
+    const cmd = buildCloudDispatchCommand({
+      provider: 'rush',
+      agentType: 'claude',
+      repos: ['muqsitnawaz/rush', 'muqsitnawaz/agents'],
+      safePrompt: 'refactor',
+    })
+    expect(cmd).toBe(
+      `rush cloud run claude --repo muqsitnawaz/rush --repo muqsitnawaz/agents -p 'refactor'`
+    )
+  })
+
+  test('codex provider routes through agents cloud run (cloud-agnostic path)', () => {
+    const cmd = buildCloudDispatchCommand({
+      provider: 'codex',
+      agentType: 'codex',
+      repos: ['muqsitnawaz/agents'],
+      safePrompt: 'add tests',
+    })
+    expect(cmd).toBe(
+      `agents cloud run --provider codex --agent codex --repo muqsitnawaz/agents -p 'add tests'`
+    )
+  })
+
+  test('factory provider routes through agents cloud run', () => {
+    const cmd = buildCloudDispatchCommand({
+      provider: 'factory',
+      agentType: 'droid',
+      repos: ['org/repo'],
+      safePrompt: 'deploy',
+    })
+    expect(cmd).toBe(
+      `agents cloud run --provider factory --agent droid --repo org/repo -p 'deploy'`
+    )
+  })
+
+  test('pre-escaped single quotes in the prompt are preserved verbatim', () => {
+    // Caller escapes ' -> '\''; the builder must not re-escape or strip it.
+    const safePrompt = `fix Muqsit'\\''s bug`
+    const cmd = buildCloudDispatchCommand({
+      provider: 'rush',
+      agentType: 'claude',
+      repos: ['a/b'],
+      safePrompt,
+    })
+    expect(cmd).toContain(`-p 'fix Muqsit'\\''s bug'`)
   })
 })

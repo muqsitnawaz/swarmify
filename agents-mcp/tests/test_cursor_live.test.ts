@@ -3,8 +3,15 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { tmpdir } from 'os';
 import { mkdtempSync, rmSync, writeFileSync, unlinkSync } from 'fs';
-import { AgentManager, checkCliAvailable, AgentStatus } from '../src/agents.js';
-import { handleSpawn, handleStatus, handleStop, AgentStatusDetail } from '../src/api.js';
+import {
+  AgentManager,
+  checkCliAvailable,
+  AgentStatus,
+  handleSpawn,
+  handleStatus,
+  handleStop,
+  type AgentStatusDetail,
+} from '@phnx-labs/agents-cli/teams';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
