@@ -576,34 +576,43 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     return filterDispatchedTaskIds(eligible, pendingTaskIds)
   }, [unifiedTasks, pendingTaskIds])
 
-  const [queueProjectFilter, setQueueProjectFilter] = useState<string>('all')
+  const [queueRepoFilter, setQueueRepoFilter] = useState<string>('all')
 
-  // Distinct Linear project names present in the eligible queue. Used to
-  // populate the filter dropdown; when fewer than 2 projects are present we
-  // hide the control entirely.
-  const queueProjects = useMemo(() => {
+  // Distinct repo names present in the eligible queue. Derived from the
+  // repo:* label on each Linear issue (resolved to "owner/repo" at fetch
+  // time). Shown as just the repo name in the dropdown since they all share
+  // the same owner.
+  const queueRepos = useMemo(() => {
     const seen = new Set<string>()
     for (const t of queueEligible) {
-      const p = t.metadata.project
-      if (p) seen.add(p)
+      const full = t.metadata.repo
+      if (!full) continue
+      const name = full.includes('/') ? full.split('/').pop()! : full
+      seen.add(name)
     }
     return Array.from(seen).sort()
   }, [queueEligible])
 
-  // When the current filter's project disappears from the eligible pool
-  // (e.g. the last task in that project got dispatched), drop back to "all".
+  // When the selected repo drains out of the eligible pool (all its tasks
+  // got dispatched), fall back to "all" rather than showing an empty queue
+  // the user can't clear without touching the dropdown.
   useEffect(() => {
-    if (queueProjectFilter !== 'all' && !queueProjects.includes(queueProjectFilter)) {
-      setQueueProjectFilter('all')
+    if (queueRepoFilter !== 'all' && !queueRepos.includes(queueRepoFilter)) {
+      setQueueRepoFilter('all')
     }
-  }, [queueProjectFilter, queueProjects])
+  }, [queueRepoFilter, queueRepos])
 
   const queueTasks = useMemo(() => {
-    const filtered = queueProjectFilter === 'all'
+    const filtered = queueRepoFilter === 'all'
       ? queueEligible
-      : queueEligible.filter((t) => t.metadata.project === queueProjectFilter)
+      : queueEligible.filter((t) => {
+          const full = t.metadata.repo
+          if (!full) return false
+          const name = full.includes('/') ? full.split('/').pop()! : full
+          return name === queueRepoFilter
+        })
     return filtered.slice(0, 4)
-  }, [queueEligible, queueProjectFilter])
+  }, [queueEligible, queueRepoFilter])
 
   // Intake queue: cloud teammates that a cloud provider flagged as
   // 'input_required'. Surface one banner per team; submit pipes through to
@@ -910,16 +919,16 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
             <span className="sw-section-count-pill">{queueTasks.length}</span>
             <span className="sw-section-hint">Click a card to configure and dispatch</span>
             <span className="sw-section-line" />
-            {queueProjects.length >= 2 && (
+            {queueRepos.length >= 2 && (
               <select
                 className="sw-queue-project-select mono"
-                value={queueProjectFilter}
-                onChange={(e) => setQueueProjectFilter(e.target.value)}
-                aria-label="Filter Next Up by Linear project"
+                value={queueRepoFilter}
+                onChange={(e) => setQueueRepoFilter(e.target.value)}
+                aria-label="Filter Next Up by repo"
               >
-                <option value="all">All projects</option>
-                {queueProjects.map((p) => (
-                  <option key={p} value={p}>{p}</option>
+                <option value="all">All repos</option>
+                {queueRepos.map((r) => (
+                  <option key={r} value={r}>{r}</option>
                 ))}
               </select>
             )}
@@ -933,9 +942,9 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
             </div>
           ) : (
             <div className="sw-queue-empty">
-              No tasks in project <b>{queueProjectFilter}</b>.{' '}
-              <button type="button" className="sw-link-btn" onClick={() => setQueueProjectFilter('all')}>
-                Show all projects
+              No tasks in repo <b>{queueRepoFilter}</b>.{' '}
+              <button type="button" className="sw-link-btn" onClick={() => setQueueRepoFilter('all')}>
+                Show all repos
               </button>
             </div>
           )}
