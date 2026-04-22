@@ -29,7 +29,7 @@ bash scripts/install.sh <version>   # Package .vsix and install to Cursor + Code
 |---|---|
 | Agent spawn flow + editor-tab terminals | `src/vscode/extension.ts` (`openSingleAgent`, `openSingleAgentWithQueue`) |
 | Terminal registry + session IDs | `src/vscode/terminals.vscode.ts` |
-| Terminal readiness events (tabReady, shellReady, promptReady, agentReady) | `src/core/terminalReadiness.ts`, `src/vscode/terminalReadiness.ts` (design doc: `agents-cli/docs/05-terminal-readiness.md`) |
+| Terminal readiness events (tabReady, shellReady, promptReady, agentReady) | `src/core/terminalReadiness.ts`, `src/vscode/terminalReadiness.ts` (design doc: `swarmify/docs/01-terminal-lifecycle.md`) |
 | Settings shape + defaults | `src/core/settings.ts` (AgentSettings interface) |
 | Agent metadata (titles, prefixes, icons) | `src/core/agents.ts` (`BUILT_IN_AGENTS`) |
 | Session activity parsing (per-agent formats) | `src/core/session.activity.ts` |
