@@ -55,17 +55,6 @@ interface UnifiedAgent {
   taskTypeCounts?: Partial<Record<FactoryTaskType, number>>
 }
 
-function taskTypeColor(type: FactoryTaskType): string {
-  switch (type) {
-    case 'plan': return '#8b5cf6'     // violet
-    case 'implement': return '#3b82f6' // blue
-    case 'test': return '#10b981'     // green
-    case 'review': return '#f59e0b'   // amber
-    case 'bugfix': return '#ef4444'   // red
-    case 'docs': return '#6b7280'     // gray
-  }
-}
-
 function buildUnifiedList(terminals: TerminalInfo[], tasks: TaskSummary[]): UnifiedAgent[] {
   const items: UnifiedAgent[] = []
 
@@ -171,18 +160,6 @@ function buildUnifiedList(terminals: TerminalInfo[], tasks: TaskSummary[]): Unif
   })
 
   return items
-}
-
-function agentAbbr(type: string): string {
-  const map: Record<string, string> = { claude: 'CC', codex: 'CX', gemini: 'GX', opencode: 'OC', cursor: 'CR' }
-  return map[type.toLowerCase()] || type.slice(0, 2).toUpperCase()
-}
-
-function modeLabel(item: UnifiedAgent): string {
-  if (item.mode === 'cloud') return 'cloud'
-  if (item.kind === 'team') return 'team'
-  if (item.kind === 'cloud') return 'cloud'
-  return item.mode || 'edit'
 }
 
 function kindBadge(kind: UnifiedAgent['kind']): string {
@@ -389,26 +366,6 @@ function StatPopover({
           ))}
         </div>
       )}
-    </div>
-  )
-}
-
-// VU meter segments
-function VuMeter({ value, max }: { value: number; max: number }) {
-  const segments = 8
-  const filled = Math.round((value / Math.max(max, 1)) * segments)
-  return (
-    <div className="sw-strip-vu">
-      {Array.from({ length: segments }, (_, i) => {
-        const h = 4 + ((i + 1) / segments) * 16
-        let cls = ''
-        if (i < filled) {
-          if (i >= segments - 2) cls = 'on-red'
-          else if (i >= segments - 4) cls = 'on-amber'
-          else cls = 'on-green'
-        }
-        return <div key={i} className={`sw-vu-seg ${cls}`} style={{ height: h }} />
-      })}
     </div>
   )
 }
@@ -1702,70 +1659,6 @@ function IntakeBanner({ team, teammates }: { team: string; teammates: { teammate
   )
 }
 
-/**
- * Factory-specific badges: task-type for single teammates, task-type roll-up
- * for team rows, plus the cloud-provider pill. Renders nothing when no
- * Factory metadata is present, so plain teammates look identical to before.
- */
-function FactoryBadges({ item }: { item: UnifiedAgent }) {
-  const badges: React.ReactElement[] = []
-
-  if (item.taskType) {
-    badges.push(
-      <span
-        key="task-type"
-        className="sw-factory-badge"
-        title={`Factory task type: ${item.taskType}`}
-        style={{
-          background: taskTypeColor(item.taskType) + '22',
-          color: taskTypeColor(item.taskType),
-          border: `1px solid ${taskTypeColor(item.taskType)}66`,
-        }}
-      >
-        {item.taskType}
-      </span>
-    )
-  }
-
-  if (item.cloudProvider) {
-    badges.push(
-      <span
-        key="cloud"
-        className="sw-factory-badge"
-        title={`Dispatched on cloud: ${item.cloudProvider}`}
-        style={{ background: '#0ea5e922', color: '#0ea5e9', border: '1px solid #0ea5e966' }}
-      >
-        {item.cloudProvider}
-      </span>
-    )
-  }
-
-  if (item.kind === 'team' && item.taskTypeCounts) {
-    const order: FactoryTaskType[] = ['plan', 'implement', 'test', 'review', 'bugfix', 'docs']
-    for (const k of order) {
-      const n = item.taskTypeCounts[k] ?? 0
-      if (n <= 0) continue
-      badges.push(
-        <span
-          key={`team-${k}`}
-          className="sw-factory-badge"
-          title={`${n} ${k} task${n === 1 ? '' : 's'}`}
-          style={{
-            background: taskTypeColor(k) + '22',
-            color: taskTypeColor(k),
-            border: `1px solid ${taskTypeColor(k)}66`,
-          }}
-        >
-          {k} × {n}
-        </span>
-      )
-    }
-  }
-
-  if (badges.length === 0) return null
-  return <div className="sw-strip-factory-badges">{badges}</div>
-}
-
 type IdentityLabel = { text: string; variant: 'plain' | 'cloud' | 'team' | 'plan' | 'ralph' }
 
 function identityLabel(item: UnifiedAgent): IdentityLabel {
@@ -1871,71 +1764,6 @@ function AgentCard({ item, selected, onSelect, dimmed, onRetry }: {
         </div>
       )}
     </button>
-  )
-}
-
-function AgentStrip({ item, dimmed, selected, onSelect, onFocus, onKill, onRetry }: {
-  item: UnifiedAgent
-  dimmed?: boolean
-  selected?: boolean
-  onSelect?: (id: string) => void
-  onFocus: (t: TerminalInfo) => void
-  onKill?: (taskName: string) => void
-  onRetry?: (taskName: string) => void
-}) {
-  const fileNames = item.files.map((f) => f.split('/').pop() || f)
-  const abbr = agentAbbr(item.agentType)
-  const mode = modeLabel(item)
-
-  const stop = (e: React.MouseEvent) => e.stopPropagation()
-
-  return (
-    <div
-      className={`sw-agent-strip ${dimmed ? 'dimmed' : ''} ${selected ? 'selected' : ''} ${onSelect ? 'clickable' : ''}`}
-      onClick={onSelect ? () => onSelect(item.id) : undefined}
-      role={onSelect ? 'button' : undefined}
-      tabIndex={onSelect ? 0 : undefined}
-    >
-      <div className={`sw-strip-color-bar ${item.agentType.toLowerCase()}`} />
-      <div className={`sw-strip-led ${item.status === 'running' ? 'green' : item.status === 'failed' ? 'red' : 'gray'}`} />
-      <div className="sw-strip-identity">
-        <AgentAvatar id={item.agentType} size={28} />
-        <div>
-          <div className="sw-strip-name">
-            {item.teammateName
-              ? item.teammateName
-              : item.agentType.charAt(0).toUpperCase() + item.agentType.slice(1)}
-          </div>
-          <div className="sw-strip-kind">{mode}</div>
-        </div>
-      </div>
-      <div className="sw-strip-activity">
-        {item.activity}
-      </div>
-      <FactoryBadges item={item} />
-      <div className="sw-strip-files">
-        {fileNames.slice(0, 3).map((f) => (
-          <span key={f} className="sw-file-pill">{f}</span>
-        ))}
-        {fileNames.length > 3 && <span className="sw-file-pill">+{fileNames.length - 3}</span>}
-      </div>
-      <VuMeter value={item.toolCalls} max={Math.max(item.toolCalls * 1.5, 10)} />
-      <div className="sw-strip-tags">
-        {item.linearIssue && <span className="sw-tag-linear">{item.linearIssue}</span>}
-        {item.prUrl && <span className="sw-tag-pr">#{item.prUrl.match(/\/pull\/(\d+)/)?.[1] || 'PR'}</span>}
-      </div>
-      <div className="sw-strip-actions" onClick={stop}>
-        {item.terminal && (
-          <button className="sw-btn-strip sw-btn-focus" onClick={(e) => { e.stopPropagation(); onFocus(item.terminal!) }}>Focus</button>
-        )}
-        {item.active && item.swarm && onKill && (
-          <button className="sw-btn-strip sw-btn-kill" onClick={(e) => { e.stopPropagation(); onKill(item.swarm!.task_name) }}>Kill</button>
-        )}
-        {!item.active && item.swarm && onRetry && (
-          <button className="sw-btn-strip sw-btn-focus" onClick={(e) => { e.stopPropagation(); onRetry(item.swarm!.task_name) }}>Retry</button>
-        )}
-      </div>
-    </div>
   )
 }
 
@@ -2235,8 +2063,6 @@ function DispatchCard({ task, onOpen }: { task: UnifiedTask; onOpen: (task: Unif
   const priorityLabel = task.priority ? task.priority.charAt(0).toUpperCase() + task.priority.slice(1) : 'Medium'
   const repo = task.metadata.repo
   const due = formatDueDate(task.metadata.dueDate)
-  const assignee = task.metadata.assignee
-  const isAgentAssignee = task.metadata.assigneeKind === 'agent'
   const repoHref = repo ? `https://github.com/${repo}` : null
 
   const stopOpen = (e: React.MouseEvent) => { e.stopPropagation() }
@@ -2279,18 +2105,6 @@ function DispatchCard({ task, onOpen }: { task: UnifiedTask; onOpen: (task: Unif
             <span className="sw-queue-repo-chip mono">{repo}</span>
           ) : null}
           {due && <span className={`sw-queue-due ${due.tone}`}>{due.label}</span>}
-        </div>
-      )}
-      {assignee && (
-        <div className="sw-queue-assignee">
-          {isAgentAssignee ? (
-            <>
-              <AgentAvatar id={assignee.toLowerCase()} size={14} />
-              <span className="sw-queue-assignee-name">{assignee}</span>
-            </>
-          ) : (
-            <span className="sw-queue-assignee-name">@{assignee}</span>
-          )}
         </div>
       )}
     </div>
