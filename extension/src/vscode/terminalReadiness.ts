@@ -5,6 +5,7 @@
 
 import * as vscode from 'vscode';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
@@ -32,6 +33,15 @@ const IDLE_POLL_MS = 150;
 const IDLE_DEBOUNCE_COUNT = 2;
 const PROMPT_READY_TIMEOUT_MS = 30_000;
 const AGENT_READY_TIMEOUT_MS = 60_000;
+
+// The agent process (Node-based TUIs like Claude/Codex/Gemini) will sit in
+// 'S' state during ANY I/O wait — including auto-update network calls that
+// fire before the TUI renders. A short idle debounce is not sufficient to
+// distinguish "idle at prompt" from "idle on network." We defend with a
+// minimum wall-clock floor since the child appeared, and a longer continuous
+// idle window than promptReady uses.
+const AGENT_IDLE_DEBOUNCE_COUNT = 10;    // 1500ms of continuous S-state
+const AGENT_MIN_CHILD_RUNTIME_MS = 2500; // child has existed at least 2.5s
 
 interface Registered {
   entry: ReadinessEntry;
@@ -126,10 +136,30 @@ export function resetAfterAgentExit(terminal: vscode.Terminal): void {
 }
 
 // Arm agentReady detection. Call this right after sending the agent launch
-// command. `sessionFilePath` is optional; if supplied we use fs.watch as the
-// fast path, otherwise we rely purely on the pgrep idle probe.
+// command.
+//
+// Two detection paths run in parallel; whichever fires first wins:
+//   1) Process-state probe: stable 'S' state + minimum child runtime.
+//   2) Session-file fast path: if agentKey + sessionId provided, fs.watch
+//      for the agent's session file to appear. Claude/Codex/Gemini/OpenCode
+//      all write a session file when the TUI is up.
+export type FastPathAgentKey = 'claude' | 'codex' | 'gemini' | 'cursor' | 'opencode';
+
 export interface ArmAgentOptions {
-  sessionFilePath?: string;
+  // Any string is accepted for ergonomics; only known agent keys get the
+  // session-file fast path. Unknown keys (e.g. 'shell') fall through to the
+  // process-state probe.
+  agentKey?: string;
+  sessionId?: string;
+  cwd?: string;
+}
+
+const FAST_PATH_KEYS = new Set<FastPathAgentKey>([
+  'claude', 'codex', 'gemini', 'cursor', 'opencode',
+]);
+
+function isFastPathKey(k: string | undefined): k is FastPathAgentKey {
+  return k !== undefined && FAST_PATH_KEYS.has(k as FastPathAgentKey);
 }
 
 export function armAgentReady(terminal: vscode.Terminal, opts: ArmAgentOptions = {}): void {
@@ -139,8 +169,8 @@ export function armAgentReady(terminal: vscode.Terminal, opts: ArmAgentOptions =
   if (hasFired(r.entry, 'agentReady')) return;
   r.agentArmed = true;
 
-  if (opts.sessionFilePath) {
-    watchSessionFile(r, opts.sessionFilePath);
+  if (isFastPathKey(opts.agentKey) && opts.sessionId) {
+    armSessionFileFastPath(r, opts.agentKey, opts.sessionId, opts.cwd);
   }
   startAgentReadyProbe(r);
 }
@@ -267,6 +297,7 @@ function startAgentReadyProbe(r: Registered): void {
   if (hasFired(r.entry, 'agentReady')) return;
 
   let consecutiveIdle = 0;
+  let childFirstSeenAt: number | null = null;
 
   const tick = async () => {
     if (r.entry.disposed) return;
@@ -276,27 +307,37 @@ function startAgentReadyProbe(r: Registered): void {
       const { stdout: childrenOut } = await execAsync(`pgrep -P ${pid}`);
       const childPid = childrenOut.trim().split(/\s+/)[0];
       if (!childPid) {
+        // No child yet — agent CLI hasn't started. Reset both signals.
         consecutiveIdle = 0;
+        childFirstSeenAt = null;
         const t = setTimeout(tick, IDLE_POLL_MS);
         r.timers.push(t);
         return;
       }
 
+      if (childFirstSeenAt === null) {
+        childFirstSeenAt = Date.now();
+      }
+
       const { stdout: statOut } = await execAsync(`ps -p ${childPid} -o stat=`);
       const state = statOut.trim();
-      // Sleeping on I/O: first char 'S' means interruptible sleep (waiting on pty read).
       const idle = state.startsWith('S');
       if (idle) {
         consecutiveIdle++;
-        if (consecutiveIdle >= IDLE_DEBOUNCE_COUNT) {
+        const runtimeMs = Date.now() - childFirstSeenAt;
+        if (
+          consecutiveIdle >= AGENT_IDLE_DEBOUNCE_COUNT &&
+          runtimeMs >= AGENT_MIN_CHILD_RUNTIME_MS
+        ) {
           markEvent(r.entry, 'agentReady');
           return;
         }
       } else {
+        // Any R/D/Z state breaks continuity. This is the main defense against
+        // mistaking network-I/O sleep for TUI-idle sleep.
         consecutiveIdle = 0;
       }
     } catch {
-      // Missing processes just reset the counter and keep polling.
       consecutiveIdle = 0;
     }
 
@@ -308,35 +349,74 @@ function startAgentReadyProbe(r: Registered): void {
   r.timers.push(first);
 }
 
-function watchSessionFile(r: Registered, filePath: string): void {
-  // Walk up to find an existing parent directory; the file itself likely
-  // doesn't exist yet.
-  let dir = path.dirname(filePath);
-  while (!fs.existsSync(dir) && dir !== path.dirname(dir)) {
-    dir = path.dirname(dir);
-  }
-  if (!fs.existsSync(dir)) return;
+// Watch the agent's session file roots. As soon as a file named
+// `{sessionId}.*` (jsonl/json) appears, the TUI has booted far enough to
+// write its session metadata — a deterministic signal even when the
+// process-state probe is still being fooled by network I/O.
+function armSessionFileFastPath(
+  r: Registered,
+  agentKey: FastPathAgentKey,
+  sessionId: string,
+  _cwd: string | undefined,
+): void {
+  const roots = sessionRootsForAgent(agentKey);
+  const sessionIdLower = sessionId.toLowerCase();
 
-  try {
-    const watcher = fs.watch(dir, { recursive: true }, (_event, filename) => {
-      if (!filename) return;
-      const changed = path.join(dir, filename.toString());
-      if (changed !== filePath) return;
-      if (hasFired(r.entry, 'agentReady')) return;
-      if (fs.existsSync(filePath)) {
-        markEvent(r.entry, 'agentReady');
-      }
-    });
-    r.watchers.push(watcher);
+  const checkFilename = (filename: string): boolean => {
+    const base = filename.toLowerCase();
+    // Claude/Codex/Gemini/OpenCode: filename contains sessionId (jsonl or json).
+    // Cursor: {chatId}/store.db; sessionId is the chatId dir name.
+    return base.includes(sessionIdLower);
+  };
 
-    // Also check immediately in case the file already exists.
-    if (fs.existsSync(filePath)) {
-      markEvent(r.entry, 'agentReady');
+  for (const root of roots) {
+    if (!fs.existsSync(root)) continue;
+    try {
+      const watcher = fs.watch(root, { recursive: true }, (_event, filename) => {
+        if (!filename) return;
+        if (hasFired(r.entry, 'agentReady')) return;
+        if (checkFilename(filename.toString())) {
+          markEvent(r.entry, 'agentReady');
+        }
+      });
+      r.watchers.push(watcher);
+    } catch {
+      // Best-effort; the process-state probe still runs in parallel.
     }
-  } catch {
-    // Best-effort; pgrep probe will still fire.
   }
 }
+
+function sessionRootsForAgent(
+  agentKey: FastPathAgentKey,
+): string[] {
+  const home = os.homedir();
+  switch (agentKey) {
+    case 'claude': {
+      // Shim sets CLAUDE_CONFIG_DIR per version, so files land under
+      // ~/.agents/versions/claude/{v}/home/.claude/projects/... — watch both.
+      const roots = [path.join(home, '.claude', 'projects')];
+      const versionsDir = path.join(home, '.agents', 'versions', 'claude');
+      if (fs.existsSync(versionsDir)) {
+        try {
+          for (const entry of fs.readdirSync(versionsDir, { withFileTypes: true })) {
+            if (!entry.isDirectory()) continue;
+            roots.push(path.join(versionsDir, entry.name, 'home', '.claude', 'projects'));
+          }
+        } catch { /* ignore */ }
+      }
+      return roots;
+    }
+    case 'codex':
+      return [path.join(home, '.codex', 'sessions')];
+    case 'gemini':
+      return [path.join(home, '.gemini', 'tmp')];
+    case 'opencode':
+      return [path.join(home, '.local', 'share', 'opencode', 'storage', 'message')];
+    case 'cursor':
+      return [path.join(home, '.cursor', 'chats')];
+  }
+}
+
 
 // --- Test-only helpers ---------------------------------------------------
 
