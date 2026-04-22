@@ -48,6 +48,70 @@ function getGitHubRepo(workspacePath: string): Promise<string | null> {
   });
 }
 
+// Just the owner part of the workspace's git remote (e.g. "muqsitnawaz")
+async function getGitHubOwner(workspacePath: string): Promise<string | null> {
+  const repo = await getGitHubRepo(workspacePath);
+  if (!repo) return null;
+  const [owner] = repo.split('/');
+  return owner || null;
+}
+
+// Infer owner via `gh api user` if the workspace has no remote
+function inferOwnerFromGhCli(): Promise<string | null> {
+  return new Promise((resolve) => {
+    exec('gh api user -q .login', (err, stdout) => {
+      if (err || !stdout) {
+        resolve(null);
+        return;
+      }
+      const login = stdout.trim();
+      resolve(login || null);
+    });
+  });
+}
+
+// Fallback chain for determining the GitHub owner used to compose
+// `owner/repo` from a `repo:<name>` Linear label.
+// 1. Panel setting (AgentSettings.githubOwner)
+// 2. Workspace git remote owner
+// 3. `gh api user` login
+// 4. null -> caller prompts the user
+async function resolveGithubOwner(
+  workspacePath: string | undefined,
+  settings: AgentSettings
+): Promise<string | null> {
+  const fromSettings = settings.githubOwner?.trim();
+  if (fromSettings) return fromSettings;
+  if (workspacePath) {
+    const fromWorkspace = await getGitHubOwner(workspacePath);
+    if (fromWorkspace) return fromWorkspace;
+  }
+  const fromGh = await inferOwnerFromGhCli();
+  if (fromGh) return fromGh;
+  return null;
+}
+
+// Parse repo:<name> labels from a task, combine with the resolved owner.
+// Returns all resolved repos (a task can target multiple repos).
+function resolveReposFromLabels(labels: string[] | undefined, owner: string | null): string[] {
+  if (!labels || labels.length === 0) return [];
+  if (!owner || !owner.trim()) return [];
+  const cleanOwner = owner.trim();
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of labels) {
+    if (typeof raw !== 'string') continue;
+    const match = raw.trim().match(/^repo:([A-Za-z0-9._-]+)$/);
+    if (!match) continue;
+    const name = match[1];
+    const full = `${cleanOwner}/${name}`;
+    if (seen.has(full)) continue;
+    seen.add(full);
+    out.push(full);
+  }
+  return out;
+}
+
 // Single shared terminal for all cloud dispatches. Opens as an editor tab with
 // the Rush bird icon so it's recognizable; reused across dispatches so firing
 // 10 cloud tasks at once doesn't produce 10 terminals.
@@ -645,6 +709,14 @@ export function openPanel(context: vscode.ExtensionContext): void {
         await saveSettings(context, message.settings);
         maybeUpdateTerminalTitles(previous, message.settings);
         break;
+      case 'setGithubOwner': {
+        const owner = typeof message.owner === 'string' ? message.owner.trim() : '';
+        if (!owner) break;
+        const current = getSettings(context);
+        await saveSettings(context, { ...current, githubOwner: owner });
+        settingsPanel?.webview.postMessage({ type: 'githubOwnerUpdated', owner });
+        break;
+      }
       case 'enableSwarm':
         settingsPanel?.webview.postMessage({ type: 'swarmInstallStart' });
         await swarm.setupSwarmIntegration(context, (swarmStatus) => {
@@ -859,6 +931,12 @@ export function openPanel(context: vscode.ExtensionContext): void {
         const title = typeof message.title === 'string' ? message.title : '';
         const description = typeof message.description === 'string' ? message.description : '';
         const identifier = typeof message.identifier === 'string' ? message.identifier : '';
+        const labels: string[] = Array.isArray(message.labels)
+          ? message.labels.filter((l: unknown): l is string => typeof l === 'string')
+          : [];
+        const overrideRepos: string[] = Array.isArray(message.targetRepos)
+          ? message.targetRepos.filter((r: unknown): r is string => typeof r === 'string' && /^[^/]+\/[^/]+$/.test(r))
+          : [];
         if (!title) {
           vscode.window.showErrorMessage('Cannot dispatch: task has no title');
           break;
@@ -871,18 +949,61 @@ export function openPanel(context: vscode.ExtensionContext): void {
 
         if (target === 'cloud') {
           const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-          if (!workspacePath) {
-            vscode.window.showErrorMessage('Cloud dispatch requires an open workspace.');
-            break;
+          const currentSettings = getSettings(context);
+
+          let targetRepos: string[] = [];
+
+          if (overrideRepos.length > 0) {
+            targetRepos = overrideRepos;
+          } else {
+            const owner = await resolveGithubOwner(workspacePath, currentSettings);
+            targetRepos = resolveReposFromLabels(labels, owner);
+
+            if (targetRepos.length === 0 && workspacePath) {
+              const workspaceRepo = await getGitHubRepo(workspacePath);
+              if (workspaceRepo) targetRepos = [workspaceRepo];
+            }
+
+            if (targetRepos.length === 0 && !owner) {
+              settingsPanel?.webview.postMessage({
+                type: 'needGithubOwner',
+                taskId: message.taskId,
+                agentType,
+                labels,
+                title,
+                description,
+                identifier,
+              });
+              break;
+            }
+
+            if (targetRepos.length === 0) {
+              vscode.window.showErrorMessage(
+                'Cloud dispatch: could not resolve a target repo. Add a `repo:<name>` Linear label, or open the repo as the workspace.'
+              );
+              break;
+            }
+
+            if (targetRepos.length > 1) {
+              settingsPanel?.webview.postMessage({
+                type: 'pickRepos',
+                taskId: message.taskId,
+                agentType,
+                repos: targetRepos,
+                title,
+                description,
+                identifier,
+                labels,
+              });
+              break;
+            }
           }
-          const repo = await getGitHubRepo(workspacePath);
-          if (!repo) {
-            vscode.window.showErrorMessage('Cloud dispatch requires a GitHub remote on the workspace.');
-            break;
-          }
+
           const safePrompt = prompt.replace(/'/g, `'\\''`);
-          const term = await getOrCreateRushCloudTerminal(context, workspacePath);
-          term.sendText(`rush cloud run ${agentType} ${repo} -p '${safePrompt}'`);
+          const term = await getOrCreateRushCloudTerminal(context, workspacePath || process.cwd());
+          for (const repo of targetRepos) {
+            term.sendText(`rush cloud run ${agentType} ${repo} -p '${safePrompt}'`);
+          }
           term.show(true);
           break;
         }
