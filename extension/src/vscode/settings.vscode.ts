@@ -808,20 +808,20 @@ export function openPanel(context: vscode.ExtensionContext): void {
         let total = 0;
         await Promise.all(all.map(async (t) => {
           if (t.terminal.exitStatus !== undefined) return;
-          const agentType = (t.agentType || '').toLowerCase();
-          if (!t.sessionId || agentType !== 'claude') return;
+          const agentType = (t.agentType || '').toLowerCase() as 'claude' | 'codex' | 'gemini';
+          if (!t.sessionId || (agentType !== 'claude' && agentType !== 'codex' && agentType !== 'gemini')) return;
           try {
-            const sessionPath = await getSessionPathBySessionId(t.sessionId, 'claude', workspacePath);
+            const sessionPath = await getSessionPathBySessionId(t.sessionId, agentType, workspacePath);
             if (!sessionPath) return;
             const stat = await fs.promises.stat(sessionPath);
             const size = stat.size;
-            const readStart = Math.max(0, size - 256 * 1024);
             const fh = await fs.promises.open(sessionPath, 'r');
             try {
+              const readStart = agentType === 'gemini' ? 0 : Math.max(0, size - 256 * 1024);
               const buf = Buffer.alloc(size - readStart);
               await fh.read(buf, 0, buf.length, readStart);
               const content = buf.toString('utf-8');
-              total += computeOutputTokensPerSec(content, 'claude', 60);
+              total += computeOutputTokensPerSec(content, agentType, 60);
             } finally {
               await fh.close();
             }
