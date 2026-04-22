@@ -1318,6 +1318,18 @@ export function openPanel(context: vscode.ExtensionContext): void {
         entry?.terminal.show(false);
         break;
       }
+      case 'focusRushCloudTerminal': {
+        // Used by the Factory Floor's "dispatch timed out" banner — jumps
+        // the user to the cloud terminal so they can read the actual error.
+        if (rushCloudTerminal && rushCloudTerminal.exitStatus === undefined) {
+          rushCloudTerminal.show(true);
+        } else {
+          vscode.window.showInformationMessage(
+            'Rush Cloud terminal is not open. Dispatch a task to see cloud logs.',
+          );
+        }
+        break;
+      }
       case 'executeCommand':
         if (message.command && typeof message.command === 'string') {
           await vscode.commands.executeCommand(message.command);
