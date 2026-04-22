@@ -220,6 +220,13 @@ export function PanelTab({
     })
   }
 
+  const setGithubOwner = (value: string) => {
+    onSaveSettings({
+      ...settings,
+      githubOwner: value.trim() || undefined,
+    })
+  }
+
   const dialOptions = builtInAgents
     .filter(agent => agent.key !== 'shell' && (installedAgents[agent.key] ?? true))
     .map(agent => ({
@@ -628,6 +635,32 @@ export function PanelTab({
 
         <section className="sw-panel-section sw-panel-section-factory">
           <FactorySection />
+        </section>
+
+        <section className="sw-panel-section">
+          <div className="sw-panel-section-head">Cloud Dispatch</div>
+          <div className="sw-panel-command-pack">
+            <div className="sw-panel-command-card">
+              <div className="sw-panel-command-line">
+                <Waypoints size={14} />
+                <span>GitHub owner (for <code>repo:&lt;name&gt;</code> label resolution)</span>
+              </div>
+              <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 6 }}>
+                Linear tasks tagged <code>repo:agents</code> dispatch to <code>&lt;owner&gt;/agents</code>.
+              </div>
+              <Input
+                placeholder="muqsitnawaz"
+                defaultValue={settings.githubOwner ?? ''}
+                onBlur={(e) => setGithubOwner(e.currentTarget.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    setGithubOwner(e.currentTarget.value)
+                    e.currentTarget.blur()
+                  }
+                }}
+              />
+            </div>
+          </div>
         </section>
 
       </div>

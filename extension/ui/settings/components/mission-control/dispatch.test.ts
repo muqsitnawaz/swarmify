@@ -259,6 +259,14 @@ describe('optimisticActivityLabel', () => {
     ).toBe('Queuing on Rush Cloud... (RUSH-362)')
   })
 
+  test('cloud with targetRepo appends arrow suffix', () => {
+    expect(
+      optimisticActivityLabel(
+        makePending({ target: 'cloud', taskIdentifier: 'RUSH-362', targetRepo: 'muqsitnawaz/agents' })
+      )
+    ).toBe('Queuing on Rush Cloud... (RUSH-362 -> muqsitnawaz/agents)')
+  })
+
   test('falls back to title when no identifier', () => {
     const p = makePending({ taskIdentifier: '', title: 'Fix the login bug please' })
     expect(optimisticActivityLabel(p)).toBe('Starting... (Fix the login bug please)')
@@ -272,5 +280,66 @@ describe('optimisticActivityLabel', () => {
     const label = optimisticActivityLabel(p)
     const inner = label.slice('Starting... ('.length, -1)
     expect(inner).toHaveLength(40)
+  })
+})
+
+describe('resolveReposFromLabels', () => {
+  test('single repo:X label -> owner/X', () => {
+    expect(resolveReposFromLabels(['repo:agents'], 'muqsitnawaz'))
+      .toEqual(['muqsitnawaz/agents'])
+  })
+
+  test('multiple repo:X labels -> all resolved in order', () => {
+    expect(resolveReposFromLabels(['repo:agents', 'repo:swarmify', 'repo:halo'], 'muqsitnawaz'))
+      .toEqual(['muqsitnawaz/agents', 'muqsitnawaz/swarmify', 'muqsitnawaz/halo'])
+  })
+
+  test('mixed labels: ignores non-repo labels', () => {
+    expect(resolveReposFromLabels(['priority:high', 'repo:agents', 'bug'], 'muqsitnawaz'))
+      .toEqual(['muqsitnawaz/agents'])
+  })
+
+  test('dedupes same repo:X mentioned twice', () => {
+    expect(resolveReposFromLabels(['repo:agents', 'repo:agents'], 'muqsitnawaz'))
+      .toEqual(['muqsitnawaz/agents'])
+  })
+
+  test('empty labels -> []', () => {
+    expect(resolveReposFromLabels([], 'muqsitnawaz')).toEqual([])
+  })
+
+  test('undefined labels -> []', () => {
+    expect(resolveReposFromLabels(undefined, 'muqsitnawaz')).toEqual([])
+  })
+
+  test('null owner -> []', () => {
+    expect(resolveReposFromLabels(['repo:agents'], null)).toEqual([])
+  })
+
+  test('empty owner -> []', () => {
+    expect(resolveReposFromLabels(['repo:agents'], '')).toEqual([])
+  })
+
+  test('malformed label "repo:" (empty name) ignored', () => {
+    expect(resolveReposFromLabels(['repo:'], 'muqsitnawaz')).toEqual([])
+  })
+
+  test('case-sensitive match on "repo:" prefix', () => {
+    expect(resolveReposFromLabels(['Repo:agents', 'REPO:halo'], 'muqsitnawaz')).toEqual([])
+  })
+
+  test('trims whitespace on owner', () => {
+    expect(resolveReposFromLabels(['repo:agents'], '  muqsitnawaz  '))
+      .toEqual(['muqsitnawaz/agents'])
+  })
+
+  test('accepts dots and dashes in repo name', () => {
+    expect(resolveReposFromLabels(['repo:my.repo-v2'], 'muqsitnawaz'))
+      .toEqual(['muqsitnawaz/my.repo-v2'])
+  })
+
+  test('rejects slashes in repo label (prevents owner injection)', () => {
+    expect(resolveReposFromLabels(['repo:evil/other-owner/target'], 'muqsitnawaz'))
+      .toEqual([])
   })
 })
