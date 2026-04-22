@@ -22,6 +22,42 @@ export interface CurrentActivity {
 type AgentType = 'claude' | 'codex' | 'gemini';
 
 /**
+ * Compute output-token throughput over a rolling window.
+ * Parses the tail of a Claude JSONL session and sums usage.output_tokens
+ * from assistant entries whose timestamp falls within the last `windowSec` seconds.
+ * Returns tokens-per-second across that window.
+ */
+export function computeOutputTokensPerSec(
+  sessionContent: string,
+  agentType: AgentType,
+  windowSec: number = 60,
+  now: number = Date.now()
+): number {
+  if (agentType !== 'claude') return 0;
+  const cutoff = now - windowSec * 1000;
+  const lines = sessionContent.split(/\r?\n/);
+  let total = 0;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i];
+    if (!line || line[0] !== '{') continue;
+    if (!line.includes('"output_tokens"')) continue;
+    try {
+      const d = JSON.parse(line);
+      if (d?.type !== 'assistant') continue;
+      const ts = typeof d.timestamp === 'string' ? Date.parse(d.timestamp) : 0;
+      if (!ts || ts < cutoff) {
+        if (ts && ts < cutoff) break;
+        continue;
+      }
+      const usage = d?.message?.usage;
+      const out = typeof usage?.output_tokens === 'number' ? usage.output_tokens : 0;
+      total += out;
+    } catch { }
+  }
+  return total / windowSec;
+}
+
+/**
  * Extract current activity from session content (tail of file).
  * Processes lines from end to find most recent tool activity.
  */
