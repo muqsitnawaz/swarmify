@@ -1015,30 +1015,27 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
 
           {(() => {
             const visibleActive = activeItems.filter((item) => activeFilter === 'all' || (activeFilter === 'cloud' ? item.kind === 'cloud' : item.kind !== 'cloud'))
-            const selected = expandedAgentId ? visibleActive.find((i) => i.id === expandedAgentId) ?? null : null
-            const strips = (
-              <div className="sw-agent-strips">
-                {visibleActive.map((item) => (
-                  <AgentStrip
-                    key={item.id}
-                    item={item}
-                    selected={expandedAgentId === item.id}
-                    onSelect={(id) => setExpandedAgentId(expandedAgentId === id ? null : id)}
-                    onFocus={handleFocusTerminal}
-                    onKill={handleKill}
-                    onRetry={handleRetry}
-                  />
-                ))}
-                {activeItems.length > 0 && visibleActive.length === 0 && (
-                  <div className="sw-active-filter-empty">No {activeFilter} agents running.</div>
-                )}
-              </div>
-            )
-            if (selected) {
-              return (
-                <div className="sw-agent-strips-with-detail">
-                  {strips}
-                  <div className="sw-unified-detail-pane">
+            const fallbackSelected = visibleActive[0] ?? null
+            const selected = expandedAgentId
+              ? visibleActive.find((i) => i.id === expandedAgentId) ?? fallbackSelected
+              : fallbackSelected
+            return (
+              <div className="sw-floor-active">
+                <div className="sw-floor-active-list">
+                  {visibleActive.map((item) => (
+                    <AgentCard
+                      key={item.id}
+                      item={item}
+                      selected={selected?.id === item.id}
+                      onSelect={(id) => setExpandedAgentId(id)}
+                    />
+                  ))}
+                  {activeItems.length > 0 && visibleActive.length === 0 && (
+                    <div className="sw-active-filter-empty">No {activeFilter} agents running.</div>
+                  )}
+                </div>
+                <div className="sw-floor-active-detail">
+                  {selected ? (
                     <DetailPane
                       item={selected}
                       onClose={() => setExpandedAgentId(null)}
@@ -1046,11 +1043,20 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
                       onRetry={handleRetry}
                       onKill={handleKill}
                     />
-                  </div>
+                  ) : (
+                    <div className="sw-floor-active-detail-empty">
+                      <Icon name="inbox" size={22} />
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ds-text)' }}>
+                        Select an agent to see its activity
+                      </div>
+                      <div style={{ fontSize: 11.5, color: 'var(--ds-text-dim)' }}>
+                        Each card shows current status, recent commands, and the files an agent has touched.
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )
-            }
-            return strips
+              </div>
+            )
           })()}
         </>
       )}
@@ -1175,26 +1181,47 @@ function RepoPickerModal({ repos, preSelected, taskIdentifier, taskTitle, onClos
   onConfirm: (selected: string[]) => void
 }) {
   const [checked, setChecked] = useState<Set<string>>(() => new Set(preSelected))
+  const [filter, setFilter] = useState('')
   // Empty pre-selection signals the "Linear task has no repo: label, pick
   // one from the owner's full list" flow. Switch the title + subcopy so the
   // user understands they must make a choice vs. narrow from multiple.
   const isEmptyPick = preSelected.length === 0
+  // Filter only shows value when there are many rows to scroll — show it
+  // when there are more than 8 repos (roughly one screen of the list).
+  const showFilter = repos.length > 8
+  const filterRef = useRef<HTMLInputElement | null>(null)
+  const filteredRepos = useMemo(() => {
+    const q = filter.trim().toLowerCase()
+    if (!q) return repos
+    return repos.filter((r) => r.toLowerCase().includes(q))
+  }, [repos, filter])
+  const confirm = () => {
+    const selected = repos.filter((r) => checked.has(r))
+    if (selected.length === 0) return
+    onConfirm(selected)
+  }
   useEffect(() => {
-    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', esc)
-    return () => window.removeEventListener('keydown', esc)
-  }, [onClose])
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { onClose(); return }
+      // Enter confirms the current selection. Skip when focus is in the
+      // filter input (typing + Enter in a text field shouldn't submit) —
+      // that case is handled inline below.
+      if (e.key === 'Enter' && !(e.target instanceof HTMLInputElement && e.target.type === 'text')) {
+        if (checked.size > 0) { e.preventDefault(); confirm() }
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose, checked, repos])
+  useEffect(() => {
+    if (showFilter) filterRef.current?.focus()
+  }, [showFilter])
   const toggle = (r: string) => {
     setChecked((prev) => {
       const next = new Set(prev)
       if (next.has(r)) next.delete(r); else next.add(r)
       return next
     })
-  }
-  const confirm = () => {
-    const selected = repos.filter((r) => checked.has(r))
-    if (selected.length === 0) return
-    onConfirm(selected)
   }
   return (
     <div className="sw-dispatch-modal-overlay" onMouseDown={onClose} role="dialog" aria-modal="true">
@@ -1211,8 +1238,25 @@ function RepoPickerModal({ repos, preSelected, taskIdentifier, taskTitle, onClos
           </button>
         </div>
         <div className="sw-dispatch-modal-body">
+          {showFilter && (
+            <input
+              ref={filterRef}
+              type="text"
+              className="sw-dispatch-modal-search-input"
+              placeholder={`Filter ${repos.length} repos...`}
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && checked.size > 0) {
+                  e.preventDefault()
+                  confirm()
+                }
+              }}
+              style={{ width: '100%', marginBottom: 8 }}
+            />
+          )}
           <ul className="sw-dispatch-modal-list">
-            {repos.map((r) => (
+            {filteredRepos.map((r) => (
               <li key={r}>
                 <div
                   className={`sw-dispatch-modal-row ${checked.has(r) ? 'checked' : ''}`}
@@ -1230,6 +1274,11 @@ function RepoPickerModal({ repos, preSelected, taskIdentifier, taskTitle, onClos
                 </div>
               </li>
             ))}
+            {filteredRepos.length === 0 && (
+              <li className="sw-dispatch-modal-row" style={{ opacity: 0.6, fontSize: 12, padding: '8px 12px' }}>
+                No repos match "{filter}"
+              </li>
+            )}
           </ul>
         </div>
         <div className="sw-dispatch-modal-foot">
@@ -1740,6 +1789,90 @@ function FactoryBadges({ item }: { item: UnifiedAgent }) {
   return <div className="sw-strip-factory-badges">{badges}</div>
 }
 
+type IdentityLabel = { text: string; variant: 'plain' | 'cloud' | 'team' | 'plan' | 'ralph' }
+
+function identityLabel(item: UnifiedAgent): IdentityLabel {
+  const termLabel = item.terminal?.label?.trim()
+  if (termLabel) return { text: termLabel, variant: 'plain' }
+  if (item.kind === 'team') {
+    const n = item.teamAgents?.length ?? 0
+    return { text: n > 0 ? `TEAM · ${n}` : 'TEAM', variant: 'team' }
+  }
+  if (item.kind === 'cloud' || item.mode === 'cloud') {
+    return { text: 'CLOUD', variant: 'cloud' }
+  }
+  if (item.mode === 'plan') return { text: 'PLAN', variant: 'plan' }
+  if (item.mode === 'ralph') return { text: 'RALPH', variant: 'ralph' }
+  const chunk = agentShortChunk(item.terminal?.sessionId) || item.id.slice(-8)
+  return { text: chunk, variant: 'plain' }
+}
+
+function statusPhrase(item: UnifiedAgent): { word: string; tone: 'running' | 'idle' | 'failed' | 'completed'; when: string } {
+  if (item.status === 'failed') {
+    return { word: 'Failed', tone: 'failed', when: item.timestamp ? relTime(item.timestamp) : '' }
+  }
+  if (item.status === 'completed') {
+    return { word: 'Done', tone: 'completed', when: item.timestamp ? relTime(item.timestamp) : '' }
+  }
+  if (item.status === 'running' || item.active) {
+    return { word: 'Working', tone: 'running', when: item.duration || (item.timestamp ? relTime(item.timestamp) : '') }
+  }
+  return { word: 'Idle', tone: 'idle', when: item.timestamp ? relTime(item.timestamp) : '' }
+}
+
+function AgentCard({ item, selected, onSelect }: {
+  item: UnifiedAgent
+  selected: boolean
+  onSelect: (id: string) => void
+}) {
+  const label = identityLabel(item)
+  const status = statusPhrase(item)
+  const name = item.teammateName
+    ? item.teammateName
+    : item.agentType.charAt(0).toUpperCase() + item.agentType.slice(1)
+  const filesCount = item.files.length
+  const hasCounts = item.toolCalls > 0 || filesCount > 0
+
+  return (
+    <button
+      type="button"
+      className={`sw-floor-agent-card ${selected ? 'selected' : ''}`}
+      onClick={() => onSelect(item.id)}
+      aria-pressed={selected}
+    >
+      <div className="sw-floor-agent-card-top">
+        <AgentAvatar id={item.agentType} size={24} />
+        <span className="sw-floor-agent-card-name">{name}</span>
+        <span className={`sw-floor-agent-card-chunk ${label.variant}`}>{label.text}</span>
+      </div>
+
+      <div className="sw-floor-agent-card-status-line">
+        <span className={`sw-floor-agent-card-status-word ${status.tone}`}>{status.word}</span>
+        {status.when && <span>{status.tone === 'running' ? status.when : `· ${status.when}`}</span>}
+      </div>
+
+      {item.activity && (
+        <div className="sw-floor-agent-card-activity">{item.activity}</div>
+      )}
+
+      {(hasCounts || item.linearIssue || item.prUrl) && (
+        <div className="sw-floor-agent-card-meta">
+          {hasCounts && (
+            <span className="sw-floor-agent-card-meta-counts">
+              {item.toolCalls > 0 && <>{item.toolCalls} tools</>}
+              {item.toolCalls > 0 && filesCount > 0 && <span className="sw-floor-agent-card-meta-sep"> · </span>}
+              {filesCount > 0 && <>{filesCount} files</>}
+            </span>
+          )}
+          <span className="sw-floor-agent-card-meta-spacer" />
+          {item.linearIssue && <span className="sw-tag-linear">{item.linearIssue}</span>}
+          {item.prUrl && <span className="sw-tag-pr">#{item.prUrl.match(/\/pull\/(\d+)/)?.[1] || 'PR'}</span>}
+        </div>
+      )}
+    </button>
+  )
+}
+
 function AgentStrip({ item, dimmed, selected, onSelect, onFocus, onKill, onRetry }: {
   item: UnifiedAgent
   dimmed?: boolean
@@ -1894,12 +2027,24 @@ function TerminalExpandedDetail({ terminal, onFocus }: { terminal: TerminalInfo;
           </div>
         </div>
       )}
+      {terminal.recentTools && terminal.recentTools.length > 0 && (
+        <div className="sw-unified-detail-section">
+          <div className="sw-section-label">Recent tools</div>
+          <div className="sw-floor-detail-tools">
+            {terminal.recentTools.slice(0, 8).map((tool, i) => (
+              <div key={`${tool}-${i}`} className="sw-floor-detail-tool-row">
+                <span className="sw-floor-detail-tool-name">{tool}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {terminal.recentFiles && terminal.recentFiles.length > 0 && (
         <div className="sw-unified-detail-section">
           <div className="sw-section-label">Recent files</div>
           <div className="sw-unified-detail-files">
-            {terminal.recentFiles.slice(0, 5).map((f) => (
-              <span key={f} className="mono sw-unified-file-pill">{f.split('/').pop()}</span>
+            {terminal.recentFiles.slice(0, 8).map((f) => (
+              <span key={f} className="mono sw-unified-file-pill" title={f}>{f.split('/').pop()}</span>
             ))}
           </div>
         </div>
@@ -2096,8 +2241,23 @@ function DispatchCard({ task, onOpen }: { task: UnifiedTask; onOpen: (task: Unif
 
   const stopOpen = (e: React.MouseEvent) => { e.stopPropagation() }
 
+  // Use div role=button (not a <button> element) so we can nest an anchor
+  // (the repo chip via <ExtLink>) without invalid HTML. Nesting <a> inside
+  // <button> is spec-invalid and caused React/VS Code to silently drop the
+  // anchor click — that was the original "repo chip doesn't open" bug.
   return (
-    <button type="button" className="sw-queue-card sw-queue-card-clickable" onClick={() => onOpen(task)}>
+    <div
+      role="button"
+      tabIndex={0}
+      className="sw-queue-card sw-queue-card-clickable"
+      onClick={() => onOpen(task)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onOpen(task)
+        }
+      }}
+    >
       <div className="sw-queue-card-header">
         <div className={`sw-queue-priority-led ${priorityCls}`} />
         <span className="sw-queue-badge">{task.metadata.identifier || task.id.slice(0, 8)}</span>
@@ -2134,7 +2294,7 @@ function DispatchCard({ task, onOpen }: { task: UnifiedTask; onOpen: (task: Unif
           )}
         </div>
       )}
-    </button>
+    </div>
   )
 }
 
