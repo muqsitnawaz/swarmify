@@ -10,9 +10,10 @@ interface MissionControlTabProps {
   unifiedTasksLoading: boolean
   onDispatch: () => void
   onNavigate?: (tab: 'floor' | 'bench' | 'panel') => void
+  openDispatchTrigger?: number
 }
 
-export function MissionControlTab({ tasks, tasksLoading, terminals, unifiedTasks, unifiedTasksLoading, onDispatch, onNavigate }: MissionControlTabProps) {
+export function MissionControlTab({ tasks, tasksLoading, terminals, unifiedTasks, unifiedTasksLoading, onDispatch, onNavigate, openDispatchTrigger }: MissionControlTabProps) {
   return (
     <UnifiedAgentsPane
       terminals={terminals}
@@ -22,6 +23,7 @@ export function MissionControlTab({ tasks, tasksLoading, terminals, unifiedTasks
       unifiedTasksLoading={unifiedTasksLoading}
       onDispatch={onDispatch}
       onNavigate={onNavigate}
+      openDispatchTrigger={openDispatchTrigger}
     />
   )
 }
