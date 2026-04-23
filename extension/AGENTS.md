@@ -41,6 +41,7 @@ bash scripts/install.sh <version>   # Package .vsix and install to Cursor + Code
 | Swarm MCP integration | `src/vscode/swarm.vscode.ts`, `src/core/swarm.detect.ts` |
 | Factory Floor (dashboard, dispatch) | `ui/settings/components/mission-control/` |
 | Cloud dispatch resolver (label parsing, repo/owner) | `ui/settings/components/mission-control/dispatch.ts` + `src/vscode/settings.vscode.ts` (`case 'dispatchTask'`) |
+| Foreman voice orb (OpenAI Realtime, mic + speaker pipeline) | `src/vscode/foreman.audio.ts` (audio I/O via ffmpeg/ffplay, mic-gated during TTS to prevent echo loop), `src/vscode/foreman.vscode.ts` (session + tools), `ui/settings/components/foreman/ForemanOrb.tsx` (UI) |
 
 ## Keybindings
 
