@@ -64,7 +64,7 @@ export function TaskCard({ task, selected, onClick }: TaskCardProps) {
       style={{ width: '100%', textAlign: 'left' }}
     >
       <div className="sw-task-card-top">
-        <span className={`sw-source-badge ${srcClass}`}>{srcLabel}</span>
+        <span className={`sw-source-badge ${srcClass}`}>{identifier || srcLabel}</span>
         {task.priority && (
           <span className={`sw-priority-led ${task.priority}`} />
         )}
@@ -76,11 +76,8 @@ export function TaskCard({ task, selected, onClick }: TaskCardProps) {
         <div className="sw-task-card-desc">{task.description}</div>
       )}
 
-      {(identifier || assignee || labels.length > 0 || createdAt) && (
+      {(assignee || labels.length > 0 || createdAt) && (
         <div className="sw-task-card-meta">
-          {identifier && (
-            <span className="sw-task-identifier">{identifier}</span>
-          )}
           {assignee && (
             <span className="sw-label-chip">{assignee}</span>
           )}
