@@ -26,6 +26,13 @@ export interface TaskMetadata {
   dueDate?: string;              // ISO 8601 due date (YYYY-MM-DD from Linear)
   project?: string;              // Linear project name (undefined for GitHub)
   repo?: string;                 // "owner/repo" — resolved at fetch time
+  comments?: TaskComment[];      // Linear comments, newest-first when rendered
+}
+
+export interface TaskComment {
+  body: string;
+  createdAt?: string;
+  author?: string;
 }
 
 // A Linear user whose name matches one of these is treated as an agent, so the
@@ -78,6 +85,7 @@ export function linearToUnifiedTask(
     project?: { name: string } | null;
     dueDate?: string | null;
     createdAt?: string;
+    comments?: { nodes: { body: string; createdAt?: string; user?: { name: string } | null }[] };
   },
   repo: string | null = null,
 ): UnifiedTask {
@@ -100,6 +108,11 @@ export function linearToUnifiedTask(
 
   const labels = issue.labels?.nodes.map(l => l.name);
   const assignee = issue.assignee?.name;
+  const comments: TaskComment[] | undefined = issue.comments?.nodes.map(n => ({
+    body: n.body,
+    createdAt: n.createdAt,
+    author: n.user?.name,
+  }));
 
   return {
     id: `linear:${issue.id}`,
@@ -119,6 +132,7 @@ export function linearToUnifiedTask(
       dueDate: issue.dueDate ?? undefined,
       project: issue.project?.name ?? undefined,
       repo: repo ?? undefined,
+      comments,
     }
   };
 }

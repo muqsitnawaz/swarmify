@@ -70,6 +70,7 @@ export async function fetchLinearTasks(context: vscode.ExtensionContext): Promis
         project: issue.project,
         dueDate: issue.dueDate,
         createdAt: issue.createdAt,
+        comments: issue.comments,
       }, repo);
     });
 
