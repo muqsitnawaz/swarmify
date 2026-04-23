@@ -307,6 +307,8 @@ export interface TerminalIdentificationOptions {
   terminalId?: string | null;
   /** Session ID from AGENT_SESSION_ID env var (UUID) */
   sessionId?: string | null;
+  /** Pinned agent version from AGENT_VERSION env var (e.g., "2.1.113") */
+  version?: string | null;
 }
 
 /**
