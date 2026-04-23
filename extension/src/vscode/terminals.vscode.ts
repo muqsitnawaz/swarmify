@@ -396,6 +396,16 @@ export function setAgentType(terminal: vscode.Terminal, agentType: SessionAgentT
   }
 }
 
+export function setVersion(terminal: vscode.Terminal, version: string): void {
+  const entry = getByTerminal(terminal);
+  if (entry) {
+    entry.version = version;
+    schedulePersist();
+  } else {
+    console.error(`[TERMINALS] FAILED to set version - terminal "${terminal.name}" not found in registry.`);
+  }
+}
+
 export function getSessionId(terminal: vscode.Terminal): string | undefined {
   const entry = getByTerminal(terminal);
   return entry?.sessionId;
@@ -489,6 +499,13 @@ export async function scanExisting(
     registeredCount++;
     console.log(`[TERMINALS] Registered: id=${id}, prefix=${info.prefix}, pid=${pid}, label=${info.label}`);
 
+    // Restore version pin from env var (set when the terminal was launched
+    // via resumeCurrentInBestProfile). Persisted-session fallback happens
+    // below once we've matched the persisted entry.
+    if (identOpts.version) {
+      setVersion(terminal, identOpts.version);
+    }
+
     // Restore session tracking - prefer env var sessionId, fallback to sessionChunk from name
     const agentType = prefixToAgentType(info.prefix);
     let sessionId = identOpts.sessionId;
@@ -527,6 +544,14 @@ export async function scanExisting(
         // Also recover the agentType if available
         if (matched.agentType && !agentType) {
           setAgentType(terminal, matched.agentType as SessionAgentType);
+        }
+
+        // Recover version pin if the env var was absent but a persisted
+        // entry carried it (older terminals restored across a VS Code
+        // restart where the env var rides along anyway, but belt-and-
+        // suspenders — cheap to do).
+        if (matched.version && !identOpts.version) {
+          setVersion(terminal, matched.version);
         }
       }
     }
@@ -956,6 +981,7 @@ export function buildPersistedSessions(): sessionsPersist.PersistedSession[] {
       sessionId: entry.sessionId,
       label: entry.label,
       agentType: entry.agentType,
+      version: entry.version,
       createdAt: entry.createdAt
     });
   }
