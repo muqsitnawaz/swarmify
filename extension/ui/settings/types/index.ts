@@ -104,7 +104,14 @@ export interface UnifiedTask {
     assignee?: string
     state?: string
     createdAt?: string
+    comments?: TaskComment[]
   }
+}
+
+export interface TaskComment {
+  body: string
+  createdAt?: string
+  author?: string
 }
 
 export interface CycleInfo {
