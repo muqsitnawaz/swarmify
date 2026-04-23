@@ -21,6 +21,21 @@ const STATUS_DISPLAY: Record<string, string> = {
   done: 'Done',
 }
 
+function formatCommentDate(iso: string): string {
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  const ms = Date.now() - d.getTime()
+  const mins = Math.floor(ms / 60_000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days === 1) return 'yesterday'
+  if (days < 30) return `${days}d ago`
+  return d.toLocaleDateString()
+}
+
 interface TaskDetailProps {
   task: FlatTask
   cycleInfo?: CycleInfo | null
@@ -37,6 +52,7 @@ export function TaskDetail({ task, cycleInfo, onDispatch, onDismiss, onOpenExter
   const labels = task.metadata?.labels?.filter(Boolean) ?? []
   const url = task.metadata?.url
   const state = task.metadata?.state
+  const comments = task.metadata?.comments ?? []
 
   return (
     <>
@@ -120,6 +136,25 @@ export function TaskDetail({ task, cycleInfo, onDispatch, onDismiss, onOpenExter
           <>
             <div className="sw-panel-section-head">Description</div>
             <div className="sw-detail-desc">{renderTodoDescription(task.description, false)}</div>
+          </>
+        )}
+
+        {comments.length > 0 && (
+          <>
+            <div className="sw-panel-section-head">Comments ({comments.length})</div>
+            <div className="sw-detail-activity">
+              {comments.map((c, i) => (
+                <div key={i} className="sw-detail-comment">
+                  <div className="sw-detail-comment-head">
+                    <span className="sw-detail-comment-author">{c.author || 'Unknown'}</span>
+                    {c.createdAt && (
+                      <span className="sw-detail-comment-time">{formatCommentDate(c.createdAt)}</span>
+                    )}
+                  </div>
+                  <div className="sw-detail-comment-body">{renderTodoDescription(c.body, false)}</div>
+                </div>
+              ))}
+            </div>
           </>
         )}
       </div>
