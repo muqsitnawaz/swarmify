@@ -1034,7 +1034,7 @@ async function fetchCloudRuns(): Promise<TaskSummary[]> {
 
     // Use live output for running agents, stored summary for completed
     const live = liveOutputs.get(ex.execution_id);
-    const summary = ex.summary || live?.output || null;
+    const summary = status === 'running' ? (live?.output ?? ex.summary ?? null) : (ex.summary ?? live?.output ?? null);
     const activity = live?.current_activity || null;
 
     const detail: AgentDetail = {
