@@ -1,5 +1,6 @@
 export { MissionControlTab } from './MissionControlTab'
 export { TopBar } from './TopBar'
+export { ThroughputCounter } from './UnifiedAgentsPane'
 export { StatusBar } from './StatusBar'
 export { ActiveSwarmsPane } from './ActiveSwarmsPane'
 export { AgentTerminalsPane } from './AgentTerminalsPane'
