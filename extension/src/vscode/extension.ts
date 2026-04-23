@@ -1420,6 +1420,32 @@ async function newTaskWithContext(context: vscode.ExtensionContext) {
   }
 }
 
+async function askAnotherAgentFromTerminal(context: vscode.ExtensionContext) {
+  const clipboardText = (await vscode.env.clipboard.readText()).trim();
+  if (!clipboardText) {
+    vscode.window.showInformationMessage(
+      'Copy the line first (Cmd+C), then right-click and choose "Send to another agent".'
+    );
+    return;
+  }
+
+  const preview = clipboardText.length > 80
+    ? `${clipboardText.slice(0, 80).replace(/\s+/g, ' ')}...`
+    : clipboardText.replace(/\s+/g, ' ');
+
+  const question = await vscode.window.showInputBox({
+    prompt: `Ask another agent about: ${preview}`,
+    placeHolder: 'What should they do with it?'
+  });
+  if (question === undefined || !question.trim()) return;
+
+  const message = `<context>\n${clipboardText}\n</context>\n\n${question.trim()}`;
+  const agentConfig = getBuiltInByTitle(context.extensionPath, defaultAgentTitle);
+  if (agentConfig) {
+    await openSingleAgentWithQueue(context, agentConfig, [message]);
+  }
+}
+
 async function handoffToAgent(context: vscode.ExtensionContext) {
   const activeTerminal = vscode.window.activeTerminal;
 
