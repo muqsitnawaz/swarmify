@@ -17,6 +17,7 @@ export interface PersistedSession {
   sessionId?: string;           // CLI session ID for resume (e.g., Claude's session ID)
   label?: string;               // User-set label
   agentType?: string;           // Agent type key (e.g., "claude", "codex")
+  version?: string;             // Pinned agent version, if known (e.g., "2.1.113")
   createdAt: number;            // Timestamp
 }
 
