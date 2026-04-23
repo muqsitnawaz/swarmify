@@ -72,6 +72,17 @@ export async function startForemanAudio(
 
   let open = false;
   let closed = false;
+  // Mic gate: when the assistant is speaking (or just finished speaking), we
+  // stop forwarding mic bytes to OpenAI so ffplay's speaker output doesn't
+  // get picked up by the microphone and looped back as "user input". Without
+  // this, the assistant responds to its own voice. The tail buffer keeps the
+  // mic muted for a short window after the last audio delta to swallow
+  // trailing echoes.
+  const ASSISTANT_TAIL_MS = 600;
+  let assistantSpeakingUntil = 0;
+  const noteAssistantAudio = () => { assistantSpeakingUntil = Date.now() + ASSISTANT_TAIL_MS; };
+  const micMuted = () => Date.now() < assistantSpeakingUntil;
+
   const cleanup = () => {
     if (closed) return;
     closed = true;
@@ -81,22 +92,27 @@ export async function startForemanAudio(
     try { ws.close(); } catch { /* noop */ }
   };
 
-  mic.on('error', (err) => events.onStatus?.('error', `ffmpeg: ${err.message}`));
-  speaker.on('error', (err) => events.onStatus?.('error', `ffplay: ${err.message}`));
+  // After cleanup() we deliberately kill ffplay/ffmpeg. The resulting exit
+  // events and "write EPIPE" errors are expected — suppress them so the UI
+  // doesn't flash "FFplayError" when the user taps the orb to stop.
+  mic.on('error', (err) => { if (!closed) events.onStatus?.('error', `ffmpeg: ${err.message}`); });
+  speaker.on('error', (err) => { if (!closed) events.onStatus?.('error', `ffplay: ${err.message}`); });
   speaker.on('exit', (code, signal) => {
     console.warn(`[foreman] ffplay exited code=${code} signal=${signal}`);
+    if (closed) return;
     if (code !== 0 && code !== null) {
       events.onStatus?.('error', `ffplay exited with code ${code}`);
     }
   });
   mic.stderr?.on('data', (buf: Buffer) => {
-    // ffmpeg is chatty; only surface the first error chunk for debugging.
+    if (closed) return;
     const line = buf.toString().split('\n')[0];
     if (line && /error|invalid/i.test(line)) events.onStatus?.('error', `ffmpeg: ${line.slice(0, 120)}`);
   });
   speaker.stderr?.on('data', (buf: Buffer) => {
     const text = buf.toString().trim();
     if (text) console.warn('[foreman ffplay]', text.slice(0, 400));
+    if (closed) return;
     const firstLine = text.split('\n')[0];
     if (firstLine && /error|invalid|cannot|no such|not found|failed/i.test(firstLine)) {
       events.onStatus?.('error', `ffplay: ${firstLine.slice(0, 160)}`);
@@ -123,9 +139,12 @@ export async function startForemanAudio(
       },
     }));
 
-    // Start streaming mic bytes to OpenAI as base64 PCM16 chunks.
+    // Start streaming mic bytes to OpenAI as base64 PCM16 chunks. Skip the
+    // upload while the assistant is speaking so its own playback doesn't
+    // loop back through the mic.
     mic.stdout?.on('data', (buf: Buffer) => {
       if (ws.readyState !== WebSocket.OPEN) return;
+      if (micMuted()) return;
       ws.send(JSON.stringify({
         type: 'input_audio_buffer.append',
         audio: buf.toString('base64'),
@@ -136,7 +155,7 @@ export async function startForemanAudio(
   ws.on('message', (raw) => {
     let msg: any;
     try { msg = JSON.parse(raw.toString()); } catch { return; }
-    route(msg, speaker, events);
+    route(msg, speaker, events, noteAssistantAudio);
   });
 
   ws.on('close', () => {
@@ -146,7 +165,7 @@ export async function startForemanAudio(
   });
 
   ws.on('error', (err) => {
-    events.onStatus?.('error', err.message);
+    if (!closed) events.onStatus?.('error', err.message);
     cleanup();
   });
 
@@ -170,10 +189,11 @@ export async function startForemanAudio(
 let audioBytesReceived = 0;
 let audioChunksLogged = 0;
 
-function route(msg: any, speaker: ChildProcess, events: ForemanAudioEvents) {
+function route(msg: any, speaker: ChildProcess, events: ForemanAudioEvents, noteAssistantAudio: () => void) {
   const type: string = msg?.type ?? '';
 
   if (type === 'response.audio.delta' && typeof msg.delta === 'string') {
+    noteAssistantAudio();
     const pcm = Buffer.from(msg.delta, 'base64');
     audioBytesReceived += pcm.length;
     if (audioChunksLogged < 3) {
@@ -190,6 +210,7 @@ function route(msg: any, speaker: ChildProcess, events: ForemanAudioEvents) {
   }
 
   if (type === 'response.audio.done') {
+    noteAssistantAudio();
     console.log(`[foreman] audio response done. total bytes: ${audioBytesReceived}`);
     audioBytesReceived = 0;
     audioChunksLogged = 0;
