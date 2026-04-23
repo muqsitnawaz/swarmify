@@ -91,6 +91,7 @@ export default function App() {
   const [showGuide, setShowGuide] = useState(false)
   const [openDispatchTrigger, setOpenDispatchTrigger] = useState(0)
   const [openDetailTaskId, setOpenDetailTaskId] = useState<string | null>(null)
+  const [floorThroughput, setFloorThroughput] = useState(0)
   const [tasks, setTasks] = useState<TaskSummary[]>([])
   const [tasksLoading, setTasksLoading] = useState(false)
   const [tasksLoaded, setTasksLoaded] = useState(false)
@@ -636,6 +637,7 @@ export default function App() {
         onOpenSearch={() => setCmdKOpen(true)}
         onOpenSettings={() => setActiveTab('panel')}
         onToggleTheme={() => vscode.postMessage({ type: 'executeCommand', command: 'workbench.action.toggleLightDarkThemes' })}
+        throughputTokensPerSec={activeTab === 'floor' ? floorThroughput : 0}
       />
 
       {/* Guide overlay */}
@@ -666,6 +668,7 @@ export default function App() {
           openDispatchTrigger={openDispatchTrigger}
           openDetailTaskId={openDetailTaskId}
           onDetailTaskConsumed={() => setOpenDetailTaskId(null)}
+          onThroughputChange={setFloorThroughput}
         />
       )}
 

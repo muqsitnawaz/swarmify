@@ -180,7 +180,7 @@ function statusLabel(status: UnifiedAgent['status']): string {
 }
 
 // Throughput counter -- live pulsing sparkline for LLM output tok/s
-function ThroughputCounter({ tokensPerSec }: { tokensPerSec: number }) {
+export function ThroughputCounter({ tokensPerSec }: { tokensPerSec: number }) {
   const BAR_COUNT = 24
   const [bars, setBars] = useState<number[]>(() => Array(BAR_COUNT).fill(0))
   const [displayValue, setDisplayValue] = useState(tokensPerSec)
@@ -385,9 +385,10 @@ interface UnifiedAgentsPaneProps {
   openDispatchTrigger?: number
   openDetailTaskId?: string | null
   onDetailTaskConsumed?: () => void
+  onThroughputChange?: (tokensPerSec: number) => void
 }
 
-export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks, unifiedTasksLoading, onDispatch, onNavigate, openDispatchTrigger, openDetailTaskId, onDetailTaskConsumed }: UnifiedAgentsPaneProps) {
+export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks, unifiedTasksLoading, onDispatch, onNavigate, openDispatchTrigger, openDetailTaskId, onDetailTaskConsumed, onThroughputChange }: UnifiedAgentsPaneProps) {
   const [newMenuOpen, setNewMenuOpen] = useState(false)
   const [recentOpen, setRecentOpen] = useState(false)
   const [statPopover, setStatPopover] = useState<'shipped' | 'open' | 'running' | 'nextup' | 'files' | null>(null)
@@ -738,23 +739,25 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   useEffect(() => {
     if (activeItems.length === 0) {
       setLiveThroughput(0)
+      onThroughputChange?.(0)
       return
     }
     const poll = () => postMessage({ type: 'getFloorThroughput' })
     poll()
     const id = setInterval(poll, 2500)
     return () => clearInterval(id)
-  }, [activeItems.length])
+  }, [activeItems.length, onThroughputChange])
   useEffect(() => {
     const handler = (event: MessageEvent) => {
       const msg = event.data
       if (msg?.type === 'floorThroughputData' && typeof msg.tokensPerSec === 'number') {
         setLiveThroughput(msg.tokensPerSec)
+        onThroughputChange?.(msg.tokensPerSec)
       }
     }
     window.addEventListener('message', handler)
     return () => window.removeEventListener('message', handler)
-  }, [])
+  }, [onThroughputChange])
 
   const handleNewAgent = (agent: string) => {
     const commands: Record<string, string> = {
@@ -825,110 +828,6 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
 
   return (
     <div className="sw-floor-dashboard">
-      {/* Header */}
-      <div className="sw-floor-header">
-        <div className="sw-floor-title">Factory Floor</div>
-        <div className="sw-floor-header-right">
-          <div className="sw-floor-stat-bar" ref={statPopoverRef}>
-            <button
-              type="button"
-              className={`sw-floor-stat-btn${statPopover === 'running' ? ' active' : ''}`}
-              title="Active agents"
-              disabled={activeItems.length === 0}
-              onClick={() => setStatPopover(statPopover === 'running' ? null : 'running')}
-            >
-              <b>{activeItems.length}</b> running
-            </button>
-            <span className="sw-stat-sep">·</span>
-            <button
-              type="button"
-              className={`sw-floor-stat-btn${statPopover === 'nextup' ? ' active' : ''}`}
-              title="Next up in the queue"
-              disabled={queueTasks.length === 0}
-              onClick={() => {
-                if (statPopover === 'nextup') {
-                  setStatPopover(null)
-                } else {
-                  setStatPopover('nextup')
-                  nextUpSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                }
-              }}
-            >
-              <b>{queueTasks.length}</b> next up
-            </button>
-            <span className="sw-stat-sep">·</span>
-            <button
-              type="button"
-              className={`sw-floor-stat-btn${statPopover === 'files' ? ' active' : ''}`}
-              title="Unique files touched by agents today"
-              disabled={filesTouchedToday === 0}
-              onClick={() => setStatPopover(statPopover === 'files' ? null : 'files')}
-            >
-              <b>{filesTouchedToday}</b> files today
-            </button>
-            <span className="sw-stat-sep">·</span>
-            <button
-              type="button"
-              className={`sw-floor-stat-btn${statPopover === 'shipped' ? ' active' : ''}`}
-              title="PRs shipped today (completed with pr_url)"
-              disabled={prsShippedToday === 0}
-              onClick={() => setStatPopover(statPopover === 'shipped' ? null : 'shipped')}
-            >
-              <b>{prsShippedToday}</b> PRs shipped
-            </button>
-            <span className="sw-stat-sep">·</span>
-            <button
-              type="button"
-              className={`sw-floor-stat-btn${statPopover === 'open' ? ' active' : ''}`}
-              title="Open PRs across all active and recent agents"
-              disabled={totalPRs === 0}
-              onClick={() => setStatPopover(statPopover === 'open' ? null : 'open')}
-            >
-              <b>{totalPRs}</b> PRs open
-            </button>
-            {backlogRemaining > 0 && (
-              <>
-                <span className="sw-stat-sep">·</span>
-                <button
-                  type="button"
-                  className="sw-floor-stat-btn"
-                  title="Open the Bench tab to see all tasks"
-                  onClick={() => onNavigate?.('bench')}
-                >
-                  {backlogRemaining} more on Bench
-                </button>
-              </>
-            )}
-            {statPopover && (
-              <StatPopover
-                title={statPopoverTitle(statPopover)}
-                emptyLabel={statPopoverEmptyLabel(statPopover)}
-                rows={buildStatPopoverRows(statPopover, {
-                  activeItems,
-                  queueTasks,
-                  filesToday,
-                  shippedPRs,
-                  openPRs,
-                  onOpenExternal: (url) => {
-                    postMessage({ type: 'openExternal', url })
-                    setStatPopover(null)
-                  },
-                  onFocusTerminal: (id) => {
-                    postMessage({ type: 'focusTerminal', terminalId: id })
-                    setStatPopover(null)
-                  },
-                  onOpenFile: (path) => {
-                    postMessage({ type: 'openTerminalFile', path })
-                    setStatPopover(null)
-                  },
-                })}
-              />
-            )}
-          </div>
-          {activeItems.length > 0 && <ThroughputCounter tokensPerSec={liveThroughput} />}
-        </div>
-      </div>
-
       {/* Intake Q&A -- teammates waiting on a human answer */}
       {intakeTeams.length > 0 && (
         <div className="sw-intake-section">

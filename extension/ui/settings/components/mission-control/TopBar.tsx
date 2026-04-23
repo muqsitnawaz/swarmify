@@ -1,5 +1,6 @@
 import React from 'react'
 import { Icon } from './icons'
+import { ThroughputCounter } from './UnifiedAgentsPane'
 
 export type TabKey = 'floor' | 'bench' | 'panel'
 
@@ -12,6 +13,7 @@ interface TopBarProps {
   onToggleTheme?: () => void
   onOpenSettings?: () => void
   onOpenSearch?: () => void
+  throughputTokensPerSec?: number
 }
 
 export function TopBar({
@@ -23,6 +25,7 @@ export function TopBar({
   onToggleTheme,
   onOpenSettings,
   onOpenSearch,
+  throughputTokensPerSec = 0,
 }: TopBarProps) {
   return (
     <header className="sw-topbar">
@@ -59,7 +62,7 @@ export function TopBar({
           Panel
         </button>
       </div>
-      <div className="sw-topbar-right">
+      <div className="sw-topbar-center">
         <button className="sw-cmd-hint" onClick={onOpenSearch}>
           <Icon name="search" size={12} />
           <span>Search or run command…</span>
@@ -69,6 +72,11 @@ export function TopBar({
             <span className="kbd">K</span>
           </span>
         </button>
+      </div>
+      <div className="sw-topbar-right">
+        {throughputTokensPerSec > 0 && (
+          <ThroughputCounter tokensPerSec={throughputTokensPerSec} />
+        )}
         <button className="sw-icon-btn" onClick={onToggleTheme} title="Toggle theme">
           <Icon name={isLightTheme ? 'moon' : 'sun'} size={14} />
         </button>

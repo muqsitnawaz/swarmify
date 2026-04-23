@@ -135,7 +135,21 @@
 .sw-topbar .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase; }
 .sw-topbar .brand-mark { width: 22px; height: 22px; display: grid; place-items: center; color: var(--brand); filter: drop-shadow(0 0 4px var(--brand-ring)); }
 .sw-topbar .divider-v { width: 1px; height: 20px; background: var(--ds-border-strong); margin: 0 6px; box-shadow: 1px 0 0 var(--ds-bevel-light); }
-.sw-topbar-right { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+.sw-topbar-right { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.sw-topbar-center { flex: 1; display: flex; justify-content: center; padding: 0 16px; }
+.sw-topbar-center .sw-cmd-hint { min-width: 260px; max-width: 420px; width: 100%; }
+
+/* Compact throughput counter for topbar */
+.sw-topbar .sw-throughput {
+  padding: 3px 8px;
+  gap: 6px;
+  border-radius: 5px;
+}
+.sw-topbar .sw-throughput-sparkline { height: 14px; }
+.sw-topbar .sw-spark-bar { width: 2px; }
+.sw-topbar .sw-throughput-value { font-size: 14px; min-width: 26px; }
+.sw-topbar .sw-throughput-label { font-size: 8px; }
+.sw-topbar .sw-throughput-sub { display: none; }
 
 /* Tab selector — stamped metal switches */
 .sw-tabs {
