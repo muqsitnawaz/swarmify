@@ -383,9 +383,11 @@ interface UnifiedAgentsPaneProps {
   onDispatch: () => void
   onNavigate?: (tab: 'floor' | 'bench' | 'panel') => void
   openDispatchTrigger?: number
+  openDetailTaskId?: string | null
+  onDetailTaskConsumed?: () => void
 }
 
-export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks, unifiedTasksLoading, onDispatch, onNavigate, openDispatchTrigger }: UnifiedAgentsPaneProps) {
+export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks, unifiedTasksLoading, onDispatch, onNavigate, openDispatchTrigger, openDetailTaskId, onDetailTaskConsumed }: UnifiedAgentsPaneProps) {
   const [newMenuOpen, setNewMenuOpen] = useState(false)
   const [recentOpen, setRecentOpen] = useState(false)
   const [statPopover, setStatPopover] = useState<'shipped' | 'open' | 'running' | 'nextup' | 'files' | null>(null)
@@ -393,6 +395,14 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   useEffect(() => {
     if (openDispatchTrigger !== undefined && openDispatchTrigger > 0) setDispatchOpen(true)
   }, [openDispatchTrigger])
+  useEffect(() => {
+    if (!openDetailTaskId) return
+    const task = unifiedTasks.find(t => t.id === openDetailTaskId)
+    if (!task) return
+    setDetailSiblings([])
+    setDetailTask(task)
+    onDetailTaskConsumed?.()
+  }, [openDetailTaskId, unifiedTasks, onDetailTaskConsumed])
   const [activeFilter, setActiveFilter] = useState<'all' | 'local' | 'cloud'>('all')
   const [expandedAgentId, setExpandedAgentId] = useState<string | null>(null)
   const [pendingDispatches, setPendingDispatches] = useState<PendingDispatch[]>([])
