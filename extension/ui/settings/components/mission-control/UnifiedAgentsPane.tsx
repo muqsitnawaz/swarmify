@@ -2162,7 +2162,6 @@ function formatDueDate(iso: string | undefined): { label: string; tone: 'overdue
 // Dispatch card with agent picker
 function DispatchCard({ task, onOpen }: { task: UnifiedTask; onOpen: (task: UnifiedTask) => void }) {
   const priorityCls = task.priority === 'urgent' ? 'urgent' : task.priority === 'high' ? 'high' : 'medium'
-  const priorityLabel = task.priority ? task.priority.charAt(0).toUpperCase() + task.priority.slice(1) : 'Medium'
   const repo = task.metadata.repo
   const due = formatDueDate(task.metadata.dueDate)
   const repoHref = repo ? `https://github.com/${repo}` : null
@@ -2189,24 +2188,24 @@ function DispatchCard({ task, onOpen }: { task: UnifiedTask; onOpen: (task: Unif
       <div className="sw-queue-card-header">
         <div className={`sw-queue-priority-led ${priorityCls}`} />
         <span className="sw-queue-badge">{task.metadata.identifier || task.id.slice(0, 8)}</span>
-        <span className={`sw-queue-priority-label ${priorityCls}`}>{priorityLabel}</span>
+        {repoHref ? (
+          <ExtLink
+            className="sw-queue-repo-chip mono"
+            href={repoHref}
+            onMouseDown={stopOpen}
+            title={`Open ${repo} on GitHub`}
+            style={{ marginLeft: 'auto' }}
+          >
+            {repo}
+          </ExtLink>
+        ) : repo ? (
+          <span className="sw-queue-repo-chip mono" style={{ marginLeft: 'auto' }}>{repo}</span>
+        ) : null}
       </div>
       <div className="sw-queue-title">{task.title}</div>
-      {(repo || due) && (
+      {due && (
         <div className="sw-queue-meta-row">
-          {repoHref ? (
-            <ExtLink
-              className="sw-queue-repo-chip mono"
-              href={repoHref}
-              onMouseDown={stopOpen}
-              title={`Open ${repo} on GitHub`}
-            >
-              {repo}
-            </ExtLink>
-          ) : repo ? (
-            <span className="sw-queue-repo-chip mono">{repo}</span>
-          ) : null}
-          {due && <span className={`sw-queue-due ${due.tone}`}>{due.label}</span>}
+          <span className={`sw-queue-due ${due.tone}`}>{due.label}</span>
         </div>
       )}
     </div>
