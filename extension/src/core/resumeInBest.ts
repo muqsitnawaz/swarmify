@@ -87,6 +87,29 @@ export function buildResumeInput(
 }
 
 /**
+ * True when the caller's currently-pinned version is still good enough to
+ * stay on — signed-in, not out_of_credits, and with session headroom left.
+ *
+ * Used by the Cmd+Shift+J flow to avoid an unnecessary profile switch when
+ * the active terminal already sits on a usable version. The user's intent
+ * with "pick the best" is really "pick *a* version that has usage" — any
+ * usable version is acceptable, so there's no reason to re-spawn a terminal
+ * at a different one.
+ *
+ * `undefined` input (version not tracked) returns false, so untagged
+ * terminals fall back to the legacy "always switch" behavior.
+ */
+export function isVersionStillUsable(
+  v: AgentsViewJsonVersion | undefined | null
+): boolean {
+  if (!v) return false;
+  if (!v.signedIn) return false;
+  if (v.usageStatus === 'out_of_credits') return false;
+  if (sessionUsedPercent(v) >= 100) return false;
+  return true;
+}
+
+/**
  * Pick the best signed-in version to resume into.
  *
  * Ranking:

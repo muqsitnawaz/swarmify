@@ -7,6 +7,7 @@ import {
   inlineContinueInstructions,
   buildLaunchCommand,
   buildResumeInput,
+  isVersionStillUsable,
   AgentsViewJsonAgent,
   AgentsViewJsonVersion,
 } from './resumeInBest';
@@ -220,6 +221,65 @@ describe('buildResumeInput', () => {
     const input = buildResumeInput('OLD-ID', true, null);
     expect(input).toBe('/continue OLD-ID');
     expect(input).not.toContain('NEW');
+  });
+});
+
+describe('isVersionStillUsable', () => {
+  test('returns false for undefined/null (unknown version stays on legacy path)', () => {
+    expect(isVersionStillUsable(undefined)).toBe(false);
+    expect(isVersionStillUsable(null)).toBe(false);
+  });
+
+  test('returns false when the version is not signed in', () => {
+    const v = makeVersion({
+      signedIn: false,
+      email: null,
+      usageStatus: 'available',
+      windows: [{ key: 'session', usedPercent: 0, resetsAt: null }],
+    });
+    expect(isVersionStillUsable(v)).toBe(false);
+  });
+
+  test('returns false when the version is out_of_credits', () => {
+    const v = makeVersion({
+      usageStatus: 'out_of_credits',
+      windows: [{ key: 'session', usedPercent: 10, resetsAt: null }],
+    });
+    expect(isVersionStillUsable(v)).toBe(false);
+  });
+
+  test('returns false when session usage is at 100%', () => {
+    const v = makeVersion({
+      usageStatus: 'rate_limited',
+      windows: [{ key: 'session', usedPercent: 100, resetsAt: null }],
+    });
+    expect(isVersionStillUsable(v)).toBe(false);
+  });
+
+  test('returns true for available version with room', () => {
+    const v = makeVersion({
+      usageStatus: 'available',
+      windows: [{ key: 'session', usedPercent: 42, resetsAt: null }],
+    });
+    expect(isVersionStillUsable(v)).toBe(true);
+  });
+
+  test('returns true for rate_limited version with session room', () => {
+    // rate_limited means the 5-hour window is tight but not spent — still
+    // usable per our rule ("any version with usage is good enough").
+    const v = makeVersion({
+      usageStatus: 'rate_limited',
+      windows: [{ key: 'session', usedPercent: 85, resetsAt: null }],
+    });
+    expect(isVersionStillUsable(v)).toBe(true);
+  });
+
+  test('returns false when session window is missing (treated as 100%)', () => {
+    const v = makeVersion({
+      usageStatus: 'available',
+      windows: [{ key: 'week', usedPercent: 5, resetsAt: null }],
+    });
+    expect(isVersionStillUsable(v)).toBe(false);
   });
 });
 

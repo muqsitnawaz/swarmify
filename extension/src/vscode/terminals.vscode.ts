@@ -34,6 +34,7 @@ function extractTerminalIdentificationOptions(terminal: vscode.Terminal): Termin
   const env = opts?.env;
   const terminalId = env ? env['AGENT_TERMINAL_ID'] : undefined;
   const sessionId = env ? env['AGENT_SESSION_ID'] : undefined;
+  const version = env ? env['AGENT_VERSION'] : undefined;
 
   // Extract icon filename from iconPath
   let iconFilename: string | null = null;
@@ -54,6 +55,7 @@ function extractTerminalIdentificationOptions(terminal: vscode.Terminal): Termin
     name: terminal.name,
     terminalId: terminalId as string | undefined,
     sessionId: sessionId as string | undefined,
+    version: (version as string | undefined) || undefined,
     iconFilename
   };
 }
@@ -72,6 +74,7 @@ export interface EditorTerminal {
   messageQueue: string[];   // Queued messages to send after terminal ready
   sessionId?: string;       // CLI session ID (for resume, history reading)
   agentType?: SessionAgentType; // Agent type for session operations
+  version?: string;         // Pinned agent version ("2.1.113"); undefined when unknown
   approvalStatus?: 'pending' | 'approved' | 'running' | 'complete'; // Swarm approval status
   autoLabelPollerId?: NodeJS.Timeout; // Poller for auto-label fetch (cleared once label is set)
 }
