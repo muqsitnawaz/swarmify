@@ -90,6 +90,7 @@ export default function App() {
   const [cmdKOpen, setCmdKOpen] = useState(false)
   const [showGuide, setShowGuide] = useState(false)
   const [openDispatchTrigger, setOpenDispatchTrigger] = useState(0)
+  const [openDetailTaskId, setOpenDetailTaskId] = useState<string | null>(null)
   const [tasks, setTasks] = useState<TaskSummary[]>([])
   const [tasksLoading, setTasksLoading] = useState(false)
   const [tasksLoaded, setTasksLoaded] = useState(false)
@@ -446,7 +447,7 @@ export default function App() {
 
   const handleSpawnAgentForTask = (task: UnifiedTask) => {
     setActiveTab('floor')
-    vscode.postMessage({ type: 'spawnAgentForTask', task })
+    setOpenDetailTaskId(task.id)
   }
 
   const handleOpenSession = (session: AgentSession) => {
@@ -663,6 +664,8 @@ export default function App() {
           onDispatch={handleDispatchSwarm}
           onNavigate={setActiveTab}
           openDispatchTrigger={openDispatchTrigger}
+          openDetailTaskId={openDetailTaskId}
+          onDetailTaskConsumed={() => setOpenDetailTaskId(null)}
         />
       )}
 
