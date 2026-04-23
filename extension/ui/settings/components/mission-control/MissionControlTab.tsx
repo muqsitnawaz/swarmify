@@ -13,9 +13,10 @@ interface MissionControlTabProps {
   openDispatchTrigger?: number
   openDetailTaskId?: string | null
   onDetailTaskConsumed?: () => void
+  onThroughputChange?: (tokensPerSec: number) => void
 }
 
-export function MissionControlTab({ tasks, tasksLoading, terminals, unifiedTasks, unifiedTasksLoading, onDispatch, onNavigate, openDispatchTrigger, openDetailTaskId, onDetailTaskConsumed }: MissionControlTabProps) {
+export function MissionControlTab({ tasks, tasksLoading, terminals, unifiedTasks, unifiedTasksLoading, onDispatch, onNavigate, openDispatchTrigger, openDetailTaskId, onDetailTaskConsumed, onThroughputChange }: MissionControlTabProps) {
   return (
     <UnifiedAgentsPane
       terminals={terminals}
@@ -28,6 +29,7 @@ export function MissionControlTab({ tasks, tasksLoading, terminals, unifiedTasks
       openDispatchTrigger={openDispatchTrigger}
       openDetailTaskId={openDetailTaskId}
       onDetailTaskConsumed={onDetailTaskConsumed}
+      onThroughputChange={onThroughputChange}
     />
   )
 }
