@@ -130,4 +130,14 @@ describe('buildAgentTerminalEnv', () => {
     const env = buildAgentTerminalEnv('CC-123', null, null);
     expect(env.AGENT_WORKSPACE_DIR).toBe('');
   });
+
+  test('includes AGENT_VERSION when provided', () => {
+    const env = buildAgentTerminalEnv('CC-123', 'session-abc', '/ws', '2.1.113');
+    expect(env.AGENT_VERSION).toBe('2.1.113');
+  });
+
+  test('omitted AGENT_VERSION defaults to empty string', () => {
+    const env = buildAgentTerminalEnv('CC-123', 'session-abc');
+    expect(env.AGENT_VERSION).toBe('');
+  });
 });

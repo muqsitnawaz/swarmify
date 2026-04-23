@@ -77,16 +77,20 @@ export function generateTerminalId(prefix: string, counter: number): string {
  * @param terminalId - Internal tracking ID for this terminal
  * @param sessionId - CLI session UUID (for resume/history)
  * @param workspacePath - Workspace root path (for MCP server to identify project)
+ * @param version - Pinned agent version (e.g. "2.1.113"); omitted when the
+ *   agent was launched via its PATH shim and the concrete version is unknown.
  */
 export function buildAgentTerminalEnv(
   terminalId: string,
   sessionId: string | null | undefined,
-  workspacePath: string | null | undefined = undefined
+  workspacePath: string | null | undefined = undefined,
+  version: string | null | undefined = undefined
 ): Record<string, string> {
   return {
     AGENT_TERMINAL_ID: terminalId,
     AGENT_SESSION_ID: sessionId ?? '',
     AGENT_WORKSPACE_DIR: workspacePath ?? '',
+    AGENT_VERSION: version ?? '',
     DISABLE_AUTO_TITLE: 'true',
     PROMPT_COMMAND: ''
   };
