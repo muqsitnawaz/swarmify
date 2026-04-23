@@ -184,7 +184,7 @@
       },
       {
         "command": "agents.askAnotherAgent",
-        "title": "Agents: Send to another agent..."
+        "title": "Agents: Start Task"
       },
       {
         "command": "agents.newShell",
