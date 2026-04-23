@@ -183,6 +183,10 @@
         "title": "Agents: Handoff"
       },
       {
+        "command": "agents.askAnotherAgent",
+        "title": "Agents: Send to another agent..."
+      },
+      {
         "command": "agents.newShell",
         "title": "Agents: New Shell (SH)",
         "icon": {
@@ -326,6 +330,12 @@
           "command": "agents.autogit",
           "group": "navigation",
           "when": "scmProvider == git"
+        }
+      ],
+      "terminal/context": [
+        {
+          "command": "agents.askAnotherAgent",
+          "group": "agents@1"
         }
       ],
       "commandPalette": [
