@@ -23,6 +23,7 @@ import {
   sessionUsedPercent,
   buildLaunchCommand,
   buildResumeInput,
+  isVersionStillUsable,
 } from '../core/resumeInBest';
 import * as os from 'os';
 import * as fsSync from 'fs';
@@ -1883,6 +1884,25 @@ async function resumeCurrentInBestProfile(context: vscode.ExtensionContext) {
   const data = await fetchAgentsViewJson(agentKey);
   if (!data) return;
 
+  // If the active terminal already sits on a version that still has usage,
+  // there's nothing to do — "best" is really "any version with usage", so
+  // a usable current version IS the best. Skip the terminal churn and the
+  // /continue round-trip. Undefined version falls through to the legacy
+  // switch path (we can't reason about untagged terminals).
+  const currentVersion = terminalEntry.version;
+  if (currentVersion) {
+    const currentVersionData = data.versions.find(v => v.version === currentVersion);
+    if (isVersionStillUsable(currentVersionData)) {
+      activeTerminal.show();
+      vscode.window.setStatusBarMessage(
+        `Already on ${agentKey}@${currentVersion} · ${sessionUsedPercent(currentVersionData!)}% session`,
+        3000
+      );
+      console.log(`[RESUME-IN-BEST] skipping switch — active terminal already on usable version ${agentKey}@${currentVersion}`);
+      return;
+    }
+  }
+
   const best = pickBestVersion(data.versions);
   if (!best) {
     vscode.window.showInformationMessage(
@@ -1938,7 +1958,7 @@ async function resumeCurrentInBestProfile(context: vscode.ExtensionContext) {
     iconPath: agentConfig.iconPath,
     location: { viewColumn: vscode.ViewColumn.Active },
     name: title,
-    env: buildAgentTerminalEnv(terminalId, newSessionId, workspacePath),
+    env: buildAgentTerminalEnv(terminalId, newSessionId, workspacePath, best.version),
     isTransient: true,
   });
 
@@ -1947,6 +1967,7 @@ async function resumeCurrentInBestProfile(context: vscode.ExtensionContext) {
   readiness.registerTerminal(terminal);
   terminals.setSessionId(terminal, newSessionId);
   terminals.setAgentType(terminal, agentKey);
+  terminals.setVersion(terminal, best.version);
   startAutoLabelPollerForTerminal(terminal, context);
 
   // /continue takes the OLD session id (the transcript we want to load),
