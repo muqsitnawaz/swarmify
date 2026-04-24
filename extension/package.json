@@ -3,7 +3,7 @@
   "displayName": "Agents",
   "publisher": "swarmify",
   "description": "Turn your IDE into an Integrated Agents Environment. Run Claude, Codex, Gemini, and Cursor at scale with keyboard-first navigation.",
-  "version": "0.8.61",
+  "version": "0.8.62",
   "license": "MIT",
   "author": "Muqsit Nawaz <dev@muqsitnawaz.com>",
   "icon": "assets/agents.png",
@@ -261,6 +261,10 @@
       {
         "command": "agents.resumeCurrentInBestProfile",
         "title": "Agents: Resume Current Session in Best Profile"
+      },
+      {
+        "command": "agents.watchdog.toggleTerminal",
+        "title": "Agents: Toggle Watchdog for Active Terminal"
       }
     ],
     "configuration": {
@@ -314,6 +318,26 @@
           "type": "string",
           "default": "",
           "description": "OpenAI API key. Used for commit message generation (gpt-4o-mini) and the Foreman voice coordinator (gpt-realtime)."
+        },
+        "agents.watchdog.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Watch agent terminals for stalls and auto-inject nudge prompts via a Claude headless instance."
+        },
+        "agents.watchdog.stallSeconds": {
+          "type": "number",
+          "default": 90,
+          "description": "Seconds of session inactivity before an agent is considered stalled."
+        },
+        "agents.watchdog.cooldownSeconds": {
+          "type": "number",
+          "default": 300,
+          "description": "Minimum seconds between nudges to the same terminal."
+        },
+        "agents.watchdog.tickSeconds": {
+          "type": "number",
+          "default": 60,
+          "description": "How often the watchdog evaluates terminals."
         }
       }
     },
