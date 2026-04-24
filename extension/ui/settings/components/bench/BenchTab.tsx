@@ -89,8 +89,6 @@ export function BenchTab(props: BenchTabProps) {
 
     const filteredUnified = unifiedTasks.filter(task => {
       if (dismissedTaskIds.has(task.id)) return false
-      if (task.source === 'linear') return settings?.taskSources?.linear
-      if (task.source === 'github') return settings?.taskSources?.github
       return true
     })
 
