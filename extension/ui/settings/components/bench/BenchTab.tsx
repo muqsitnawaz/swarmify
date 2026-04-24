@@ -114,7 +114,7 @@ export function BenchTab(props: BenchTabProps) {
       })
 
     return items
-  }, [unifiedTasks, settings?.taskSources, dismissedTaskIds])
+  }, [unifiedTasks, dismissedTaskIds])
 
   const filteredTasks = useMemo(
     () => flatTasks.filter(t => activeFilters.has(t.source)),
