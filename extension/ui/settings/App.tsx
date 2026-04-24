@@ -750,6 +750,8 @@ export default function App() {
           onAliasNameChange={handleAliasNameChange}
           onAliasAgentChange={setNewAliasAgent}
           onAliasFlagsChange={setNewAliasFlags}
+          linearConnected={availableSources.linear}
+          onLinearKeySaved={handleLinearAuthComplete}
         />
       )}
 
