@@ -14,7 +14,7 @@ export function StatusBar({ activeSwarmCount, runningAgentCount, branch, scopeLa
       <div className="sw-statusbar-item">
         <span className="sw-dot running pulse" style={{ color: 'var(--status-running)' }} />
         <span>
-          {activeSwarmCount} active · {runningAgentCount} agent{runningAgentCount === 1 ? '' : 's'} running
+          {runningAgentCount} agent{runningAgentCount === 1 ? '' : 's'} running
         </span>
       </div>
       {branch && (

@@ -390,7 +390,6 @@ interface UnifiedAgentsPaneProps {
 
 export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks, unifiedTasksLoading, onDispatch, onNavigate, openDispatchTrigger, openDetailTaskId, onDetailTaskConsumed, onThroughputChange }: UnifiedAgentsPaneProps) {
   const [newMenuOpen, setNewMenuOpen] = useState(false)
-  const [recentOpen, setRecentOpen] = useState(false)
   const [statPopover, setStatPopover] = useState<'shipped' | 'open' | 'running' | 'nextup' | 'files' | null>(null)
   const [dispatchOpen, setDispatchOpen] = useState(false)
   useEffect(() => {
@@ -989,6 +988,23 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
                   {activeItems.length > 0 && visibleActive.length === 0 && (
                     <div className="sw-active-filter-empty">No {activeFilter} agents running.</div>
                   )}
+                  {recentItems.length > 0 && (
+                    <>
+                      <div className="sw-floor-recent-divider">
+                        <span>Recent</span>
+                      </div>
+                      {recentItems.slice(0, 7).map((item) => (
+                        <AgentCard
+                          key={item.id}
+                          item={item}
+                          selected={selected?.id === item.id}
+                          onSelect={(id) => setExpandedAgentId(id)}
+                          dimmed
+                          onRetry={handleRetry}
+                        />
+                      ))}
+                    </>
+                  )}
                 </div>
                 <div className="sw-floor-active-detail">
                   {selected ? (
@@ -1032,37 +1048,6 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
             to open Claude, or dispatch a team.
           </div>
         </div>
-      )}
-
-      {/* Recent Agents -- collapsed by default */}
-      {recentItems.length > 0 && (
-        <>
-          <button
-            className="sw-section-header-row sw-section-toggle"
-            onClick={() => setRecentOpen((o) => !o)}
-            aria-expanded={recentOpen}
-          >
-            <Icon name="chevD" size={11} style={{ transform: recentOpen ? undefined : 'rotate(-90deg)', transition: 'transform 120ms ease' }} />
-            <span className="sw-section-label">Recent</span>
-            <span className="sw-section-count-pill">{recentItems.length}</span>
-            <span className="sw-section-line" />
-          </button>
-
-          {recentOpen && (
-            <div className="sw-floor-active-list">
-              {recentItems.slice(0, 5).map((item) => (
-                <AgentCard
-                  key={item.id}
-                  item={item}
-                  selected={false}
-                  onSelect={(id) => setExpandedAgentId(id)}
-                  dimmed
-                  onRetry={handleRetry}
-                />
-              ))}
-            </div>
-          )}
-        </>
       )}
 
       {dispatchOpen && (
@@ -1775,7 +1760,7 @@ function DetailPane({ item, onClose, onFocusTerminal, onRetry, onKill }: {
   const isActive = item.active
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0, height: '100%', flex: 1 }}>
       <div className="sw-mc-pane-head">
         <AgentAvatar id={item.agentType} size={20} />
         <span style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
