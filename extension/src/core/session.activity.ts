@@ -420,6 +420,72 @@ function truncateCommand(command: string, maxLen: number = 50): string {
 }
 
 /**
+ * Detect whether the agent appears to be awaiting user input.
+ * Walks the session JSONL from the end and looks at the last actionable turn:
+ *   - Claude: last assistant message whose final text block ends with "?" and
+ *     has no pending tool_use, OR used the AskUserQuestion tool.
+ *   - Codex:  last response_item message (role=assistant) with text ending "?".
+ * Returns false for agents mid-tool or when the user has already responded.
+ */
+export function detectWaitingForInput(
+  sessionContent: string,
+  agentType: AgentType
+): boolean {
+  if (agentType !== 'claude' && agentType !== 'codex') return false;
+  const lines = sessionContent.split(/\r?\n/).filter(l => l.trim());
+  const endsWithQuestion = (s: string) => /\?\s*$/.test(s.trim());
+
+  for (let i = lines.length - 1; i >= 0; i--) {
+    let raw: any;
+    try { raw = JSON.parse(lines[i]); } catch { continue; }
+
+    if (agentType === 'claude') {
+      if (raw?.isMeta) continue;
+      const t = raw?.type;
+      if (t !== 'user' && t !== 'assistant') continue;
+
+      if (t === 'user') {
+        // A user event means either the human typed, or a tool_result came
+        // back — either way the agent is past the last question.
+        return false;
+      }
+
+      const content = raw?.message?.content;
+      if (!Array.isArray(content)) return false;
+
+      for (const b of content) {
+        if (b?.type === 'tool_use' && b?.name === 'AskUserQuestion') return true;
+      }
+      const hasToolUse = content.some((b: any) => b?.type === 'tool_use');
+      if (hasToolUse) return false;
+
+      const textBlocks = content.filter((b: any) => b?.type === 'text' && typeof b.text === 'string');
+      if (textBlocks.length === 0) return false;
+      return endsWithQuestion(textBlocks[textBlocks.length - 1].text);
+    }
+
+    if (agentType === 'codex') {
+      if (raw?.type !== 'response_item') continue;
+      const payload = raw?.payload;
+      if (!payload) continue;
+      if (payload?.type === 'function_call') return false;
+      if (payload?.type === 'message') {
+        const role = payload?.role;
+        if (role && role !== 'assistant') return false;
+        const content = payload?.content;
+        let text = '';
+        if (typeof content === 'string') text = content;
+        else if (Array.isArray(content)) {
+          text = content.map((c: any) => (typeof c === 'string' ? c : c?.text || '')).join('');
+        }
+        return endsWithQuestion(text);
+      }
+    }
+  }
+  return false;
+}
+
+/**
  * Format activity for display in terminal card.
  * Returns a string like "> Reading src/auth.ts" or "> Running npm test"
  */
