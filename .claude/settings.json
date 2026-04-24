@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(agents sessions *)",
+      "Bash(agents skills *)",
+      "Bash(agents teams status *)",
+      "Bash(agents teams logs *)",
+      "Bash(agents teams doctor)",
+      "Bash(agents view *)",
+      "Bash(agents rules list *)",
+      "Bash(agents --help)",
+      "Bash(rush http GET *)",
+      "Bash(rush list *)",
+      "Bash(rush --help)",
+      "Bash(curl -sSL *)"
+    ]
+  }
+}
