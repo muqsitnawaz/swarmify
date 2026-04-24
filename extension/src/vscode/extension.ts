@@ -2275,11 +2275,15 @@ export async function openSingleAgentWithQueue(
     terminal.sendText(command);
   }
 
-  // After delay, send queued messages (5s to ensure agent process fully loaded)
+  // After delay, send queued messages (5s to ensure agent process fully loaded).
+  // Ink TUIs (Claude) watch for `\r` as Enter; `sendText(text, true)` appends
+  // `\n` which types into the input but does NOT submit. See the resume flow
+  // around line 2086 for the same workaround.
   setTimeout(() => {
     const queued = terminals.flushQueue(terminal);
     for (const msg of queued) {
-      terminal.sendText(msg);
+      terminal.sendText(msg, false);
+      terminal.sendText('\r', false);
     }
   }, 5000);
 }
