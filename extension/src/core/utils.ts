@@ -189,6 +189,16 @@ export function getSessionChunk(sessionId: string | undefined): string | null {
 }
 
 /**
+ * Extract a Linear-style ticket ID (e.g. RUSH-545, ENG-42) from text.
+ * Matches the first occurrence of `[A-Z][A-Z0-9]*-\d+` surrounded by word boundaries.
+ */
+export function extractLinearTicketId(text: string | undefined): string | null {
+  if (!text) return null;
+  const match = text.match(/\b[A-Z][A-Z0-9]*-\d+\b/);
+  return match ? match[0] : null;
+}
+
+/**
  * Extract the first N words from a string for auto-label generation.
  * Used for status bar display when no user label is set.
  */
