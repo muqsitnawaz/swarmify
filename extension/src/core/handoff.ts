@@ -80,6 +80,19 @@ function runAgentsSessions(args: string[], cwd?: string): Promise<string> {
   });
 }
 
+export async function getSessionSummaryViaAgentsCli(
+  sessionId: string,
+  cwd?: string
+): Promise<string | null> {
+  try {
+    const stdout = await runAgentsSessions(['sessions', sessionId], cwd);
+    const text = stdout.trim();
+    return text.length > 0 ? text : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function getSessionMessagesViaAgentsCli(
   sessionId: string,
   maxMessages: number = 10,
