@@ -907,7 +907,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
             </div>
             <span className="sw-section-line" />
             <div style={{ position: 'relative' }} ref={newMenuRef}>
-              <button className="sw-btn secondary sm" onClick={() => setNewMenuOpen((o) => !o)}>
+              <button data-foreman-id="new-btn" className="sw-btn secondary sm" onClick={() => setNewMenuOpen((o) => !o)}>
                 <Icon name="plus" size={11} />
                 New
               </button>
@@ -932,7 +932,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
                 </div>
               )}
             </div>
-            <button className="sw-btn primary sm" onClick={() => setDispatchOpen(true)}>
+            <button data-foreman-id="dispatch-btn" className="sw-btn primary sm" onClick={() => setDispatchOpen(true)}>
               <Icon name="dispatch" size={11} />
               Dispatch
             </button>

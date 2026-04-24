@@ -1167,6 +1167,38 @@
   letter-spacing: 0.5px;
 }
 
+/* Foreman cursor — absolute overlay that animates to data-foreman-id targets.
+   Phase 1 of docs/voice-drive-ui.md. Pointer-events: none so the cursor
+   renders above the UI but never intercepts user clicks. */
+.foreman-cursor {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 60;
+  pointer-events: none;
+  filter: drop-shadow(0 2px 6px rgba(74, 144, 226, 0.45));
+  will-change: transform;
+}
+
+.foreman-cursor-clicking {
+  animation: foreman-cursor-click 180ms ease-out;
+}
+
+@keyframes foreman-cursor-click {
+  0%   { transform-origin: center; scale: 1; }
+  50%  { scale: 0.55; }
+  100% { scale: 1; }
+}
+
+/* Elements currently highlighted by the Foreman get a brief accent ring.
+   Use the brand accent so it matches the orb + cursor. */
+.foreman-target-highlight {
+  outline: 2px solid var(--ds-accent, #4a90e2);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 6px rgba(74, 144, 226, 0.18);
+  transition: outline 0.12s, box-shadow 0.12s;
+}
+
 /* Gauges row */
 .sw-gauges-row {
   display: flex;
