@@ -10,6 +10,7 @@ import {
   formatTerminalTitle,
   getSessionChunk,
   extractFirstNWords,
+  extractLinearTicketId,
   getPrefixFromTerminalId,
   mergeMcpConfig,
   createSwarmServerConfig,
@@ -187,6 +188,30 @@ describe('extractFirstNWords', () => {
   test('works with different N values', () => {
     expect(extractFirstNWords('one two three four five', 3)).toBe('one two three...');
     expect(extractFirstNWords('one two', 3)).toBe('one two');
+  });
+});
+
+describe('extractLinearTicketId', () => {
+  test('extracts Linear ticket from anywhere in text', () => {
+    expect(extractLinearTicketId('Ship launchctl fix\n\nReference: RUSH-545')).toBe('RUSH-545');
+    expect(extractLinearTicketId('ENG-42 is the task')).toBe('ENG-42');
+    expect(extractLinearTicketId('work on ABC123-7 please')).toBe('ABC123-7');
+  });
+
+  test('returns null when no ticket present', () => {
+    expect(extractLinearTicketId('just a regular message')).toBeNull();
+    expect(extractLinearTicketId('')).toBeNull();
+    expect(extractLinearTicketId(undefined)).toBeNull();
+  });
+
+  test('rejects lowercase and malformed ids', () => {
+    expect(extractLinearTicketId('rush-545')).toBeNull();
+    expect(extractLinearTicketId('RUSH545')).toBeNull();
+    expect(extractLinearTicketId('RUSH-')).toBeNull();
+  });
+
+  test('returns first match when multiple present', () => {
+    expect(extractLinearTicketId('blocked by RUSH-100 and RUSH-200')).toBe('RUSH-100');
   });
 });
 
