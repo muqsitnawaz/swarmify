@@ -1428,7 +1428,7 @@ async function askAnotherAgentFromTerminal(context: vscode.ExtensionContext) {
   const clipboardText = (await vscode.env.clipboard.readText()).trim();
   if (!clipboardText) {
     vscode.window.showInformationMessage(
-      'Copy the line first (Cmd+C), then right-click and choose "Send to another agent".'
+      'Copy the line first (Cmd+C), then press Cmd+Shift+K or right-click and choose "Start Task".'
     );
     return;
   }
@@ -1438,8 +1438,8 @@ async function askAnotherAgentFromTerminal(context: vscode.ExtensionContext) {
     : clipboardText.replace(/\s+/g, ' ');
 
   const question = await vscode.window.showInputBox({
-    prompt: `Ask another agent about: ${preview}`,
-    placeHolder: 'What should they do with it?'
+    prompt: `Start a task with context: ${preview}`,
+    placeHolder: 'What should the agent do?'
   });
   if (question === undefined || !question.trim()) return;
 

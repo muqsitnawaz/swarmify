@@ -408,6 +408,11 @@
         "mac": "cmd+shift+n"
       },
       {
+        "command": "agents.askAnotherAgent",
+        "key": "ctrl+shift+k",
+        "mac": "cmd+shift+k"
+      },
+      {
         "command": "agents.newShell",
         "key": "ctrl+shift+s",
         "mac": "cmd+shift+s"
