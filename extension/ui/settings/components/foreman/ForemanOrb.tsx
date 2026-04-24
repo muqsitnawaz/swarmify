@@ -136,7 +136,7 @@ export function ForemanOrb({ vscode }: ForemanOrbProps) {
       className="foreman-orb-root"
       style={{
         position: 'fixed',
-        bottom: 16,
+        bottom: 44,
         right: 16,
         zIndex: 50,
         display: 'flex',
