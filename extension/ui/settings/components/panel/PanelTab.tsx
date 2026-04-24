@@ -62,6 +62,10 @@ export interface PanelTabProps {
   onAliasFlagsChange: (value: string) => void
   linearConnected?: boolean
   onLinearKeySaved?: () => void
+  availableSources: { linear: boolean; github: boolean }
+  onUpdateTaskSources: (sources: Partial<AgentSettings['taskSources']>) => void
+  onConnectLinear: () => void
+  onConnectGitHub: () => void
 }
 
 function statusLevel(value: boolean): StatusBankLevel {
@@ -106,6 +110,10 @@ export function PanelTab({
   onAliasFlagsChange,
   linearConnected = false,
   onLinearKeySaved,
+  availableSources,
+  onUpdateTaskSources,
+  onConnectLinear,
+  onConnectGitHub,
 }: PanelTabProps) {
   const skillCommands = skillsStatus?.commands ?? []
   const display = settings.display
