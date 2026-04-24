@@ -141,6 +141,9 @@ export default function App() {
   const [prewarmPools, setPrewarmPools] = useState<PrewarmPool[]>([])
   const [prewarmLoaded, setPrewarmLoaded] = useState(false)
 
+  // Watchdog state
+  const [watchdogEnabled, setWatchdogEnabled] = useState(false)
+
   // Workspace config state
   const [workspaceConfig, setWorkspaceConfig] = useState<WorkspaceConfig | null>(null)
   const [workspaceConfigExists, setWorkspaceConfigExists] = useState(false)
@@ -254,6 +257,9 @@ export default function App() {
           setPrewarmPools(message.pools || [])
           setPrewarmLoaded(true)
           break
+        case 'watchdogStatus':
+          setWatchdogEnabled(!!message.enabled)
+          break
         case 'workspaceConfigData':
           setWorkspaceConfig(message.config)
           setWorkspaceConfigExists(message.exists)
@@ -287,6 +293,7 @@ export default function App() {
     vscode.postMessage({ type: 'fetchAgentModels' })
     vscode.postMessage({ type: 'getDefaultAgent' })
     vscode.postMessage({ type: 'getSecondaryAgent' })
+    vscode.postMessage({ type: 'getWatchdogStatus' })
     vscode.postMessage({ type: 'getPrewarmStatus' })
     vscode.postMessage({ type: 'getWorkspaceConfig' })
     vscode.postMessage({ type: 'fetchAllTerminals' })
@@ -638,6 +645,8 @@ export default function App() {
         onOpenSettings={() => setActiveTab('panel')}
         onToggleTheme={() => vscode.postMessage({ type: 'executeCommand', command: 'workbench.action.toggleLightDarkThemes' })}
         throughputTokensPerSec={activeTab === 'floor' ? floorThroughput : 0}
+        watchdogEnabled={watchdogEnabled}
+        onToggleWatchdog={() => vscode.postMessage({ type: 'setWatchdogEnabled', value: !watchdogEnabled })}
       />
 
       {/* Guide overlay */}
