@@ -47,6 +47,7 @@ export function TopBar({
       <div className="divider-v" />
       <div className="sw-tabs">
         <button
+          data-foreman-id="tab-floor"
           className={`sw-tab ${activeTab === 'floor' ? 'active' : ''}`}
           onClick={() => onTabChange('floor')}
         >
@@ -54,12 +55,14 @@ export function TopBar({
           {activeSwarmCount > 0 && <span className="sw-tab-badge">{activeSwarmCount}</span>}
         </button>
         <button
+          data-foreman-id="tab-bench"
           className={`sw-tab ${activeTab === 'bench' ? 'active' : ''}`}
           onClick={() => onTabChange('bench')}
         >
           Bench
         </button>
         <button
+          data-foreman-id="tab-panel"
           className={`sw-tab ${activeTab === 'panel' ? 'active' : ''}`}
           onClick={() => onTabChange('panel')}
         >
