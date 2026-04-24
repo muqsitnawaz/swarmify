@@ -489,6 +489,30 @@ export async function runForemanTool(
       const { tasks, cycleInfo } = await deps.fetchCycleTasks();
       return summarizeCycle(tasks, cycleInfo);
     }
+    case 'task_details': {
+      if (!deps?.fetchTaskDetails) {
+        return { error: 'task_details tool unavailable: no task source wired' };
+      }
+      const id = (args && typeof args === 'object' && 'id' in args)
+        ? String((args as { id?: unknown }).id ?? '').trim()
+        : '';
+      if (!id) return { error: 'no ticket id' };
+      const details = await deps.fetchTaskDetails(id);
+      if (!details) return { error: `no ticket matching "${id}"` };
+      return details;
+    }
+    case 'dispatch': {
+      if (!deps?.dispatchTask) {
+        return { ok: false, message: 'dispatch tool unavailable: no dispatcher wired' };
+      }
+      const a = (args && typeof args === 'object') ? args as Record<string, unknown> : {};
+      const id = String(a.id ?? '').trim();
+      if (!id) return { ok: false, message: 'no ticket id' };
+      const agent = typeof a.agent === 'string' ? a.agent : undefined;
+      const target = a.target === 'local' ? 'local' : a.target === 'cloud' ? 'cloud' : undefined;
+      const repo = typeof a.repo === 'string' && a.repo.trim() ? a.repo.trim() : undefined;
+      return deps.dispatchTask({ id, agent, target, repo });
+    }
     default:
       throw new Error(`Unknown Foreman tool: ${name}`);
   }
