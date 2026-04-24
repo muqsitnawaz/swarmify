@@ -550,6 +550,7 @@ export interface SessionPreviewInfo {
   firstUserMessage?: string;
   firstUserMessageTimestamp?: string;
   lastUserMessage?: string;
+  lastActivityMs?: number;
   messageCount: number;
 }
 
@@ -666,6 +667,7 @@ export async function getSessionPreviewInfo(filePath: string): Promise<SessionPr
     firstUserMessage: firstMsgEntry.text,
     firstUserMessageTimestamp: firstMsgEntry.timestamp,
     lastUserMessage,
+    lastActivityMs: stat.mtimeMs,
     messageCount,
   };
 
