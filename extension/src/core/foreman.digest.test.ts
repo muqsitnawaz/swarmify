@@ -103,7 +103,8 @@ test('long paths get shortened', () => {
 });
 
 test('humanElapsed formatting', () => {
-  expect(humanElapsed(5_000)).toBe('5s');
+  expect(humanElapsed(5_000)).toBe('just now');
+  expect(humanElapsed(59_000)).toBe('just now');
   expect(humanElapsed(90_000)).toBe('1 min');
   expect(humanElapsed(45 * 60_000)).toBe('45 min');
   expect(humanElapsed(60 * 60_000)).toBe('1h');
