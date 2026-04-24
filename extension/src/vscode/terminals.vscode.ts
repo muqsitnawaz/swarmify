@@ -12,7 +12,7 @@ const execFileAsync = promisify(execFile);
 import { generateTerminalId, resolveRestoredVersion, RunningCounts } from '../core/terminals';
 import * as sessionsPersist from '../core/sessions.persist';
 import { getSessionPathBySessionId, getSessionPreviewInfo, getOpenCodeSessionPreviewInfo, getCursorSessionPreviewInfo, SessionPreviewInfo } from './sessions.vscode';
-import { extractCurrentActivity, formatActivity } from '../core/session.activity';
+import { extractCurrentActivity, formatActivity, detectWaitingForInput } from '../core/session.activity';
 import { extractSessionQuickDetails, SessionQuickDetails, SessionQuickSummary, SessionSummaryAgentType } from '../core/session.summary';
 import {
   CLAUDE_TITLE,
@@ -680,6 +680,7 @@ export interface TerminalDetail {
   cwd?: string | null;
   branch?: string | null;
   recentFileStats?: Record<string, { added: number; removed: number }>;
+  waitingForInput?: boolean;
   approvalStatus?: TerminalApprovalStatus;
   role?: string;
   hint?: string;
@@ -920,7 +921,8 @@ export async function getTerminalsByAgentType(
       activity: null,
       activityTimestamp: null,
       sessionMtimeTimestamp: null,
-      quickDetails: null
+      quickDetails: null,
+      waitingForInput: false
     };
 
     // Use agent-specific preview function
@@ -947,6 +949,9 @@ export async function getTerminalsByAgentType(
     const quickDetails = summaryAgentType
       ? await getSessionQuickDetailsCached(sessionPath, summaryAgentType)
       : null;
+    const waitingForInput = (tail && summaryAgentType && summaryAgentType !== 'gemini')
+      ? detectWaitingForInput(tail, summaryAgentType)
+      : false;
 
     return {
       index: p.index,
@@ -954,7 +959,8 @@ export async function getTerminalsByAgentType(
       activity: activity ? formatActivity(activity) : null,
       activityTimestamp: activity?.timestamp ? activity.timestamp.toISOString() : null,
       sessionMtimeTimestamp: sessionStat?.mtime ? sessionStat.mtime.toISOString() : null,
-      quickDetails
+      quickDetails,
+      waitingForInput
     };
   });
 
@@ -985,6 +991,7 @@ export async function getTerminalsByAgentType(
       results[data.index].recentTools = data.quickDetails.recentTools;
       results[data.index].lastFilePath = data.quickDetails.lastFilePath;
     }
+    results[data.index].waitingForInput = data.waitingForInput;
 
     const currentStatus = results[data.index].approvalStatus;
     const currentActivity = results[data.index].currentActivity;

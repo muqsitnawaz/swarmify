@@ -271,6 +271,7 @@ export interface TerminalDetail {
   cwd?: string | null
   branch?: string | null
   recentFileStats?: Record<string, { added: number; removed: number }>
+  waitingForInput?: boolean
   approvalStatus?: ApprovalStatus
   role?: string
   hint?: string
