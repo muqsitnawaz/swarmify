@@ -53,6 +53,7 @@ import {
   getSessionChunk,
   truncateText,
   extractFirstNWords,
+  extractLinearTicketId,
   formatRelativeTime,
   TerminalIdentificationOptions,
   prefixToAgentType,
@@ -2180,7 +2181,9 @@ async function goToTerminal(context: vscode.ExtensionContext) {
     const info = previewResults[i];
     if (info) {
       if (!entry.label && !entry.autoLabel && info.firstUserMessage) {
-        const generatedTitle = extractFirstNWords(info.firstUserMessage, 5);
+        const words = extractFirstNWords(info.firstUserMessage, 5);
+        const ticket = extractLinearTicketId(info.firstUserMessage);
+        const generatedTitle = ticket && words ? `${ticket} ${words}` : (ticket ?? words);
         if (generatedTitle) {
           terminals.setAutoLabel(entry.terminal, generatedTitle);
           items[idx].label = generatedTitle;
@@ -2397,7 +2400,9 @@ async function fetchAndSetAutoLabel(terminal: vscode.Terminal, entry: terminals.
 
     if (!previewInfo.firstUserMessage) return undefined;
 
-    const autoLabel = extractFirstNWords(previewInfo.firstUserMessage, 5);
+    const words = extractFirstNWords(previewInfo.firstUserMessage, 5);
+    const ticket = extractLinearTicketId(previewInfo.firstUserMessage);
+    const autoLabel = ticket && words ? `${ticket} ${words}` : (ticket ?? words);
     if (autoLabel) {
       terminals.setAutoLabel(terminal, autoLabel);
     }
