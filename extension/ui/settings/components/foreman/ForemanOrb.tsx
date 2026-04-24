@@ -22,6 +22,12 @@ const IDLE_WARN_MS = 50_000
 const SPEAKING_DECAY_MS = 1_500
 const TRANSCRIPT_WINDOW = 4
 
+// Voice-abort keywords: when any of these appear as a completed user
+// transcript, we dispatch foreman.abort so the ForemanCursor cancels any
+// in-flight UI sequence. The realtime transcript is emitted with final=true
+// at end of utterance, so this fires on completed words — not a partial.
+const ABORT_PATTERN = /\b(stop|cancel|wait|nevermind|never mind|abort|no)\b/i
+
 export function ForemanOrb({ vscode }: ForemanOrbProps) {
   const [conn, setConn] = useState<ConnState>('idle')
   const [activity, setActivity] = useState<Activity>('idle')
@@ -47,6 +53,12 @@ export function ForemanOrb({ vscode }: ForemanOrbProps) {
         setActivity(m.role === 'assistant' ? 'speaking' : 'listening')
         if (activityTimer.current) clearTimeout(activityTimer.current)
         activityTimer.current = setTimeout(() => setActivity('idle'), SPEAKING_DECAY_MS)
+
+        // Voice-abort: final user utterance matching abort keywords cancels
+        // any in-flight UI sequence (cursor animation, pending click, etc).
+        if (m.role === 'user' && m.final && typeof m.text === 'string' && ABORT_PATTERN.test(m.text)) {
+          window.postMessage({ type: 'foreman.abort' }, '*')
+        }
       }
     }
     window.addEventListener('message', onMessage)
