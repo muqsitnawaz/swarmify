@@ -12,7 +12,16 @@
       "Bash(rush http GET *)",
       "Bash(rush list *)",
       "Bash(rush --help)",
-      "Bash(curl -sSL *)"
+      "Bash(curl -sSL *)",
+      "Bash(agents pty screen *)",
+      "Bash(agents teams add *)",
+      "Bash(agents teams --help)",
+      "Bash(npm view *)",
+      "Bash(npm info *)",
+      "Bash(bunx tsc --noEmit *)",
+      "Bash(rush cloud status *)",
+      "Bash(rush cloud list *)",
+      "Bash(rush cloud logs *)"
     ]
   }
 }
