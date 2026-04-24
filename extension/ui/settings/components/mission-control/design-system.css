@@ -979,8 +979,7 @@
 
 .sw-floor-dashboard {
   padding: 16px 20px 20px;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden;
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -1308,6 +1307,7 @@
   gap: 10px;
   margin-bottom: 10px;
   margin-top: 4px;
+  flex-shrink: 0;
 }
 
 .sw-section-count-pill {
@@ -1759,6 +1759,7 @@
 /* Queue section */
 .sw-queue-section {
   margin-top: 8px;
+  flex-shrink: 0;
 }
 
 .sw-queue-cards {
