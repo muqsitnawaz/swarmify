@@ -187,7 +187,9 @@ export function BenchTab(props: BenchTabProps) {
             <div className="sw-empty">
               <span className="sw-empty-title">Work queue empty</span>
               <span className="sw-empty-sub">
-                Connect Linear or GitHub to see tasks here.
+                {availableSources.linear || availableSources.github
+                  ? 'No tasks in view. Either the active cycle is empty, your filters are hiding everything, or the source returned an error — check the extension Output panel for details.'
+                  : 'Connect Linear or GitHub to see tasks here.'}
               </span>
             </div>
           ) : (

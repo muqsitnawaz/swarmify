@@ -895,6 +895,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
                     key={key}
                     type="button"
                     role="tab"
+                    data-foreman-id={`active-filter-${key}`}
                     aria-selected={activeFilter === key}
                     className={`sw-active-filter-btn ${activeFilter === key ? 'active' : ''}`}
                     onClick={() => setActiveFilter(key)}
@@ -2075,6 +2076,7 @@ function DispatchCard({ task, onOpen }: { task: UnifiedTask; onOpen: (task: Unif
     <div
       role="button"
       tabIndex={0}
+      data-foreman-id={`task-card-${task.metadata.identifier || task.id.slice(0, 8)}`}
       className="sw-queue-card sw-queue-card-clickable"
       onClick={() => onOpen(task)}
       onKeyDown={(e) => {
