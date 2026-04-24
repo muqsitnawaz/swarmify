@@ -53,6 +53,7 @@ import {
   getSessionChunk,
   truncateText,
   extractFirstNWords,
+  formatRelativeTime,
   TerminalIdentificationOptions,
   prefixToAgentType,
   SessionAgentType
@@ -2112,7 +2113,7 @@ interface TerminalQuickPickItem extends vscode.QuickPickItem {
 async function getSessionPreviewForEntry(
   entry: terminals.EditorTerminal,
   workspacePath?: string
-): Promise<{ firstUserMessage?: string; lastUserMessage?: string; messageCount: number } | null> {
+): Promise<{ firstUserMessage?: string; lastUserMessage?: string; lastActivityMs?: number; messageCount: number } | null> {
   if (!entry.sessionId) return null;
   const agentType = entry.agentType || prefixToAgentType(entry.agentConfig?.prefix ?? null);
   if (!agentType) return null;
@@ -2138,7 +2139,7 @@ async function goToTerminal(context: vscode.ExtensionContext) {
   const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 
   const items: TerminalQuickPickItem[] = [];
-  const previewPromises: Array<{ itemIndex: number; entry: terminals.EditorTerminal; promise: Promise<{ firstUserMessage?: string; lastUserMessage?: string; messageCount: number } | null> }> = [];
+  const previewPromises: Array<{ itemIndex: number; entry: terminals.EditorTerminal; promise: Promise<{ firstUserMessage?: string; lastUserMessage?: string; lastActivityMs?: number; messageCount: number } | null> }> = [];
 
   const display = getDisplayPrefs(context);
   const extensionPath = context.extensionPath;
@@ -2146,14 +2147,12 @@ async function goToTerminal(context: vscode.ExtensionContext) {
   for (const entry of allEntries) {
     if (!entry.agentConfig) continue;
 
-    const prefix = entry.agentConfig.prefix;
-    const agentName = display.showFullAgentNames ? getExpandedAgentName(prefix) : prefix;
     const effectiveTitle = entry.label || entry.autoLabel || 'Untitled';
     const itemIndex = items.length;
 
     items.push({
-      label: agentName,
-      description: effectiveTitle,
+      label: effectiveTitle,
+      description: '',
       detail: '',
       iconPath: buildIconPath(entry.agentConfig.title, extensionPath) ?? undefined,
       terminal: entry.terminal
@@ -2184,12 +2183,17 @@ async function goToTerminal(context: vscode.ExtensionContext) {
         const generatedTitle = extractFirstNWords(info.firstUserMessage, 5);
         if (generatedTitle) {
           terminals.setAutoLabel(entry.terminal, generatedTitle);
-          items[idx].description = generatedTitle;
+          items[idx].label = generatedTitle;
         }
       }
 
+      if (info.lastActivityMs) {
+        const diffMs = Date.now() - info.lastActivityMs;
+        items[idx].description = diffMs < 60_000 ? 'Just now' : formatRelativeTime(info.lastActivityMs);
+      }
+
       const parts: string[] = [];
-      if (info.firstUserMessage) parts.push(truncateText(info.firstUserMessage, 60));
+      if (info.firstUserMessage) parts.push(truncateText(info.firstUserMessage, 80));
       if (info.messageCount > 0) parts.push(`(${info.messageCount})`);
       items[idx].detail = parts.join(' ');
     }
