@@ -2815,13 +2815,21 @@ async function restoreAgentTerminals(context: vscode.ExtensionContext): Promise<
       iconPath: agentConfig.iconPath,
       location: { viewColumn: vscode.ViewColumn.Active },
       name: title,
-      env: buildAgentTerminalEnv(session.terminalId, session.sessionId || null, workspacePath),
+      env: buildAgentTerminalEnv(session.terminalId, session.sessionId || null, workspacePath, session.version),
       isTransient: true
     });
 
     const pid = await terminal.processId;
     terminals.register(terminal, session.terminalId, agentConfig, pid, context, session.label);
     readiness.registerTerminal(terminal);
+
+    // Preserve the version pin across reloads. The env var above is belt; this
+    // is suspenders — without it, `resumeCurrentInBestProfile`'s "already on
+    // usable version" short-circuit sees `terminalEntry.version === undefined`
+    // and falls through to the full profile switch.
+    if (session.version) {
+      terminals.setVersion(terminal, session.version);
+    }
 
     // Restore session tracking metadata if present
     if (session.sessionId && session.agentType) {
