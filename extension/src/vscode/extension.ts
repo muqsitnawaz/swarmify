@@ -12,6 +12,7 @@ import * as git from './git.vscode';
 import { AgentSettings, hasLoginEnabled, PromptEntry } from '../core/settings';
 import * as settings from './settings.vscode';
 import * as swarm from './swarm.vscode';
+import { startWatchdog } from './watchdog.vscode';
 import * as notifications from './notifications.vscode';
 import * as terminals from './terminals.vscode';
 import * as sessionTracker from './sessionTracker';
@@ -591,6 +592,8 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   registerTmuxCleanup(context);
+
+  context.subscriptions.push(startWatchdog(context));
 
   // Ensure CLAUDE.md has Swarm instructions if Swarm is enabled
   claudemd.ensureSwarmInstructions();
