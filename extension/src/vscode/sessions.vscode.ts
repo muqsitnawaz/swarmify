@@ -63,7 +63,7 @@ async function readHeadLines(filePath: string, maxLines: number): Promise<string
 
 // Read the last `maxLines` non-empty lines without loading the whole file.
 // Opens the file, seeks backward in 64KB chunks from EOF until enough lines collected.
-async function readTailLines(filePath: string, maxLines: number): Promise<string[]> {
+export async function readTailLines(filePath: string, maxLines: number): Promise<string[]> {
   const CHUNK_SIZE = 64 * 1024;
   let handle: Awaited<ReturnType<typeof fs.open>> | undefined;
   try {
