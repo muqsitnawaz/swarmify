@@ -931,6 +931,16 @@
   background: var(--ds-bg-recessed); border: 1px solid var(--ds-border);
   color: var(--ds-text-muted);
 }
+.sw-unified-file-pill-btn {
+  cursor: pointer; font-family: "Geist Mono", monospace;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.sw-unified-file-pill-btn:hover {
+  background: var(--ds-bg-raised); color: var(--ds-text);
+}
+.sw-unified-file-pill-stat {
+  font-size: 9.5px; letter-spacing: .02em;
+}
 .sw-unified-detail-actions {
   display: flex; gap: 6px; margin-top: 10px;
 }
