@@ -14,6 +14,8 @@ interface TopBarProps {
   onOpenSettings?: () => void
   onOpenSearch?: () => void
   throughputTokensPerSec?: number
+  watchdogEnabled?: boolean
+  onToggleWatchdog?: () => void
 }
 
 export function TopBar({
@@ -26,6 +28,8 @@ export function TopBar({
   onOpenSettings,
   onOpenSearch,
   throughputTokensPerSec = 0,
+  watchdogEnabled = false,
+  onToggleWatchdog,
 }: TopBarProps) {
   return (
     <header className="sw-topbar">
@@ -76,6 +80,16 @@ export function TopBar({
       <div className="sw-topbar-right">
         {throughputTokensPerSec > 0 && (
           <ThroughputCounter tokensPerSec={throughputTokensPerSec} />
+        )}
+        {onToggleWatchdog && (
+          <button
+            className="sw-icon-btn"
+            onClick={onToggleWatchdog}
+            title={watchdogEnabled ? 'Watchdog ON - click to disable' : 'Watchdog OFF - click to enable'}
+            style={{ opacity: watchdogEnabled ? 1 : 0.45 }}
+          >
+            <Icon name="radar" size={14} />
+          </button>
         )}
         <button className="sw-icon-btn" onClick={onToggleTheme} title="Toggle theme">
           <Icon name={isLightTheme ? 'moon' : 'sun'} size={14} />
