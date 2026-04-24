@@ -1454,15 +1454,25 @@ async function askAnotherAgentFromTerminal(context: vscode.ExtensionContext) {
   const sourceSessionId = sourceEntry?.sessionId;
   const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 
+  let sourceSummary: string | null = null;
+  if (sourceSessionId) {
+    sourceSummary = await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Window, title: 'Loading source session summary…' },
+      () => handoff.getSessionSummaryViaAgentsCli(sourceSessionId, workspacePath)
+    );
+  }
+
   const contextLines: string[] = [];
   if (sourceAgent) contextLines.push(`source-agent: ${sourceAgent}`);
-  if (sourceSessionId) {
-    contextLines.push(`source-session-id: ${sourceSessionId}`);
-    contextLines.push(`read-full-session: agents sessions ${sourceSessionId}`);
-  }
+  if (sourceSessionId) contextLines.push(`source-session-id: ${sourceSessionId}`);
   if (workspacePath) contextLines.push(`workspace: ${workspacePath}`);
   contextLines.push('selected-text:');
   contextLines.push(clipboardText);
+  if (sourceSummary) {
+    contextLines.push('');
+    contextLines.push('source-session-summary:');
+    contextLines.push(sourceSummary);
+  }
 
   const message = `<context>\n${contextLines.join('\n')}\n</context>\n\n${question.trim()}`;
   const agentConfig = getBuiltInByTitle(context.extensionPath, defaultAgentTitle);
