@@ -105,8 +105,8 @@ export interface TaskSourceSettings {
 }
 
 export const DEFAULT_TASK_SOURCE_SETTINGS: TaskSourceSettings = {
-  linear: false,
-  github: false
+  linear: true,
+  github: true
 };
 
 export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
