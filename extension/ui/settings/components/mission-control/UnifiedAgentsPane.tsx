@@ -1753,6 +1753,79 @@ function AgentCard({ item, selected, onSelect, dimmed, onRetry }: {
   )
 }
 
+const IDLE_AFTER_MS = 2 * 60 * 1000
+
+function friendlyRelTime(iso: string | null | undefined, nowMs: number): string {
+  if (!iso) return ''
+  const then = new Date(iso).getTime()
+  if (Number.isNaN(then)) return ''
+  const diff = Math.max(0, nowMs - then)
+  if (diff < 10_000) return 'Just now'
+  const sec = Math.floor(diff / 1000)
+  if (sec < 60) return `${sec}s ago`
+  const min = Math.floor(sec / 60)
+  if (min < 60) return `${min}m ago`
+  const hr = Math.floor(min / 60)
+  if (hr < 24) return `${hr}h ago`
+  const day = Math.floor(hr / 24)
+  if (day === 1) return 'yesterday'
+  if (day < 7) return `${day}d ago`
+  return `${Math.floor(day / 7)}w ago`
+}
+
+function DetailStatusRow({ item }: { item: UnifiedAgent }) {
+  const [nowMs, setNowMs] = useState(() => Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 15_000)
+    return () => clearInterval(id)
+  }, [])
+  const tsMs = item.timestamp ? new Date(item.timestamp).getTime() : NaN
+  const staleMs = Number.isFinite(tsMs) ? nowMs - tsMs : 0
+  const stale = staleMs > IDLE_AFTER_MS
+  const effectiveStatus: UnifiedAgent['status'] =
+    item.status === 'running' && stale ? 'idle' : item.status
+  const label = statusLabel(effectiveStatus)
+  const rel = friendlyRelTime(item.timestamp, nowMs)
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 8,
+        marginBottom: 14,
+      }}
+    >
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span
+          className={`sw-badge ${
+            effectiveStatus === 'completed' ? 'ok' : effectiveStatus === 'running' ? 'running' : effectiveStatus
+          }`}
+        >
+          {label}
+        </span>
+        {item.duration && <span className="sw-pill mono">{item.duration}</span>}
+        {item.prUrl && (
+          <ExtLink
+            href={item.prUrl}
+            className="mono"
+            style={{
+              fontSize: 11,
+              color: 'var(--brand)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+            }}
+          >
+            <Icon name="external" size={10} /> PR
+          </ExtLink>
+        )}
+      </div>
+      {rel && <span className="sw-pill">{rel}</span>}
+    </div>
+  )
+}
+
 function DetailPane({ item, onClose, onFocusTerminal, onRetry, onKill }: {
   item: UnifiedAgent
   onClose: () => void
@@ -1798,20 +1871,7 @@ function DetailPane({ item, onClose, onFocusTerminal, onRetry, onKill }: {
       </div>
 
       <div className="sw-mc-pane-body">
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
-          {item.duration && <span className="sw-pill mono">{item.duration}</span>}
-          <span className="sw-pill">{relTime(item.timestamp)}</span>
-          {item.status !== 'idle' && (
-            <span className={`sw-badge ${item.status === 'completed' ? 'ok' : item.status}`}>
-              {statusLabel(item.status)}
-            </span>
-          )}
-          {item.prUrl && (
-            <ExtLink href={item.prUrl} className="mono" style={{ fontSize: 11, color: 'var(--brand)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              <Icon name="external" size={10} /> PR
-            </ExtLink>
-          )}
-        </div>
+        <DetailStatusRow item={item} />
 
         {item.terminal && <TerminalExpandedDetail terminal={item.terminal} />}
         {item.kind === 'team' && item.swarm && <TeamDetail swarm={item.swarm} onRetry={onRetry} onKill={onKill} />}
