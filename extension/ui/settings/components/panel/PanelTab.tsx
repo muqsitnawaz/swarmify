@@ -1,6 +1,7 @@
-import React from 'react'
-import { RefreshCw, Cpu, Radio, Waypoints } from 'lucide-react'
+import React, { useEffect, useState } from 'react'
+import { RefreshCw, Cpu, Radio, Waypoints, KeyRound } from 'lucide-react'
 import { Input } from '../ui/input'
+import { postMessage } from '../../hooks'
 import { AgentDial } from './AgentDial'
 import { StatusBank } from './StatusBank'
 import type { StatusBankItem, StatusBankLevel } from './StatusBank'
@@ -59,6 +60,8 @@ export interface PanelTabProps {
   onAliasNameChange: (value: string) => void
   onAliasAgentChange: (value: string) => void
   onAliasFlagsChange: (value: string) => void
+  linearConnected?: boolean
+  onLinearKeySaved?: () => void
 }
 
 function statusLevel(value: boolean): StatusBankLevel {
@@ -101,6 +104,8 @@ export function PanelTab({
   onAliasNameChange,
   onAliasAgentChange,
   onAliasFlagsChange,
+  linearConnected = false,
+  onLinearKeySaved,
 }: PanelTabProps) {
   const skillCommands = skillsStatus?.commands ?? []
   const display = settings.display
@@ -663,7 +668,110 @@ export function PanelTab({
           </div>
         </section>
 
+        <section className="sw-panel-section">
+          <div className="sw-panel-section-head">Integrations</div>
+          <div className="sw-panel-command-pack">
+            <LinearApiKeyCard
+              connected={linearConnected}
+              onSaved={onLinearKeySaved}
+            />
+          </div>
+        </section>
+
       </div>
+    </div>
+  )
+}
+
+function LinearApiKeyCard({
+  connected,
+  onSaved,
+}: {
+  connected: boolean
+  onSaved?: () => void
+}) {
+  const [apiKey, setApiKey] = useState('')
+  const [status, setStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle')
+  const [errorMessage, setErrorMessage] = useState('')
+
+  useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      const m = event.data
+      if (m?.type !== 'integrationStatus' || m.provider !== 'linear') return
+      if (m.connected) {
+        setStatus('success')
+        setApiKey('')
+        onSaved?.()
+      } else if (m.error) {
+        setStatus('error')
+        setErrorMessage(m.error)
+      }
+    }
+    window.addEventListener('message', handler)
+    return () => window.removeEventListener('message', handler)
+  }, [onSaved])
+
+  const handleSave = () => {
+    if (!apiKey.trim()) return
+    setStatus('saving')
+    setErrorMessage('')
+    postMessage({ type: 'saveLinearApiKey', key: apiKey.trim() })
+  }
+
+  return (
+    <div className="sw-panel-command-card">
+      <div className="sw-panel-command-line">
+        <KeyRound size={14} />
+        <span>Linear API key</span>
+        {connected && (
+          <span
+            style={{
+              marginLeft: 'auto',
+              fontSize: 10,
+              fontWeight: 600,
+              color: '#238636',
+              letterSpacing: 0.5,
+              textTransform: 'uppercase',
+            }}
+          >
+            Connected
+          </span>
+        )}
+      </div>
+      <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 6 }}>
+        Paste a personal API key from <code>linear.app/settings/api</code>. Stored locally in{' '}
+        <code>~/.agents/linear.json</code>.
+      </div>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <Input
+          type="password"
+          placeholder={connected ? 'Replace key (lin_api_...)' : 'lin_api_...'}
+          value={apiKey}
+          onChange={(e) => {
+            setApiKey(e.currentTarget.value)
+            if (status !== 'idle') setStatus('idle')
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') handleSave()
+          }}
+          style={{ flex: 1 }}
+        />
+        <button
+          className="sw-btn secondary sm"
+          onClick={handleSave}
+          disabled={!apiKey.trim() || status === 'saving'}
+        >
+          {status === 'saving' ? 'Saving…' : connected ? 'Replace' : 'Save'}
+        </button>
+      </div>
+      {status === 'success' && (
+        <div style={{ fontSize: 11, color: '#238636', marginTop: 6 }}>Saved.</div>
+      )}
+      {status === 'error' && (
+        <div style={{ fontSize: 11, color: '#cf222e', marginTop: 6 }}>
+          {errorMessage || 'Failed to save. Try again.'}
+        </div>
+      )}
     </div>
   )
 }
