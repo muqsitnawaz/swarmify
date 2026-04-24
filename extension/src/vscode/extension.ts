@@ -2149,13 +2149,13 @@ async function goToTerminal(context: vscode.ExtensionContext) {
     const prefix = entry.agentConfig.prefix;
     const agentName = display.showFullAgentNames ? getExpandedAgentName(prefix) : prefix;
     const effectiveTitle = entry.label || entry.autoLabel || 'Untitled';
-    const sessionSuffix = entry.sessionId ? ` (${entry.sessionId})` : '';
     const itemIndex = items.length;
 
     items.push({
-      label: `${agentName} - ${effectiveTitle}${sessionSuffix}`,
-      description: '',
-      iconPath: buildIconPath(prefix, extensionPath) ?? undefined,
+      label: agentName,
+      description: effectiveTitle,
+      detail: '',
+      iconPath: buildIconPath(entry.agentConfig.title, extensionPath) ?? undefined,
       terminal: entry.terminal
     });
 
@@ -2184,23 +2184,21 @@ async function goToTerminal(context: vscode.ExtensionContext) {
         const generatedTitle = extractFirstNWords(info.firstUserMessage, 5);
         if (generatedTitle) {
           terminals.setAutoLabel(entry.terminal, generatedTitle);
-          const prefix = entry.agentConfig?.prefix || '';
-          const agentName = display.showFullAgentNames ? getExpandedAgentName(prefix) : prefix;
-          const sessionSuffix = entry.sessionId ? ` (${entry.sessionId})` : '';
-          items[idx].label = `${agentName} - ${generatedTitle}${sessionSuffix}`;
+          items[idx].description = generatedTitle;
         }
       }
 
       const parts: string[] = [];
-      if (info.firstUserMessage) parts.push(truncateText(info.firstUserMessage, 40));
+      if (info.firstUserMessage) parts.push(truncateText(info.firstUserMessage, 60));
       if (info.messageCount > 0) parts.push(`(${info.messageCount})`);
-      items[idx].description = parts.join(' ');
+      items[idx].detail = parts.join(' ');
     }
   }
 
   const selected = await vscode.window.showQuickPick(items, {
     placeHolder: 'Go to terminal',
-    matchOnDescription: true
+    matchOnDescription: true,
+    matchOnDetail: true
   });
 
   if (selected) {
