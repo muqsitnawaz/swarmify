@@ -5,7 +5,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { AgentConfig } from './agents.vscode';
-import { generateTerminalId, RunningCounts } from '../core/terminals';
+import { generateTerminalId, resolveRestoredVersion, RunningCounts } from '../core/terminals';
 import * as sessionsPersist from '../core/sessions.persist';
 import { getSessionPathBySessionId, getSessionPreviewInfo, getOpenCodeSessionPreviewInfo, getCursorSessionPreviewInfo, SessionPreviewInfo } from './sessions.vscode';
 import { extractCurrentActivity, formatActivity } from '../core/session.activity';
@@ -499,11 +499,24 @@ export async function scanExisting(
     registeredCount++;
     console.log(`[TERMINALS] Registered: id=${id}, prefix=${info.prefix}, pid=${pid}, label=${info.label}`);
 
-    // Restore version pin from env var (set when the terminal was launched
-    // via resumeCurrentInBestProfile). Persisted-session fallback happens
-    // below once we've matched the persisted entry.
-    if (identOpts.version) {
-      setVersion(terminal, identOpts.version);
+    // Restore the pinned agent version. Env is the most-recent source of
+    // truth (set by resumeCurrentInBestProfile at spawn time), but VS Code
+    // can drop `terminal.creationOptions.env` across some reload paths, so
+    // we also check the persisted session by terminalId. This lookup MUST
+    // run regardless of which sessionId-recovery strategy wins below — a
+    // prior version of this code nested the persisted fallback inside
+    // Strategy 2 (`if (!sessionId && info.prefix) { ... }`), so Strategy 1
+    // succeeding silently skipped version recovery, and Cmd+Shift+J's
+    // "already on usable version" short-circuit couldn't fire.
+    const persistedByTerminalId = identOpts.terminalId
+      ? persistedSessions.find(p => p.terminalId === identOpts.terminalId)
+      : undefined;
+    const pinnedVersion = resolveRestoredVersion(
+      identOpts.version,
+      persistedByTerminalId?.version
+    );
+    if (pinnedVersion) {
+      setVersion(terminal, pinnedVersion);
     }
 
     // Restore session tracking - prefer env var sessionId, fallback to sessionChunk from name
@@ -546,11 +559,10 @@ export async function scanExisting(
           setAgentType(terminal, matched.agentType as SessionAgentType);
         }
 
-        // Recover version pin if the env var was absent but a persisted
-        // entry carried it (older terminals restored across a VS Code
-        // restart where the env var rides along anyway, but belt-and-
-        // suspenders — cheap to do).
-        if (matched.version && !identOpts.version) {
+        // Version recovery for this branch only — when env.terminalId was
+        // absent so the persisted-by-terminalId lookup above missed. Prefer
+        // the existing pin from env if present.
+        if (!pinnedVersion && matched.version) {
           setVersion(terminal, matched.version);
         }
       }
