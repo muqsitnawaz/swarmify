@@ -28,6 +28,7 @@ import {
 } from '../../constants'
 import { getIcon, formatPreviewTerminalTitle } from '../../utils'
 import { FactorySection } from '../FactorySection'
+import { SourcesSection } from './TuneSection'
 
 export interface PanelTabProps {
   settings: AgentSettings
@@ -66,6 +67,21 @@ export interface PanelTabProps {
   onUpdateTaskSources: (sources: Partial<AgentSettings['taskSources']>) => void
   onConnectLinear: () => void
   onConnectGitHub: () => void
+}
+
+export function Rocker({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      className="toggle-switch"
+      data-state={on ? 'on' : 'off'}
+      role="switch"
+      aria-checked={on}
+      onClick={() => onChange(!on)}
+    >
+      <span className="toggle-knob" />
+    </button>
+  )
 }
 
 function statusLevel(value: boolean): StatusBankLevel {
@@ -675,6 +691,14 @@ export function PanelTab({
             </div>
           </div>
         </section>
+
+        <SourcesSection
+          settings={settings}
+          availableSources={availableSources}
+          onUpdateTaskSources={onUpdateTaskSources}
+          onConnectLinear={onConnectLinear}
+          onConnectGitHub={onConnectGitHub}
+        />
 
         <section className="sw-panel-section">
           <div className="sw-panel-section-head">Integrations</div>

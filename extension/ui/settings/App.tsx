@@ -297,6 +297,7 @@ export default function App() {
     vscode.postMessage({ type: 'getPrewarmStatus' })
     vscode.postMessage({ type: 'getWorkspaceConfig' })
     vscode.postMessage({ type: 'fetchAllTerminals' })
+    vscode.postMessage({ type: 'detectTaskSources' })
 
     return () => window.removeEventListener('message', handleMessage)
   }, [])
@@ -752,6 +753,10 @@ export default function App() {
           onAliasFlagsChange={setNewAliasFlags}
           linearConnected={availableSources.linear}
           onLinearKeySaved={handleLinearAuthComplete}
+          availableSources={availableSources}
+          onUpdateTaskSources={handleUpdateTaskSources}
+          onConnectLinear={handleConnectLinear}
+          onConnectGitHub={handleConnectGitHub}
         />
       )}
 
