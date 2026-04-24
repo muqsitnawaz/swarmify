@@ -177,6 +177,122 @@ async function getOrCreateRushCloudTerminal(
   return terminal;
 }
 
+// Headless lookup used by Foreman's task_details tool. Finds a task by
+// identifier (case-insensitive) across the configured sources.
+async function findTaskDetailsForForeman(
+  context: vscode.ExtensionContext,
+  id: string
+): Promise<foreman.ForemanTaskDetails | null> {
+  const settings = getSettings(context);
+  const { tasks } = await fetchAllTasks(context, settings.taskSources);
+  const needle = id.trim().toLowerCase();
+  const task = tasks.find((t) => {
+    const ident = (t.metadata.identifier ?? '').toLowerCase();
+    if (ident && ident === needle) return true;
+    if (t.id.toLowerCase() === needle) return true;
+    return false;
+  });
+  if (!task) return null;
+
+  const owner = await resolveGithubOwner(
+    vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
+    settings,
+  );
+  const repos = resolveReposFromLabels(task.metadata.labels, owner);
+  return {
+    id: task.metadata.identifier ?? task.id,
+    title: task.title,
+    description: task.description ?? null,
+    priority: task.priority ?? null,
+    status: task.status ?? null,
+    assignee: task.metadata.assignee ?? null,
+    labels: task.metadata.labels ?? [],
+    source: task.source,
+    resolved_repo: repos.length > 0 ? repos.join(', ') : null,
+  };
+}
+
+// Headless dispatch used by Foreman's dispatch tool. Mirrors the core
+// behavior of `case 'dispatchTask'` but without the multi-step webview
+// picker protocol: resolves target repos from the ticket's repo:<name>
+// label (optionally overridden by `opts.repo`), and fails fast with a
+// speakable message when the repo is ambiguous. No UI prompts.
+async function dispatchForForeman(
+  context: vscode.ExtensionContext,
+  opts: foreman.ForemanDispatchOpts,
+): Promise<foreman.ForemanDispatchResult> {
+  const settings = getSettings(context);
+  const { tasks } = await fetchAllTasks(context, settings.taskSources);
+  const needle = opts.id.trim().toLowerCase();
+  const task = tasks.find((t) => {
+    const ident = (t.metadata.identifier ?? '').toLowerCase();
+    if (ident && ident === needle) return true;
+    if (t.id.toLowerCase() === needle) return true;
+    return false;
+  });
+  if (!task) return { ok: false, message: `No ticket matching "${opts.id}".` };
+
+  const agent = opts.agent && opts.agent.trim() ? opts.agent.trim() : 'claude';
+  const target = opts.target === 'local' ? 'local' : 'cloud';
+  const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+
+  const parts = [task.title];
+  if (task.description) parts.push(task.description);
+  const identifier = task.metadata.identifier ?? '';
+  if (identifier) parts.push(`Reference: ${identifier}`);
+  const prompt = parts.join('\n\n');
+
+  if (target === 'local') {
+    const def = getBuiltInByKey(agent);
+    if (!def) return { ok: false, message: `Unknown agent type: ${agent}.` };
+    const agentConfig = configFromDef(context.extensionPath, def);
+    await openSingleAgentWithQueue(context, agentConfig, [prompt]);
+    return {
+      ok: true,
+      message: `Started ${agent} locally on ${identifier || task.title}.`,
+      dispatched: { id: identifier || task.id, agent, target, repos: [] },
+    };
+  }
+
+  const owner = await resolveGithubOwner(workspacePath, settings);
+  let targetRepos: string[] = [];
+  if (opts.repo) {
+    if (/^[^/]+\/[^/]+$/.test(opts.repo)) {
+      targetRepos = [opts.repo];
+    } else if (owner) {
+      targetRepos = [`${owner}/${opts.repo.replace(/^\//, '')}`];
+    } else {
+      return { ok: false, message: `No GitHub owner known; say the full repo as owner/name.` };
+    }
+  } else {
+    targetRepos = resolveReposFromLabels(task.metadata.labels, owner);
+    const isLinear = isLinearSourcedTask(identifier);
+    if (targetRepos.length === 0 && !isLinear && workspacePath) {
+      const workspaceRepo = await getGitHubRepo(workspacePath);
+      if (workspaceRepo) targetRepos = [workspaceRepo];
+    }
+  }
+
+  if (targetRepos.length === 0) {
+    return {
+      ok: false,
+      message: `${identifier || 'Ticket'} has no repo label. Say which repo, e.g. "dispatch ${identifier || 'it'} to agents-cli".`,
+    };
+  }
+
+  const safePrompt = prompt.replace(/'/g, `'\\''`);
+  const term = await getOrCreateRushCloudTerminal(context, workspacePath || process.cwd());
+  const repoFlags = targetRepos.map((r) => `--repo ${r}`).join(' ');
+  term.sendText(`rush cloud run ${agent} ${repoFlags} -p '${safePrompt}'`);
+  term.show(true);
+
+  return {
+    ok: true,
+    message: `Dispatched ${identifier || task.title} to ${agent} on ${targetRepos.join(', ')}.`,
+    dispatched: { id: identifier || task.id, agent, target, repos: targetRepos },
+  };
+}
+
 // Factory config: read/write ~/.agents/factory/config.json.
 // Kept in this module so the panel can edit it via `factoryConfigRead` /
 // `factoryConfigWrite` without needing to shell out to the agents CLI. The
@@ -1420,6 +1536,8 @@ export function openPanel(context: vscode.ExtensionContext): void {
                     const s = getSettings(context);
                     return fetchAllTasks(context, s.taskSources);
                   },
+                  fetchTaskDetails: (id) => findTaskDetailsForForeman(context, id),
+                  dispatchTask: (opts) => dispatchForForeman(context, opts),
                 };
                 const result = await foreman.runForemanTool(name, args, wsFolder, deps);
                 foremanSession?.sendToolResult(callId, result);
