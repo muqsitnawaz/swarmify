@@ -1415,7 +1415,13 @@ export function openPanel(context: vscode.ExtensionContext): void {
             },
             onToolCall: async (callId, name, args) => {
               try {
-                const result = await foreman.runForemanTool(name, args, wsFolder);
+                const deps: foreman.ForemanToolDeps = {
+                  fetchCycleTasks: async () => {
+                    const s = getSettings(context);
+                    return fetchAllTasks(context, s.taskSources);
+                  },
+                };
+                const result = await foreman.runForemanTool(name, args, wsFolder, deps);
                 foremanSession?.sendToolResult(callId, result);
               } catch (err: any) {
                 foremanSession?.sendToolResult(callId, { error: err?.message ?? String(err) });

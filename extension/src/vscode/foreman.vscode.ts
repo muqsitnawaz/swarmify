@@ -15,6 +15,8 @@ import {
   ForemanTeamRollup,
 } from '../core/foreman.digest';
 import { prefixToAgentType } from '../core/utils';
+import { UnifiedTask, CycleInfo } from '../core/tasks';
+import { summarizeCycle } from '../core/foreman.cycle';
 import {
   listLocalSessions,
   readSessionEvents,
@@ -38,11 +40,17 @@ Persona: dry, brief. Clipped sentences. No filler. No adjectives without facts.
 Banned words: "grinding", "humming", "going well", "on track", "all good".
 If you have no specifics, say so: "nothing concrete yet".
 
-Tool usage:
-- Always call briefing first for overall state. It's cheap (cached SQLite).
-- If the user asks about one agent, project, or task, call focus(who). Only focus
-  gives you the current file, current tool, recent bash command.
-- Don't call focus speculatively; wait for a specific question.
+Tool usage and routing (pick the RIGHT tool, do not default to briefing):
+- briefing: live floor state - which agents are running, on what, for how long.
+  Use for "what's running", "who's working on what", "sitrep", "floor status".
+- focus(who): deep detail on ONE agent - current file, current tool, last bash.
+  Use when the user names a specific agent, project, label, or session prefix.
+- cycle: Linear sprint status - cycle name, days left, todo/in_progress/done counts,
+  top pending tickets (RUSH-xxx etc).
+  Use for "how many tasks left", "what's next up", "this cycle/sprint",
+  "which tickets", "RUSH-<number>", "Linear", "backlog", "priorities".
+Briefing has NO ticket data. Do not call briefing for cycle/ticket questions.
+Do not call focus speculatively; wait for a specific question.
 
 Answering rules:
 - Lead with the SPECIFIC: the task (topic), the file, the tool, the elapsed time.
@@ -83,6 +91,12 @@ export const FOREMAN_TOOLS: ForemanTool[] = [
       },
       required: ['who'],
     },
+  },
+  {
+    type: 'function',
+    name: 'cycle',
+    description: 'Linear sprint/cycle status: cycle name, days left, counts of todo/in_progress/done tickets, urgent/high counts, and the top 5 pending tickets (id, title, priority, status). Use for "how many tasks left this cycle", "what\'s next up", "which tickets", or any question about RUSH-xxx / Linear / sprint / backlog.',
+    parameters: { type: 'object', properties: {}, required: [] },
   },
 ];
 
@@ -379,12 +393,20 @@ export function getOpenAIApiKey(): string {
   return vscode.workspace.getConfiguration('agents').get<string>('openaiApiKey', '').trim();
 }
 
+// Callbacks the caller supplies so foreman.vscode.ts doesn't have to import
+// from settings.vscode / tasks.vscode (which would create a cycle through
+// foreman.audio -> foreman.vscode).
+export interface ForemanToolDeps {
+  fetchCycleTasks?: () => Promise<{ tasks: UnifiedTask[]; cycleInfo: CycleInfo | null }>;
+}
+
 // Tool dispatch: runs a named Foreman tool and returns a JSON-serializable
 // result the webview can forward back to the model as function_call_output.
 export async function runForemanTool(
   name: string,
   args: unknown,
-  workspacePath?: string
+  workspacePath?: string,
+  deps?: ForemanToolDeps
 ): Promise<unknown> {
   switch (name) {
     case 'briefing':
@@ -395,10 +417,18 @@ export async function runForemanTool(
         : '';
       return computeFocus(who, workspacePath);
     }
+    case 'cycle': {
+      if (!deps?.fetchCycleTasks) {
+        return { error: 'cycle tool unavailable: no task source wired' };
+      }
+      const { tasks, cycleInfo } = await deps.fetchCycleTasks();
+      return summarizeCycle(tasks, cycleInfo);
+    }
     default:
       throw new Error(`Unknown Foreman tool: ${name}`);
   }
 }
+
 
 // Session config sent on connect: instructions + tool schema + voice.
 // Realtime API reads this from the first `session.update` event on the data channel.
