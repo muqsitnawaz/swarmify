@@ -38,7 +38,7 @@ import { BenchTab } from './components/bench'
 import { PanelTab } from './components/panel'
 import { GuideTab } from './components/tabs/GuideTab'
 import { ApiKeyDialog } from './components/common/OAuthDialog'
-import { ForemanOrb } from './components/foreman'
+import { ForemanOrb, ForemanCursor } from './components/foreman'
 
 const vscode = getVsCodeApi()
 const icons = getIcons() as IconConfig
@@ -777,6 +777,7 @@ export default function App() {
       )}
 
       <ForemanOrb vscode={vscode} />
+      <ForemanCursor />
 
       {cmdKOpen && (
         <CommandPalette
