@@ -95,3 +95,22 @@ export function buildAgentTerminalEnv(
     PROMPT_COMMAND: ''
   };
 }
+
+/**
+ * Pick the version to pin on a restored terminal. Prefers the env var (most
+ * recent source of truth — set when the terminal was (re)created) and falls
+ * back to the persisted session's version. Returns undefined if neither has
+ * a pin — the terminal restores without a version, and Cmd+Shift+J falls
+ * through to the legacy switch path.
+ *
+ * Empty string counts as absent — that's what `buildAgentTerminalEnv` writes
+ * when no version is supplied, and it must not round-trip as a real pin.
+ */
+export function resolveRestoredVersion(
+  envVersion: string | null | undefined,
+  persistedVersion: string | null | undefined
+): string | undefined {
+  if (envVersion) return envVersion;
+  if (persistedVersion) return persistedVersion;
+  return undefined;
+}
