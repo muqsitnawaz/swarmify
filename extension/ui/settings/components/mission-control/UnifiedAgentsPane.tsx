@@ -1660,12 +1660,15 @@ function identityLabel(item: UnifiedAgent): IdentityLabel {
   return { text: chunk, variant: 'plain' }
 }
 
-function statusPhrase(item: UnifiedAgent): { word: string; tone: 'running' | 'idle' | 'failed' | 'completed'; when: string } {
+function statusPhrase(item: UnifiedAgent): { word: string; tone: 'running' | 'idle' | 'failed' | 'completed' | 'waiting'; when: string } {
   if (item.status === 'failed') {
     return { word: 'Failed', tone: 'failed', when: item.timestamp ? relTime(item.timestamp) : '' }
   }
   if (item.status === 'completed') {
     return { word: 'Done', tone: 'completed', when: item.timestamp ? relTime(item.timestamp) : '' }
+  }
+  if (item.terminal?.waitingForInput && (item.status === 'running' || item.active)) {
+    return { word: 'Waiting', tone: 'waiting', when: item.duration || (item.timestamp ? relTime(item.timestamp) : '') }
   }
   if (item.status === 'running' || item.active) {
     return { word: 'Working', tone: 'running', when: item.duration || (item.timestamp ? relTime(item.timestamp) : '') }

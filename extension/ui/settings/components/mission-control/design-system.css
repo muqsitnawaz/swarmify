@@ -1628,6 +1628,15 @@
 .sw-floor-agent-card-status-word.idle { color: var(--ds-text-dim); }
 .sw-floor-agent-card-status-word.failed { color: #EF4444; }
 .sw-floor-agent-card-status-word.completed { color: #10b981; }
+.sw-floor-agent-card-status-word.waiting {
+  color: #b45309;
+  animation: sw-waiting-pulse 1.4s ease-in-out infinite;
+}
+.theme-dark .sw-floor-agent-card-status-word.waiting { color: #f59e0b; }
+@keyframes sw-waiting-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
 
 .sw-floor-agent-card-activity {
   font-family: "Geist Mono", monospace;
