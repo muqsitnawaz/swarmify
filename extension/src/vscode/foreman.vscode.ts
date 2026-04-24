@@ -49,8 +49,19 @@ Tool usage and routing (pick the RIGHT tool, do not default to briefing):
   top pending tickets (RUSH-xxx etc).
   Use for "how many tasks left", "what's next up", "this cycle/sprint",
   "which tickets", "RUSH-<number>", "Linear", "backlog", "priorities".
+- task_details(id): full title, description, priority, status, assignee, labels,
+  and resolved repo for ONE ticket.
+  Use when the user asks "what is RUSH-xxx", "tell me about RUSH-xxx",
+  "read me the description", "what does that ticket say".
+- dispatch(id, agent?, target?, repo?): send a ticket to a coding agent.
+  Defaults: agent="claude", target="cloud". Only pass repo if the user
+  explicitly names one (e.g. "dispatch RUSH-557 to agents-cli"); otherwise
+  leave it out and let the ticket's repo: label resolve it.
+  Use for "dispatch", "send to cloud", "run this", "kick off", "start work on".
 Briefing has NO ticket data. Do not call briefing for cycle/ticket questions.
 Do not call focus speculatively; wait for a specific question.
+Confirm before dispatching if the user was vague (e.g. "the top one") -
+read back the ticket id and title, then dispatch on assent.
 
 Answering rules:
 - Lead with the SPECIFIC: the task (topic), the file, the tool, the elapsed time.
@@ -97,6 +108,33 @@ export const FOREMAN_TOOLS: ForemanTool[] = [
     name: 'cycle',
     description: 'Linear sprint/cycle status: cycle name, days left, counts of todo/in_progress/done tickets, urgent/high counts, and the top 5 pending tickets (id, title, priority, status). Use for "how many tasks left this cycle", "what\'s next up", "which tickets", or any question about RUSH-xxx / Linear / sprint / backlog.',
     parameters: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    type: 'function',
+    name: 'task_details',
+    description: 'Full detail on ONE ticket: title, description, priority, status, assignee, labels, resolved repo. Use when the user asks "what is RUSH-xxx", "read me RUSH-xxx", "tell me about that ticket", or before dispatching to confirm the target.',
+    parameters: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'Ticket identifier, e.g. "RUSH-557". Case-insensitive.' },
+      },
+      required: ['id'],
+    },
+  },
+  {
+    type: 'function',
+    name: 'dispatch',
+    description: 'Send a ticket to a coding agent. Defaults: agent="claude", target="cloud". Resolves target repo from the ticket\'s repo:<name> label unless the caller overrides with repo. Returns ok+message describing what was dispatched or why it could not be.',
+    parameters: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'Ticket identifier, e.g. "RUSH-557".' },
+        agent: { type: 'string', description: 'claude | codex | gemini | cursor (default: claude).' },
+        target: { type: 'string', description: '"cloud" or "local" (default: cloud).' },
+        repo: { type: 'string', description: 'Optional repo override, e.g. "agents-cli". Only set when the user explicitly names a repo; otherwise let the ticket\'s repo: label resolve it.' },
+      },
+      required: ['id'],
+    },
   },
 ];
 
@@ -396,8 +434,35 @@ export function getOpenAIApiKey(): string {
 // Callbacks the caller supplies so foreman.vscode.ts doesn't have to import
 // from settings.vscode / tasks.vscode (which would create a cycle through
 // foreman.audio -> foreman.vscode).
+export interface ForemanTaskDetails {
+  id: string;
+  title: string;
+  description: string | null;
+  priority: string | null;
+  status: string | null;
+  assignee: string | null;
+  labels: string[];
+  source: string;
+  resolved_repo: string | null;
+}
+
+export interface ForemanDispatchOpts {
+  id: string;
+  agent?: string;
+  target?: 'cloud' | 'local';
+  repo?: string;
+}
+
+export interface ForemanDispatchResult {
+  ok: boolean;
+  message: string;
+  dispatched?: { id: string; agent: string; target: string; repos: string[] };
+}
+
 export interface ForemanToolDeps {
   fetchCycleTasks?: () => Promise<{ tasks: UnifiedTask[]; cycleInfo: CycleInfo | null }>;
+  fetchTaskDetails?: (id: string) => Promise<ForemanTaskDetails | null>;
+  dispatchTask?: (opts: ForemanDispatchOpts) => Promise<ForemanDispatchResult>;
 }
 
 // Tool dispatch: runs a named Foreman tool and returns a JSON-serializable
