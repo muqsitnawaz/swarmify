@@ -25,12 +25,11 @@ export async function detectAvailableSources(context: vscode.ExtensionContext): 
   return { linear, github };
 }
 
-// Fetch tasks from every source whose CLI is installed on the machine.
-// The `enabledSources` argument is accepted for API compatibility but
-// ignored — availability of the underlying CLI is the source of truth.
+// Fetch tasks from each source that is both (a) available (CLI installed)
+// and (b) enabled by the user in settings.
 export async function fetchAllTasks(
   context: vscode.ExtensionContext,
-  _enabledSources: TaskSourceSettings
+  enabledSources: TaskSourceSettings
 ): Promise<TaskFetchResult> {
   const tasks: UnifiedTask[] = [];
   let cycleInfo: CycleInfo | null = null;
@@ -41,7 +40,7 @@ export async function fetchAllTasks(
 
   const fetchPromises: Promise<void>[] = [];
 
-  if (linearOk) {
+  if (enabledSources.linear && linearOk) {
     fetchPromises.push(
       fetchLinearTasks(context).then(result => {
         tasks.push(...result.tasks);
@@ -52,7 +51,7 @@ export async function fetchAllTasks(
     );
   }
 
-  if (githubOk) {
+  if (enabledSources.github && githubOk) {
     fetchPromises.push(
       fetchGitHubTasks(context).then(ghTasks => {
         tasks.push(...ghTasks);
@@ -74,25 +73,4 @@ export async function fetchTasksGrouped(
 ): Promise<Map<TaskSource, UnifiedTask[]>> {
   const { tasks } = await fetchAllTasks(context, enabledSources);
   return groupTasksBySource(tasks);
-}
-
-// Auto-enable sources that are available but not yet configured
-export async function autoEnableSources(
-  context: vscode.ExtensionContext,
-  currentSettings: TaskSourceSettings
-): Promise<TaskSourceSettings> {
-  const available = await detectAvailableSources(context);
-  const updated = { ...currentSettings };
-
-  // Auto-enable Linear if available and not explicitly disabled
-  if (available.linear && !currentSettings.linear) {
-    updated.linear = true;
-  }
-
-  // Auto-enable GitHub if available and not explicitly disabled
-  if (available.github && !currentSettings.github) {
-    updated.github = true;
-  }
-
-  return updated;
 }
