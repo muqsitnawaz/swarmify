@@ -1335,6 +1335,17 @@ export function openPanel(context: vscode.ExtensionContext): void {
           await vscode.commands.executeCommand(message.command);
         }
         break;
+      case 'getWatchdogStatus': {
+        const enabled = vscode.workspace.getConfiguration('agents.watchdog').get<boolean>('enabled', false);
+        settingsPanel?.webview.postMessage({ type: 'watchdogStatus', enabled });
+        break;
+      }
+      case 'setWatchdogEnabled': {
+        const next = !!message.value;
+        await vscode.workspace.getConfiguration('agents.watchdog').update('enabled', next, vscode.ConfigurationTarget.Global);
+        settingsPanel?.webview.postMessage({ type: 'watchdogStatus', enabled: next });
+        break;
+      }
       case 'retrySwarm':
       case 'killSwarm':
       case 'clearCompletedSwarms':

@@ -25,17 +25,23 @@ export async function detectAvailableSources(context: vscode.ExtensionContext): 
   return { linear, github };
 }
 
-// Fetch tasks from all enabled sources
+// Fetch tasks from every source whose CLI is installed on the machine.
+// The `enabledSources` argument is accepted for API compatibility but
+// ignored — availability of the underlying CLI is the source of truth.
 export async function fetchAllTasks(
   context: vscode.ExtensionContext,
-  enabledSources: TaskSourceSettings
+  _enabledSources: TaskSourceSettings
 ): Promise<TaskFetchResult> {
   const tasks: UnifiedTask[] = [];
   let cycleInfo: CycleInfo | null = null;
+  const [linearOk, githubOk] = await Promise.all([
+    isLinearAvailable(context),
+    isGitHubAvailable(context),
+  ]);
+
   const fetchPromises: Promise<void>[] = [];
 
-  // Fetch Linear tasks
-  if (enabledSources.linear) {
+  if (linearOk) {
     fetchPromises.push(
       fetchLinearTasks(context).then(result => {
         tasks.push(...result.tasks);
@@ -46,8 +52,7 @@ export async function fetchAllTasks(
     );
   }
 
-  // Fetch GitHub tasks
-  if (enabledSources.github) {
+  if (githubOk) {
     fetchPromises.push(
       fetchGitHubTasks(context).then(ghTasks => {
         tasks.push(...ghTasks);
