@@ -1813,7 +1813,7 @@ function DetailPane({ item, onClose, onFocusTerminal, onRetry, onKill }: {
           )}
         </div>
 
-        {item.terminal && <TerminalExpandedDetail terminal={item.terminal} onFocus={onFocusTerminal} />}
+        {item.terminal && <TerminalExpandedDetail terminal={item.terminal} />}
         {item.kind === 'team' && item.swarm && <TeamDetail swarm={item.swarm} onRetry={onRetry} onKill={onKill} />}
         {(item.kind === 'headless' || item.kind === 'cloud') && item.agent && (
           <AgentDetailView agent={item.agent} swarm={item.swarm} onRetry={onRetry} onKill={onKill} />
@@ -1823,7 +1823,7 @@ function DetailPane({ item, onClose, onFocusTerminal, onRetry, onKill }: {
   )
 }
 
-function TerminalExpandedDetail({ terminal, onFocus }: { terminal: TerminalInfo; onFocus: (t: TerminalInfo) => void }) {
+function TerminalExpandedDetail({ terminal }: { terminal: TerminalInfo }) {
   const cwdDisplay = terminal.cwd ? terminal.cwd.replace(/^\/Users\/[^/]+/, '~') : null
   const contextBits: string[] = []
   if (cwdDisplay) contextBits.push(cwdDisplay)
@@ -1906,12 +1906,6 @@ function TerminalExpandedDetail({ terminal, onFocus }: { terminal: TerminalInfo;
           </div>
         </div>
       )}
-      <div className="sw-unified-detail-actions">
-        <button className="sw-btn secondary sm" onClick={() => onFocus(terminal)}>
-          <Icon name="terminal" size={11} />
-          Focus terminal
-        </button>
-      </div>
     </div>
   )
 }
