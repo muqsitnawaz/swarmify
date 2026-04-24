@@ -4,7 +4,11 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import { AgentConfig } from './agents.vscode';
+
+const execFileAsync = promisify(execFile);
 import { generateTerminalId, resolveRestoredVersion, RunningCounts } from '../core/terminals';
 import * as sessionsPersist from '../core/sessions.persist';
 import { getSessionPathBySessionId, getSessionPreviewInfo, getOpenCodeSessionPreviewInfo, getCursorSessionPreviewInfo, SessionPreviewInfo } from './sessions.vscode';
@@ -673,6 +677,9 @@ export interface TerminalDetail {
   recentFiles?: string[];
   recentTools?: string[];
   lastFilePath?: string | null;
+  cwd?: string | null;
+  branch?: string | null;
+  recentFileStats?: Record<string, { added: number; removed: number }>;
   approvalStatus?: TerminalApprovalStatus;
   role?: string;
   hint?: string;
@@ -717,6 +724,45 @@ const AGENT_ROLE_HINTS: Record<string, { role: string; hint: string }> = {
   opencode: { role: 'assist', hint: 'Editor-style help' },
   shell: { role: 'shell', hint: 'Command execution' }
 };
+
+interface WorkspaceGitInfo {
+  branch: string | null;
+  numstat: Record<string, { added: number; removed: number }>;
+}
+const gitInfoCache = new Map<string, { ts: number; info: WorkspaceGitInfo }>();
+const GIT_INFO_TTL_MS = 2000;
+
+async function getWorkspaceGitInfo(workspacePath: string): Promise<WorkspaceGitInfo> {
+  const now = Date.now();
+  const cached = gitInfoCache.get(workspacePath);
+  if (cached && now - cached.ts < GIT_INFO_TTL_MS) return cached.info;
+
+  const [branchRes, numstatRes] = await Promise.all([
+    execFileAsync('git', ['branch', '--show-current'], { cwd: workspacePath }).catch(() => null),
+    execFileAsync('git', ['diff', '--numstat', 'HEAD'], { cwd: workspacePath, maxBuffer: 4 * 1024 * 1024 }).catch(() => null),
+  ]);
+
+  const branch = branchRes ? (branchRes.stdout.trim() || null) : null;
+  const numstat: Record<string, { added: number; removed: number }> = {};
+  if (numstatRes) {
+    for (const line of numstatRes.stdout.split('\n')) {
+      const parts = line.split('\t');
+      if (parts.length < 3) continue;
+      const added = parseInt(parts[0], 10);
+      const removed = parseInt(parts[1], 10);
+      const relPath = parts[2];
+      if (!Number.isFinite(added) || !Number.isFinite(removed) || !relPath) continue;
+      const absPath = path.resolve(workspacePath, relPath);
+      const stat = { added, removed };
+      numstat[absPath] = stat;
+      numstat[relPath] = stat;
+    }
+  }
+
+  const info: WorkspaceGitInfo = { branch, numstat };
+  gitInfoCache.set(workspacePath, { ts: now, info });
+  return info;
+}
 
 const SESSION_SUMMARY_CACHE_MAX = 200;
 type SessionSummaryCacheEntry = {
@@ -959,6 +1005,25 @@ export async function getTerminalsByAgentType(
     }
     if (!result.status) {
       result.status = result.currentActivity ? 'running' : 'idle';
+    }
+  }
+
+  // Annotate with workspace cwd/branch + per-file diff stats (cached per workspace).
+  if (workspacePath && results.length > 0) {
+    const gitInfo = await getWorkspaceGitInfo(workspacePath).catch(() => null);
+    for (const result of results) {
+      result.cwd = workspacePath;
+      if (gitInfo) {
+        result.branch = gitInfo.branch;
+        if (result.recentFiles && result.recentFiles.length > 0) {
+          const stats: Record<string, { added: number; removed: number }> = {};
+          for (const f of result.recentFiles) {
+            const s = gitInfo.numstat[f] || gitInfo.numstat[path.resolve(workspacePath, f)];
+            if (s) stats[f] = s;
+          }
+          if (Object.keys(stats).length > 0) result.recentFileStats = stats;
+        }
+      }
     }
   }
 

@@ -268,6 +268,9 @@ export interface TerminalDetail {
   recentFiles?: string[]
   recentTools?: string[]
   lastFilePath?: string | null
+  cwd?: string | null
+  branch?: string | null
+  recentFileStats?: Record<string, { added: number; removed: number }>
   approvalStatus?: ApprovalStatus
   role?: string
   hint?: string

@@ -1836,8 +1836,19 @@ function DetailPane({ item, onClose, onFocusTerminal, onRetry, onKill }: {
 }
 
 function TerminalExpandedDetail({ terminal, onFocus }: { terminal: TerminalInfo; onFocus: (t: TerminalInfo) => void }) {
+  const cwdDisplay = terminal.cwd ? terminal.cwd.replace(/^\/Users\/[^/]+/, '~') : null
+  const contextBits: string[] = []
+  if (cwdDisplay) contextBits.push(cwdDisplay)
+  if (terminal.branch) contextBits.push(`branch: ${terminal.branch}`)
   return (
     <div className="sw-unified-detail-content">
+      {contextBits.length > 0 && (
+        <div className="sw-unified-detail-section">
+          <div className="mono" style={{ fontSize: 11, color: 'var(--ds-text-dim)' }}>
+            {contextBits.join(' \u00b7 ')}
+          </div>
+        </div>
+      )}
       {terminal.firstUserMessage && (
         <div className="sw-unified-detail-section">
           <div className="sw-section-label">Task</div>
@@ -1846,13 +1857,14 @@ function TerminalExpandedDetail({ terminal, onFocus }: { terminal: TerminalInfo;
           </div>
         </div>
       )}
-      {terminal.quickSummary && (
+      {(terminal.quickSummary || terminal.messageCount) && (
         <div className="sw-unified-detail-section">
           <div className="sw-section-label">Activity</div>
           <div className="sw-unified-detail-stats">
-            {terminal.quickSummary.filesEdited > 0 && <span>{terminal.quickSummary.filesEdited} files edited</span>}
-            {terminal.quickSummary.toolCalls > 0 && <span>{terminal.quickSummary.toolCalls} tool calls</span>}
-            {terminal.quickSummary.webSearches > 0 && <span>{terminal.quickSummary.webSearches} web searches</span>}
+            {terminal.messageCount && terminal.messageCount > 0 && <span>{terminal.messageCount} msgs</span>}
+            {terminal.quickSummary && terminal.quickSummary.filesEdited > 0 && <span>{terminal.quickSummary.filesEdited} files edited</span>}
+            {terminal.quickSummary && terminal.quickSummary.toolCalls > 0 && <span>{terminal.quickSummary.toolCalls} tool calls</span>}
+            {terminal.quickSummary && terminal.quickSummary.webSearches > 0 && <span>{terminal.quickSummary.webSearches} web searches</span>}
           </div>
         </div>
       )}
@@ -1872,9 +1884,27 @@ function TerminalExpandedDetail({ terminal, onFocus }: { terminal: TerminalInfo;
         <div className="sw-unified-detail-section">
           <div className="sw-section-label">Recent files</div>
           <div className="sw-unified-detail-files">
-            {terminal.recentFiles.slice(0, 8).map((f) => (
-              <span key={f} className="mono sw-unified-file-pill" title={f}>{f.split('/').pop()}</span>
-            ))}
+            {terminal.recentFiles.slice(0, 8).map((f) => {
+              const stat = terminal.recentFileStats?.[f]
+              return (
+                <button
+                  key={f}
+                  type="button"
+                  className="mono sw-unified-file-pill sw-unified-file-pill-btn"
+                  title={f}
+                  onClick={() => postMessage({ type: 'openTerminalFile', path: f })}
+                >
+                  {f.split('/').pop()}
+                  {stat && (
+                    <span className="sw-unified-file-pill-stat">
+                      {stat.added > 0 && <span style={{ color: 'var(--ds-diff-added, #4ade80)' }}>+{stat.added}</span>}
+                      {stat.added > 0 && stat.removed > 0 && ' '}
+                      {stat.removed > 0 && <span style={{ color: 'var(--ds-diff-removed, #f87171)' }}>-{stat.removed}</span>}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
           </div>
         </div>
       )}
