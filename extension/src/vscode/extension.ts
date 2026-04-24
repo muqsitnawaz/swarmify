@@ -2109,6 +2109,7 @@ async function resumeCurrentInBestProfile(context: vscode.ExtensionContext) {
 
 interface TerminalQuickPickItem extends vscode.QuickPickItem {
   terminal: vscode.Terminal;
+  lastActivityMs?: number;
 }
 
 async function getSessionPreviewForEntry(
@@ -2193,6 +2194,7 @@ async function goToTerminal(context: vscode.ExtensionContext) {
       if (info.lastActivityMs) {
         const diffMs = Date.now() - info.lastActivityMs;
         items[idx].description = diffMs < 60_000 ? 'Just now' : formatRelativeTime(info.lastActivityMs);
+        items[idx].lastActivityMs = info.lastActivityMs;
       }
 
       const parts: string[] = [];
@@ -2201,6 +2203,8 @@ async function goToTerminal(context: vscode.ExtensionContext) {
       items[idx].detail = parts.join(' ');
     }
   }
+
+  items.sort((a, b) => (b.lastActivityMs ?? 0) - (a.lastActivityMs ?? 0));
 
   const selected = await vscode.window.showQuickPick(items, {
     placeHolder: 'Go to terminal',
