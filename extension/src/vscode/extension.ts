@@ -1446,7 +1446,25 @@ async function askAnotherAgentFromTerminal(context: vscode.ExtensionContext) {
   });
   if (question === undefined || !question.trim()) return;
 
-  const message = `<context>\n${clipboardText}\n</context>\n\n${question.trim()}`;
+  const sourceTerminal = vscode.window.activeTerminal;
+  const sourceEntry = sourceTerminal ? terminals.getByTerminal(sourceTerminal) : undefined;
+  const sourceAgent = sourceEntry?.agentConfig
+    ? getExpandedAgentName(sourceEntry.agentConfig.prefix)
+    : undefined;
+  const sourceSessionId = sourceEntry?.sessionId;
+  const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+
+  const contextLines: string[] = [];
+  if (sourceAgent) contextLines.push(`source-agent: ${sourceAgent}`);
+  if (sourceSessionId) {
+    contextLines.push(`source-session-id: ${sourceSessionId}`);
+    contextLines.push(`read-full-session: agents sessions ${sourceSessionId}`);
+  }
+  if (workspacePath) contextLines.push(`workspace: ${workspacePath}`);
+  contextLines.push('selected-text:');
+  contextLines.push(clipboardText);
+
+  const message = `<context>\n${contextLines.join('\n')}\n</context>\n\n${question.trim()}`;
   const agentConfig = getBuiltInByTitle(context.extensionPath, defaultAgentTitle);
   if (agentConfig) {
     await openSingleAgentWithQueue(context, agentConfig, [message]);
