@@ -1773,7 +1773,7 @@ function friendlyRelTime(iso: string | null | undefined, nowMs: number): string 
   return `${Math.floor(day / 7)}w ago`
 }
 
-function DetailStatusRow({ item }: { item: UnifiedAgent }) {
+function DetailStatusRow({ item, onFocusTerminal }: { item: UnifiedAgent; onFocusTerminal: (t: TerminalInfo) => void }) {
   const [nowMs, setNowMs] = useState(() => Date.now())
   useEffect(() => {
     const id = setInterval(() => setNowMs(Date.now()), 15_000)
@@ -1786,6 +1786,10 @@ function DetailStatusRow({ item }: { item: UnifiedAgent }) {
     item.status === 'running' && stale ? 'idle' : item.status
   const label = statusLabel(effectiveStatus)
   const rel = friendlyRelTime(item.timestamp, nowMs)
+  const focus = item.terminal ? () => onFocusTerminal(item.terminal!) : undefined
+  const clickProps = focus
+    ? { onClick: focus, role: 'button' as const, tabIndex: 0, style: { cursor: 'pointer' as const } }
+    : {}
   return (
     <div
       style={{
@@ -1798,13 +1802,19 @@ function DetailStatusRow({ item }: { item: UnifiedAgent }) {
     >
       <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
         <span
+          {...clickProps}
           className={`sw-badge ${
             effectiveStatus === 'completed' ? 'ok' : effectiveStatus === 'running' ? 'running' : effectiveStatus
           }`}
+          title={focus ? 'Focus terminal' : undefined}
         >
           {label}
         </span>
-        {item.duration && <span className="sw-pill mono">{item.duration}</span>}
+        {item.duration && (
+          <span className="sw-pill mono" {...clickProps} title={focus ? 'Focus terminal' : undefined}>
+            {item.duration}
+          </span>
+        )}
         {item.prUrl && (
           <ExtLink
             href={item.prUrl}
@@ -1821,7 +1831,11 @@ function DetailStatusRow({ item }: { item: UnifiedAgent }) {
           </ExtLink>
         )}
       </div>
-      {rel && <span className="sw-pill">{rel}</span>}
+      {rel && (
+        <span className="sw-pill" {...clickProps} title={focus ? 'Focus terminal' : undefined}>
+          {rel}
+        </span>
+      )}
     </div>
   )
 }
@@ -1871,7 +1885,7 @@ function DetailPane({ item, onClose, onFocusTerminal, onRetry, onKill }: {
       </div>
 
       <div className="sw-mc-pane-body">
-        <DetailStatusRow item={item} />
+        <DetailStatusRow item={item} onFocusTerminal={onFocusTerminal} />
 
         {item.terminal && <TerminalExpandedDetail terminal={item.terminal} />}
         {item.kind === 'team' && item.swarm && <TeamDetail swarm={item.swarm} onRetry={onRetry} onKill={onKill} />}
