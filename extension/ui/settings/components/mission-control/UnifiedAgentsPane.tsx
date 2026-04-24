@@ -1856,43 +1856,53 @@ function TerminalExpandedDetail({ terminal, onFocus }: { terminal: TerminalInfo;
           </div>
         </div>
       )}
-      {terminal.recentTools && terminal.recentTools.length > 0 && (
+      {((terminal.recentFiles && terminal.recentFiles.length > 0) || (terminal.recentTools && terminal.recentTools.length > 0)) && (
         <div className="sw-unified-detail-section">
-          <div className="sw-section-label">Recent tools</div>
-          <div className="sw-floor-detail-tools">
-            {terminal.recentTools.slice(0, 8).map((tool, i) => (
-              <div key={`${tool}-${i}`} className="sw-floor-detail-tool-row">
-                <span className="sw-floor-detail-tool-name">{tool}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-      {terminal.recentFiles && terminal.recentFiles.length > 0 && (
-        <div className="sw-unified-detail-section">
-          <div className="sw-section-label">Recent files</div>
-          <div className="sw-unified-detail-files">
-            {terminal.recentFiles.slice(0, 8).map((f) => {
-              const stat = terminal.recentFileStats?.[f]
-              return (
-                <button
-                  key={f}
-                  type="button"
-                  className="mono sw-unified-file-pill sw-unified-file-pill-btn"
-                  title={f}
-                  onClick={() => postMessage({ type: 'openTerminalFile', path: f })}
-                >
-                  {f.split('/').pop()}
-                  {stat && (
-                    <span className="sw-unified-file-pill-stat">
-                      {stat.added > 0 && <span style={{ color: 'var(--ds-diff-added, #4ade80)' }}>+{stat.added}</span>}
-                      {stat.added > 0 && stat.removed > 0 && ' '}
-                      {stat.removed > 0 && <span style={{ color: 'var(--ds-diff-removed, #f87171)' }}>-{stat.removed}</span>}
-                    </span>
-                  )}
-                </button>
-              )
-            })}
+          <div className="sw-unified-detail-split">
+            <div className="sw-unified-detail-split-col">
+              <div className="sw-section-label">Recent files</div>
+              {terminal.recentFiles && terminal.recentFiles.length > 0 ? (
+                <div className="sw-unified-detail-files">
+                  {terminal.recentFiles.slice(0, 12).map((f) => {
+                    const stat = terminal.recentFileStats?.[f]
+                    return (
+                      <button
+                        key={f}
+                        type="button"
+                        className="mono sw-unified-file-pill sw-unified-file-pill-btn"
+                        title={f}
+                        onClick={() => postMessage({ type: 'openTerminalFile', path: f })}
+                      >
+                        {f.split('/').pop()}
+                        {stat && (
+                          <span className="sw-unified-file-pill-stat">
+                            {stat.added > 0 && <span style={{ color: 'var(--ds-diff-added, #4ade80)' }}>+{stat.added}</span>}
+                            {stat.added > 0 && stat.removed > 0 && ' '}
+                            {stat.removed > 0 && <span style={{ color: 'var(--ds-diff-removed, #f87171)' }}>-{stat.removed}</span>}
+                          </span>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="sw-unified-detail-empty">No files yet.</div>
+              )}
+            </div>
+            <div className="sw-unified-detail-split-col">
+              <div className="sw-section-label">Recent tools</div>
+              {terminal.recentTools && terminal.recentTools.length > 0 ? (
+                <div className="sw-floor-detail-tools">
+                  {terminal.recentTools.slice(0, 12).map((tool, i) => (
+                    <div key={`${tool}-${i}`} className="sw-floor-detail-tool-row">
+                      <span className="sw-floor-detail-tool-name">{tool}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="sw-unified-detail-empty">No tools yet.</div>
+              )}
+            </div>
           </div>
         </div>
       )}
