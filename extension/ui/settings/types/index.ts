@@ -248,6 +248,14 @@ export interface SessionQuickSummary {
   mcpCalls: number
 }
 
+export interface RecentToolCall {
+  name: string
+  input?: unknown
+  output?: string
+  isError?: boolean
+  timestamp?: string
+}
+
 // Terminal types
 export interface TerminalDetail {
   id: string
@@ -267,6 +275,7 @@ export interface TerminalDetail {
   quickSummary?: SessionQuickSummary
   recentFiles?: string[]
   recentTools?: string[]
+  recentToolCalls?: RecentToolCall[]
   lastFilePath?: string | null
   cwd?: string | null
   branch?: string | null
