@@ -1008,23 +1008,20 @@ async function fetchCloudRuns(): Promise<TaskSummary[]> {
   if (!resp.ok) return [];
 
   const data = (await resp.json()) as { executions?: CloudExecution[] };
-  if (!data.executions?.length) return [];
-
-  // Fetch live output for running agents in parallel
-  const runningIds = data.executions
-    .filter((ex) => mapCloudStatus(ex.status) === 'running')
-    .map((ex) => ex.execution_id);
-  const liveOutputs = new Map<string, { output: string | null; current_activity: string | null }>();
-  if (runningIds.length > 0) {
-    const results = await Promise.allSettled(
-      runningIds.map((id) => fetchCloudRunOutput(id, token).then((r) => [id, r] as const))
-    );
-    for (const r of results) {
-      if (r.status === 'fulfilled' && r.value[1]) {
-        liveOutputs.set(r.value[0], r.value[1]);
-      }
-    }
+  if (!data.executions?.length) {
+    reconcileCloudStreams(new Set(), token);
+    return [];
   }
+
+  // Open SSE streams for running agents; close streams for non-running.
+  // The stream buffer is the source of truth for live output; ex.summary is
+  // a backstop only for completed runs (and is API-capped, so unreliable).
+  const runningIds = new Set(
+    data.executions
+      .filter((ex) => mapCloudStatus(ex.status) === 'running')
+      .map((ex) => ex.execution_id),
+  );
+  reconcileCloudStreams(runningIds, token);
 
   return data.executions.map((ex) => {
     const status = mapCloudStatus(ex.status);
@@ -1032,10 +1029,9 @@ async function fetchCloudRuns(): Promise<TaskSummary[]> {
     const completedAt = status !== 'running' ? ex.updated_at : null;
     const duration = calcDuration(new Date(startedAt), completedAt ? new Date(completedAt) : null, status);
 
-    // Use live output for running agents, stored summary for completed
-    const live = liveOutputs.get(ex.execution_id);
-    const summary = status === 'running' ? (live?.output ?? ex.summary ?? null) : (ex.summary ?? live?.output ?? null);
-    const activity = live?.current_activity || null;
+    // Prefer the live SSE buffer over the (capped) stored summary.
+    const buffered = getCloudStreamBuffer(ex.execution_id);
+    const summary = buffered || ex.summary || null;
 
     const detail: AgentDetail = {
       agent_id: ex.execution_id,
@@ -1051,7 +1047,7 @@ async function fetchCloudRuns(): Promise<TaskSummary[]> {
       files_modified: [],
       files_deleted: [],
       bash_commands: [],
-      last_messages: activity ? [activity] : summary ? [summary] : [],
+      last_messages: summary ? [summary] : [],
       cloud_session_id: ex.execution_id,
       cloud_provider: 'rush',
       pr_url: ex.pr_url || null,
