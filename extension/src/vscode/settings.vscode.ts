@@ -1632,6 +1632,8 @@ export function openPanel(context: vscode.ExtensionContext): void {
     terminalCloseListener.dispose();
     if (terminalUpdateTimeout) clearTimeout(terminalUpdateTimeout);
     cleanupSessionWatchers();
+    swarm.setCloudUpdateListener(null);
+    swarm.stopAllCloudStreams();
   }, undefined, context.subscriptions);
 }
 
