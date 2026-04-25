@@ -1415,6 +1415,18 @@ export function openPanel(context: vscode.ExtensionContext): void {
           await openFileOrDiffInEditor(message.path);
         }
         break;
+      case 'revealFolder':
+        if (message.path) {
+          try {
+            await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(message.path));
+          } catch {
+            await vscode.env.openExternal(vscode.Uri.file(message.path));
+          }
+        }
+        break;
+      case 'openSourceControl':
+        await vscode.commands.executeCommand('workbench.view.scm');
+        break;
       case 'fetchAllTerminals': {
         const allWs = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         const allTypes = ['claude', 'codex', 'gemini', 'opencode', 'cursor'];

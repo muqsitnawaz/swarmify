@@ -1810,11 +1810,6 @@ function DetailStatusRow({ item, onFocusTerminal }: { item: UnifiedAgent; onFocu
         >
           {label}
         </span>
-        {item.duration && (
-          <span className="sw-pill mono" {...clickProps} title={focus ? 'Focus terminal' : undefined}>
-            {item.duration}
-          </span>
-        )}
         {item.prUrl && (
           <ExtLink
             href={item.prUrl}
@@ -1899,15 +1894,42 @@ function DetailPane({ item, onClose, onFocusTerminal, onRetry, onKill }: {
 
 function TerminalExpandedDetail({ terminal }: { terminal: TerminalInfo }) {
   const cwdDisplay = terminal.cwd ? terminal.cwd.replace(/^\/Users\/[^/]+/, '~') : null
-  const contextBits: string[] = []
-  if (cwdDisplay) contextBits.push(cwdDisplay)
-  if (terminal.branch) contextBits.push(`branch: ${terminal.branch}`)
+  const linkStyle: React.CSSProperties = {
+    background: 'transparent',
+    border: 'none',
+    padding: 0,
+    color: 'inherit',
+    cursor: 'pointer',
+    font: 'inherit',
+    textDecoration: 'underline',
+    textUnderlineOffset: 2,
+  }
   return (
     <div className="sw-unified-detail-content">
-      {contextBits.length > 0 && (
+      {(cwdDisplay || terminal.branch) && (
         <div className="sw-unified-detail-section">
           <div className="mono" style={{ fontSize: 11, color: 'var(--ds-text-dim)' }}>
-            {contextBits.join(' \u00b7 ')}
+            {cwdDisplay && terminal.cwd && (
+              <button
+                type="button"
+                style={linkStyle}
+                title="Reveal folder"
+                onClick={() => postMessage({ type: 'revealFolder', path: terminal.cwd })}
+              >
+                {cwdDisplay}
+              </button>
+            )}
+            {cwdDisplay && terminal.branch && <span>{' \u00b7 branch: '}</span>}
+            {terminal.branch && (
+              <button
+                type="button"
+                style={linkStyle}
+                title="Open Source Control"
+                onClick={() => postMessage({ type: 'openSourceControl' })}
+              >
+                {terminal.branch}
+              </button>
+            )}
           </div>
         </div>
       )}
