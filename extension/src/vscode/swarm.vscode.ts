@@ -1089,17 +1089,170 @@ interface CloudExecution {
   updated_at: string;
 }
 
-async function fetchCloudRunOutput(executionId: string, token: string): Promise<{ output: string | null; current_activity: string | null } | null> {
-  try {
-    const resp = await fetch(`${PRIX_API_URL}/api/v1/cloud-runs/${executionId}/output`, {
-      headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!resp.ok) return null;
-    return (await resp.json()) as { output: string | null; current_activity: string | null };
-  } catch {
-    return null;
+/**
+ * SSE streaming for cloud runs.
+ *
+ * The list endpoint (`/cloud-runs`) returns each run's `summary` field, but
+ * the API caps it at a few KB — usually exhausted by the verbose system.init
+ * event before any tool_use lines arrive. The `/cloud-runs/{id}/stream`
+ * endpoint pushes the full uncapped output as Server-Sent Events.
+ *
+ * Strategy: open one long-lived stream per running cloud run, append each
+ * `output` event to an in-memory buffer, and notify the webview so it can
+ * re-render. Streams are reconciled against the polled list — opened on
+ * first sight, closed when the run leaves the running set or a `done`
+ * event arrives.
+ */
+interface CloudStreamState {
+  buffer: string;
+  status: string;
+  controller: AbortController;
+  done: boolean;
+  // Throttle webview pushes — many output events can arrive per second.
+  pendingNotify: NodeJS.Timeout | null;
+}
+
+const cloudStreams = new Map<string, CloudStreamState>();
+
+type CloudUpdateListener = (executionId: string, summary: string, status: string) => void;
+let cloudUpdateListener: CloudUpdateListener | null = null;
+
+export function setCloudUpdateListener(cb: CloudUpdateListener | null): void {
+  cloudUpdateListener = cb;
+}
+
+export function stopAllCloudStreams(): void {
+  for (const id of Array.from(cloudStreams.keys())) {
+    stopCloudStream(id);
   }
+}
+
+function getCloudStreamBuffer(executionId: string): string | null {
+  const s = cloudStreams.get(executionId);
+  return s && s.buffer ? s.buffer : null;
+}
+
+function reconcileCloudStreams(runningIds: Set<string>, token: string): void {
+  for (const id of runningIds) {
+    if (!cloudStreams.has(id)) startCloudStream(id, token);
+  }
+  for (const id of Array.from(cloudStreams.keys())) {
+    if (!runningIds.has(id)) stopCloudStream(id);
+  }
+}
+
+function startCloudStream(executionId: string, token: string): void {
+  if (cloudStreams.has(executionId)) return;
+  const controller = new AbortController();
+  const state: CloudStreamState = {
+    buffer: '',
+    status: 'running',
+    controller,
+    done: false,
+    pendingNotify: null,
+  };
+  cloudStreams.set(executionId, state);
+
+  // Detached: don't await. Errors mark the stream done; reconcile will
+  // restart it on the next poll cycle if the run is still listed running.
+  void runCloudStream(executionId, state, token);
+}
+
+async function runCloudStream(executionId: string, state: CloudStreamState, token: string): Promise<void> {
+  try {
+    const resp = await fetch(`${PRIX_API_URL}/api/v1/cloud-runs/${executionId}/stream`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'text/event-stream',
+      },
+      signal: state.controller.signal,
+    });
+    if (!resp.ok || !resp.body) {
+      state.done = true;
+      return;
+    }
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let pending = '';
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      pending += decoder.decode(value, { stream: true });
+      // SSE frames are separated by a blank line.
+      let idx;
+      while ((idx = pending.indexOf('\n\n')) >= 0) {
+        const frame = pending.slice(0, idx);
+        pending = pending.slice(idx + 2);
+        handleSseFrame(executionId, state, frame);
+      }
+    }
+    flushNotify(executionId, state);
+  } catch (err) {
+    // Aborted (stop) or network error — leave buffer intact for next poll.
+    if ((err as Error)?.name !== 'AbortError') {
+      state.done = true;
+    }
+  }
+}
+
+function handleSseFrame(executionId: string, state: CloudStreamState, frame: string): void {
+  let event = '';
+  let data = '';
+  for (const line of frame.split('\n')) {
+    if (line.startsWith('event:')) event = line.slice(6).trim();
+    else if (line.startsWith('data:')) data += line.slice(5).trim();
+  }
+  if (!event || !data) return;
+
+  let parsed: unknown;
+  try { parsed = JSON.parse(data); } catch { return; }
+  const obj = (parsed && typeof parsed === 'object') ? (parsed as Record<string, unknown>) : {};
+
+  if (event === 'output') {
+    const content = typeof obj.content === 'string' ? obj.content : '';
+    if (content) {
+      state.buffer += content;
+      scheduleNotify(executionId, state);
+    }
+  } else if (event === 'status') {
+    if (typeof obj.status === 'string') state.status = obj.status;
+    scheduleNotify(executionId, state);
+  } else if (event === 'done') {
+    state.done = true;
+    if (typeof obj.output === 'string' && obj.output.length > state.buffer.length) {
+      // Final 'done' may include the canonical full output — adopt it if longer.
+      state.buffer = obj.output;
+    }
+    scheduleNotify(executionId, state);
+  }
+}
+
+function scheduleNotify(executionId: string, state: CloudStreamState): void {
+  if (state.pendingNotify) return;
+  state.pendingNotify = setTimeout(() => {
+    state.pendingNotify = null;
+    if (cloudUpdateListener) cloudUpdateListener(executionId, state.buffer, state.status);
+  }, 750);
+}
+
+function flushNotify(executionId: string, state: CloudStreamState): void {
+  if (state.pendingNotify) {
+    clearTimeout(state.pendingNotify);
+    state.pendingNotify = null;
+  }
+  if (cloudUpdateListener) cloudUpdateListener(executionId, state.buffer, state.status);
+}
+
+function stopCloudStream(executionId: string): void {
+  const s = cloudStreams.get(executionId);
+  if (!s) return;
+  s.controller.abort();
+  if (s.pendingNotify) {
+    clearTimeout(s.pendingNotify);
+    s.pendingNotify = null;
+  }
+  cloudStreams.delete(executionId);
 }
 
 function mapCloudStatus(s: string): string {
