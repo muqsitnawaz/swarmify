@@ -201,6 +201,32 @@ export default function App() {
           setTasksLoading(false)
           setTasksLoaded(true)
           break
+        case 'cloudSummaryUpdate': {
+          // Live SSE update for one cloud agent — patch its cloud_summary
+          // in-place so the detail pane streams without waiting for the
+          // 10s fetchTasks cycle.
+          const { executionId, summary, status } = message
+          if (typeof executionId !== 'string') break
+          setTasks((prev) => {
+            let changed = false
+            const next = prev.map((task) => {
+              const idx = task.agents.findIndex((a) => a.agent_id === executionId)
+              if (idx < 0) return task
+              const agent = task.agents[idx]
+              if (agent.cloud_summary === summary && agent.status === status) return task
+              changed = true
+              const newAgents = task.agents.slice()
+              newAgents[idx] = {
+                ...agent,
+                cloud_summary: typeof summary === 'string' ? summary : agent.cloud_summary,
+                status: typeof status === 'string' ? mapCloudStreamStatus(status, agent.status) : agent.status,
+              }
+              return { ...task, agents: newAgents }
+            })
+            return changed ? next : prev
+          })
+          break
+        }
         case 'sessionsData':
         case 'sessionsUpdated':
           setRecentSessions(message.sessions || [])
