@@ -59,6 +59,7 @@ import {
   prefixToAgentType,
   SessionAgentType
 } from '../core/utils';
+import { generateLabelWithLLM } from '../core/labelgen';
 import * as path from 'path';
 import {
   createTmuxTerminal,
@@ -819,6 +820,10 @@ export async function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('agents.setTitle', () => setStatusBarLabelForActiveTerminal(context))
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('agents.relabelTerminal', () => relabelActiveTerminal(context))
   );
 
   context.subscriptions.push(
@@ -2469,25 +2474,35 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
   }
 }
 
-/**
- * Fetch and set auto-label from first user message in session file.
- * Only fetches if sessionId exists but autoLabel is not set.
- *
- * Supported agents: claude, codex, gemini, opencode, cursor
- */
-async function fetchAndSetAutoLabel(terminal: vscode.Terminal, entry: terminals.EditorTerminal): Promise<string | undefined> {
-  if (!entry.sessionId || entry.autoLabel) return entry.autoLabel;
+interface FetchAutoLabelOpts {
+  force?: boolean;
+  useFullConversation?: boolean;
+}
+
+async function fetchAndSetAutoLabel(
+  terminal: vscode.Terminal,
+  entry: terminals.EditorTerminal,
+  opts: FetchAutoLabelOpts = {}
+): Promise<string | undefined> {
+  if (!entry.sessionId) return entry.autoLabel;
+  if (!opts.force && entry.autoLabel) return entry.autoLabel;
 
   try {
     const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     const previewInfo = await getSessionPreviewForEntry(entry, workspacePath);
     if (!previewInfo) return undefined;
-
     if (!previewInfo.firstUserMessage) return undefined;
 
-    const words = extractFirstNWords(previewInfo.firstUserMessage, 5);
+    const sourceText = opts.useFullConversation && previewInfo.lastUserMessage
+      ? `Initial task:\n${previewInfo.firstUserMessage}\n\nLatest activity:\n${previewInfo.lastUserMessage}`
+      : previewInfo.firstUserMessage;
+
+    const llmTitle = await generateLabelWithLLM(sourceText);
+    const fallback = extractFirstNWords(previewInfo.firstUserMessage, 5);
     const ticket = extractLinearTicketId(previewInfo.firstUserMessage);
-    const autoLabel = ticket && words ? `${ticket} ${words}` : (ticket ?? words);
+    const base = llmTitle ?? fallback;
+    const autoLabel = ticket && base ? `${ticket} ${base}` : (ticket ?? base);
+
     if (autoLabel) {
       terminals.setAutoLabel(terminal, autoLabel);
     }
@@ -2594,6 +2609,45 @@ function updateStatusBarForTerminal(terminal: vscode.Terminal, extensionPath: st
 
   // Not an agent terminal - show "Terminal" for regular shells
   agentStatusBarItem.text = 'Agents: Terminal';
+}
+
+async function relabelActiveTerminal(context: vscode.ExtensionContext): Promise<void> {
+  const terminal = vscode.window.activeTerminal;
+  if (!terminal) {
+    vscode.window.showInformationMessage('No active terminal to re-label.');
+    return;
+  }
+
+  const entry = terminals.getByTerminal(terminal);
+  if (!entry || !entry.sessionId || !entry.agentType) {
+    vscode.window.showInformationMessage('This terminal does not have a session to summarize.');
+    return;
+  }
+
+  terminals.setAutoLabel(terminal, undefined);
+
+  const newLabel = await fetchAndSetAutoLabel(terminal, entry, {
+    force: true,
+    useFullConversation: true
+  });
+
+  if (!newLabel) {
+    vscode.window.showInformationMessage('Could not generate a label from session activity.');
+    return;
+  }
+
+  updateStatusBarForTerminal(terminal, context.extensionPath);
+
+  const display = getDisplayPrefs(context);
+  if (display.showLabelsInTitles && display.autoLabelInTabTitles && entry.agentConfig) {
+    const newTitle = buildTerminalTitle(
+      entry.agentConfig.title,
+      newLabel,
+      context,
+      entry.sessionId
+    );
+    await terminals.renameTerminal(terminal, newTitle);
+  }
 }
 
 function setStatusBarLabelForActiveTerminal(context: vscode.ExtensionContext) {

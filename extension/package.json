@@ -3,7 +3,7 @@
   "displayName": "Agents",
   "publisher": "swarmify",
   "description": "Turn your IDE into an Integrated Agents Environment. Run Claude, Codex, Gemini, and Cursor at scale with keyboard-first navigation.",
-  "version": "0.8.86",
+  "version": "0.8.87",
   "license": "MIT",
   "author": "Muqsit Nawaz <dev@muqsitnawaz.com>",
   "icon": "assets/agents.png",
@@ -137,6 +137,10 @@
       {
         "command": "agents.setTitle",
         "title": "Agents: Label"
+      },
+      {
+        "command": "agents.relabelTerminal",
+        "title": "Agents: Re-label from Activity"
       },
       {
         "command": "agents.clear",
