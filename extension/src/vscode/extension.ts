@@ -1925,6 +1925,14 @@ async function fetchAgentsViewJson(agentKey: PrewarmAgentType): Promise<AgentsVi
   }
 }
 
+export type RotateOutcome =
+  | { status: 'no_session' }
+  | { status: 'unsupported_agent' }
+  | { status: 'view_unavailable' }
+  | { status: 'already_usable'; agentKey: string; version: string; usedPercent: number }
+  | { status: 'no_versions'; agentKey: string }
+  | { status: 'rotated'; agentKey: string; oldVersion?: string; newVersion: string; newSessionId: string; email: string | null; usedPercent: number };
+
 async function resumeCurrentInBestProfile(context: vscode.ExtensionContext) {
   const activeTerminal = vscode.window.activeTerminal;
   if (!activeTerminal) {
@@ -1932,20 +1940,37 @@ async function resumeCurrentInBestProfile(context: vscode.ExtensionContext) {
     return;
   }
   const terminalEntry = terminals.getByTerminal(activeTerminal);
-  if (!terminalEntry?.sessionId) {
+  if (!terminalEntry) {
     vscode.window.showInformationMessage('Active terminal has no session to resume');
     return;
+  }
+  const outcome = await rotateTerminalToBestVersion(context, terminalEntry, {
+    closeOldTerminal: false,
+    focusNewTerminal: true,
+    notifyOnFailure: true,
+  });
+  if (outcome.status === 'no_session') {
+    vscode.window.showInformationMessage('Active terminal has no session to resume');
+  }
+}
+
+export async function rotateTerminalToBestVersion(
+  context: vscode.ExtensionContext,
+  terminalEntry: terminals.EditorTerminal,
+  opts: { closeOldTerminal: boolean; focusNewTerminal: boolean; notifyOnFailure: boolean }
+): Promise<RotateOutcome> {
+  if (!terminalEntry.sessionId) {
+    return { status: 'no_session' };
   }
 
   const agentKey = terminalEntry.agentType
     || prefixToAgentType(terminalEntry.agentConfig?.prefix ?? null);
   if (!agentKey) {
-    vscode.window.showInformationMessage('Active terminal is not a supported agent');
-    return;
+    return { status: 'unsupported_agent' };
   }
 
   const data = await fetchAgentsViewJson(agentKey);
-  if (!data) return;
+  if (!data) return { status: 'view_unavailable' };
 
   // If the active terminal already sits on a version that still has usage,
   // there's nothing to do — "best" is really "any version with usage", so
@@ -1956,28 +1981,39 @@ async function resumeCurrentInBestProfile(context: vscode.ExtensionContext) {
   if (currentVersion) {
     const currentVersionData = data.versions.find(v => v.version === currentVersion);
     if (isVersionStillUsable(currentVersionData)) {
-      activeTerminal.show();
-      vscode.window.setStatusBarMessage(
-        `Already on ${agentKey}@${currentVersion} · ${sessionUsedPercent(currentVersionData!)}% session`,
-        3000
-      );
-      console.log(`[RESUME-IN-BEST] skipping switch — active terminal already on usable version ${agentKey}@${currentVersion}`);
-      return;
+      if (opts.focusNewTerminal) {
+        terminalEntry.terminal.show();
+        vscode.window.setStatusBarMessage(
+          `Already on ${agentKey}@${currentVersion} · ${sessionUsedPercent(currentVersionData!)}% session`,
+          3000
+        );
+      }
+      console.log(`[RESUME-IN-BEST] skipping switch — terminal already on usable version ${agentKey}@${currentVersion}`);
+      return {
+        status: 'already_usable',
+        agentKey,
+        version: currentVersion,
+        usedPercent: sessionUsedPercent(currentVersionData!),
+      };
     }
   }
 
   const best = pickBestVersion(data.versions);
   if (!best) {
-    vscode.window.showInformationMessage(
-      `No signed-in ${agentKey} versions available. Run: agents add ${agentKey}@latest`
-    );
-    return;
+    if (opts.notifyOnFailure) {
+      vscode.window.showInformationMessage(
+        `No signed-in ${agentKey} versions available. Run: agents add ${agentKey}@latest`
+      );
+    }
+    return { status: 'no_versions', agentKey };
   }
 
   const builtIn = BUILT_IN_AGENTS.find(a => a.key === agentKey);
   if (!builtIn) {
-    vscode.window.showInformationMessage(`No built-in agent config for ${agentKey}`);
-    return;
+    if (opts.notifyOnFailure) {
+      vscode.window.showInformationMessage(`No built-in agent config for ${agentKey}`);
+    }
+    return { status: 'unsupported_agent' };
   }
 
   const agentConfig = createAgentConfig(
@@ -2073,7 +2109,9 @@ async function resumeCurrentInBestProfile(context: vscode.ExtensionContext) {
     sessionId: newSessionId,
     cwd: workspacePath,
   });
-  terminal.show();
+  if (opts.focusNewTerminal) {
+    terminal.show();
+  }
 
   // Send the resume input only after the agent CLI is actually idle on the
   // pty. Replaces a hardcoded 6s guess that was unreliable on slow machines
@@ -2092,10 +2130,25 @@ async function resumeCurrentInBestProfile(context: vscode.ExtensionContext) {
     () => {
       console.log(`[RESUME-IN-BEST] ${elapsed()} agentReady — sending resume input (${resumeInput.length} chars): ${resumeInput.slice(0, 80)}${resumeInput.length > 80 ? '…' : ''}`);
       submitToTui();
+      if (opts.closeOldTerminal) {
+        try {
+          terminalEntry.terminal.dispose();
+          console.log(`[RESUME-IN-BEST] ${elapsed()} disposed old terminal ${terminalEntry.id}`);
+        } catch (err) {
+          console.warn(`[RESUME-IN-BEST] failed to dispose old terminal: ${err}`);
+        }
+      }
     },
     (err) => {
       console.warn(`[RESUME-IN-BEST] ${elapsed()} agentReady wait FAILED: ${err} — sending resume input anyway`);
       submitToTui();
+      if (opts.closeOldTerminal) {
+        try {
+          terminalEntry.terminal.dispose();
+        } catch (e) {
+          console.warn(`[RESUME-IN-BEST] failed to dispose old terminal: ${e}`);
+        }
+      }
     },
   );
 
@@ -2105,6 +2158,16 @@ async function resumeCurrentInBestProfile(context: vscode.ExtensionContext) {
     `Resumed ${agentKey}@${best.version}${acct} · ${usage} · ${newSessionId.slice(0, 8)}`,
     5000
   );
+
+  return {
+    status: 'rotated',
+    agentKey,
+    oldVersion: currentVersion,
+    newVersion: best.version,
+    newSessionId,
+    email: best.email,
+    usedPercent: sessionUsedPercent(best),
+  };
 }
 
 interface TerminalQuickPickItem extends vscode.QuickPickItem {
