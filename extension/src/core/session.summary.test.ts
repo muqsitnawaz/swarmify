@@ -122,6 +122,91 @@ describe('extractSessionQuickSummary', () => {
     expect(summary.mcpCalls).toBe(1);
   });
 
+  test('captures Claude tool calls with inputs and matches results by id', () => {
+    const lines = [
+      JSON.stringify({
+        type: 'assistant',
+        message: {
+          content: [
+            { type: 'tool_use', id: 'tool_1', name: 'Bash', input: { command: 'ls -la' } },
+            { type: 'tool_use', id: 'tool_2', name: 'Read', input: { file_path: '/repo/a.ts' } },
+          ],
+        },
+      }),
+      JSON.stringify({
+        type: 'user',
+        message: {
+          content: [
+            { type: 'tool_result', tool_use_id: 'tool_1', content: 'total 8\nfile.txt' },
+            { type: 'tool_result', tool_use_id: 'tool_2', content: [{ type: 'text', text: 'export const x = 1' }], is_error: false },
+          ],
+        },
+      }),
+    ];
+
+    const details = extractSessionQuickDetails(lines.join('\n'), 'claude');
+    expect(details.recentToolCalls.length).toBe(2);
+    const read = details.recentToolCalls[0];
+    expect(read.name).toBe('Read');
+    expect(read.output).toBe('export const x = 1');
+    const bash = details.recentToolCalls[1];
+    expect(bash.name).toBe('Bash');
+    expect(bash.output).toBe('total 8\nfile.txt');
+    expect((bash.input as { command: string }).command).toBe('ls -la');
+  });
+
+  test('captures Codex tool calls with outputs by call_id', () => {
+    const lines = [
+      JSON.stringify({
+        type: 'response_item',
+        payload: {
+          type: 'function_call',
+          name: 'shell',
+          arguments: '{"command":"echo hi"}',
+          call_id: 'call_abc',
+        },
+      }),
+      JSON.stringify({
+        type: 'response_item',
+        payload: {
+          type: 'function_call_output',
+          call_id: 'call_abc',
+          output: 'hi',
+        },
+      }),
+    ];
+
+    const details = extractSessionQuickDetails(lines.join('\n'), 'codex');
+    expect(details.recentToolCalls.length).toBe(1);
+    expect(details.recentToolCalls[0].name).toBe('shell');
+    expect(details.recentToolCalls[0].output).toBe('hi');
+  });
+
+  test('marks tool errors', () => {
+    const lines = [
+      JSON.stringify({
+        type: 'assistant',
+        message: {
+          content: [
+            { type: 'tool_use', id: 'tool_err', name: 'Bash', input: { command: 'false' } },
+          ],
+        },
+      }),
+      JSON.stringify({
+        type: 'user',
+        message: {
+          content: [
+            { type: 'tool_result', tool_use_id: 'tool_err', content: 'exit 1', is_error: true },
+          ],
+        },
+      }),
+    ];
+
+    const details = extractSessionQuickDetails(lines.join('\n'), 'claude');
+    expect(details.recentToolCalls[0].isError).toBe(true);
+    expect(details.recentToolCalls[0].output).toBe('exit 1');
+  });
+
   test('ignores malformed lines', () => {
     const content = [
       'not-json',

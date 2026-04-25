@@ -11,12 +11,24 @@ export interface SessionQuickSummary {
   mcpCalls: number;
 }
 
+export interface RecentToolCall {
+  name: string;
+  input?: unknown;
+  output?: string;
+  isError?: boolean;
+  timestamp?: string;
+}
+
 export interface SessionQuickDetails {
   summary: SessionQuickSummary;
   recentFiles: string[];
   recentTools: string[];
+  recentToolCalls: RecentToolCall[];
   lastFilePath: string | null;
 }
+
+const MAX_RECENT_TOOL_CALLS = 24;
+const MAX_TOOL_OUTPUT_CHARS = 4000;
 
 type MutableSessionQuickSummary = {
   filesEdited: Set<string>;
@@ -26,6 +38,8 @@ type MutableSessionQuickSummary = {
   recentChangedFiles: string[];
   recentTouchedFiles: string[];
   recentTools: string[];
+  recentToolCalls: RecentToolCall[];
+  pendingToolCallById: Map<string, RecentToolCall>;
   toolCalls: number;
   webSearches: number;
   webFetches: number;
@@ -43,6 +57,8 @@ function initMutableSummary(): MutableSessionQuickSummary {
     recentChangedFiles: [],
     recentTouchedFiles: [],
     recentTools: [],
+    recentToolCalls: [],
+    pendingToolCallById: new Map<string, RecentToolCall>(),
     toolCalls: 0,
     webSearches: 0,
     webFetches: 0,
@@ -50,6 +66,67 @@ function initMutableSummary(): MutableSessionQuickSummary {
     maxWebSearchesFromUsage: 0,
     maxWebFetchesFromUsage: 0,
   };
+}
+
+function truncateOutput(text: string): string {
+  if (text.length <= MAX_TOOL_OUTPUT_CHARS) return text;
+  return text.slice(0, MAX_TOOL_OUTPUT_CHARS) + '\n... [truncated]';
+}
+
+function stringifyToolResultContent(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) {
+    const parts: string[] = [];
+    for (const item of value) {
+      const rec = toRecord(item);
+      if (!rec) continue;
+      const text = toStringValue(rec.text);
+      if (text) {
+        parts.push(text);
+        continue;
+      }
+      const itemType = toStringValue(rec.type);
+      if (itemType === 'image') {
+        parts.push('[image]');
+      }
+    }
+    if (parts.length > 0) return parts.join('\n');
+  }
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function pushToolCall(summary: MutableSessionQuickSummary, call: RecentToolCall, id?: string): void {
+  summary.recentToolCalls.unshift(call);
+  if (summary.recentToolCalls.length > MAX_RECENT_TOOL_CALLS) {
+    const dropped = summary.recentToolCalls.pop();
+    if (dropped) {
+      for (const [key, value] of summary.pendingToolCallById) {
+        if (value === dropped) {
+          summary.pendingToolCallById.delete(key);
+          break;
+        }
+      }
+    }
+  }
+  if (id) summary.pendingToolCallById.set(id, call);
+}
+
+function attachToolResult(
+  summary: MutableSessionQuickSummary,
+  id: string,
+  output: string,
+  isError: boolean
+): void {
+  const call = summary.pendingToolCallById.get(id);
+  if (!call) return;
+  call.output = truncateOutput(output);
+  if (isError) call.isError = true;
+  summary.pendingToolCallById.delete(id);
 }
 
 function toRecord(value: unknown): Record<string, unknown> | null {
@@ -158,6 +235,7 @@ function addFileDelete(summary: MutableSessionQuickSummary, filePath: string): v
 
 function applyClaudeEvent(summary: MutableSessionQuickSummary, event: Record<string, unknown>): void {
   const eventType = toStringValue(event.type);
+  const eventTimestamp = toStringValue(event.timestamp) || undefined;
 
   if (eventType === 'assistant') {
     const message = toRecord(event.message);
@@ -170,8 +248,14 @@ function applyClaudeEvent(summary: MutableSessionQuickSummary, event: Record<str
 
       const toolName = toStringValue(blockRecord.name);
       const toolInput = toRecord(blockRecord.input) || {};
+      const toolUseId = toStringValue(blockRecord.id) || undefined;
       summary.toolCalls++;
       addToolCounters(summary, toolName);
+      pushToolCall(
+        summary,
+        { name: toolName, input: blockRecord.input, timestamp: eventTimestamp },
+        toolUseId
+      );
 
       if (toolName === 'Read' || toolName === 'Glob' || toolName === 'Grep') {
         addFileRead(summary, pathFromArgs(toolInput));
@@ -192,6 +276,20 @@ function applyClaudeEvent(summary: MutableSessionQuickSummary, event: Record<str
   }
 
   if (eventType === 'user') {
+    const message = toRecord(event.message);
+    const content = message?.content;
+    if (Array.isArray(content)) {
+      for (const block of content) {
+        const blockRecord = toRecord(block);
+        if (!blockRecord || toStringValue(blockRecord.type) !== 'tool_result') continue;
+        const toolUseId = toStringValue(blockRecord.tool_use_id);
+        if (!toolUseId) continue;
+        const output = stringifyToolResultContent(blockRecord.content);
+        const isError = blockRecord.is_error === true;
+        attachToolResult(summary, toolUseId, output, isError);
+      }
+    }
+
     const toolUseResult = toRecord(event.tool_use_result);
     if (!toolUseResult) return;
 
@@ -232,13 +330,16 @@ function applyClaudeEvent(summary: MutableSessionQuickSummary, event: Record<str
 function applyCodexToolCall(
   summary: MutableSessionQuickSummary,
   toolName: string,
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  callId?: string,
+  timestamp?: string
 ): void {
   const name = lower(toolName);
   const filePath = pathFromArgs(args);
 
   summary.toolCalls++;
   addToolCounters(summary, toolName);
+  pushToolCall(summary, { name: toolName, input: args, timestamp }, callId);
 
   if (name === 'create_file') {
     addFileCreate(summary, filePath);
@@ -262,12 +363,14 @@ function applyCodexToolCall(
 
 function applyCodexEvent(summary: MutableSessionQuickSummary, event: Record<string, unknown>): void {
   const eventType = toStringValue(event.type);
+  const eventTimestamp = toStringValue(event.timestamp) || undefined;
 
   if (eventType === 'function_call') {
     const toolName = toStringValue(event.name);
     const args = parseArguments(event.arguments);
+    const callId = toStringValue(event.call_id) || toStringValue(event.id) || undefined;
     if (toolName) {
-      applyCodexToolCall(summary, toolName, args);
+      applyCodexToolCall(summary, toolName, args, callId, eventTimestamp);
     }
     return;
   }
@@ -276,15 +379,38 @@ function applyCodexEvent(summary: MutableSessionQuickSummary, event: Record<stri
 
   const payload = toRecord(event.payload);
   if (!payload) return;
-  if (toStringValue(payload.type) !== 'function_call') return;
+  const payloadType = toStringValue(payload.type);
+
+  if (payloadType === 'function_call_output') {
+    const callId = toStringValue(payload.call_id) || toStringValue(payload.id);
+    if (!callId) return;
+    const output = stringifyToolResultContent(payload.output);
+    const isError = payload.success === false;
+    attachToolResult(summary, callId, output, isError);
+    return;
+  }
+
+  if (payloadType !== 'function_call') return;
   const toolName = toStringValue(payload.name);
   const args = parseArguments(payload.arguments);
   if (!toolName) return;
-  applyCodexToolCall(summary, toolName, args);
+  const callId = toStringValue(payload.call_id) || toStringValue(payload.id) || undefined;
+  applyCodexToolCall(summary, toolName, args, callId, eventTimestamp);
 }
 
 function applyGeminiEvent(summary: MutableSessionQuickSummary, event: Record<string, unknown>): void {
   const eventType = toStringValue(event.type);
+  const eventTimestamp = toStringValue(event.timestamp) || undefined;
+
+  if (eventType === 'tool_response' || eventType === 'tool_result') {
+    const callId = toStringValue(event.tool_call_id) || toStringValue(event.id);
+    if (!callId) return;
+    const output = stringifyToolResultContent(event.response ?? event.result ?? event.output);
+    const isError = event.is_error === true || event.success === false;
+    attachToolResult(summary, callId, output, isError);
+    return;
+  }
+
   if (eventType !== 'tool_call' && eventType !== 'tool_use') return;
 
   const toolName = toStringValue(event.tool_name) || toStringValue(event.name);
@@ -293,9 +419,11 @@ function applyGeminiEvent(summary: MutableSessionQuickSummary, event: Record<str
   const args = parseArguments(event.parameters ?? event.args);
   const name = lower(toolName);
   const filePath = pathFromArgs(args);
+  const callId = toStringValue(event.tool_call_id) || toStringValue(event.id) || undefined;
 
   summary.toolCalls++;
   addToolCounters(summary, toolName);
+  pushToolCall(summary, { name: toolName, input: args, timestamp: eventTimestamp }, callId);
 
   if (
     name === 'replace' ||
@@ -364,6 +492,7 @@ export function extractSessionQuickDetails(
       summary: toQuickSummary(summary),
       recentFiles: [],
       recentTools: [],
+      recentToolCalls: [],
       lastFilePath: null,
     };
   }
@@ -390,6 +519,7 @@ export function extractSessionQuickDetails(
     summary: toQuickSummary(summary),
     recentFiles,
     recentTools: summary.recentTools.slice(0, 32),
+    recentToolCalls: summary.recentToolCalls.slice(0, MAX_RECENT_TOOL_CALLS),
     lastFilePath: recentFilesSource[0] || null,
   };
 }

@@ -676,6 +676,7 @@ export interface TerminalDetail {
   quickSummary?: SessionQuickSummary;
   recentFiles?: string[];
   recentTools?: string[];
+  recentToolCalls?: import('../core/session.summary').RecentToolCall[];
   lastFilePath?: string | null;
   cwd?: string | null;
   branch?: string | null;
@@ -989,6 +990,7 @@ export async function getTerminalsByAgentType(
       results[data.index].quickSummary = data.quickDetails.summary;
       results[data.index].recentFiles = data.quickDetails.recentFiles;
       results[data.index].recentTools = data.quickDetails.recentTools;
+      results[data.index].recentToolCalls = data.quickDetails.recentToolCalls;
       results[data.index].lastFilePath = data.quickDetails.lastFilePath;
     }
     results[data.index].waitingForInput = data.waitingForInput;
