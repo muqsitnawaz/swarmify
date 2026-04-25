@@ -2278,6 +2278,15 @@ async function goToTerminal(context: vscode.ExtensionContext) {
 
   items.sort((a, b) => (b.lastActivityMs ?? 0) - (a.lastActivityMs ?? 0));
 
+  const maxLabelLen = items.reduce((m, i) => Math.max(m, i.label.length), 0);
+  const targetLen = maxLabelLen + 6;
+  for (const item of items) {
+    if (item.description) {
+      const padCount = Math.max(1, targetLen - item.label.length);
+      item.label = item.label + '\u00a0'.repeat(padCount);
+    }
+  }
+
   const selected = await vscode.window.showQuickPick(items, {
     placeHolder: 'Go to terminal',
     matchOnDescription: true,
