@@ -595,7 +595,16 @@ export async function activate(context: vscode.ExtensionContext) {
 
   registerTmuxCleanup(context);
 
-  context.subscriptions.push(startWatchdog(context));
+  context.subscriptions.push(
+    startWatchdog(context, {
+      rotateTerminal: (entry) =>
+        rotateTerminalToBestVersion(context, entry, {
+          closeOldTerminal: true,
+          focusNewTerminal: false,
+          notifyOnFailure: false,
+        }),
+    })
+  );
 
   // Ensure CLAUDE.md has Swarm instructions if Swarm is enabled
   claudemd.ensureSwarmInstructions();
