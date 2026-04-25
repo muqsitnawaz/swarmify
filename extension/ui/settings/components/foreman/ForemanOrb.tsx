@@ -136,13 +136,13 @@ export function ForemanOrb({ vscode }: ForemanOrbProps) {
       className="foreman-orb-root"
       style={{
         position: 'fixed',
-        bottom: 44,
-        right: 16,
+        bottom: 48,
+        right: 48,
         zIndex: 50,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'flex-end',
-        gap: 8,
+        gap: 10,
         pointerEvents: 'none',
       }}
     >
@@ -212,7 +212,7 @@ function orbTitle(state: VisualState): string {
 
 function OrbBlob({ state }: { state: VisualState }) {
   const big = state === 'listening' || state === 'speaking' || state === 'connecting'
-  const size = big ? 56 : 40
+  const size = big ? 88 : 64
   return (
     <svg
       width={size}
