@@ -1,11 +1,13 @@
 import React, { useMemo, useState } from 'react'
 import { Icon, type IconName } from './icons'
 import { renderTodoDescription } from '../../utils/markdown'
+import { AgentAvatar } from './AgentAvatar'
 import {
   parseCloudSummary,
   toolHeadline,
   simpleDiff,
   type CloudEvent,
+  type PreambleMeta,
   type ToolUseEvent,
   type ToolResultEvent,
 } from './cloudActivity'
@@ -35,6 +37,7 @@ function groupEvents(events: CloudEvent[]): Row[] {
   for (const ev of events) {
     switch (ev.kind) {
       case 'preamble':
+        if (ev.isMetric) break
         rows.push({ kind: 'preamble', ev })
         break
       case 'system':
@@ -93,6 +96,7 @@ export function CloudActivityFeed({ summary, maxHeight = 480 }: CloudActivityFee
 function FeedRow({ row }: { row: Row }) {
   switch (row.kind) {
     case 'preamble':
+      if (row.ev.meta) return <PreambleMetaRow meta={row.ev.meta} tSec={row.ev.tSec} />
       return <PreambleRow text={row.ev.text} tSec={row.ev.tSec} />
     case 'system':
       return <SystemRow summary={row.ev.summary} />
@@ -118,6 +122,28 @@ function PreambleRow({ text, tSec }: { text: string; tSec?: number }) {
         <span className="sw-cloud-feed-tsec mono">t+{tSec}s</span>
       )}
       <span className="sw-cloud-feed-preamble-text mono">{text}</span>
+    </div>
+  )
+}
+
+function PreambleMetaRow({ meta, tSec }: { meta: PreambleMeta; tSec?: number }) {
+  const repoBits = [meta.repo, meta.branch ? `(${meta.branch})` : ''].filter(Boolean).join(' ')
+  return (
+    <div className="sw-cloud-feed-row sw-cloud-feed-preamble">
+      {typeof tSec === 'number' && <span className="sw-cloud-feed-tsec mono">t+{tSec}s</span>}
+      <AgentAvatar id={meta.agentCli} size={14} />
+      <span className="sw-cloud-feed-preamble-text mono">
+        {meta.model && <span>{meta.model}</span>}
+        {repoBits && (
+          <span style={{ color: 'var(--ds-text-dim)' }}>
+            {meta.model ? ' · ' : ''}
+            {repoBits}
+          </span>
+        )}
+        {meta.user && (
+          <span style={{ color: 'var(--ds-text-dim)' }}> · {meta.user}</span>
+        )}
+      </span>
     </div>
   )
 }

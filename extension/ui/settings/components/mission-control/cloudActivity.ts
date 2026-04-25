@@ -15,10 +15,23 @@
  * parser tolerates unparseable tails by skipping them.
  */
 
+export interface PreambleMeta {
+  agentCli: string;
+  cliVersion?: string;
+  model?: string;
+  repo?: string;
+  branch?: string;
+  user?: string;
+}
+
 export interface PreambleEvent {
   kind: 'preamble';
   text: string;
   tSec?: number;
+  /** Parsed fields when the line is the agent banner. */
+  meta?: PreambleMeta;
+  /** True when the line is the noisy metrics summary (turns/tools/tokens). */
+  isMetric?: boolean;
 }
 
 export interface SystemEvent {
@@ -96,10 +109,43 @@ export function parseCloudSummary(summary: string | null | undefined): CloudEven
   return events;
 }
 
+const PREAMBLE_AGENTS = new Set(['claude', 'codex', 'gemini', 'cursor', 'opencode']);
+
 function parsePreambleLine(line: string): PreambleEvent {
   const m = line.match(/^\[t\+(\d+)s\]\s*(.*)$/);
-  if (m) return { kind: 'preamble', text: m[2].trim(), tSec: Number(m[1]) };
-  return { kind: 'preamble', text: line };
+  const text = m ? m[2].trim() : line;
+  const tSec = m ? Number(m[1]) : undefined;
+  const meta = parseAgentBannerLine(text);
+  if (meta) return { kind: 'preamble', text, tSec, meta };
+  if (isMetricLine(text)) return { kind: 'preamble', text, tSec, isMetric: true };
+  return { kind: 'preamble', text, tSec };
+}
+
+/**
+ * Match the wrapper banner line:
+ *   "claude 2.1.118 opus-4-7, swarmify (main) Apr 24 10:18 (1 hour ago) · muqsit"
+ * Capture the parts the UI wants (model, repo, branch, user) and drop the
+ * version/date/time which the UI shows elsewhere.
+ */
+function parseAgentBannerLine(line: string): PreambleMeta | undefined {
+  const m = line.match(
+    /^([a-z][a-z0-9-]*)\s+(\d+(?:\.\d+)+)\s+(\S+?),\s+([^\s(]+)(?:\s+\(([^)]+)\))?\s+[A-Z][a-z]+\s+\d+(?:\s+\d{1,2}:\d{2})?(?:\s*\([^)]+\))?(?:\s*·\s*(\S+))?\s*$/,
+  );
+  if (!m) return undefined;
+  const cli = m[1];
+  if (!PREAMBLE_AGENTS.has(cli)) return undefined;
+  return {
+    agentCli: cli,
+    cliVersion: m[2],
+    model: m[3],
+    repo: m[4],
+    branch: m[5],
+    user: m[6],
+  };
+}
+
+function isMetricLine(line: string): boolean {
+  return /^\d+\s+turns?\s*·\s*\d+\s+tools?\b/.test(line);
 }
 
 function appendClaudeEvent(events: CloudEvent[], raw: unknown): void {
