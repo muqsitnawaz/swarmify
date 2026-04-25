@@ -1671,7 +1671,7 @@ function statusPhrase(item: UnifiedAgent): { word: string; tone: 'running' | 'id
     return { word: 'Waiting', tone: 'waiting', when: item.duration || (item.timestamp ? relTime(item.timestamp) : '') }
   }
   if (item.status === 'running' || item.active) {
-    return { word: 'Working', tone: 'running', when: item.duration || (item.timestamp ? relTime(item.timestamp) : '') }
+    return { word: 'Running', tone: 'running', when: item.duration || (item.timestamp ? relTime(item.timestamp) : '') }
   }
   return { word: 'Idle', tone: 'idle', when: item.timestamp ? relTime(item.timestamp) : '' }
 }
@@ -1782,9 +1782,9 @@ function DetailStatusRow({ item, onFocusTerminal }: { item: UnifiedAgent; onFocu
   const tsMs = item.timestamp ? new Date(item.timestamp).getTime() : NaN
   const staleMs = Number.isFinite(tsMs) ? nowMs - tsMs : 0
   const stale = staleMs > IDLE_AFTER_MS
-  const effectiveStatus: UnifiedAgent['status'] =
-    item.status === 'running' && stale ? 'idle' : item.status
-  const label = statusLabel(effectiveStatus)
+  const effectiveItem: UnifiedAgent =
+    item.status === 'running' && stale ? { ...item, status: 'idle', active: false } : item
+  const phrase = statusPhrase(effectiveItem)
   const rel = friendlyRelTime(item.timestamp, nowMs)
   const focus = item.terminal ? () => onFocusTerminal(item.terminal!) : undefined
   const clickProps = focus
@@ -1803,12 +1803,10 @@ function DetailStatusRow({ item, onFocusTerminal }: { item: UnifiedAgent; onFocu
       <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
         <span
           {...clickProps}
-          className={`sw-badge ${
-            effectiveStatus === 'completed' ? 'ok' : effectiveStatus === 'running' ? 'running' : effectiveStatus
-          }`}
+          className={`sw-badge ${phrase.tone === 'completed' ? 'ok' : phrase.tone}`}
           title={focus ? 'Focus terminal' : undefined}
         >
-          {label}
+          {phrase.word}
         </span>
         {item.prUrl && (
           <ExtLink
