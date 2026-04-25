@@ -3,7 +3,7 @@
   "displayName": "Agents",
   "publisher": "swarmify",
   "description": "Turn your IDE into an Integrated Agents Environment. Run Claude, Codex, Gemini, and Cursor at scale with keyboard-first navigation.",
-  "version": "0.8.84",
+  "version": "0.8.85",
   "license": "MIT",
   "author": "Muqsit Nawaz <dev@muqsitnawaz.com>",
   "icon": "assets/agents.png",
@@ -321,8 +321,23 @@
         },
         "agents.watchdog.enabled": {
           "type": "boolean",
-          "default": false,
-          "description": "Watch agent terminals for stalls and auto-inject nudge prompts via a Claude headless instance."
+          "default": true,
+          "description": "Master switch for the agent watchdog. When on, it polls active agent terminals on an interval to auto-rotate exhausted versions and (optionally) nudge stalled ones."
+        },
+        "agents.watchdog.autoRotate": {
+          "type": "boolean",
+          "default": true,
+          "description": "When an agent terminal's pinned version hits its limit (out_of_credits, rate_limited, or >=100% session), automatically spawn a fresh terminal on the best available signed-in version and replay /continue. The old terminal is closed."
+        },
+        "agents.watchdog.rotateCooldownSeconds": {
+          "type": "number",
+          "default": 120,
+          "description": "Minimum seconds between auto-rotate attempts for the same terminal."
+        },
+        "agents.watchdog.stallNudge": {
+          "type": "boolean",
+          "default": true,
+          "description": "When an agent goes quiet mid-task, call a Claude headless instance to decide whether to inject a nudge message to unstick it."
         },
         "agents.watchdog.stallSeconds": {
           "type": "number",
