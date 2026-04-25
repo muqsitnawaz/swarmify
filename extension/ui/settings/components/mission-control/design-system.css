@@ -275,6 +275,7 @@
 .sw-badge.running { background: var(--status-running-bg); color: var(--status-running); text-shadow: 0 0 8px var(--led-running-glow); }
 .sw-badge.failed { background: var(--status-failed-bg); color: var(--status-failed); text-shadow: 0 0 8px var(--led-failed-glow); }
 .sw-badge.idle { background: var(--status-idle-bg); color: var(--status-idle); }
+.sw-badge.waiting { background: rgba(245, 158, 11, 0.12); color: #b45309; }
 .sw-badge.ok { background: var(--status-running-bg); color: var(--status-running); text-shadow: 0 0 8px var(--led-running-glow); }
 .sw-badge.merged { background: var(--status-running-bg); color: var(--status-running); }
 .sw-badge.open { background: rgba(74,125,255,.1); color: #4a7dff; }
