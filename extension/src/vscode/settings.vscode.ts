@@ -793,6 +793,17 @@ export function openPanel(context: vscode.ExtensionContext): void {
   // Set the tab icon
   settingsPanel.iconPath = theme.buildIconPathFromUri(context.extensionUri, 'agents.png');
 
+  // Pipe live cloud-run SSE updates straight to the webview so the activity
+  // feed grows in real time, not just every 10s when fetchTasks runs.
+  swarm.setCloudUpdateListener((executionId, summary, status) => {
+    settingsPanel?.webview.postMessage({
+      type: 'cloudSummaryUpdate',
+      executionId,
+      summary,
+      status,
+    });
+  });
+
   const updateWebview = async () => {
     if (!settingsPanel) return;
 
