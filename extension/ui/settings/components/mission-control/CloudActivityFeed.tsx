@@ -216,16 +216,50 @@ function formatDuration(ms: number): string {
 }
 
 function ToolRow({ use, result }: { use: ToolUseEvent; result?: ToolResultEvent }) {
+  const [expanded, setExpanded] = useState(false)
   const iconName = iconForTool(use.name)
   const headline = toolHeadline(use)
   return (
     <div className="sw-cloud-feed-row sw-cloud-feed-tool">
-      <div className="sw-cloud-feed-tool-head">
+      <button
+        type="button"
+        className="sw-cloud-feed-tool-head sw-cloud-feed-tool-head-btn"
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+      >
         <Icon name={iconName} size={12} />
         <span className="sw-cloud-feed-tool-headline mono">{headline}</span>
-      </div>
+        <span className="sw-cloud-feed-tool-toggle">{expanded ? 'Hide' : 'Details'}</span>
+      </button>
       <ToolBody use={use} />
       {result && <ToolResultBlock content={result.content} isError={result.isError} />}
+      {expanded && <ToolDetails use={use} result={result} />}
+    </div>
+  )
+}
+
+function ToolDetails({ use, result }: { use: ToolUseEvent; result?: ToolResultEvent }) {
+  const inputJson = useMemo(() => {
+    try {
+      return JSON.stringify(use.input, null, 2)
+    } catch {
+      return String(use.input)
+    }
+  }, [use.input])
+  return (
+    <div className="sw-cloud-feed-tool-details">
+      <div className="sw-cloud-feed-tool-detail-section">
+        <div className="sw-cloud-feed-tool-detail-label">Input</div>
+        <pre className="sw-cloud-feed-tool-detail-pre mono">{inputJson}</pre>
+      </div>
+      {result && result.content && (
+        <div className="sw-cloud-feed-tool-detail-section">
+          <div className={`sw-cloud-feed-tool-detail-label${result.isError ? ' err' : ''}`}>
+            {result.isError ? 'Error' : 'Result'}
+          </div>
+          <pre className={`sw-cloud-feed-tool-detail-pre mono${result.isError ? ' err' : ''}`}>{result.content}</pre>
+        </div>
+      )}
     </div>
   )
 }
