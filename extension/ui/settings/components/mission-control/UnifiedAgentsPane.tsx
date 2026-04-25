@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import type { TaskSummary, TerminalDetail as TerminalInfo, AgentDetail, UnifiedTask } from '../../types'
+import type { TaskSummary, TerminalDetail as TerminalInfo, AgentDetail, UnifiedTask, RecentToolCall } from '../../types'
 import { AgentAvatar, agentShortChunk } from './AgentAvatar'
 import { Icon } from './icons'
 import { relTime, taskNameToTitle, swarmOverallStatus, shortDuration } from './types'
@@ -1985,7 +1985,13 @@ function TerminalExpandedDetail({ terminal }: { terminal: TerminalInfo }) {
             </div>
             <div className="sw-unified-detail-split-col">
               <div className="sw-section-label">Recent tools</div>
-              {terminal.recentTools && terminal.recentTools.length > 0 ? (
+              {terminal.recentToolCalls && terminal.recentToolCalls.length > 0 ? (
+                <div className="sw-floor-detail-tools">
+                  {terminal.recentToolCalls.slice(0, 16).map((call, i) => (
+                    <RecentToolCallRow key={`${call.name}-${i}`} call={call} />
+                  ))}
+                </div>
+              ) : terminal.recentTools && terminal.recentTools.length > 0 ? (
                 <div className="sw-floor-detail-tools">
                   {terminal.recentTools.slice(0, 12).map((tool, i) => (
                     <div key={`${tool}-${i}`} className="sw-floor-detail-tool-row">
@@ -1998,6 +2004,75 @@ function TerminalExpandedDetail({ terminal }: { terminal: TerminalInfo }) {
               )}
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function toolHeadlineSummary(call: RecentToolCall): string {
+  const input = call.input
+  if (!input || typeof input !== 'object') return ''
+  const rec = input as Record<string, unknown>
+  const candidateKeys = [
+    'command',
+    'file_path',
+    'path',
+    'target_file',
+    'query',
+    'pattern',
+    'url',
+    'description',
+    'prompt',
+  ]
+  for (const key of candidateKeys) {
+    const value = rec[key]
+    if (typeof value === 'string' && value.trim()) {
+      return value.length > 80 ? value.slice(0, 80) + '...' : value
+    }
+  }
+  return ''
+}
+
+function RecentToolCallRow({ call }: { call: RecentToolCall }) {
+  const [expanded, setExpanded] = useState(false)
+  const headline = toolHeadlineSummary(call)
+  const inputJson = useMemo(() => {
+    if (!expanded) return ''
+    try {
+      return JSON.stringify(call.input, null, 2)
+    } catch {
+      return String(call.input)
+    }
+  }, [expanded, call.input])
+  return (
+    <div className="sw-floor-detail-tool-item">
+      <button
+        type="button"
+        className="sw-floor-detail-tool-row sw-floor-detail-tool-row-btn"
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+      >
+        <span className="sw-floor-detail-tool-name">{call.name}</span>
+        {headline && <span className="sw-floor-detail-tool-arg mono">{headline}</span>}
+        <span className="sw-floor-detail-tool-toggle">{expanded ? '-' : '+'}</span>
+      </button>
+      {expanded && (
+        <div className="sw-floor-detail-tool-details">
+          <div className="sw-floor-detail-tool-detail-section">
+            <div className="sw-floor-detail-tool-detail-label">Input</div>
+            <pre className="sw-floor-detail-tool-detail-pre mono">{inputJson || '(none)'}</pre>
+          </div>
+          {call.output !== undefined && (
+            <div className="sw-floor-detail-tool-detail-section">
+              <div className={`sw-floor-detail-tool-detail-label${call.isError ? ' err' : ''}`}>
+                {call.isError ? 'Error' : 'Result'}
+              </div>
+              <pre className={`sw-floor-detail-tool-detail-pre mono${call.isError ? ' err' : ''}`}>
+                {call.output || '(empty)'}
+              </pre>
+            </div>
+          )}
         </div>
       )}
     </div>
