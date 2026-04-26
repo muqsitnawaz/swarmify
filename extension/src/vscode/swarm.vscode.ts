@@ -1232,7 +1232,7 @@ function scheduleNotify(executionId: string, state: CloudStreamState): void {
   if (state.pendingNotify) return;
   state.pendingNotify = setTimeout(() => {
     state.pendingNotify = null;
-    if (cloudUpdateListener) cloudUpdateListener(executionId, state.buffer, state.status);
+    if (cloudUpdateListener) cloudUpdateListener(executionId, state.buffer, mapCloudStatus(state.status));
   }, 750);
 }
 
