@@ -141,6 +141,22 @@ export const FOREMAN_TOOLS: ForemanTool[] = [
       required: ['id'],
     },
   },
+  {
+    type: 'function',
+    name: 'create_ticket',
+    description: 'File a new Linear ticket. Defaults: current (active) cycle, Todo status, medium priority. Returns ok+identifier+title on success, or ok=false with a speakable message on failure.',
+    parameters: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Ticket title. Required.' },
+        description: { type: 'string', description: 'Optional longer-form description / body.' },
+        priority: { type: 'string', description: 'urgent | high | medium | low | none (default: medium).' },
+        labels: { type: 'array', items: { type: 'string' }, description: 'Optional Linear labels, e.g. ["repo:agents-cli", "Bug"]. Each entry is one --label flag.' },
+        assign: { type: 'string', description: 'Optional assignee email, or "none" to leave unassigned. Default: API key owner.' },
+      },
+      required: ['title'],
+    },
+  },
 ];
 
 // POST to OpenAI to mint a short-lived client token for the Realtime API.
@@ -464,10 +480,26 @@ export interface ForemanDispatchResult {
   dispatched?: { id: string; agent: string; target: string; repos: string[] };
 }
 
+export interface ForemanCreateTicketOpts {
+  title: string;
+  description?: string;
+  priority?: string;
+  labels?: string[];
+  assign?: string;
+}
+
+export interface ForemanCreateTicketResult {
+  ok: boolean;
+  message: string;
+  identifier?: string;
+  title?: string;
+}
+
 export interface ForemanToolDeps {
   fetchCycleTasks?: () => Promise<{ tasks: UnifiedTask[]; cycleInfo: CycleInfo | null }>;
   fetchTaskDetails?: (id: string) => Promise<ForemanTaskDetails | null>;
   dispatchTask?: (opts: ForemanDispatchOpts) => Promise<ForemanDispatchResult>;
+  createTicket?: (opts: ForemanCreateTicketOpts) => Promise<ForemanCreateTicketResult>;
 }
 
 // Tool dispatch: runs a named Foreman tool and returns a JSON-serializable
@@ -517,6 +549,23 @@ export async function runForemanTool(
       const target = a.target === 'local' ? 'local' : a.target === 'cloud' ? 'cloud' : undefined;
       const repo = typeof a.repo === 'string' && a.repo.trim() ? a.repo.trim() : undefined;
       return deps.dispatchTask({ id, agent, target, repo });
+    }
+    case 'create_ticket': {
+      if (!deps?.createTicket) {
+        return { ok: false, message: 'create_ticket tool unavailable: no creator wired' };
+      }
+      const a = (args && typeof args === 'object') ? args as Record<string, unknown> : {};
+      const title = String(a.title ?? '').trim();
+      if (!title) return { ok: false, message: 'no ticket title' };
+      const description = typeof a.description === 'string' && a.description.trim() ? a.description.trim() : undefined;
+      const priority = typeof a.priority === 'string' && a.priority.trim() ? a.priority.trim().toLowerCase() : undefined;
+      const assign = typeof a.assign === 'string' && a.assign.trim() ? a.assign.trim() : undefined;
+      const labels = Array.isArray(a.labels)
+        ? (a.labels as unknown[])
+            .filter((l) => typeof l === 'string' && l.trim().length > 0)
+            .map((l) => (l as string).trim())
+        : undefined;
+      return deps.createTicket({ title, description, priority, labels, assign });
     }
     default:
       throw new Error(`Unknown Foreman tool: ${name}`);
