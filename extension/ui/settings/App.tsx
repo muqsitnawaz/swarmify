@@ -705,6 +705,7 @@ export default function App() {
           openDetailTaskId={openDetailTaskId}
           onDetailTaskConsumed={() => setOpenDetailTaskId(null)}
           onThroughputChange={setFloorThroughput}
+          githubRepo={githubRepo}
         />
       )}
 

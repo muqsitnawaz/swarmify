@@ -21,7 +21,8 @@
       "Bash(bunx tsc --noEmit *)",
       "Bash(rush cloud status *)",
       "Bash(rush cloud list *)",
-      "Bash(rush cloud logs *)"
+      "Bash(rush cloud logs *)",
+      "Bash(docker info)"
     ]
   }
 }

@@ -14,9 +14,10 @@ interface MissionControlTabProps {
   openDetailTaskId?: string | null
   onDetailTaskConsumed?: () => void
   onThroughputChange?: (tokensPerSec: number) => void
+  githubRepo?: string | null
 }
 
-export function MissionControlTab({ tasks, tasksLoading, terminals, unifiedTasks, unifiedTasksLoading, onDispatch, onNavigate, openDispatchTrigger, openDetailTaskId, onDetailTaskConsumed, onThroughputChange }: MissionControlTabProps) {
+export function MissionControlTab({ tasks, tasksLoading, terminals, unifiedTasks, unifiedTasksLoading, onDispatch, onNavigate, openDispatchTrigger, openDetailTaskId, onDetailTaskConsumed, onThroughputChange, githubRepo }: MissionControlTabProps) {
   return (
     <UnifiedAgentsPane
       terminals={terminals}
@@ -30,6 +31,7 @@ export function MissionControlTab({ tasks, tasksLoading, terminals, unifiedTasks
       openDetailTaskId={openDetailTaskId}
       onDetailTaskConsumed={onDetailTaskConsumed}
       onThroughputChange={onThroughputChange}
+      githubRepo={githubRepo}
     />
   )
 }
