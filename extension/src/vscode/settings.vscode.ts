@@ -5,7 +5,8 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { homedir } from 'os';
-import { exec } from 'child_process';
+import { exec, execFile } from 'child_process';
+import { promisify } from 'util';
 import { AgentSettings, getDefaultSettings, CustomAgentConfig, SwarmAgentType, ALL_SWARM_AGENTS, PromptEntry, DEFAULT_DISPLAY_PREFERENCES, DEFAULT_NOTIFICATION_SETTINGS, DEFAULT_TASK_SOURCE_SETTINGS, DEFAULT_QUICK_LAUNCH, QuickLaunchSlot, migrateStaleClaudeQuickLaunch } from '../core/settings';
 import { readPromptsFromPath, writePromptsToPath, DEFAULT_PROMPTS } from '../core/prompts';
 import * as terminals from './terminals.vscode';
@@ -291,6 +292,48 @@ async function dispatchForForeman(
     message: `Dispatched ${identifier || task.title} to ${agent} on ${targetRepos.join(', ')}.`,
     dispatched: { id: identifier || task.id, agent, target, repos: targetRepos },
   };
+}
+
+// Headless ticket creation used by Foreman's create_ticket tool. Shells out
+// to the same `linear` script that fetchLinearTasks() uses (~/.agents/skills/
+// linear/scripts/linear). Defaults are intentionally bare — current cycle,
+// Todo status, medium priority — so the voice flow is one command: "create
+// a ticket called X". The CLI parses the resulting first line:
+//   "Created RUSH-585: <title>  [<project> | <assignee>]"
+const LINEAR_SCRIPT_PATH = path.join(homedir(), '.agents/skills/linear/scripts/linear');
+const execFileAsync = promisify(execFile);
+
+async function createTicketForForeman(
+  opts: foreman.ForemanCreateTicketOpts,
+): Promise<foreman.ForemanCreateTicketResult> {
+  const title = (opts.title ?? '').trim();
+  if (!title) return { ok: false, message: 'No title given.' };
+
+  const args: string[] = ['create', title];
+  if (opts.description) args.push('--description', opts.description);
+  if (opts.priority) args.push('--priority', opts.priority);
+  if (opts.assign) args.push('--assign', opts.assign);
+  for (const label of opts.labels ?? []) args.push('--label', label);
+
+  try {
+    const { stdout } = await execFileAsync(LINEAR_SCRIPT_PATH, args, { timeout: 15_000 });
+    const firstLine = (stdout || '').split('\n').find((l) => l.trim().length > 0) ?? '';
+    const m = firstLine.match(/Created\s+([A-Z][A-Z0-9]*-\d+):\s*(.+?)(?:\s{2,}\[|$)/);
+    if (m) {
+      const identifier = m[1];
+      const filedTitle = m[2].trim();
+      return {
+        ok: true,
+        message: `Filed ${identifier}: ${filedTitle}.`,
+        identifier,
+        title: filedTitle,
+      };
+    }
+    return { ok: true, message: firstLine.trim() || 'Filed.', title };
+  } catch (err: any) {
+    const detail = err?.stderr?.toString().trim() || err?.message || String(err);
+    return { ok: false, message: `Linear create failed: ${detail.slice(0, 200)}` };
+  }
 }
 
 // Factory config: read/write ~/.agents/factory/config.json.
@@ -1561,6 +1604,7 @@ export function openPanel(context: vscode.ExtensionContext): void {
                   },
                   fetchTaskDetails: (id) => findTaskDetailsForForeman(context, id),
                   dispatchTask: (opts) => dispatchForForeman(context, opts),
+                  createTicket: (opts) => createTicketForForeman(opts),
                 };
                 const result = await foreman.runForemanTool(name, args, wsFolder, deps);
                 foremanSession?.sendToolResult(callId, result);
