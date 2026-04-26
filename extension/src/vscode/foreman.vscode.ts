@@ -58,6 +58,11 @@ Tool usage and routing (pick the RIGHT tool, do not default to briefing):
   explicitly names one (e.g. "dispatch RUSH-557 to agents-cli"); otherwise
   leave it out and let the ticket's repo: label resolve it.
   Use for "dispatch", "send to cloud", "run this", "kick off", "start work on".
+- create_ticket(title, description?, priority?, labels?, assign?): file a new
+  Linear ticket. Defaults: cycle=active, status=Todo, priority=medium.
+  Use for "create a ticket", "file a bug", "new ticket", "add to the sprint",
+  "log this as RUSH". Confirm the title back to the user before calling if
+  it was paraphrased; quote the exact title you'll file.
 Briefing has NO ticket data. Do not call briefing for cycle/ticket questions.
 Do not call focus speculatively; wait for a specific question.
 Confirm before dispatching if the user was vague (e.g. "the top one") -
