@@ -1241,7 +1241,7 @@ function flushNotify(executionId: string, state: CloudStreamState): void {
     clearTimeout(state.pendingNotify);
     state.pendingNotify = null;
   }
-  if (cloudUpdateListener) cloudUpdateListener(executionId, state.buffer, state.status);
+  if (cloudUpdateListener) cloudUpdateListener(executionId, state.buffer, mapCloudStatus(state.status));
 }
 
 function stopCloudStream(executionId: string): void {
