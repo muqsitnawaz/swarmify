@@ -219,7 +219,7 @@ export default function App() {
               newAgents[idx] = {
                 ...agent,
                 cloud_summary: typeof summary === 'string' ? summary : agent.cloud_summary,
-                status: typeof status === 'string' ? mapCloudStreamStatus(status, agent.status) : agent.status,
+                status: typeof status === 'string' && status.length > 0 ? status : agent.status,
               }
               return { ...task, agents: newAgents }
             })
