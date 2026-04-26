@@ -386,9 +386,10 @@ interface UnifiedAgentsPaneProps {
   openDetailTaskId?: string | null
   onDetailTaskConsumed?: () => void
   onThroughputChange?: (tokensPerSec: number) => void
+  githubRepo?: string | null
 }
 
-export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks, unifiedTasksLoading, onDispatch, onNavigate, openDispatchTrigger, openDetailTaskId, onDetailTaskConsumed, onThroughputChange }: UnifiedAgentsPaneProps) {
+export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks, unifiedTasksLoading, onDispatch, onNavigate, openDispatchTrigger, openDetailTaskId, onDetailTaskConsumed, onThroughputChange, githubRepo }: UnifiedAgentsPaneProps) {
   const [newMenuOpen, setNewMenuOpen] = useState(false)
   const [statPopover, setStatPopover] = useState<'shipped' | 'open' | 'running' | 'nextup' | 'files' | null>(null)
   const [dispatchOpen, setDispatchOpen] = useState(false)
@@ -603,7 +604,16 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     return filterDispatchedTaskIds(eligible, pendingTaskIds)
   }, [unifiedTasks, pendingTaskIds])
 
-  const [queueRepoFilter, setQueueRepoFilter] = useState<string>('all')
+  // Repo name of the workspace currently open in the IDE (e.g. "swarmify"
+  // from "muqsitnawaz/swarmify"). Used to default the Next Up filter so
+  // dispatches stay scoped to the repo the user is actually working on.
+  const workspaceRepoName = useMemo(() => {
+    if (!githubRepo) return null
+    return githubRepo.includes('/') ? githubRepo.split('/').pop()! : githubRepo
+  }, [githubRepo])
+
+  const [queueRepoFilter, setQueueRepoFilter] = useState<string>(() => workspaceRepoName ?? 'all')
+  const queueRepoFilterUserSet = useRef(false)
 
   // Distinct repo names present in the eligible queue. Derived from the
   // repo:* label on each Linear issue (resolved to "owner/repo" at fetch
@@ -620,14 +630,29 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     return Array.from(seen).sort()
   }, [queueEligible])
 
+  // Once the workspace repo is known and there's at least one task tagged
+  // for it, snap the filter to it — but only if the user hasn't manually
+  // overridden the dropdown.
+  useEffect(() => {
+    if (queueRepoFilterUserSet.current) return
+    if (!workspaceRepoName) return
+    if (queueRepos.includes(workspaceRepoName) && queueRepoFilter !== workspaceRepoName) {
+      setQueueRepoFilter(workspaceRepoName)
+    }
+  }, [workspaceRepoName, queueRepos, queueRepoFilter])
+
   // When the selected repo drains out of the eligible pool (all its tasks
   // got dispatched), fall back to "all" rather than showing an empty queue
-  // the user can't clear without touching the dropdown.
+  // the user can't clear without touching the dropdown. Skip this for the
+  // workspace repo so a transient empty queue doesn't drop the user's repo
+  // scope.
   useEffect(() => {
-    if (queueRepoFilter !== 'all' && !queueRepos.includes(queueRepoFilter)) {
+    if (queueRepoFilter === 'all') return
+    if (queueRepoFilter === workspaceRepoName) return
+    if (!queueRepos.includes(queueRepoFilter)) {
       setQueueRepoFilter('all')
     }
-  }, [queueRepoFilter, queueRepos])
+  }, [queueRepoFilter, queueRepos, workspaceRepoName])
 
   const queueTasks = useMemo(() => {
     const filtered = queueRepoFilter === 'all'
@@ -844,16 +869,24 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
             <span className="sw-section-count-pill">{queueTasks.length}</span>
             <span className="sw-section-hint">Click a card to configure and dispatch</span>
             <span className="sw-section-line" />
-            {queueRepos.length >= 2 && (
+            {(workspaceRepoName || queueRepos.length >= 2) && (
               <select
                 className="sw-queue-project-select mono"
                 value={queueRepoFilter}
-                onChange={(e) => setQueueRepoFilter(e.target.value)}
+                onChange={(e) => {
+                  queueRepoFilterUserSet.current = true
+                  setQueueRepoFilter(e.target.value)
+                }}
                 aria-label="Filter Next Up by repo"
               >
+                {workspaceRepoName && !queueRepos.includes(workspaceRepoName) && (
+                  <option value={workspaceRepoName}>{workspaceRepoName} (this repo)</option>
+                )}
                 <option value="all">All repos</option>
                 {queueRepos.map((r) => (
-                  <option key={r} value={r}>{r}</option>
+                  <option key={r} value={r}>
+                    {r}{r === workspaceRepoName ? ' (this repo)' : ''}
+                  </option>
                 ))}
               </select>
             )}
