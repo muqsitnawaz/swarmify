@@ -19,6 +19,7 @@ import {
   PrewarmPool,
   WorkspaceConfig,
   SwarmAgentType,
+  AgentInventory,
 } from './types'
 import {
   ALL_SWARM_AGENTS,
@@ -132,6 +133,7 @@ export default function App() {
   const [defaultAgent, setDefaultAgent] = useState<string>('CC')
   const [secondaryAgent, setSecondaryAgent] = useState<string>('CX')
   const [agentModels, setAgentModels] = useState<Record<string, string[]>>({})
+  const [agentInventories, setAgentInventories] = useState<Record<string, AgentInventory>>({})
   const [installedAgents, setInstalledAgents] = useState<Record<string, boolean>>({
     claude: true, codex: true, gemini: true, opencode: true, cursor: true, shell: true
   })
@@ -143,6 +145,7 @@ export default function App() {
 
   // Watchdog state
   const [watchdogEnabled, setWatchdogEnabled] = useState(false)
+  const [watchdogEvents, setWatchdogEvents] = useState<import('./components/mission-control/UnifiedAgentsPane').WatchdogEventUI[]>([])
 
   // Workspace config state
   const [workspaceConfig, setWorkspaceConfig] = useState<WorkspaceConfig | null>(null)
@@ -248,6 +251,11 @@ export default function App() {
             setAgentModels((prev) => ({ ...prev, ...message.agentModels }))
           }
           break
+        case 'agentInventoriesData':
+          if (message.agentInventories && typeof message.agentInventories === 'object') {
+            setAgentInventories(message.agentInventories)
+          }
+          break
         case 'defaultAgentData':
           setDefaultAgent(message.defaultAgent)
           break
@@ -285,6 +293,9 @@ export default function App() {
           break
         case 'watchdogStatus':
           setWatchdogEnabled(!!message.enabled)
+          break
+        case 'watchdogLogData':
+          setWatchdogEvents(message.events || [])
           break
         case 'workspaceConfigData':
           setWorkspaceConfig(message.config)
@@ -354,6 +365,16 @@ export default function App() {
     }, 10_000)
     return () => clearInterval(interval)
   }, [activeTab, tasksLoaded])
+
+  // Poll watchdog log when floor tab is active and watchdog is enabled
+  useEffect(() => {
+    if (activeTab !== 'floor' || !watchdogEnabled) return
+    vscode.postMessage({ type: 'getWatchdogLog' })
+    const interval = setInterval(() => {
+      vscode.postMessage({ type: 'getWatchdogLog' })
+    }, 15_000)
+    return () => clearInterval(interval)
+  }, [activeTab, watchdogEnabled])
 
   // Global ⌘K / Ctrl+K opens the command palette. `stopPropagation` +
   // `preventDefault` are intentional — VS Code's webview otherwise
@@ -706,6 +727,8 @@ export default function App() {
           onDetailTaskConsumed={() => setOpenDetailTaskId(null)}
           onThroughputChange={setFloorThroughput}
           githubRepo={githubRepo}
+          watchdogEnabled={watchdogEnabled}
+          watchdogEvents={watchdogEvents}
         />
       )}
 
@@ -757,6 +780,7 @@ export default function App() {
           secondaryAgent={secondaryAgent}
           installedAgents={installedAgents}
           agentModels={agentModels}
+          agentInventories={agentInventories}
           icons={icons}
           isLightTheme={isLightTheme}
           swarmInstalling={swarmInstalling}
@@ -784,6 +808,13 @@ export default function App() {
           onUpdateTaskSources={handleUpdateTaskSources}
           onConnectLinear={handleConnectLinear}
           onConnectGitHub={handleConnectGitHub}
+          onSetAgentRunStrategy={(agentKey, enabled) => {
+            vscode.postMessage({
+              type: 'setAgentRunStrategy',
+              agentKey,
+              strategy: enabled ? 'rotate' : 'pinned',
+            })
+          }}
         />
       )}
 

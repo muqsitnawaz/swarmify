@@ -1,0 +1,58 @@
+// Watchdog event log: pure formatting + parsing for the JSONL feed at
+// ~/.agents/watchdog.log. The webview pulls this file periodically to
+// render the Watchdog activity card on the Factory Floor.
+
+export type WatchdogEventKind = 'tick' | 'decision' | 'nudge' | 'rotate' | 'error';
+
+export interface WatchdogEvent {
+  ts: number;
+  kind: WatchdogEventKind;
+  terminalId?: string;
+  agentType?: string;
+  message: string;
+  reason?: string;
+  // For 'tick' events: the session lines the watchdog actually read.
+  tailLines?: string[];
+  // For 'tick' and 'decision' events: how long the terminal had been stalled.
+  stalledForMs?: number;
+}
+
+export function formatEvent(ev: WatchdogEvent): string {
+  return JSON.stringify(ev);
+}
+
+export function parseEvents(text: string): WatchdogEvent[] {
+  if (!text) return [];
+  const out: WatchdogEvent[] = [];
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (!line) continue;
+    try {
+      const parsed = JSON.parse(line) as Record<string, unknown>;
+      const ts = typeof parsed.ts === 'number' ? parsed.ts : NaN;
+      const kind = parsed.kind;
+      const message = typeof parsed.message === 'string' ? parsed.message : '';
+      if (!Number.isFinite(ts)) continue;
+      if (kind !== 'tick' && kind !== 'decision' && kind !== 'nudge' && kind !== 'rotate' && kind !== 'error') continue;
+      out.push({
+        ts,
+        kind,
+        message,
+        terminalId: typeof parsed.terminalId === 'string' ? parsed.terminalId : undefined,
+        agentType: typeof parsed.agentType === 'string' ? parsed.agentType : undefined,
+        reason: typeof parsed.reason === 'string' ? parsed.reason : undefined,
+      });
+    } catch {
+      // Skip malformed lines.
+    }
+  }
+  return out;
+}
+
+// Trim a JSONL log body in-memory to the last `maxLines` events. Used by
+// the writer when the file grows past the cap so we don't unbounded-grow.
+export function trimToLast(text: string, maxLines: number): string {
+  const lines = text.split('\n').filter((l) => l.trim().length > 0);
+  if (lines.length <= maxLines) return lines.join('\n') + (lines.length ? '\n' : '');
+  return lines.slice(lines.length - maxLines).join('\n') + '\n';
+}

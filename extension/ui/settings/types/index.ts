@@ -194,6 +194,32 @@ export interface SwarmStatus {
   }
 }
 
+export type AgentRunStrategy = 'pinned' | 'available' | 'rotate'
+
+export interface AgentInventoryVersion {
+  version: string
+  isDefault: boolean
+  signedIn: boolean
+  email: string | null
+  plan: string | null
+  usageStatus: 'available' | 'rate_limited' | 'out_of_credits' | null
+  sessionUsedPercent: number
+  lastActive: string | null
+  path: string
+}
+
+export interface AgentInventory {
+  agent: string
+  strategy: AgentRunStrategy
+  defaultVersion: string | null
+  defaultAccount: string | null
+  defaultPlan: string | null
+  signedInCount: number
+  healthyCount: number
+  canRotate: boolean
+  versions: AgentInventoryVersion[]
+}
+
 // Agent detail types (from swarm)
 export interface AgentDetail {
   agent_id: string
@@ -274,6 +300,7 @@ export interface TerminalDetail {
   currentActivity?: string
   quickSummary?: SessionQuickSummary
   recentFiles?: string[]
+  recentFileTimes?: Record<string, number>
   recentTools?: string[]
   recentToolCalls?: RecentToolCall[]
   lastFilePath?: string | null

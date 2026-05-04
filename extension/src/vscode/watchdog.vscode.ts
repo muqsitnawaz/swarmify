@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs/promises';
+import * as path from 'path';
+import * as os from 'os';
 import { spawn, exec } from 'child_process';
 import { promisify } from 'util';
 import {
@@ -16,6 +18,27 @@ import {
 } from '../core/resumeInBest';
 import { getAllTerminals, getById, EditorTerminal } from './terminals.vscode';
 import { getSessionPathBySessionId, readTailLines } from './sessions.vscode';
+import { formatEvent, trimToLast, WatchdogEvent } from '../core/watchdogLog';
+
+const WATCHDOG_LOG_PATH = path.join(os.homedir(), '.agents', 'watchdog.log');
+const LOG_MAX_LINES = 500;
+
+async function appendToLog(ev: WatchdogEvent): Promise<void> {
+  try {
+    const line = formatEvent(ev) + '\n';
+    let existing = '';
+    try {
+      existing = await fs.readFile(WATCHDOG_LOG_PATH, 'utf8');
+    } catch {
+      // file doesn't exist yet
+    }
+    const trimmed = trimToLast(existing + line, LOG_MAX_LINES);
+    await fs.mkdir(path.dirname(WATCHDOG_LOG_PATH), { recursive: true });
+    await fs.writeFile(WATCHDOG_LOG_PATH, trimmed, 'utf8');
+  } catch (err) {
+    console.warn('[WATCHDOG] log write failed:', err);
+  }
+}
 
 const OPT_OUT_KEY = 'watchdog.optOut';
 const DORMANT_MS = 60 * 60 * 1000;
@@ -34,6 +57,7 @@ export type WatchdogRotateOutcome =
 
 export interface WatchdogDeps {
   rotateTerminal: (entry: EditorTerminal) => Promise<WatchdogRotateOutcome>;
+  mcpServerPath?: string;
 }
 
 function getOptOut(context: vscode.ExtensionContext): Record<string, boolean> {
@@ -62,6 +86,7 @@ interface WatchdogConfig {
   stallNudgeEnabled: boolean;
   autoRotate: boolean;
   rotateCooldownMs: number;
+  useSmartAgent: boolean;
 }
 
 function readConfig(): WatchdogConfig {
@@ -74,6 +99,7 @@ function readConfig(): WatchdogConfig {
     stallNudgeEnabled: cfg.get<boolean>('stallNudge', true),
     autoRotate: cfg.get<boolean>('autoRotate', true),
     rotateCooldownMs: cfg.get<number>('rotateCooldownSeconds', 120) * 1000,
+    useSmartAgent: cfg.get<boolean>('useSmartAgent', false),
   };
 }
 
@@ -119,6 +145,88 @@ async function runClaudeHeadless(prompt: string): Promise<Decision[]> {
         return;
       }
       resolve(parseWatchdogResponse(stdout));
+    });
+  });
+}
+
+const SMART_AGENT_TIMEOUT_MS = 120_000;
+
+const SMART_WATCHDOG_PROMPT = `You are the Watchdog. You've been invoked because one or more agent terminals appear stalled. Your job is to understand what each agent was doing, decide if it needs a nudge, and send appropriate messages.
+
+## Your Tools
+
+**Bash commands (use these to understand context):**
+- \`agents sessions tail <sessionId> --last 50\` - Read session history including user messages
+- \`mq . '.tree | depth(1)'\` - Project structure
+- \`mq AGENTS.md .tree\` - Project conventions (or CLAUDE.md)
+- \`linear tasks\` - Linear board context
+
+**MCP tool:** \`send_nudge(sessionId, text, reason)\`
+
+## Decision Process
+
+1. Read the session with \`agents sessions tail <sessionId> --last 50\`
+2. Find the user's original request and what the agent said it would do
+3. Get project context with \`mq\` if needed for specific commands
+4. Decide: NUDGE (agent announced action but didn't follow through) or SKIP (waiting on user, task complete, or unclear)
+
+## Nudge Style
+
+- One sentence, imperative: "Read login.ts now.", "Run the tests."
+- Use project conventions when known
+- No emojis. Under 120 characters.
+
+## Stalled Terminals
+`;
+
+async function runSmartWatchdogAgent(
+  candidates: WatchdogCandidate[],
+  mcpServerPath: string,
+  workspacePath: string
+): Promise<void> {
+  const candidateList = candidates
+    .map(
+      (c) =>
+        `- Session \`${c.terminalId}\` (${c.agentType}): idle ${Math.round(c.stalledForMs / 1000)}s`
+    )
+    .join('\n');
+
+  const prompt = SMART_WATCHDOG_PROMPT + '\n' + candidateList + '\n\nInvestigate each session and decide whether to nudge or skip.';
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      'claude',
+      ['-p', prompt, '--mcp', mcpServerPath],
+      {
+        cwd: workspacePath,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, WATCHDOG_MODE: '1' },
+      }
+    );
+
+    let stderr = '';
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL');
+      reject(new Error('smart watchdog agent timed out'));
+    }, SMART_AGENT_TIMEOUT_MS);
+
+    child.stdout.on('data', (d: Buffer) => {
+      console.log('[WATCHDOG-AGENT]', d.toString('utf8').trim());
+    });
+    child.stderr.on('data', (d: Buffer) => {
+      stderr += d.toString('utf8');
+    });
+    child.on('error', (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (code !== 0) {
+        reject(new Error(`smart watchdog exited ${code}: ${stderr.slice(0, 500)}`));
+        return;
+      }
+      resolve();
     });
   });
 }
@@ -180,6 +288,14 @@ async function tick(
                     8000
                   );
                   console.log(`[WATCHDOG] rotated ${entry.id} -> ${outcome.newVersion}`);
+                  void appendToLog({
+                    ts: now,
+                    kind: 'rotate',
+                    terminalId: entry.id,
+                    agentType: agentType,
+                    message: `${outcome.oldVersion ?? '?'} -> ${outcome.newVersion}`,
+                    reason: `session ${outcome.usedPercent}% used${acct}`,
+                  });
                   continue;
                 }
                 if (outcome.status === 'no_versions') {
@@ -237,6 +353,40 @@ async function tick(
 
     if (candidates.length === 0) return;
 
+    for (const c of candidates) {
+      void appendToLog({
+        ts: now,
+        kind: 'tick',
+        terminalId: c.terminalId,
+        agentType: c.agentType,
+        message: `stalled ${Math.round(c.stalledForMs / 1000)}s`,
+        tailLines: c.tailLines,
+        stalledForMs: c.stalledForMs,
+      });
+    }
+
+    // Use smart agent if configured and MCP server is available
+    if (cfg.useSmartAgent && deps.mcpServerPath && workspacePath) {
+      console.log(`[WATCHDOG] ${candidates.length} stalled candidate(s), invoking smart agent`);
+      try {
+        await runSmartWatchdogAgent(candidates, deps.mcpServerPath, workspacePath);
+        void appendToLog({
+          ts: Date.now(),
+          kind: 'decision',
+          message: 'smart agent completed',
+        });
+      } catch (err) {
+        console.error('[WATCHDOG] smart agent failed:', err);
+        void appendToLog({
+          ts: Date.now(),
+          kind: 'error',
+          message: `smart agent failed: ${String(err).slice(0, 200)}`,
+        });
+      }
+      return;
+    }
+
+    // Fallback: classic headless mode with JSON decisions
     console.log(`[WATCHDOG] ${candidates.length} stalled candidate(s), calling claude headless`);
 
     let decisions: Decision[] = [];
@@ -244,21 +394,55 @@ async function tick(
       decisions = await runClaudeHeadless(renderWatchdogPrompt(candidates));
     } catch (err) {
       console.error('[WATCHDOG] headless run failed:', err);
+      void appendToLog({
+        ts: Date.now(),
+        kind: 'error',
+        message: `headless run failed: ${String(err).slice(0, 200)}`,
+      });
       return;
     }
 
     for (const d of decisions) {
+      void appendToLog({
+        ts: Date.now(),
+        kind: 'decision',
+        terminalId: d.terminalId,
+        message: d.action,
+        reason: d.reason,
+      });
+
       if (d.action !== 'nudge') continue;
       const text = d.text.trim();
       if (!text) continue;
       const entry = getById(d.terminalId);
       if (!entry) continue;
       try {
-        entry.terminal.sendText(text, true);
+        // Ink TUIs (Claude) watch for `\r` as Enter; `sendText(text, true)`
+        // appends `\n` which types into the input but does NOT submit.
+        if (entry.agentType === 'claude') {
+          entry.terminal.sendText(text, false);
+          entry.terminal.sendText('\r', false);
+        } else {
+          entry.terminal.sendText(text, true);
+        }
         lastNudgeMs.set(d.terminalId, Date.now());
         console.log(`[WATCHDOG] nudged ${d.terminalId} (${d.reason}): ${text}`);
+        void appendToLog({
+          ts: Date.now(),
+          kind: 'nudge',
+          terminalId: d.terminalId,
+          agentType: entry.agentType ?? undefined,
+          message: text,
+          reason: d.reason,
+        });
       } catch (err) {
         console.error(`[WATCHDOG] failed to inject into ${d.terminalId}:`, err);
+        void appendToLog({
+          ts: Date.now(),
+          kind: 'error',
+          terminalId: d.terminalId,
+          message: `inject failed: ${String(err).slice(0, 200)}`,
+        });
       }
     }
   } finally {

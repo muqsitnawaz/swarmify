@@ -239,14 +239,37 @@ function parseCodexActivity(raw: any): CurrentActivity | null {
       }
 
       // Shell commands
-      if (toolName === 'shell_command' || toolName === 'shell' || toolName === 'bash') {
-        const command = toolArgs?.command || '';
+      if (
+        toolName === 'shell_command' ||
+        toolName === 'shell' ||
+        toolName === 'bash' ||
+        toolName === 'exec_command'
+      ) {
+        const command = toolArgs?.command || toolArgs?.cmd || '';
         if (command.trim()) {
           return {
             type: 'running',
             summary: truncateCommand(command),
             timestamp,
           };
+        }
+      }
+
+      if (toolName === 'multi_tool_use.parallel') {
+        const toolUses = Array.isArray(toolArgs?.tool_uses) ? toolArgs.tool_uses : [];
+        for (const use of toolUses) {
+          const recipient = String(use?.recipient_name || '');
+          const params = use?.parameters || {};
+          if (recipient === 'functions.exec_command') {
+            const command = typeof params?.cmd === 'string' ? params.cmd : '';
+            if (command.trim()) {
+              return {
+                type: 'running',
+                summary: truncateCommand(command),
+                timestamp,
+              };
+            }
+          }
         }
       }
 
