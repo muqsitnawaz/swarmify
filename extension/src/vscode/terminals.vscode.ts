@@ -79,6 +79,9 @@ export interface EditorTerminal {
   sessionId?: string;       // CLI session ID (for resume, history reading)
   agentType?: SessionAgentType; // Agent type for session operations
   version?: string;         // Pinned agent version ("2.1.113"); undefined when unknown
+  account?: string;         // Resolved account email for this terminal when known
+  statusVersion?: string;   // Display-only version from agents-cli metadata
+  statusAccount?: string;   // Display-only account from agents-cli metadata
   approvalStatus?: 'pending' | 'approved' | 'running' | 'complete'; // Swarm approval status
   autoLabelPollerId?: NodeJS.Timeout; // Poller for auto-label fetch (cleared once label is set)
 }
@@ -126,6 +129,8 @@ export interface ClosedSession {
   sessionId?: string;
   label?: string;
   agentType?: SessionAgentType;
+  version?: string;
+  account?: string;
   agentConfig: Omit<AgentConfig, 'count'> | null;
   closedAt: number;
 }
@@ -372,7 +377,7 @@ export function setSessionId(terminal: vscode.Terminal, sessionId: string): void
 function maybeRegisterWithSessionTracker(
   terminal: vscode.Terminal,
   agentType: SessionAgentType | undefined,
-  sessionId: string,
+  sessionId: string | undefined,
 ): void {
   if (agentType !== 'claude' && agentType !== 'codex') return;
   const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -392,9 +397,10 @@ export function setAgentType(terminal: vscode.Terminal, agentType: SessionAgentT
     // Persist to disk
     schedulePersist();
 
-    if (entry.sessionId) {
-      maybeRegisterWithSessionTracker(terminal, agentType, entry.sessionId);
-    }
+    // Register with sessionTracker even without a sessionId so the fs watcher
+    // can adopt one when the agent CLI writes a fresh rollout/jsonl file.
+    // Critical for Codex 0.124+ which dropped session id from its TUI banner.
+    maybeRegisterWithSessionTracker(terminal, agentType, entry.sessionId);
   } else {
     console.error(`[TERMINALS] FAILED to set agentType - terminal "${terminal.name}" not found in registry.`);
   }
@@ -404,9 +410,24 @@ export function setVersion(terminal: vscode.Terminal, version: string): void {
   const entry = getByTerminal(terminal);
   if (entry) {
     entry.version = version;
+    entry.statusVersion = version;
     schedulePersist();
   } else {
     console.error(`[TERMINALS] FAILED to set version - terminal "${terminal.name}" not found in registry.`);
+  }
+}
+
+export function setAccount(
+  terminal: vscode.Terminal,
+  account: string | null | undefined
+): void {
+  const entry = getByTerminal(terminal);
+  if (entry) {
+    const normalized = account?.trim();
+    entry.account = normalized || undefined;
+    entry.statusAccount = normalized || undefined;
+  } else {
+    console.error(`[TERMINALS] FAILED to set account - terminal "${terminal.name}" not found in registry.`);
   }
 }
 
@@ -525,6 +546,11 @@ export async function scanExisting(
 
     // Restore session tracking - prefer env var sessionId, fallback to sessionChunk from name
     const agentType = prefixToAgentType(info.prefix);
+    if (agentType) {
+      // Register agent type even when session id is unknown so sessionTracker
+      // can adopt new Codex/Claude session files later.
+      setAgentType(terminal, agentType);
+    }
     let sessionId = identOpts.sessionId;
 
     // Strategy 1: Try to recover from sessionChunk in terminal name
@@ -573,9 +599,6 @@ export async function scanExisting(
     }
 
     if (sessionId) {
-      if (agentType) {
-        setAgentType(terminal, agentType);
-      }
       setSessionId(terminal, sessionId);
       console.log(`[TERMINALS] Restored session: sessionId=${sessionId}, agentType=${agentType}`);
       if (onSessionRestored) {
@@ -675,6 +698,7 @@ export interface TerminalDetail {
   currentActivity?: string; // Live activity (e.g., "Reading src/auth.ts", "Running npm test")
   quickSummary?: SessionQuickSummary;
   recentFiles?: string[];
+  recentFileTimes?: Record<string, number>;
   recentTools?: string[];
   recentToolCalls?: import('../core/session.summary').RecentToolCall[];
   lastFilePath?: string | null;
@@ -989,6 +1013,7 @@ export async function getTerminalsByAgentType(
     if (data.quickDetails) {
       results[data.index].quickSummary = data.quickDetails.summary;
       results[data.index].recentFiles = data.quickDetails.recentFiles;
+      results[data.index].recentFileTimes = data.quickDetails.recentFileTimes;
       results[data.index].recentTools = data.quickDetails.recentTools;
       results[data.index].recentToolCalls = data.quickDetails.recentToolCalls;
       results[data.index].lastFilePath = data.quickDetails.lastFilePath;
@@ -1042,6 +1067,19 @@ export async function getTerminalsByAgentType(
   }
 
   return results;
+}
+
+export async function getFloorTerminalDetails(workspacePath?: string): Promise<TerminalDetail[]> {
+  const agentTypes = ['claude', 'codex', 'gemini', 'opencode', 'cursor'];
+  const localDetails = (await Promise.all(
+    agentTypes.map((agentType) => getTerminalsByAgentType(agentType, workspacePath)),
+  )).flat();
+
+  localDetails.sort((a, b) => a.createdAt - b.createdAt);
+  for (let i = 0; i < localDetails.length; i++) {
+    localDetails[i].index = i + 1;
+  }
+  return localDetails;
 }
 
 // Clear state (for testing/deactivation)

@@ -1,6 +1,6 @@
 import React from 'react'
 
-export type AgentId = 'claude' | 'codex' | 'gemini' | 'opencode' | 'cursor' | 'shell'
+export type AgentId = 'claude' | 'codex' | 'gemini' | 'opencode' | 'cursor' | 'shell' | 'watchdog'
 
 const BG: Record<AgentId, string> = {
   claude: 'var(--claude)',
@@ -9,6 +9,7 @@ const BG: Record<AgentId, string> = {
   opencode: 'var(--opencode)',
   cursor: 'var(--cursor)',
   shell: 'var(--shell)',
+  watchdog: 'var(--ds-text-dim)',
 }
 
 const LETTER: Record<AgentId, string> = {
@@ -18,6 +19,7 @@ const LETTER: Record<AgentId, string> = {
   opencode: 'O',
   cursor: 'K',
   shell: '$',
+  watchdog: 'W',
 }
 
 export function AgentAvatar({ id, size = 18, title }: {

@@ -182,6 +182,51 @@ describe('extractSessionQuickSummary', () => {
     expect(details.recentToolCalls[0].output).toBe('hi');
   });
 
+  test('parses Codex custom apply_patch calls into edited files', () => {
+    const patch = [
+      '*** Begin Patch',
+      '*** Update File: src/a.ts',
+      '@@',
+      '-old',
+      '+new',
+      '*** Add File: src/new.ts',
+      '+export const value = 1;',
+      '*** Delete File: src/old.ts',
+      '*** End Patch',
+    ].join('\n');
+
+    const lines = [
+      JSON.stringify({
+        type: 'response_item',
+        payload: {
+          type: 'custom_tool_call',
+          name: 'apply_patch',
+          call_id: 'call_patch',
+          input: patch,
+        },
+      }),
+      JSON.stringify({
+        type: 'response_item',
+        payload: {
+          type: 'function_call_output',
+          call_id: 'call_patch',
+          output: 'patched',
+        },
+      }),
+    ];
+
+    const details = extractSessionQuickDetails(lines.join('\n'), 'codex');
+    expect(details.summary.toolCalls).toBe(1);
+    expect(details.summary.filesEdited).toBe(3);
+    expect(details.summary.filesCreated).toBe(1);
+    expect(details.summary.filesDeleted).toBe(1);
+    expect(details.recentFiles).toContain('src/a.ts');
+    expect(details.recentFiles).toContain('src/new.ts');
+    expect(details.recentFiles).toContain('src/old.ts');
+    expect(details.recentToolCalls[0].name).toBe('apply_patch');
+    expect(details.recentToolCalls[0].output).toBe('patched');
+  });
+
   test('marks tool errors', () => {
     const lines = [
       JSON.stringify({

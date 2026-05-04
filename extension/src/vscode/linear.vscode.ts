@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { execFile } from 'child_process';
+import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -7,19 +7,31 @@ import { UnifiedTask, CycleInfo, linearToUnifiedTask, extractRepoNameFromLabels 
 import { getSettings, resolveGithubOwner } from './settings.vscode';
 
 const execFileAsync = promisify(execFile);
+const execAsync = promisify(exec);
 
-const LINEAR_SCRIPT = path.join(
-  process.env.HOME || '',
-  '.agents/skills/linear/scripts/linear'
-);
 const LINEAR_CONFIG = path.join(
   process.env.HOME || '',
   '.agents/linear.json'
 );
 
+let cachedLinearPath: string | null = null;
+
+async function findLinearCli(): Promise<string | null> {
+  if (cachedLinearPath !== null) return cachedLinearPath || null;
+  try {
+    const { stdout } = await execAsync('which linear');
+    cachedLinearPath = stdout.trim();
+    return cachedLinearPath || null;
+  } catch {
+    cachedLinearPath = '';
+    return null;
+  }
+}
+
 export async function isLinearAvailable(_context: vscode.ExtensionContext): Promise<boolean> {
   try {
-    await fs.promises.access(LINEAR_SCRIPT, fs.constants.X_OK);
+    const linearPath = await findLinearCli();
+    if (!linearPath) return false;
     await fs.promises.access(LINEAR_CONFIG, fs.constants.R_OK);
     return true;
   } catch {
@@ -36,7 +48,9 @@ export async function fetchLinearTasks(context: vscode.ExtensionContext): Promis
   if (!(await isLinearAvailable(context))) return { tasks: [], cycleInfo: null };
 
   try {
-    const { stdout } = await execFileAsync(LINEAR_SCRIPT, ['tasks', '--json'], {
+    const linearPath = await findLinearCli();
+    if (!linearPath) return { tasks: [], cycleInfo: null };
+    const { stdout } = await execFileAsync(linearPath, ['tasks', '--json'], {
       timeout: 15000,
     });
 

@@ -58,6 +58,8 @@ const SOURCE_FILTERS: Array<{ key: TaskSource; label: string; cls: string }> = [
   { key: 'github', label: 'GH', cls: 'gh' },
 ]
 
+type SortOption = 'priority' | 'due' | 'priority+due'
+
 export function BenchTab(props: BenchTabProps) {
   const {
     unifiedTasks,
@@ -65,6 +67,8 @@ export function BenchTab(props: BenchTabProps) {
     unifiedTasksLoading,
     settings,
     dismissedTaskIds,
+    githubRepo,
+    availableSources,
     onRefreshTasks,
     onSpawnAgentForTask,
     onDismissTask,
@@ -74,6 +78,8 @@ export function BenchTab(props: BenchTabProps) {
   const [activeFilters, setActiveFilters] = useState<Set<TaskSource>>(
     new Set(['linear', 'github'])
   )
+  const [repoFilter, setRepoFilter] = useState<string>('all')
+  const [sortBy, setSortBy] = useState<SortOption>('priority')
 
   const toggleFilter = (source: TaskSource) => {
     setActiveFilters(prev => {
@@ -84,6 +90,25 @@ export function BenchTab(props: BenchTabProps) {
     })
   }
 
+  const allRepos = useMemo(() => {
+    const repos = new Set<string>()
+    for (const t of unifiedTasks) {
+      if (t.metadata.repo) repos.add(t.metadata.repo)
+    }
+    return Array.from(repos).sort()
+  }, [unifiedTasks])
+
+  const workspaceRepoName = useMemo(() => {
+    if (!githubRepo) return null
+    return githubRepo.includes('/') ? githubRepo.split('/').pop()! : githubRepo
+  }, [githubRepo])
+
+  useEffect(() => {
+    if (workspaceRepoName && allRepos.includes(workspaceRepoName) && repoFilter === 'all') {
+      setRepoFilter(workspaceRepoName)
+    }
+  }, [workspaceRepoName, allRepos, repoFilter])
+
   const flatTasks = useMemo<FlatTask[]>(() => {
     const items: FlatTask[] = []
 
@@ -93,13 +118,31 @@ export function BenchTab(props: BenchTabProps) {
     })
 
     const priorityRank: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 }
+
+    const getDueSortValue = (task: UnifiedTask): number => {
+      const due = task.metadata.dueDate
+      if (!due) return Number.MAX_SAFE_INTEGER
+      return new Date(due).getTime()
+    }
+
     filteredUnified
       .sort((a, b) => {
         const sourceDiff = SOURCE_ORDER[a.source] - SOURCE_ORDER[b.source]
         if (sourceDiff !== 0) return sourceDiff
-        const ra = a.priority ? priorityRank[a.priority] ?? 99 : 99
-        const rb = b.priority ? priorityRank[b.priority] ?? 99 : 99
-        return ra - rb
+
+        if (sortBy === 'priority' || sortBy === 'priority+due') {
+          const ra = a.priority ? priorityRank[a.priority] ?? 99 : 99
+          const rb = b.priority ? priorityRank[b.priority] ?? 99 : 99
+          if (ra !== rb) return ra - rb
+        }
+
+        if (sortBy === 'due' || sortBy === 'priority+due') {
+          const da = getDueSortValue(a)
+          const db = getDueSortValue(b)
+          if (da !== db) return da - db
+        }
+
+        return 0
       })
       .forEach(task => {
         items.push({
@@ -114,12 +157,15 @@ export function BenchTab(props: BenchTabProps) {
       })
 
     return items
-  }, [unifiedTasks, dismissedTaskIds])
+  }, [unifiedTasks, dismissedTaskIds, sortBy])
 
-  const filteredTasks = useMemo(
-    () => flatTasks.filter(t => activeFilters.has(t.source)),
-    [flatTasks, activeFilters]
-  )
+  const filteredTasks = useMemo(() => {
+    let tasks = flatTasks.filter(t => activeFilters.has(t.source))
+    if (repoFilter !== 'all') {
+      tasks = tasks.filter(t => t.metadata.repo === repoFilter)
+    }
+    return tasks
+  }, [flatTasks, activeFilters, repoFilter])
 
   const selectedTask = useMemo(
     () => filteredTasks.find(t => t.id === selectedTaskId) ?? null,
@@ -166,6 +212,31 @@ export function BenchTab(props: BenchTabProps) {
               </button>
             ))}
           </div>
+          {allRepos.length >= 2 && (
+            <select
+              className="sw-bench-filter-select mono"
+              value={repoFilter}
+              onChange={e => setRepoFilter(e.target.value)}
+              title="Filter by repo"
+            >
+              <option value="all">All repos</option>
+              {allRepos.map(r => (
+                <option key={r} value={r}>
+                  {r}{r === workspaceRepoName ? ' (this)' : ''}
+                </option>
+              ))}
+            </select>
+          )}
+          <select
+            className="sw-bench-filter-select"
+            value={sortBy}
+            onChange={e => setSortBy(e.target.value as SortOption)}
+            title="Sort tasks"
+          >
+            <option value="priority">Priority</option>
+            <option value="due">Due date</option>
+            <option value="priority+due">Priority, then due</option>
+          </select>
           <button
             className="sw-icon-btn"
             onClick={onRefreshTasks}

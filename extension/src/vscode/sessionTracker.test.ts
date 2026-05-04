@@ -99,6 +99,98 @@ describe('sessionTracker — Claude fork detection', () => {
   });
 });
 
+describe('sessionTracker — Codex rollout adoption (no prior sessionId)', () => {
+  test('adopts existing rollout file on register when cwd matches', async () => {
+    const existingSessionId = '019dcbf2-eeee-7fe1-aa30-1eede3d9e796';
+    const term = fakeTerminal('CX-existing');
+
+    const events: Array<{ oldId: string | undefined; newId: string }> = [];
+    onSessionChanged((_t, oldId, newId) => {
+      events.push({ oldId, newId });
+    });
+
+    const rollout = path.join(tmpDir, `rollout-2026-04-26T00-00-00-${existingSessionId}.jsonl`);
+    fs.writeFileSync(rollout, JSON.stringify({
+      timestamp: '2026-04-26T07:36:40.810Z',
+      type: 'session_meta',
+      payload: {
+        id: existingSessionId,
+        cwd: '/__test__',
+        originator: 'codex-tui',
+        cli_version: '0.124.0',
+      },
+    }) + '\n');
+
+    // Register after file already exists — verifies proactive backfill.
+    __testRegister(term, 'codex', [tmpDir], undefined);
+
+    await waitMs(600);
+
+    expect(events.length).toBe(1);
+    expect(events[0].oldId).toBeUndefined();
+    expect(events[0].newId).toBe(`rollout-2026-04-26T00-00-00-${existingSessionId}`);
+
+    unregisterTerminal(term);
+  });
+
+  test('adopts session id from new rollout-*.jsonl when cwd matches', async () => {
+    const newSessionId = '019dcbf2-e44c-7fe1-aa30-1eede3d9e796';
+    const term = fakeTerminal('CX-test');
+
+    const events: Array<{ oldId: string | undefined; newId: string }> = [];
+    onSessionChanged((_t, oldId, newId) => {
+      events.push({ oldId, newId });
+    });
+
+    // Register codex terminal with NO sessionId — simulates Codex 0.124+ banner
+    // with no session id printed. workspacePath is '/__test__' via __testRegister.
+    __testRegister(term, 'codex', [tmpDir], undefined);
+
+    const rollout = path.join(tmpDir, `rollout-2026-04-26T00-00-00-${newSessionId}.jsonl`);
+    const meta = JSON.stringify({
+      timestamp: '2026-04-26T07:36:40.810Z',
+      type: 'session_meta',
+      payload: {
+        id: newSessionId,
+        cwd: '/__test__',
+        originator: 'codex-tui',
+        cli_version: '0.124.0',
+      },
+    });
+    fs.writeFileSync(rollout, meta + '\n');
+
+    await waitMs(600);
+
+    expect(events.length).toBe(1);
+    expect(events[0].oldId).toBeUndefined();
+    // Filename-derived id matches payload id
+    expect(events[0].newId).toBe(`rollout-2026-04-26T00-00-00-${newSessionId}`);
+
+    unregisterTerminal(term);
+  });
+
+  test('ignores rollout when cwd does not match any tracked terminal', async () => {
+    const term = fakeTerminal('CX-mismatch');
+
+    const events: string[] = [];
+    onSessionChanged((_t, _oldId, newId) => events.push(newId));
+
+    __testRegister(term, 'codex', [tmpDir], undefined);
+
+    const otherSessionId = '019dcbf2-aaaa-7fe1-aa30-1eede3d9e796';
+    const rollout = path.join(tmpDir, `rollout-2026-04-26T00-00-00-${otherSessionId}.jsonl`);
+    fs.writeFileSync(rollout, JSON.stringify({
+      type: 'session_meta',
+      payload: { id: otherSessionId, cwd: '/some/other/workspace', originator: 'codex-tui' },
+    }) + '\n');
+
+    await waitMs(600);
+
+    expect(events.length).toBe(0);
+    unregisterTerminal(term);
+  });
+});
+
 describe('sessionTracker — lifecycle', () => {
   test('registerTerminal is idempotent', () => {
     const term = fakeTerminal('CC-idemp');

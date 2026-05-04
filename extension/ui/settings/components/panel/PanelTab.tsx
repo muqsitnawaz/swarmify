@@ -16,6 +16,7 @@ import type {
   IconConfig,
   QuickLaunchSlot,
   RunningCounts,
+  AgentInventory,
 } from '../../types'
 import {
   ALL_SWARM_AGENTS,
@@ -40,6 +41,7 @@ export interface PanelTabProps {
   secondaryAgent: string
   installedAgents: Record<string, boolean>
   agentModels: Record<string, string[]>
+  agentInventories: Record<string, AgentInventory>
   icons: IconConfig
   isLightTheme: boolean
   swarmInstalling: boolean
@@ -67,6 +69,7 @@ export interface PanelTabProps {
   onUpdateTaskSources: (sources: Partial<AgentSettings['taskSources']>) => void
   onConnectLinear: () => void
   onConnectGitHub: () => void
+  onSetAgentRunStrategy: (agentKey: string, enabled: boolean) => void
 }
 
 export function Rocker({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
@@ -103,6 +106,7 @@ export function PanelTab({
   secondaryAgent,
   installedAgents,
   agentModels,
+  agentInventories,
   icons,
   isLightTheme,
   swarmInstalling,
@@ -130,6 +134,7 @@ export function PanelTab({
   onUpdateTaskSources,
   onConnectLinear,
   onConnectGitHub,
+  onSetAgentRunStrategy,
 }: PanelTabProps) {
   const skillCommands = skillsStatus?.commands ?? []
   const display = settings.display
@@ -137,6 +142,8 @@ export function PanelTab({
   const editor = settings.editor ?? DEFAULT_EDITOR_PREFERENCES
   const primaryKey = AGENT_TITLE_TO_KEY[defaultAgent] || 'claude'
   const secondaryKey = AGENT_TITLE_TO_KEY[secondaryAgent] || 'codex'
+  const primaryInventory = agentInventories[primaryKey]
+  const secondaryInventory = agentInventories[secondaryKey]
   const previewPrefix = 'CX'
   const previewSessionChunk = 'a1b2c3d4'
   const previewAutoLabel = display.autoLabelInTabTitles ? 'Agent Terminals' : null
@@ -340,10 +347,15 @@ export function PanelTab({
             shortcut="Cmd+Shift+A"
             meta={{
               model: (agentModels[primaryKey] || [])[0] || 'auto',
+              version: primaryInventory?.defaultVersion || undefined,
+              account: primaryInventory?.defaultAccount || undefined,
+              plan: primaryInventory?.defaultPlan || undefined,
               running: (runningCounts as Record<string, number>)[primaryKey] ?? 0,
               skillsInstalled: primaryKey !== 'opencode' ? getSkillSummary(primaryKey as any).installed : undefined,
               skillsTotal: primaryKey !== 'opencode' ? getSkillSummary(primaryKey as any).total : undefined,
             }}
+            inventory={primaryInventory}
+            onToggleRotation={primaryInventory?.canRotate ? (enabled) => onSetAgentRunStrategy(primaryKey, enabled) : undefined}
           />
           <AgentDial
             title="Secondary Agent"
@@ -359,10 +371,15 @@ export function PanelTab({
             shortcut="Cmd+Shift+B"
             meta={{
               model: (agentModels[secondaryKey] || [])[0] || 'auto',
+              version: secondaryInventory?.defaultVersion || undefined,
+              account: secondaryInventory?.defaultAccount || undefined,
+              plan: secondaryInventory?.defaultPlan || undefined,
               running: (runningCounts as Record<string, number>)[secondaryKey] ?? 0,
               skillsInstalled: secondaryKey !== 'opencode' ? getSkillSummary(secondaryKey as any).installed : undefined,
               skillsTotal: secondaryKey !== 'opencode' ? getSkillSummary(secondaryKey as any).total : undefined,
             }}
+            inventory={secondaryInventory}
+            onToggleRotation={secondaryInventory?.canRotate ? (enabled) => onSetAgentRunStrategy(secondaryKey, enabled) : undefined}
           />
         </div>
       </div>

@@ -454,28 +454,34 @@ export async function findFileBySessionId(dir: string, sessionId: string, depth:
   return undefined;
 }
 
+export async function getClaudeProjectRoots(homeDir: string = homedir()): Promise<string[]> {
+  const roots: string[] = [path.join(homeDir, '.claude', 'projects')];
+  const versionHomes = [
+    path.join(homeDir, '.agents-system', 'versions', 'claude'),
+    path.join(homeDir, '.agents', 'versions', 'claude'),
+  ];
+  for (const versionsDir of versionHomes) {
+    const versions = await safeReaddir(versionsDir);
+    for (const ver of versions) {
+      if (!ver.isDirectory()) continue;
+      roots.push(path.join(versionsDir, ver.name, 'home', '.claude', 'projects'));
+    }
+  }
+  return roots;
+}
+
 export async function getSessionPathBySessionId(
   sessionId: string,
   agentType: 'claude' | 'codex' | 'gemini' | 'opencode' | 'cursor',
-  workspacePath?: string
+  workspacePath?: string,
+  homeDir: string = homedir(),
 ): Promise<string | undefined> {
   switch (agentType) {
     case 'claude': {
       // We know the exact filename: {sessionId}.jsonl
       // Just find it under ~/.claude/projects/*/ or shim paths
       const filename = `${sessionId}.jsonl`;
-
-      // Collect all possible roots
-      const roots: string[] = [path.join(homedir(), '.claude', 'projects')];
-
-      // Add shim-managed version roots: ~/.agents/versions/claude/*/home/.claude/projects/
-      const versionsDir = path.join(homedir(), '.agents', 'versions', 'claude');
-      const versions = await safeReaddir(versionsDir);
-      for (const ver of versions) {
-        if (!ver.isDirectory()) continue;
-        const shimRoot = path.join(versionsDir, ver.name, 'home', '.claude', 'projects');
-        roots.push(shimRoot);
-      }
+      const roots = await getClaudeProjectRoots(homeDir);
 
       // Search each root's project subdirectories for the file
       for (const root of roots) {

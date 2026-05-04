@@ -9,6 +9,7 @@ import {
   needsReplenishment,
   selectBestSession,
   buildResumeCommand,
+  buildVersionedResumeCommand,
   supportsPrewarming,
   PrewarmedSession,
 } from './prewarm';
@@ -269,6 +270,21 @@ describe('buildResumeCommand', () => {
       workingDirectory: '/test',
     };
     expect(buildResumeCommand(session)).toBe('cursor-agent --resume=874384ec-7236-4887-aa1c-f627754ce0c0');
+  });
+});
+
+describe('buildVersionedResumeCommand', () => {
+  test('pins Claude resume to the requested version', () => {
+    expect(buildVersionedResumeCommand('claude', 'abc123', '2.1.113')).toBe('claude@2.1.113 -r abc123');
+  });
+
+  test('leaves Claude unpinned when version is missing', () => {
+    expect(buildVersionedResumeCommand('claude', 'abc123')).toBe('claude -r abc123');
+  });
+
+  test('pins non-Claude resume commands too', () => {
+    expect(buildVersionedResumeCommand('codex', 'def456', '0.124.0')).toBe('codex@0.124.0 resume def456');
+    expect(buildVersionedResumeCommand('cursor', 'ghi789', '1.2.3')).toBe('cursor-agent@1.2.3 --resume=ghi789');
   });
 });
 

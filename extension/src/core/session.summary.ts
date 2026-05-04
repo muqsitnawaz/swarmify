@@ -22,6 +22,7 @@ export interface RecentToolCall {
 export interface SessionQuickDetails {
   summary: SessionQuickSummary;
   recentFiles: string[];
+  recentFileTimes: Record<string, number>;
   recentTools: string[];
   recentToolCalls: RecentToolCall[];
   lastFilePath: string | null;
@@ -37,6 +38,7 @@ type MutableSessionQuickSummary = {
   filesDeleted: Set<string>;
   recentChangedFiles: string[];
   recentTouchedFiles: string[];
+  recentFileTimes: Record<string, number>;
   recentTools: string[];
   recentToolCalls: RecentToolCall[];
   pendingToolCallById: Map<string, RecentToolCall>;
@@ -56,6 +58,7 @@ function initMutableSummary(): MutableSessionQuickSummary {
     filesDeleted: new Set<string>(),
     recentChangedFiles: [],
     recentTouchedFiles: [],
+    recentFileTimes: {},
     recentTools: [],
     recentToolCalls: [],
     pendingToolCallById: new Map<string, RecentToolCall>(),
@@ -66,6 +69,12 @@ function initMutableSummary(): MutableSessionQuickSummary {
     maxWebSearchesFromUsage: 0,
     maxWebFetchesFromUsage: 0,
   };
+}
+
+function parseTimestampMs(ts?: string): number | undefined {
+  if (!ts) return undefined;
+  const ms = new Date(ts).getTime();
+  return isNaN(ms) ? undefined : ms;
 }
 
 function truncateOutput(text: string): string {
@@ -165,6 +174,47 @@ function pathFromArgs(args: Record<string, unknown>): string {
   return toStringValue(args.target_file);
 }
 
+function parsePatchPaths(input: unknown): Array<{ kind: 'create' | 'write' | 'delete'; path: string }> {
+  let patchText = '';
+  if (typeof input === 'string') {
+    patchText = input;
+  } else {
+    const rec = toRecord(input);
+    if (rec) {
+      patchText =
+        toStringValue(rec.patch) ||
+        toStringValue(rec.input) ||
+        toStringValue(rec.text) ||
+        toStringValue(rec.content);
+    }
+  }
+  if (!patchText) return [];
+
+  const changes: Array<{ kind: 'create' | 'write' | 'delete'; path: string }> = [];
+  for (const line of patchText.split(/\r?\n/)) {
+    if (line.startsWith('*** Add File: ')) {
+      const path = line.slice('*** Add File: '.length).trim();
+      if (path) changes.push({ kind: 'create', path });
+      continue;
+    }
+    if (line.startsWith('*** Update File: ')) {
+      const path = line.slice('*** Update File: '.length).trim();
+      if (path) changes.push({ kind: 'write', path });
+      continue;
+    }
+    if (line.startsWith('*** Delete File: ')) {
+      const path = line.slice('*** Delete File: '.length).trim();
+      if (path) changes.push({ kind: 'delete', path });
+      continue;
+    }
+    if (line.startsWith('*** Move to: ')) {
+      const path = line.slice('*** Move to: '.length).trim();
+      if (path) changes.push({ kind: 'write', path });
+    }
+  }
+  return changes;
+}
+
 function lower(value: string): string {
   return value.toLowerCase();
 }
@@ -204,38 +254,47 @@ function addToolCounters(summary: MutableSessionQuickSummary, toolName: string):
   }
 }
 
-function addFileWrite(summary: MutableSessionQuickSummary, filePath: string): void {
+function recordFileTime(summary: MutableSessionQuickSummary, filePath: string, tsMs?: number): void {
+  if (tsMs !== undefined) summary.recentFileTimes[filePath] = tsMs;
+}
+
+function addFileWrite(summary: MutableSessionQuickSummary, filePath: string, tsMs?: number): void {
   if (!filePath) return;
   summary.filesEdited.add(filePath);
   addRecentUnique(summary.recentChangedFiles, filePath);
   addRecentUnique(summary.recentTouchedFiles, filePath);
+  recordFileTime(summary, filePath, tsMs);
 }
 
-function addFileRead(summary: MutableSessionQuickSummary, filePath: string): void {
+function addFileRead(summary: MutableSessionQuickSummary, filePath: string, tsMs?: number): void {
   if (!filePath) return;
   summary.filesRead.add(filePath);
   addRecentUnique(summary.recentTouchedFiles, filePath);
+  recordFileTime(summary, filePath, tsMs);
 }
 
-function addFileCreate(summary: MutableSessionQuickSummary, filePath: string): void {
+function addFileCreate(summary: MutableSessionQuickSummary, filePath: string, tsMs?: number): void {
   if (!filePath) return;
   summary.filesCreated.add(filePath);
   summary.filesEdited.add(filePath);
   addRecentUnique(summary.recentChangedFiles, filePath);
   addRecentUnique(summary.recentTouchedFiles, filePath);
+  recordFileTime(summary, filePath, tsMs);
 }
 
-function addFileDelete(summary: MutableSessionQuickSummary, filePath: string): void {
+function addFileDelete(summary: MutableSessionQuickSummary, filePath: string, tsMs?: number): void {
   if (!filePath) return;
   summary.filesDeleted.add(filePath);
   summary.filesEdited.add(filePath);
   addRecentUnique(summary.recentChangedFiles, filePath);
   addRecentUnique(summary.recentTouchedFiles, filePath);
+  recordFileTime(summary, filePath, tsMs);
 }
 
 function applyClaudeEvent(summary: MutableSessionQuickSummary, event: Record<string, unknown>): void {
   const eventType = toStringValue(event.type);
   const eventTimestamp = toStringValue(event.timestamp) || undefined;
+  const tsMs = parseTimestampMs(eventTimestamp);
 
   if (eventType === 'assistant') {
     const message = toRecord(event.message);
@@ -258,17 +317,17 @@ function applyClaudeEvent(summary: MutableSessionQuickSummary, event: Record<str
       );
 
       if (toolName === 'Read' || toolName === 'Glob' || toolName === 'Grep') {
-        addFileRead(summary, pathFromArgs(toolInput));
+        addFileRead(summary, pathFromArgs(toolInput), tsMs);
         continue;
       }
 
       if (toolName === 'Edit' || toolName === 'Write' || toolName === 'NotebookEdit') {
-        addFileWrite(summary, pathFromArgs(toolInput));
+        addFileWrite(summary, pathFromArgs(toolInput), tsMs);
         continue;
       }
 
       if (toolName === 'Delete') {
-        addFileDelete(summary, pathFromArgs(toolInput));
+        addFileDelete(summary, pathFromArgs(toolInput), tsMs);
       }
     }
 
@@ -296,16 +355,16 @@ function applyClaudeEvent(summary: MutableSessionQuickSummary, event: Record<str
     const resultType = toStringValue(toolUseResult.type);
     const resultPath = toStringValue(toolUseResult.filePath);
     if (resultType === 'create' && resultPath) {
-      addFileCreate(summary, resultPath);
+      addFileCreate(summary, resultPath, tsMs);
     } else if (resultType === 'delete' && resultPath) {
-      addFileDelete(summary, resultPath);
+      addFileDelete(summary, resultPath, tsMs);
     }
 
     const file = toRecord(toolUseResult.file);
     if (file) {
       const readPath = toStringValue(file.filePath);
       if (readPath) {
-        addFileRead(summary, readPath);
+        addFileRead(summary, readPath, tsMs);
       }
     }
 
@@ -336,28 +395,38 @@ function applyCodexToolCall(
 ): void {
   const name = lower(toolName);
   const filePath = pathFromArgs(args);
+  const tsMs = parseTimestampMs(timestamp);
 
   summary.toolCalls++;
   addToolCounters(summary, toolName);
   pushToolCall(summary, { name: toolName, input: args, timestamp }, callId);
 
   if (name === 'create_file') {
-    addFileCreate(summary, filePath);
+    addFileCreate(summary, filePath, tsMs);
+    return;
+  }
+
+  if (name === 'apply_patch') {
+    for (const change of parsePatchPaths(args)) {
+      if (change.kind === 'create') addFileCreate(summary, change.path, tsMs);
+      else if (change.kind === 'delete') addFileDelete(summary, change.path, tsMs);
+      else addFileWrite(summary, change.path, tsMs);
+    }
     return;
   }
 
   if (name === 'write_file' || name === 'edit_file' || name === 'apply_diff') {
-    addFileWrite(summary, filePath);
+    addFileWrite(summary, filePath, tsMs);
     return;
   }
 
   if (name === 'read_file' || name === 'view_file') {
-    addFileRead(summary, filePath);
+    addFileRead(summary, filePath, tsMs);
     return;
   }
 
   if (name === 'delete_file' || name === 'remove_file') {
-    addFileDelete(summary, filePath);
+    addFileDelete(summary, filePath, tsMs);
   }
 }
 
@@ -387,6 +456,25 @@ function applyCodexEvent(summary: MutableSessionQuickSummary, event: Record<stri
     const output = stringifyToolResultContent(payload.output);
     const isError = payload.success === false;
     attachToolResult(summary, callId, output, isError);
+    return;
+  }
+
+  if (payloadType === 'custom_tool_call') {
+    const toolName = toStringValue(payload.name);
+    if (!toolName) return;
+    const tsMs = parseTimestampMs(eventTimestamp);
+    const callId = toStringValue(payload.call_id) || toStringValue(payload.id) || undefined;
+    summary.toolCalls++;
+    addToolCounters(summary, toolName);
+    pushToolCall(summary, { name: toolName, input: payload.input, timestamp: eventTimestamp }, callId);
+
+    if (lower(toolName) === 'apply_patch') {
+      for (const change of parsePatchPaths(payload.input)) {
+        if (change.kind === 'create') addFileCreate(summary, change.path, tsMs);
+        else if (change.kind === 'delete') addFileDelete(summary, change.path, tsMs);
+        else addFileWrite(summary, change.path, tsMs);
+      }
+    }
     return;
   }
 
@@ -420,6 +508,7 @@ function applyGeminiEvent(summary: MutableSessionQuickSummary, event: Record<str
   const name = lower(toolName);
   const filePath = pathFromArgs(args);
   const callId = toStringValue(event.tool_call_id) || toStringValue(event.id) || undefined;
+  const tsMs = parseTimestampMs(eventTimestamp);
 
   summary.toolCalls++;
   addToolCounters(summary, toolName);
@@ -434,22 +523,22 @@ function applyGeminiEvent(summary: MutableSessionQuickSummary, event: Record<str
     name === 'update_file' ||
     name === 'modify_file'
   ) {
-    addFileWrite(summary, filePath);
+    addFileWrite(summary, filePath, tsMs);
     return;
   }
 
   if (name === 'create_file') {
-    addFileCreate(summary, filePath);
+    addFileCreate(summary, filePath, tsMs);
     return;
   }
 
   if (name === 'read_file' || name === 'view_file' || name === 'cat_file' || name === 'get_file') {
-    addFileRead(summary, filePath);
+    addFileRead(summary, filePath, tsMs);
     return;
   }
 
   if (name === 'delete_file' || name === 'remove_file' || name === 'rm_file') {
-    addFileDelete(summary, filePath);
+    addFileDelete(summary, filePath, tsMs);
   }
 }
 
@@ -491,6 +580,7 @@ export function extractSessionQuickDetails(
     return {
       summary: toQuickSummary(summary),
       recentFiles: [],
+      recentFileTimes: {},
       recentTools: [],
       recentToolCalls: [],
       lastFilePath: null,
@@ -518,6 +608,7 @@ export function extractSessionQuickDetails(
   return {
     summary: toQuickSummary(summary),
     recentFiles,
+    recentFileTimes: summary.recentFileTimes,
     recentTools: summary.recentTools.slice(0, 32),
     recentToolCalls: summary.recentToolCalls.slice(0, MAX_RECENT_TOOL_CALLS),
     lastFilePath: recentFilesSource[0] || null,

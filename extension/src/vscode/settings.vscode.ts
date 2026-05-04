@@ -18,11 +18,13 @@ import { CLAUDE_TITLE } from '../core/utils';
 import { discoverRecentSessions, getSessionPathBySessionId } from './sessions.vscode';
 import { formatTerminalTitle, parseTerminalName, getSessionChunk } from '../core/utils';
 import { getBuiltInByKey } from '../core/agents';
+import { parseEvents } from '../core/watchdogLog';
 import * as prewarm from './prewarm.vscode';
 import * as workspaceConfig from './swarmifyConfig.vscode';
 import { createSymlinksCodebaseWide } from './agentlinks.vscode';
 import { scanMemoryFiles } from './contextFiles';
 import { fetchAllAgentModels, checkInstalledAgentsViaCli, resolveAlias } from '../core/agentModels';
+import { fetchAgentInventories, writeAgentRunStrategy, AgentRunStrategy } from '../core/agentInventory';
 import * as workbench from './workbench.vscode';
 import * as theme from './theme.vscode';
 import { buildAgentTerminalEnv } from '../core/terminals';
@@ -868,10 +870,11 @@ export function openPanel(context: vscode.ExtensionContext): void {
     });
 
     // PHASE 2: Fetch heavy data in parallel, send when ready
-    const [swarmStatus, skillsStatus, githubRepo] = await Promise.all([
+    const [swarmStatus, skillsStatus, githubRepo, agentInventories] = await Promise.all([
       swarm.getSwarmStatus(),
       swarm.getSkillsStatus(),
       workspacePath ? getGitHubRepo(workspacePath) : Promise.resolve(null),
+      fetchAgentInventories(['claude', 'codex', 'gemini', 'opencode', 'cursor']),
     ]);
 
     if (!settingsPanel) return; // Panel may have closed during fetch
@@ -880,6 +883,10 @@ export function openPanel(context: vscode.ExtensionContext): void {
       swarmStatus,
       skillsStatus,
       githubRepo,
+    });
+    settingsPanel.webview.postMessage({
+      type: 'agentInventoriesData',
+      agentInventories,
     });
 
     // Keep top-card counts aligned with open terminal cards in dashboard
@@ -1051,6 +1058,17 @@ export function openPanel(context: vscode.ExtensionContext): void {
           agentModels
         });
         break;
+      case 'setAgentRunStrategy': {
+        const nextAgentKey = typeof message.agentKey === 'string' ? message.agentKey : '';
+        const nextStrategy = message.strategy as AgentRunStrategy;
+        if (!nextAgentKey) break;
+        writeAgentRunStrategy(nextAgentKey, nextStrategy);
+        settingsPanel?.webview.postMessage({
+          type: 'agentInventoriesData',
+          agentInventories: await fetchAgentInventories(['claude', 'codex', 'gemini', 'opencode', 'cursor']),
+        });
+        break;
+      }
       case 'getDefaultAgent':
         const defaultAgent = context.globalState.get<string>('agents.defaultAgentTitle', 'CC');
         settingsPanel?.webview.postMessage({
@@ -1483,15 +1501,9 @@ export function openPanel(context: vscode.ExtensionContext): void {
         break;
       case 'fetchAllTerminals': {
         const allWs = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        const allTypes = ['claude', 'codex', 'gemini', 'opencode', 'cursor'];
-        const allTerminalDetails = [] as Awaited<ReturnType<typeof terminals.getTerminalsByAgentType>>;
-        for (const t of allTypes) {
-          const details = await terminals.getTerminalsByAgentType(t, allWs);
-          allTerminalDetails.push(...details);
-        }
         settingsPanel?.webview.postMessage({
           type: 'allTerminalsData',
-          terminals: allTerminalDetails,
+          terminals: await terminals.getFloorTerminalDetails(allWs),
         });
         break;
       }
@@ -1526,6 +1538,16 @@ export function openPanel(context: vscode.ExtensionContext): void {
         const next = !!message.value;
         await vscode.workspace.getConfiguration('agents.watchdog').update('enabled', next, vscode.ConfigurationTarget.Global);
         settingsPanel?.webview.postMessage({ type: 'watchdogStatus', enabled: next });
+        break;
+      }
+      case 'getWatchdogLog': {
+        const logPath = path.join(homedir(), '.agents', 'watchdog.log');
+        try {
+          const text = fs.readFileSync(logPath, 'utf8');
+          settingsPanel?.webview.postMessage({ type: 'watchdogLogData', events: parseEvents(text) });
+        } catch {
+          settingsPanel?.webview.postMessage({ type: 'watchdogLogData', events: [] });
+        }
         break;
       }
       case 'retrySwarm':
@@ -1648,15 +1670,9 @@ export function openPanel(context: vscode.ExtensionContext): void {
 
         // Push updated allTerminals and tasks for Floor tab
         if (settingsPanel) {
-          const allTypes = ['claude', 'codex', 'gemini', 'opencode', 'cursor'];
-          const allTerminalDetails: Awaited<ReturnType<typeof terminals.getTerminalsByAgentType>> = [];
-          for (const t of allTypes) {
-            const details = await terminals.getTerminalsByAgentType(t, wsPath);
-            allTerminalDetails.push(...details);
-          }
           settingsPanel?.webview.postMessage({
             type: 'allTerminalsData',
-            terminals: allTerminalDetails,
+            terminals: await terminals.getFloorTerminalDetails(wsPath),
           });
 
           const updatedTasks = await swarm.fetchTasks(undefined, wsPath);
