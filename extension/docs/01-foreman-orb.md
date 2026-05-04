@@ -388,7 +388,7 @@ Codium can all be open). The registry solves this with a shared JSON file.
 ```
 foreman.registry.ts:1-15
 ------------------------
-~/.agents/swarmify/live-terminals.json
+~/.agents/terminals/live-terminals.json
 { <windowId>: { at: ISO_timestamp, entries: LiveTerminal[] } }
 ```
 

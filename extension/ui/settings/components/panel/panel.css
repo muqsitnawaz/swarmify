@@ -234,6 +234,51 @@
   flex: 1;
 }
 
+.sw-dial-inventory {
+  display: grid;
+  gap: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--ds-border-subtle);
+  margin-top: 2px;
+}
+
+.sw-dial-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sw-dial-toggle-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sw-dial-version-list {
+  display: grid;
+  gap: 5px;
+}
+
+.sw-dial-version-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.sw-dial-version-left,
+.sw-dial-version-right {
+  display: grid;
+  gap: 2px;
+}
+
+.sw-dial-version-right {
+  justify-items: end;
+}
+
 /* VU meter -- horizontal segmented bar */
 .sw-vu-bar {
   display: flex;

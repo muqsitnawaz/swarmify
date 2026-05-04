@@ -1,4 +1,5 @@
 import React from 'react'
+import type { AgentInventory } from '../../types'
 
 export interface AgentDialOption {
   key: string
@@ -26,6 +27,8 @@ interface AgentDialProps {
   onChange: (key: string) => void
   meta?: AgentDialMeta
   shortcut?: string
+  inventory?: AgentInventory
+  onToggleRotation?: (enabled: boolean) => void
 }
 
 function MiniVU({ level, max = 8 }: { level: number; max?: number }) {
@@ -42,7 +45,14 @@ function MiniVU({ level, max = 8 }: { level: number; max?: number }) {
   return <div className="sw-vu-bar">{segments}</div>
 }
 
-export function AgentDial({ title, value, options, onChange, meta, shortcut }: AgentDialProps) {
+function usageLabel(status: AgentInventory['versions'][number]['usageStatus']): string {
+  if (status === 'available') return 'Healthy'
+  if (status === 'rate_limited') return 'Rate limited'
+  if (status === 'out_of_credits') return 'Out of credits'
+  return 'Unknown'
+}
+
+export function AgentDial({ title, value, options, onChange, meta, shortcut, inventory, onToggleRotation }: AgentDialProps) {
   const selected = options.find(option => option.key === value) ?? options[0]
   const selectedIndex = options.findIndex(option => option.key === value)
   const pointerAngle = selectedIndex >= 0 ? -90 + (360 / options.length) * selectedIndex : -90
@@ -126,6 +136,60 @@ export function AgentDial({ title, value, options, onChange, meta, shortcut }: A
               </div>
             )}
           </div>
+          {inventory && (
+            <div className="sw-dial-inventory">
+              <div className="sw-dial-deck-row">
+                <span className="sw-dial-deck-label">Route</span>
+                <span className="sw-dial-deck-value">
+                  {inventory.strategy === 'rotate' ? 'Rotate healthy accounts' : inventory.strategy}
+                </span>
+              </div>
+              <div className="sw-dial-deck-row">
+                <span className="sw-dial-deck-label">Accounts</span>
+                <span className="sw-dial-deck-value">
+                  {inventory.signedInCount} signed in, {inventory.healthyCount} healthy
+                </span>
+              </div>
+              {inventory.canRotate && onToggleRotation && (
+                <div className="sw-dial-toggle-row">
+                  <span className="sw-dial-deck-label">Rotation</span>
+                  <div className="sw-dial-toggle-wrap">
+                    <span className="sw-dial-deck-value">
+                      {inventory.strategy === 'rotate' ? 'On' : 'Off'}
+                    </span>
+                    <button
+                      type="button"
+                      className="toggle-switch"
+                      data-state={inventory.strategy === 'rotate' ? 'on' : 'off'}
+                      role="switch"
+                      aria-checked={inventory.strategy === 'rotate'}
+                      onClick={() => onToggleRotation(inventory.strategy !== 'rotate')}
+                    >
+                      <span className="toggle-knob" />
+                    </button>
+                  </div>
+                </div>
+              )}
+              <div className="sw-dial-version-list">
+                {inventory.versions.slice(0, 4).map((version) => (
+                  <div key={version.version} className="sw-dial-version-line">
+                    <div className="sw-dial-version-left">
+                      <span className="sw-dial-deck-value">
+                        {version.version}{version.isDefault ? ' default' : ''}
+                      </span>
+                      <span className="sw-dial-deck-label">
+                        {version.email || 'Signed out'}
+                      </span>
+                    </div>
+                    <div className="sw-dial-version-right">
+                      <span className="sw-dial-deck-value">{usageLabel(version.usageStatus)}</span>
+                      <span className="sw-dial-deck-label">{version.sessionUsedPercent}% used</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

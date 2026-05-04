@@ -3,7 +3,7 @@
   "displayName": "Agents",
   "publisher": "swarmify",
   "description": "Turn your IDE into an Integrated Agents Environment. Run Claude, Codex, Gemini, and Cursor at scale with keyboard-first navigation.",
-  "version": "0.8.90",
+  "version": "0.8.96",
   "license": "MIT",
   "author": "Muqsit Nawaz <dev@muqsitnawaz.com>",
   "icon": "assets/agents.png",
@@ -357,6 +357,11 @@
           "type": "number",
           "default": 60,
           "description": "How often the watchdog evaluates terminals."
+        },
+        "agents.watchdog.useSmartAgent": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use context-aware watchdog agent with access to mq, linear, and full session history. When enabled, the watchdog can read project conventions and make smarter nudge decisions."
         }
       }
     },

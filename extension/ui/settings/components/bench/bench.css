@@ -36,8 +36,32 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  flex: 1;
-  min-width: 0;
+  flex-shrink: 0;
+}
+
+.sw-bench-filter-select {
+  font-family: "Geist Mono", monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 3px 20px 3px 6px;
+  color: var(--ds-text-muted);
+  background: var(--ds-bg-recessed);
+  border: 1px solid var(--ds-border);
+  border-radius: 3px;
+  box-shadow: var(--shadow-inset);
+  cursor: pointer;
+  max-width: 130px;
+  text-overflow: ellipsis;
+}
+
+.sw-bench-filter-select:hover {
+  color: var(--ds-text);
+}
+
+.sw-bench-filter-select:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 1px;
 }
 
 .sw-bench-list-body {

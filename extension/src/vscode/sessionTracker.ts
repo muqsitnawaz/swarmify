@@ -212,11 +212,12 @@ async function processNewFile(file: string, agentType: TrackedAgentType): Promis
 
   if (agentType === 'codex') {
     const candidates = [...tracked.values()].filter(t => t.agentType === 'codex');
-    const match = candidates.find(t => t.workspacePath === parsed.codexCwd);
-    if (!match && !parsed.codexCwd) return;
-    if (match && (!match.sessionId || match.sessionId === newId)) {
-      applyChange(match, newId, file);
-      return;
+    if (parsed.codexCwd) {
+      const match = candidates.find(t => t.workspacePath === parsed.codexCwd);
+      if (match && (!match.sessionId || match.sessionId === newId)) {
+        applyChange(match, newId, file);
+        return;
+      }
     }
   }
 
@@ -299,6 +300,61 @@ function applyChange(t: TrackedTerminal, newId: string, file: string): void {
   }
 }
 
+function isSessionIdAlreadyTracked(
+  agentType: TrackedAgentType,
+  sessionId: string,
+  exclude?: vscode.Terminal,
+): boolean {
+  for (const t of tracked.values()) {
+    if (exclude && t.terminal === exclude) continue;
+    if (t.agentType !== agentType) continue;
+    if (t.sessionId === sessionId) return true;
+  }
+  return false;
+}
+
+async function adoptExistingCodexSession(t: TrackedTerminal): Promise<void> {
+  if (t.agentType !== 'codex' || t.sessionId) return;
+
+  const roots = rootsFor(t);
+  for (const root of roots) {
+    if (!fs.existsSync(root)) continue;
+
+    let files: Array<{ file: string; mtimeMs: number }> = [];
+    try {
+      const entries = await fs.promises.readdir(root, { withFileTypes: true });
+      const jsonlFiles = entries
+        .filter((e) => e.isFile() && e.name.endsWith('.jsonl'))
+        .map((e) => path.join(root, e.name));
+      const stats = await Promise.all(
+        jsonlFiles.map(async (file) => {
+          try {
+            const stat = await fs.promises.stat(file);
+            return { file, mtimeMs: stat.mtimeMs };
+          } catch {
+            return null;
+          }
+        }),
+      );
+      files = stats.filter((v): v is { file: string; mtimeMs: number } => v !== null);
+    } catch {
+      continue;
+    }
+
+    files.sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+    for (const candidate of files.slice(0, 120)) {
+      const candidateId = sessionIdFromFile(candidate.file);
+      if (isSessionIdAlreadyTracked('codex', candidateId, t.terminal)) continue;
+
+      const parsed = await parseHead(candidate.file, 'codex');
+      if (parsed.codexCwd !== t.workspacePath) continue;
+      applyChange(t, candidateId, candidate.file);
+      return;
+    }
+  }
+}
+
 export function initSessionTracker(context: vscode.ExtensionContext): void {
   if (initialized) return;
   initialized = true;
@@ -358,6 +414,13 @@ export function registerTerminal(
   for (const root of rootsFor(entry)) {
     mountWatcher(root, agentType);
   }
+
+  // VS Code may restore terminals without AGENT_SESSION_ID in env. For
+  // Codex, recover immediately by scanning today's rollout files for this cwd
+  // instead of waiting for a brand-new file rename event.
+  if (!currentSessionId && agentType === 'codex') {
+    void adoptExistingCodexSession(entry);
+  }
 }
 
 export function unregisterTerminal(terminal: vscode.Terminal): void {
@@ -412,4 +475,7 @@ export function __testRegister(
   };
   tracked.set(terminal, entry);
   for (const root of rootDirs) mountWatcher(root, agentType);
+  if (!currentSessionId && agentType === 'codex') {
+    void adoptExistingCodexSession(entry);
+  }
 }

@@ -13,6 +13,7 @@ import { AgentSettings, hasLoginEnabled, PromptEntry } from '../core/settings';
 import * as settings from './settings.vscode';
 import * as swarm from './swarm.vscode';
 import { startWatchdog } from './watchdog.vscode';
+import { startWatchdogBridge } from '../mcp/watchdog-bridge';
 import * as notifications from './notifications.vscode';
 import * as terminals from './terminals.vscode';
 import * as sessionTracker from './sessionTracker';
@@ -74,7 +75,8 @@ import { DEFAULT_DISPLAY_PREFERENCES } from '../core/settings';
 import * as prewarm from './prewarm.vscode';
 import * as readiness from './terminalReadiness';
 import { resolveAlias, isAgentInstalled } from '../core/agentModels';
-import { supportsPrewarming, buildResumeCommand, PREWARM_CONFIGS, PrewarmAgentType } from '../core/prewarm';
+import { readAgentRunStrategy } from '../core/agentInventory';
+import { supportsPrewarming, buildResumeCommand, buildVersionedResumeCommand, PREWARM_CONFIGS, PrewarmAgentType } from '../core/prewarm';
 import { needsPrewarming, generateClaudeSessionId, buildClaudeOpenCommand, listOpencodeSessions } from '../core/prewarm.simple';
 import { getSessionPathBySessionId, getSessionPreviewInfo, getOpenCodeSessionPreviewInfo, getCursorSessionPreviewInfo } from './sessions.vscode';
 import * as tasksImport from './tasks.vscode';
@@ -88,6 +90,9 @@ let agentStatusBarItem: vscode.StatusBarItem | undefined;
 let defaultAgentTitle: string = CLAUDE_TITLE;
 let secondaryAgentTitle: string = CODEX_TITLE;
 let lastFocusedTerminal: vscode.Terminal | null = null;
+const STATUS_BAR_AGENTS_VIEW_TTL_MS = 30_000;
+const agentsViewCache = new Map<PrewarmAgentType, { fetchedAtMs: number; data: AgentsViewJsonAgent | null }>();
+const statusBarMetaInFlight = new Set<string>();
 
 // BUILT_IN_AGENTS is now imported from ./agents
 
@@ -118,6 +123,29 @@ function buildTerminalTitle(
   const display = getDisplayPrefs(context);
   const sessionChunk = display.showSessionIdInTitles ? getSessionChunk(sessionId || undefined) : null;
   return formatTerminalTitle(prefix, { label: label || undefined, display, sessionChunk, isFocused });
+}
+
+function buildClaudeLaunchCommand(
+  context: vscode.ExtensionContext,
+  sessionId: string,
+  defaultModel?: string,
+  additionalFlags?: string,
+): string {
+  const strategy = readAgentRunStrategy('claude');
+  let command = buildClaudeOpenCommand(sessionId);
+  if (strategy === 'rotate') {
+    command = `agents run claude --interactive --rotate --session-id ${sessionId}`;
+  } else if (strategy !== 'pinned') {
+    command = `agents run claude --interactive --strategy ${strategy} --session-id ${sessionId}`;
+  }
+
+  if (defaultModel && (!additionalFlags || !additionalFlags.includes('--model'))) {
+    command += ` --model ${defaultModel}`;
+  }
+  if (additionalFlags?.trim()) {
+    command += ` ${additionalFlags.trim()}`;
+  }
+  return command;
 }
 
 // Terminal readiness detection moved to src/vscode/terminalReadiness.ts.
@@ -515,6 +543,7 @@ export async function activate(context: vscode.ExtensionContext) {
   sessionTracker.initSessionTracker(context);
   sessionTracker.onSessionChanged((terminal, _oldId, newId) => {
     terminals.setSessionId(terminal, newId);
+    startAutoLabelPollerForTerminal(terminal, context);
     updateStatusBarForTerminal(terminal, context.extensionPath);
   });
 
@@ -583,11 +612,16 @@ export async function activate(context: vscode.ExtensionContext) {
       terminals.register(terminal, id, agentConfig, pid, context, info.label || undefined);
       readiness.registerTerminal(terminal, { restored: true });
 
+      const agentType = prefixToAgentType(info.prefix);
+      if (agentType) {
+        // Register the agent type even when sessionId is missing so
+        // sessionTracker can adopt a fresh session file later.
+        terminals.setAgentType(terminal, agentType);
+      }
+
       if (identOpts.sessionId) {
         terminals.setSessionId(terminal, identOpts.sessionId);
-        const agentType = prefixToAgentType(info.prefix);
         if (agentType) {
-          terminals.setAgentType(terminal, agentType);
           startAutoLabelPollerForTerminal(terminal, context);
         }
       }
@@ -595,6 +629,10 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   registerTmuxCleanup(context);
+
+  // Start watchdog MCP bridge for smart agent mode
+  const watchdogBridge = startWatchdogBridge(context);
+  context.subscriptions.push(watchdogBridge);
 
   context.subscriptions.push(
     startWatchdog(context, {
@@ -604,6 +642,7 @@ export async function activate(context: vscode.ExtensionContext) {
           focusNewTerminal: false,
           notifyOnFailure: false,
         }),
+      mcpServerPath: watchdogBridge.mcpServerPath,
     })
   );
 
@@ -1099,6 +1138,8 @@ export async function activate(context: vscode.ExtensionContext) {
           sessionId: entry.sessionId,
           label: entry.label,
           agentType: entry.agentType,
+          version: entry.version,
+          account: entry.account || entry.statusAccount || undefined,
           agentConfig: entry.agentConfig,
           closedAt: Date.now()
         });
@@ -1226,16 +1267,14 @@ async function openSingleAgent(
   // Build command with default model if configured
   const builtInDef = getBuiltInDefByTitle(agentConfig.title);
   const agentKey = builtInDef?.key as keyof AgentSettings['builtIn'] | undefined;
+  const defaultModel = agentKey && (!additionalFlags || !additionalFlags.includes('--model'))
+    ? settings.getDefaultModel(context, agentKey)
+    : undefined;
   let command = agentConfig.command || '';
   if (command) {
-    // Only add default model if no explicit --model in additional flags
-    if (agentKey && (!additionalFlags || !additionalFlags.includes('--model'))) {
-      const defaultModel = settings.getDefaultModel(context, agentKey);
-      if (defaultModel) {
-        command = `${command} --model ${defaultModel}`;
-      }
+    if (defaultModel) {
+      command = `${command} --model ${defaultModel}`;
     }
-    // Append additional flags from alias
     if (additionalFlags) {
       command = `${command} ${additionalFlags}`;
     }
@@ -1253,19 +1292,20 @@ async function openSingleAgent(
     opencodeSessionsBefore = await listOpencodeSessions(cwd);
   }
 
-  if (agentKey && supportsPrewarming(agentKey) && !additionalFlags) {
+  if (agentKey && supportsPrewarming(agentKey)) {
     if (agentKey === 'claude') {
-      // Claude: Generate session ID at open time, no prewarming needed
+      // Claude: Generate session ID at open time and route through agents-cli
+      // when rotation or availability strategy is enabled.
       sessionId = generateClaudeSessionId();
-      command = buildClaudeOpenCommand(sessionId);
-      usePrewarmed = true; // For tracking purposes
+      command = buildClaudeLaunchCommand(context, sessionId, defaultModel, additionalFlags);
+      usePrewarmed = true;
       console.log(`[PREWARM] Claude using on-demand session ID: ${sessionId}`);
-    } else if (agentKey === 'opencode') {
+    } else if (agentKey === 'opencode' && !additionalFlags) {
       // OpenCode: Session ID will be detected after spawn
       // Just mark as using session tracking
       usePrewarmed = true;
       console.log(`[PREWARM] OpenCode session ID will be detected after spawn`);
-    } else if (needsPrewarming(agentKey)) {
+    } else if (!additionalFlags && needsPrewarming(agentKey)) {
       // Codex/Gemini/Cursor: Use prewarmed session from pool
       prewarmedSession = prewarm.acquireSession(context, agentKey, cwd);
       if (prewarmedSession) {
@@ -1301,11 +1341,12 @@ async function openSingleAgent(
         : {});
     }
 
-    // Track session ID and agent type for all terminals (not just prewarmed)
+    if (agentKey && supportsPrewarming(agentKey)) {
+      terminals.setAgentType(terminal, agentKey);
+    }
     if (sessionId) {
       terminals.setSessionId(terminal, sessionId);
       if (agentKey && supportsPrewarming(agentKey)) {
-        terminals.setAgentType(terminal, agentKey);
         startAutoLabelPollerForTerminal(terminal, context);
       }
     }
@@ -1343,11 +1384,12 @@ async function openSingleAgent(
   terminals.register(terminal, terminalId, agentConfig, pid, context);
   readiness.registerTerminal(terminal);
 
-  // Track session ID and agent type for all terminals (not just prewarmed)
+  if (agentKey && supportsPrewarming(agentKey)) {
+    terminals.setAgentType(terminal, agentKey);
+  }
   if (sessionId) {
     terminals.setSessionId(terminal, sessionId);
     if (agentKey && supportsPrewarming(agentKey)) {
-      terminals.setAgentType(terminal, agentKey);
       startAutoLabelPollerForTerminal(terminal, context);
     }
   }
@@ -1820,19 +1862,6 @@ async function copySessionId() {
   vscode.window.setStatusBarMessage(`Session ID copied: ${terminalEntry.sessionId.slice(0, 8)}...`, 3000);
 }
 
-function buildVersionedResumeCommand(
-  agentType: PrewarmAgentType,
-  sessionId: string,
-  version?: string,
-): string {
-  const config = PREWARM_CONFIGS[agentType];
-  const baseCmd = config.resumeCommand(sessionId);
-  if (!version) return baseCmd;
-  const cmdName = config.command;
-  const prefix = new RegExp(`^${cmdName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
-  return baseCmd.replace(prefix, `${cmdName}@${version}`);
-}
-
 function agentKeyFromSession(agent: CliSessionItem['agent']): PrewarmAgentType | null {
   if (agent === 'claude' || agent === 'codex' || agent === 'gemini' ||
       agent === 'opencode' || agent === 'cursor') {
@@ -1884,7 +1913,7 @@ async function resumeSession(context: vscode.ExtensionContext) {
     iconPath: agentConfig.iconPath,
     location: { viewColumn: vscode.ViewColumn.Active },
     name: title,
-    env: buildAgentTerminalEnv(terminalId, session.id, workspacePath),
+    env: buildAgentTerminalEnv(terminalId, session.id, workspacePath, session.version),
     isTransient: true,
   });
 
@@ -1893,6 +1922,12 @@ async function resumeSession(context: vscode.ExtensionContext) {
   readiness.registerTerminal(terminal);
   terminals.setSessionId(terminal, session.id);
   terminals.setAgentType(terminal, agentKey);
+  if (session.version) {
+    terminals.setVersion(terminal, session.version);
+  }
+  if (session.account) {
+    terminals.setAccount(terminal, session.account);
+  }
   startAutoLabelPollerForTerminal(terminal, context);
 
   try {
@@ -1915,7 +1950,18 @@ async function resumeSession(context: vscode.ExtensionContext) {
   vscode.window.setStatusBarMessage(`Resuming ${agentKey}${session.version ? `@${session.version}` : ''} · ${session.shortId}`, 3000);
 }
 
-async function fetchAgentsViewJson(agentKey: PrewarmAgentType): Promise<AgentsViewJsonAgent | null> {
+async function fetchAgentsViewJson(
+  agentKey: PrewarmAgentType,
+  opts: { quiet?: boolean; useCache?: boolean } = {}
+): Promise<AgentsViewJsonAgent | null> {
+  const useCache = opts.useCache === true;
+  if (useCache) {
+    const cached = agentsViewCache.get(agentKey);
+    if (cached && Date.now() - cached.fetchedAtMs < STATUS_BAR_AGENTS_VIEW_TTL_MS) {
+      return cached.data;
+    }
+  }
+
   const { exec } = await import('child_process');
   const { promisify } = await import('util');
   const execAsync = promisify(exec);
@@ -1924,16 +1970,29 @@ async function fetchAgentsViewJson(agentKey: PrewarmAgentType): Promise<AgentsVi
       maxBuffer: 5 * 1024 * 1024,
     });
     const parsed = JSON.parse(stdout) as AgentsViewJsonAgent;
-    if (!parsed || !Array.isArray(parsed.versions)) return null;
+    if (!parsed || !Array.isArray(parsed.versions)) {
+      if (useCache) {
+        agentsViewCache.set(agentKey, { fetchedAtMs: Date.now(), data: null });
+      }
+      return null;
+    }
+    if (useCache) {
+      agentsViewCache.set(agentKey, { fetchedAtMs: Date.now(), data: parsed });
+    }
     return parsed;
   } catch (err: any) {
-    const msg = err?.stderr || err?.message || String(err);
-    if (msg.includes('unknown option') || msg.includes('--json')) {
-      vscode.window.showInformationMessage(
-        'Needs @swarmify/agents-cli >= 1.13.0. Run: npm i -g @swarmify/agents-cli'
-      );
-    } else {
-      vscode.window.showInformationMessage(`Failed to query agents view: ${msg.slice(0, 120)}`);
+    if (useCache) {
+      agentsViewCache.set(agentKey, { fetchedAtMs: Date.now(), data: null });
+    }
+    if (!opts.quiet) {
+      const msg = err?.stderr || err?.message || String(err);
+      if (msg.includes('unknown option') || msg.includes('--json')) {
+        vscode.window.showInformationMessage(
+          'Needs @swarmify/agents-cli >= 1.13.0. Run: npm i -g @swarmify/agents-cli'
+        );
+      } else {
+        vscode.window.showInformationMessage(`Failed to query agents view: ${msg.slice(0, 120)}`);
+      }
     }
     return null;
   }
@@ -2081,6 +2140,7 @@ export async function rotateTerminalToBestVersion(
   terminals.setSessionId(terminal, newSessionId);
   terminals.setAgentType(terminal, agentKey);
   terminals.setVersion(terminal, best.version);
+  terminals.setAccount(terminal, best.email);
   startAutoLabelPollerForTerminal(terminal, context);
 
   // /continue takes the OLD session id (the transcript we want to load),
@@ -2088,14 +2148,14 @@ export async function rotateTerminalToBestVersion(
   // Prefer the /continue slash command if it's synced to this version's
   // home; otherwise inline the full instructions.
   const versionHomeCommand = path.join(
-    os.homedir(), '.agents', 'versions', agentKey, best.version,
+    os.homedir(), '.agents-system', 'versions', agentKey, best.version,
     'home', '.claude', 'commands', 'continue.md'
   );
   const hasContinueCmd = fsSync.existsSync(versionHomeCommand);
 
   let centralContinueMdBody: string | null = null;
   if (!hasContinueCmd) {
-    const centralCommand = path.join(os.homedir(), '.agents', 'commands', 'continue.md');
+    const centralCommand = path.join(os.homedir(), '.agents-system', 'commands', 'continue.md');
     try {
       centralContinueMdBody = fsSync.readFileSync(centralCommand, 'utf-8');
     } catch {
@@ -2319,15 +2379,16 @@ export async function openSingleAgentWithQueue(
   // Determine agent key and handle session ID
   const builtInDef = getBuiltInByPrefix(agentConfig.prefix);
   const agentKey = builtInDef?.key as 'claude' | 'codex' | 'gemini' | 'opencode' | 'cursor' | undefined;
+  const defaultModel = agentKey ? settings.getDefaultModel(context, agentKey) : undefined;
 
   let command = agentConfig.command;
   let sessionId: string | null = null;
 
   if (agentKey && supportsPrewarming(agentKey)) {
     if (agentKey === 'claude') {
-      // Claude: Generate session ID at open time
+      // Claude: Generate session ID at open time and honor run strategy.
       sessionId = generateClaudeSessionId();
-      command = buildClaudeOpenCommand(sessionId);
+      command = buildClaudeLaunchCommand(context, sessionId, defaultModel);
     } else if (needsPrewarming(agentKey)) {
       // Codex/Gemini/Cursor: Use prewarmed session from pool
       const prewarmedSession = prewarm.acquireSession(context, agentKey, cwd);
@@ -2351,10 +2412,15 @@ export async function openSingleAgentWithQueue(
   terminals.register(terminal, terminalId, agentConfig, pid, context);
 
   // Track session ID and agent type
-  if (sessionId && agentKey && supportsPrewarming(agentKey)) {
-    terminals.setSessionId(terminal, sessionId);
+  if (agentKey && supportsPrewarming(agentKey)) {
+    // Set agent type unconditionally so the sessionTracker fs watcher can adopt
+    // a session id when the CLI writes a fresh rollout/jsonl (Codex 0.124+
+    // dropped session id from the TUI banner so this is the only signal).
     terminals.setAgentType(terminal, agentKey);
-    await prewarm.recordTerminalSession(context, terminalId, sessionId, agentKey, cwd);
+    if (sessionId) {
+      terminals.setSessionId(terminal, sessionId);
+      await prewarm.recordTerminalSession(context, terminalId, sessionId, agentKey, cwd);
+    }
   }
 
   // Pull focus from the webview so the terminal tab becomes the visible one.
@@ -2407,15 +2473,16 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
       // Determine agent key and handle session ID
       const builtInDef = getBuiltInByPrefix(agent.prefix);
       const agentKey = builtInDef?.key as 'claude' | 'codex' | 'gemini' | undefined;
+      const defaultModel = agentKey ? settings.getDefaultModel(context, agentKey) : undefined;
 
       let command = agent.command;
       let sessionId: string | null = null;
 
       if (agentKey && supportsPrewarming(agentKey)) {
         if (agentKey === 'claude') {
-          // Claude: Generate session ID at open time
+          // Claude: Generate session ID at open time and honor run strategy.
           sessionId = generateClaudeSessionId();
-          command = buildClaudeOpenCommand(sessionId);
+          command = buildClaudeLaunchCommand(context, sessionId, defaultModel);
           console.log(`[PREWARM] Auto-open Claude with session ID: ${sessionId}`);
         } else if (needsPrewarming(agentKey)) {
           // Codex/Gemini: Use prewarmed session from pool
@@ -2443,11 +2510,15 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
       readiness.registerTerminal(terminal);
 
       // Track session ID
-      if (sessionId && agentKey && supportsPrewarming(agentKey)) {
-        terminals.setSessionId(terminal, sessionId);
+      if (agentKey && supportsPrewarming(agentKey)) {
+        // Set agent type unconditionally so sessionTracker fs watcher can adopt
+        // a session id from the CLI's rollout file (Codex 0.124+ banner has none).
         terminals.setAgentType(terminal, agentKey);
         startAutoLabelPollerForTerminal(terminal, context);
-        await prewarm.recordTerminalSession(context, terminalId, sessionId, agentKey, cwd);
+        if (sessionId) {
+          terminals.setSessionId(terminal, sessionId);
+          await prewarm.recordTerminalSession(context, terminalId, sessionId, agentKey, cwd);
+        }
       }
 
       if (command) {
@@ -2566,44 +2637,132 @@ async function tryFetchLabelOnFocus(
   }
 }
 
+function normalizeStatusEmail(email: string | null | undefined): string | undefined {
+  const trimmed = email?.replace(/[<>]/g, '').trim();
+  return trimmed || undefined;
+}
+
+function formatAgentStatusBarText(
+  expandedName: string,
+  version: string | undefined,
+  account: string | undefined,
+  label: string | null,
+  sessionId: string | undefined,
+  showTrackingHint = false,
+): string {
+  let text = `Agents: ${expandedName}`;
+  if (version) {
+    text += ` ${version}`;
+  }
+  if (account) {
+    text += ` <${account}>`;
+  }
+  if (label) {
+    text += ` - ${label}`;
+  }
+  if (sessionId) {
+    text += ` (${sessionId})`;
+  } else if (showTrackingHint) {
+    text += ' (tracking session)';
+  }
+  return text;
+}
+
+function resolveStatusFromAgentsView(
+  view: AgentsViewJsonAgent,
+  pinnedVersion?: string
+): { version?: string; account?: string } {
+  const versions = Array.isArray(view.versions) ? view.versions : [];
+  if (versions.length === 0) return {};
+
+  if (pinnedVersion) {
+    const matched = versions.find(v => v.version === pinnedVersion);
+    return {
+      version: pinnedVersion,
+      account: normalizeStatusEmail(matched?.email),
+    };
+  }
+
+  const selected = versions.find(v => v.isDefault) ?? versions[0];
+  if (!selected) return {};
+  return {
+    version: selected.version,
+    account: normalizeStatusEmail(selected.email),
+  };
+}
+
+async function tryHydrateStatusBarAgentMeta(
+  terminal: vscode.Terminal,
+  entry: terminals.EditorTerminal,
+  prefix: string
+): Promise<void> {
+  const agentKey = (entry.agentType || prefixToAgentType(prefix)) as PrewarmAgentType | null;
+  if (!agentKey) return;
+
+  const inflightKey = entry.id || `${agentKey}:${entry.sessionId || terminal.name}`;
+  if (statusBarMetaInFlight.has(inflightKey)) return;
+  statusBarMetaInFlight.add(inflightKey);
+
+  try {
+    const view = await fetchAgentsViewJson(agentKey, { quiet: true, useCache: true });
+    if (!view) return;
+
+    const resolved = resolveStatusFromAgentsView(view, entry.version);
+    if (!entry.statusVersion && resolved.version) {
+      entry.statusVersion = resolved.version;
+    }
+    if (entry.version && resolved.account && !entry.account) {
+      terminals.setAccount(terminal, resolved.account);
+    } else if (!entry.statusAccount && resolved.account) {
+      entry.statusAccount = resolved.account;
+    }
+
+    if (!agentStatusBarItem || vscode.window.activeTerminal !== terminal) return;
+    const rawLabel = entry.label;
+    const displayLabel = rawLabel ? rawLabel.replace(/<[^>]*>/g, '').trim() : null;
+    agentStatusBarItem.text = formatAgentStatusBarText(
+      getExpandedAgentName(prefix),
+      entry.version || entry.statusVersion,
+      normalizeStatusEmail(entry.account || entry.statusAccount),
+      displayLabel,
+      entry.sessionId,
+      entry.agentType === 'codex',
+    );
+  } finally {
+    statusBarMetaInFlight.delete(inflightKey);
+  }
+}
+
 function updateStatusBarForTerminal(terminal: vscode.Terminal, extensionPath: string) {
   if (!agentStatusBarItem) return;
 
   const entry = terminals.getByTerminal(terminal);
   const info = identifyAgentTerminal(terminal, extensionPath);
 
-  // If this is an agent terminal, show its name
-  // Format: "Agents: Claude - <Label> (full-uuid)"
+  // If this is an agent terminal, show model/account/session metadata.
+  // Format: "Agents: Claude 2.1.118 <user@example.com> - <manual label> (uuid)"
   if (info.isAgent && info.prefix) {
     const expandedName = getExpandedAgentName(info.prefix);
     const sessionId = entry?.sessionId;
 
     // Show immediate status bar with current data
-    const rawLabel = entry?.label || entry?.autoLabel;
+    const rawLabel = entry?.label;
     const displayLabel = rawLabel ? rawLabel.replace(/<[^>]*>/g, '').trim() : null;
-    let text = `Agents: ${expandedName}`;
-    if (displayLabel) {
-      text += ` - ${displayLabel}`;
-    }
-    if (sessionId) {
-      text += ` (${sessionId})`;
-    }
-    agentStatusBarItem.text = text;
+    const version = entry?.version || entry?.statusVersion;
+    const account = normalizeStatusEmail(entry?.account || entry?.statusAccount);
+    agentStatusBarItem.text = formatAgentStatusBarText(
+      expandedName,
+      version,
+      account,
+      displayLabel,
+      sessionId,
+      entry?.agentType === 'codex',
+    );
 
-    // If no label/autoLabel but we have sessionId, fetch auto-label async
-    if (!displayLabel && entry?.sessionId && entry.agentType) {
-      fetchAndSetAutoLabel(terminal, entry).then(autoLabel => {
-        if (autoLabel && agentStatusBarItem && vscode.window.activeTerminal === terminal) {
-          const cleanAutoLabel = autoLabel.replace(/<[^>]*>/g, '').trim();
-          let updatedText = `Agents: ${expandedName}`;
-          updatedText += ` - ${cleanAutoLabel}`;
-          if (sessionId) {
-            updatedText += ` (${sessionId})`;
-          }
-          agentStatusBarItem.text = updatedText;
-        }
-      }).catch(() => { /* swallow to prevent unhandled rejection */ });
+    if (entry && (!version || !account)) {
+      void tryHydrateStatusBarAgentMeta(terminal, entry, info.prefix);
     }
+
     return;
   }
 
@@ -2755,12 +2914,13 @@ async function clearActiveTerminal(context: vscode.ExtensionContext) {
       let newSessionId: string | null = null;
       let command = agentConfig.command || '';
       const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
+      const defaultModel = agentKey ? settings.getDefaultModel(context, agentKey) : undefined;
 
       if (agentKey && supportsPrewarming(agentKey)) {
         if (agentKey === 'claude') {
           // Claude: generate UUID on-demand
           newSessionId = generateClaudeSessionId();
-          command = buildClaudeOpenCommand(newSessionId);
+          command = buildClaudeLaunchCommand(context, newSessionId, defaultModel);
         } else if (needsPrewarming(agentKey)) {
           // Codex/Gemini: acquire from prewarmed pool
           const prewarmedSession = prewarm.acquireSession(context, agentKey, cwd);
@@ -2846,7 +3006,7 @@ async function reloadActiveTerminal(context: vscode.ExtensionContext) {
 
     const config = PREWARM_CONFIGS[agentType];
     const exitSequence = config.exitSequence;
-    const resumeCommand = config.resumeCommand(sessionId);
+    const resumeCommand = buildVersionedResumeCommand(agentType, sessionId, entry.version);
 
     terminal.show();
     for (const seq of exitSequence) {
@@ -3020,7 +3180,11 @@ async function restoreAgentTerminals(context: vscode.ExtensionContext): Promise<
 
       // Actually resume the session by sending the resume command
       if (supportsPrewarming(session.agentType)) {
-        const resumeCmd = PREWARM_CONFIGS[session.agentType].resumeCommand(session.sessionId);
+        const resumeCmd = buildVersionedResumeCommand(
+          session.agentType,
+          session.sessionId,
+          session.version
+        );
         try {
           await readiness.waitFor(terminal, 'promptReady');
         } catch (err) {
@@ -3069,7 +3233,7 @@ async function reopenLastClosedSession(context: vscode.ExtensionContext): Promis
     iconPath: closed.agentConfig.iconPath,
     location: { viewColumn: vscode.ViewColumn.Active },
     name: title,
-    env: buildAgentTerminalEnv(terminalId, closed.sessionId, workspacePath),
+    env: buildAgentTerminalEnv(terminalId, closed.sessionId, workspacePath, closed.version),
     isTransient: true
   });
 
@@ -3080,10 +3244,20 @@ async function reopenLastClosedSession(context: vscode.ExtensionContext): Promis
   if (closed.sessionId && closed.agentType) {
     terminals.setSessionId(terminal, closed.sessionId);
     terminals.setAgentType(terminal, closed.agentType);
+    if (closed.version) {
+      terminals.setVersion(terminal, closed.version);
+    }
+    if (closed.account) {
+      terminals.setAccount(terminal, closed.account);
+    }
     startAutoLabelPollerForTerminal(terminal, context);
 
     if (supportsPrewarming(closed.agentType)) {
-      const resumeCmd = PREWARM_CONFIGS[closed.agentType].resumeCommand(closed.sessionId);
+      const resumeCmd = buildVersionedResumeCommand(
+        closed.agentType,
+        closed.sessionId,
+        closed.version
+      );
       try {
         await readiness.waitFor(terminal, 'promptReady');
       } catch (err) {

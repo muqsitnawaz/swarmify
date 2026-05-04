@@ -179,6 +179,24 @@ export function buildResumeCommand(session: PrewarmedSession): string {
 }
 
 /**
+ * Build a resume command pinned to a specific installed agent version when one
+ * is known. This is required for multi-profile setups where a session only
+ * exists inside one version's home directory.
+ */
+export function buildVersionedResumeCommand(
+  agentType: PrewarmAgentType,
+  sessionId: string,
+  version?: string,
+): string {
+  const config = PREWARM_CONFIGS[agentType];
+  const baseCmd = config.resumeCommand(sessionId);
+  if (!version) return baseCmd;
+  const cmdName = config.command;
+  const prefix = new RegExp(`^${cmdName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
+  return baseCmd.replace(prefix, `${cmdName}@${version}`);
+}
+
+/**
  * Get all supported agent types
  */
 export function getSupportedAgentTypes(): PrewarmAgentType[] {

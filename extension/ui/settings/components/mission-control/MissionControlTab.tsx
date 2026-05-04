@@ -1,6 +1,6 @@
 import React from 'react'
 import type { TaskSummary, TerminalDetail, UnifiedTask } from '../../types'
-import { UnifiedAgentsPane } from './UnifiedAgentsPane'
+import { UnifiedAgentsPane, WatchdogEventUI } from './UnifiedAgentsPane'
 
 interface MissionControlTabProps {
   tasks: TaskSummary[]
@@ -15,9 +15,11 @@ interface MissionControlTabProps {
   onDetailTaskConsumed?: () => void
   onThroughputChange?: (tokensPerSec: number) => void
   githubRepo?: string | null
+  watchdogEnabled?: boolean
+  watchdogEvents?: WatchdogEventUI[]
 }
 
-export function MissionControlTab({ tasks, tasksLoading, terminals, unifiedTasks, unifiedTasksLoading, onDispatch, onNavigate, openDispatchTrigger, openDetailTaskId, onDetailTaskConsumed, onThroughputChange, githubRepo }: MissionControlTabProps) {
+export function MissionControlTab({ tasks, tasksLoading, terminals, unifiedTasks, unifiedTasksLoading, onDispatch, onNavigate, openDispatchTrigger, openDetailTaskId, onDetailTaskConsumed, onThroughputChange, githubRepo, watchdogEnabled, watchdogEvents }: MissionControlTabProps) {
   return (
     <UnifiedAgentsPane
       terminals={terminals}
@@ -32,6 +34,8 @@ export function MissionControlTab({ tasks, tasksLoading, terminals, unifiedTasks
       onDetailTaskConsumed={onDetailTaskConsumed}
       onThroughputChange={onThroughputChange}
       githubRepo={githubRepo}
+      watchdogEnabled={watchdogEnabled}
+      watchdogEvents={watchdogEvents}
     />
   )
 }

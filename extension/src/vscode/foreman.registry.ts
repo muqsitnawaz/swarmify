@@ -6,7 +6,7 @@
 // by having each extension host write its own terminals to a shared JSON
 // file; readers merge entries and filter out ones whose pid is dead.
 //
-// File: ~/.agents/swarmify/live-terminals.json
+// File: ~/.agents/terminals/live-terminals.json
 // Shape: { <windowId>: { at: ISO, entries: LiveTerminal[] } }
 //   - Writer owns its windowId slice. Reads are merges of all slices.
 //   - Stale entries (pid dead) are filtered at read time, not pruned. The
@@ -20,8 +20,9 @@ import * as os from 'os';
 import * as vscode from 'vscode';
 import { computeWindowId } from '../core/foreman.windowId';
 
-const REGISTRY_DIR = path.join(os.homedir(), '.agents', 'swarmify');
+const REGISTRY_DIR = path.join(os.homedir(), '.agents', 'terminals');
 const REGISTRY_FILE = path.join(REGISTRY_DIR, 'live-terminals.json');
+const LEGACY_REGISTRY_FILE = path.join(os.homedir(), '.agents', 'swarmify', 'live-terminals.json');
 const STALE_WINDOW_MS = 10 * 60_000;
 
 export interface LiveTerminal {
@@ -53,7 +54,13 @@ function readRegistry(): RegistryFile {
     const parsed = JSON.parse(raw);
     return parsed && typeof parsed === 'object' ? parsed : {};
   } catch {
-    return {};
+    try {
+      const raw = fs.readFileSync(LEGACY_REGISTRY_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
   }
 }
 
