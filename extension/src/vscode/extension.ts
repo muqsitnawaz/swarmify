@@ -132,8 +132,8 @@ function buildClaudeLaunchCommand(
 ): string {
   const strategy = readAgentRunStrategy('claude');
   let command = buildClaudeOpenCommand(sessionId);
-  if (strategy === 'rotate') {
-    command = `agents run claude --interactive --rotate --session-id ${sessionId}`;
+  if (strategy === 'balanced') {
+    command = `agents run claude --interactive --balanced --session-id ${sessionId}`;
   } else if (strategy !== 'pinned') {
     command = `agents run claude --interactive --strategy ${strategy} --session-id ${sessionId}`;
   }

@@ -17,6 +17,7 @@ import type {
   QuickLaunchSlot,
   RunningCounts,
   AgentInventory,
+  AgentRunStrategy,
 } from '../../types'
 import {
   ALL_SWARM_AGENTS,
@@ -69,7 +70,7 @@ export interface PanelTabProps {
   onUpdateTaskSources: (sources: Partial<AgentSettings['taskSources']>) => void
   onConnectLinear: () => void
   onConnectGitHub: () => void
-  onSetAgentRunStrategy: (agentKey: string, enabled: boolean) => void
+  onSetAgentRunStrategy: (agentKey: string, strategy: AgentRunStrategy) => void
 }
 
 export function Rocker({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
@@ -355,7 +356,7 @@ export function PanelTab({
               skillsTotal: primaryKey !== 'opencode' ? getSkillSummary(primaryKey as any).total : undefined,
             }}
             inventory={primaryInventory}
-            onToggleRotation={(enabled) => onSetAgentRunStrategy(primaryKey, enabled)}
+            onSetStrategy={(strategy) => onSetAgentRunStrategy(primaryKey, strategy)}
           />
           <AgentDial
             title="Secondary Agent"
@@ -379,7 +380,7 @@ export function PanelTab({
               skillsTotal: secondaryKey !== 'opencode' ? getSkillSummary(secondaryKey as any).total : undefined,
             }}
             inventory={secondaryInventory}
-            onToggleRotation={(enabled) => onSetAgentRunStrategy(secondaryKey, enabled)}
+            onSetStrategy={(strategy) => onSetAgentRunStrategy(secondaryKey, strategy)}
           />
         </div>
       </div>
