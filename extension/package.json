@@ -3,7 +3,7 @@
   "displayName": "Agents",
   "publisher": "swarmify",
   "description": "Turn your IDE into an Integrated Agents Environment. Run Claude, Codex, Gemini, and Cursor at scale with keyboard-first navigation.",
-  "version": "0.8.96",
+  "version": "0.8.97",
   "license": "MIT",
   "author": "Muqsit Nawaz <dev@muqsitnawaz.com>",
   "icon": "assets/agents.png",
@@ -341,21 +341,21 @@
         "agents.watchdog.stallNudge": {
           "type": "boolean",
           "default": true,
-          "description": "When an agent goes quiet mid-task, call a Claude headless instance to decide whether to inject a nudge message to unstick it."
+          "description": "When an agent appears truly blocked, call a Claude Haiku headless instance to decide whether to inject a nudge."
         },
         "agents.watchdog.stallSeconds": {
           "type": "number",
-          "default": 90,
-          "description": "Seconds of session inactivity before an agent is considered stalled."
+          "default": 300,
+          "description": "Seconds of inactivity before an agent is considered stalled enough for blocked checks."
         },
         "agents.watchdog.cooldownSeconds": {
           "type": "number",
-          "default": 300,
+          "default": 1200,
           "description": "Minimum seconds between nudges to the same terminal."
         },
         "agents.watchdog.tickSeconds": {
           "type": "number",
-          "default": 60,
+          "default": 120,
           "description": "How often the watchdog evaluates terminals."
         },
         "agents.watchdog.useSmartAgent": {

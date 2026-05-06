@@ -3,6 +3,7 @@ import {
   classifyTerminal,
   renderWatchdogPrompt,
   parseWatchdogResponse,
+  isLikelyTrulyBlocked,
 } from './watchdog';
 
 describe('classifyTerminal', () => {
@@ -149,5 +150,65 @@ describe('parseWatchdogResponse', () => {
   it('handles empty input', () => {
     expect(parseWatchdogResponse('')).toEqual([]);
     expect(parseWatchdogResponse('   \n ')).toEqual([]);
+  });
+});
+
+describe('isLikelyTrulyBlocked', () => {
+  it('returns true for explicit blocked/error hints', () => {
+    expect(
+      isLikelyTrulyBlocked({
+        terminalId: 'CC-1',
+        agentType: 'claude',
+        stalledForMs: 120_000,
+        tailLines: ['{"type":"assistant","message":{"content":[{"type":"text","text":"The command failed with permission denied."}]}}'],
+      })
+    ).toBe(true);
+  });
+
+  it('returns true when assistant promised action but no tool call followed', () => {
+    expect(
+      isLikelyTrulyBlocked({
+        terminalId: 'CC-1',
+        agentType: 'claude',
+        stalledForMs: 120_000,
+        tailLines: ['{"type":"assistant","message":{"content":[{"type":"text","text":"I will run bun test now."}]}}'],
+      })
+    ).toBe(true);
+  });
+
+  it('returns false when a tool call happened after the promise', () => {
+    expect(
+      isLikelyTrulyBlocked({
+        terminalId: 'CC-1',
+        agentType: 'claude',
+        stalledForMs: 120_000,
+        tailLines: [
+          '{"type":"assistant","message":{"content":[{"type":"text","text":"I will run bun test now."}]}}',
+          '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"bun test"}}]}}',
+        ],
+      })
+    ).toBe(false);
+  });
+
+  it('returns false for waiting-on-user hints', () => {
+    expect(
+      isLikelyTrulyBlocked({
+        terminalId: 'CC-1',
+        agentType: 'claude',
+        stalledForMs: 120_000,
+        tailLines: ['{"type":"assistant","message":{"content":[{"type":"text","text":"Waiting on user response."}]}}'],
+      })
+    ).toBe(false);
+  });
+
+  it('returns true for very long stalls even without textual hints', () => {
+    expect(
+      isLikelyTrulyBlocked({
+        terminalId: 'CC-1',
+        agentType: 'claude',
+        stalledForMs: 901_000,
+        tailLines: ['{"type":"assistant","message":{"content":[{"type":"text","text":"thinking"}]}}'],
+      })
+    ).toBe(true);
   });
 });
