@@ -81,7 +81,7 @@ const SIMPLE_PREWARM_CONFIGS: Record<PrewarmAgentType, SimplePrewarmConfig> = {
  * Claude doesn't need it - we just generate UUID at open time
  */
 export function needsPrewarming(agentType: PrewarmAgentType): boolean {
-  return agentType !== 'claude';
+  return agentType === 'codex' || agentType === 'gemini' || agentType === 'cursor';
 }
 
 /**
@@ -119,12 +119,19 @@ export async function spawnSimplePrewarmSession(
 
   // Claude: No prewarming needed, generate UUID immediately
   if (config.method === 'none') {
-    const sessionId = generateClaudeSessionId();
-    console.log(`[PREWARM] Claude using on-demand session ID: ${sessionId}`);
+    if (agentType === 'claude') {
+      const sessionId = generateClaudeSessionId();
+      console.log(`[PREWARM] Claude using on-demand session ID: ${sessionId}`);
+      return {
+        status: 'success',
+        sessionId,
+        rawOutput: 'No prewarming needed for Claude',
+      };
+    }
     return {
-      status: 'success',
-      sessionId,
-      rawOutput: 'No prewarming needed for Claude',
+      status: 'failed',
+      failedReason: 'parse_error',
+      rawOutput: `No prewarming flow for ${agentType}`,
     };
   }
 

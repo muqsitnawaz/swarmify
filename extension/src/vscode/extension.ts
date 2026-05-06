@@ -72,12 +72,11 @@ import {
   isTmuxAvailable
 } from './tmux';
 import { DEFAULT_DISPLAY_PREFERENCES } from '../core/settings';
-import * as prewarm from './prewarm.vscode';
 import * as readiness from './terminalReadiness';
 import { resolveAlias, isAgentInstalled } from '../core/agentModels';
 import { readAgentRunStrategy } from '../core/agentInventory';
-import { supportsPrewarming, buildResumeCommand, buildVersionedResumeCommand, PREWARM_CONFIGS, PrewarmAgentType } from '../core/prewarm';
-import { needsPrewarming, generateClaudeSessionId, buildClaudeOpenCommand, listOpencodeSessions } from '../core/prewarm.simple';
+import { supportsPrewarming, buildVersionedResumeCommand, PREWARM_CONFIGS, PrewarmAgentType } from '../core/prewarm';
+import { generateClaudeSessionId, buildClaudeOpenCommand, listOpencodeSessions } from '../core/prewarm.simple';
 import { getSessionPathBySessionId, getSessionPreviewInfo, getOpenCodeSessionPreviewInfo, getCursorSessionPreviewInfo } from './sessions.vscode';
 import * as tasksImport from './tasks.vscode';
 import { SOURCE_BADGES } from '../core/tasks';
@@ -191,8 +190,6 @@ async function detectOpencodeSessionId(
     console.log(`[PREWARM] OpenCode detected session ID: ${sessionId}`);
     terminals.setSessionId(terminal, sessionId);
     terminals.setAgentType(terminal, 'opencode');
-    await prewarm.recordTerminalSession(context, terminalId, sessionId, 'opencode', cwd);
-
     // Update terminal title to include session ID
     updateStatusBarForTerminal(terminal, context.extensionPath);
     startAutoLabelPollerForTerminal(terminal, context);
@@ -552,13 +549,6 @@ export async function activate(context: vscode.ExtensionContext) {
   // can see the factory state across all windows. Keepalive every 15s; also
   // fires on open/close.
   initForemanRegistry(context);
-
-  // Initialize session pre-warming (runs in background)
-  setTimeout(() => {
-    prewarm.initializePrewarming(context).catch(err => {
-      console.error('[PREWARM] Initialization error:', err);
-    });
-  }, 2000);
 
   // Create status bar item for showing active terminal status bar label
   agentStatusBarItem = vscode.window.createStatusBarItem(
@@ -959,15 +949,10 @@ export async function activate(context: vscode.ExtensionContext) {
     terminal: vscode.Terminal;
   }
 
-  // Disable session pre-warming
+  // Session warming has been removed; keep command for backwards compatibility.
   context.subscriptions.push(
     vscode.commands.registerCommand('agents.disableWarming', async () => {
-      const currentEnabled = prewarm.isEnabled(context);
-      if (currentEnabled) {
-        await prewarm.setEnabled(context, false);
-        vscode.window.showInformationMessage('Session warming disabled.');
-        await updateContextKeys(context);
-      }
+      vscode.window.showInformationMessage('Session warming is no longer used. Session IDs are discovered after launch.');
     })
   );
 
@@ -1145,10 +1130,6 @@ export async function activate(context: vscode.ExtensionContext) {
         });
       }
 
-      // Remove prewarm session mapping if exists
-      if (entry?.id) {
-        prewarm.removeTerminalSession(context, entry.id);
-      }
       terminals.unregister(terminal);
     })
   );
@@ -1282,8 +1263,6 @@ async function openSingleAgent(
 
   // Handle session ID for supported agent types
   const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
-  let prewarmedSession: ReturnType<typeof prewarm.acquireSession> = null;
-  let usePrewarmed = false;
   let sessionId: string | null = null;
 
   // Track OpenCode sessions before spawn to detect new one
@@ -1292,29 +1271,11 @@ async function openSingleAgent(
     opencodeSessionsBefore = await listOpencodeSessions(cwd);
   }
 
-  if (agentKey && supportsPrewarming(agentKey)) {
-    if (agentKey === 'claude') {
-      // Claude: Generate session ID at open time and route through agents-cli
-      // when rotation or availability strategy is enabled.
-      sessionId = generateClaudeSessionId();
-      command = buildClaudeLaunchCommand(context, sessionId, defaultModel, additionalFlags);
-      usePrewarmed = true;
-      console.log(`[PREWARM] Claude using on-demand session ID: ${sessionId}`);
-    } else if (agentKey === 'opencode' && !additionalFlags) {
-      // OpenCode: Session ID will be detected after spawn
-      // Just mark as using session tracking
-      usePrewarmed = true;
-      console.log(`[PREWARM] OpenCode session ID will be detected after spawn`);
-    } else if (!additionalFlags && needsPrewarming(agentKey)) {
-      // Codex/Gemini/Cursor: Use prewarmed session from pool
-      prewarmedSession = prewarm.acquireSession(context, agentKey, cwd);
-      if (prewarmedSession) {
-        usePrewarmed = true;
-        sessionId = prewarmedSession.sessionId;
-        command = buildResumeCommand(prewarmedSession);
-        console.log(`[PREWARM] Using pre-warmed ${agentKey} session: ${prewarmedSession.sessionId}`);
-      }
-    }
+  if (agentKey === 'claude') {
+    // Claude: generate session ID at open time; other agents detect it post-spawn.
+    sessionId = generateClaudeSessionId();
+    command = buildClaudeLaunchCommand(context, sessionId, defaultModel, additionalFlags);
+    console.log(`[SESSION] Claude using on-demand session ID: ${sessionId}`);
   }
 
   if (tmuxOk) {
@@ -1349,10 +1310,6 @@ async function openSingleAgent(
       if (agentKey && supportsPrewarming(agentKey)) {
         startAutoLabelPollerForTerminal(terminal, context);
       }
-    }
-    // Record prewarmed session separately
-    if (usePrewarmed && sessionId && agentKey && supportsPrewarming(agentKey)) {
-      await prewarm.recordTerminalSession(context, terminalId, sessionId, agentKey, cwd);
     }
 
     // OpenCode: Detect session ID asynchronously after spawn
@@ -1393,10 +1350,6 @@ async function openSingleAgent(
       startAutoLabelPollerForTerminal(terminal, context);
     }
   }
-  // Record prewarmed session separately
-  if (usePrewarmed && sessionId && agentKey && supportsPrewarming(agentKey)) {
-    await prewarm.recordTerminalSession(context, terminalId, sessionId, agentKey, cwd);
-  }
 
   if (command) {
     try {
@@ -1415,9 +1368,8 @@ async function openSingleAgent(
   }
 
   // OpenCode: Detect session ID asynchronously after spawn
-  // TODO: Implement detectOpencodeSessionId function
   if (agentKey === 'opencode' && opencodeSessionsBefore !== null) {
-    // Session detection for OpenCode is handled elsewhere
+    detectOpencodeSessionId(terminal, terminalId, cwd, opencodeSessionsBefore, context);
   }
 }
 
@@ -2383,20 +2335,16 @@ export async function openSingleAgentWithQueue(
 
   let command = agentConfig.command;
   let sessionId: string | null = null;
+  let opencodeSessionsBefore: string[] | null = null;
 
-  if (agentKey && supportsPrewarming(agentKey)) {
-    if (agentKey === 'claude') {
-      // Claude: Generate session ID at open time and honor run strategy.
-      sessionId = generateClaudeSessionId();
-      command = buildClaudeLaunchCommand(context, sessionId, defaultModel);
-    } else if (needsPrewarming(agentKey)) {
-      // Codex/Gemini/Cursor: Use prewarmed session from pool
-      const prewarmedSession = prewarm.acquireSession(context, agentKey, cwd);
-      if (prewarmedSession) {
-        sessionId = prewarmedSession.sessionId;
-        command = buildResumeCommand(prewarmedSession);
-      }
-    }
+  if (agentKey === 'opencode') {
+    opencodeSessionsBefore = await listOpencodeSessions(cwd);
+  }
+
+  if (agentKey === 'claude') {
+    // Claude: generate session ID at open time; others are discovered post-spawn.
+    sessionId = generateClaudeSessionId();
+    command = buildClaudeLaunchCommand(context, sessionId, defaultModel);
   }
 
   const title = buildTerminalTitle(agentConfig.title, undefined, context, sessionId);
@@ -2419,7 +2367,6 @@ export async function openSingleAgentWithQueue(
     terminals.setAgentType(terminal, agentKey);
     if (sessionId) {
       terminals.setSessionId(terminal, sessionId);
-      await prewarm.recordTerminalSession(context, terminalId, sessionId, agentKey, cwd);
     }
   }
 
@@ -2434,6 +2381,10 @@ export async function openSingleAgentWithQueue(
   // Send agent command
   if (command) {
     terminal.sendText(command);
+  }
+
+  if (agentKey === 'opencode' && opencodeSessionsBefore !== null) {
+    detectOpencodeSessionId(terminal, terminalId, cwd, opencodeSessionsBefore, context);
   }
 
   // After delay, send queued messages (5s to ensure agent process fully loaded).
@@ -2472,27 +2423,22 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
 
       // Determine agent key and handle session ID
       const builtInDef = getBuiltInByPrefix(agent.prefix);
-      const agentKey = builtInDef?.key as 'claude' | 'codex' | 'gemini' | undefined;
+      const agentKey = builtInDef?.key as 'claude' | 'codex' | 'gemini' | 'opencode' | undefined;
       const defaultModel = agentKey ? settings.getDefaultModel(context, agentKey) : undefined;
 
       let command = agent.command;
       let sessionId: string | null = null;
+      let opencodeSessionsBefore: string[] | null = null;
 
-      if (agentKey && supportsPrewarming(agentKey)) {
-        if (agentKey === 'claude') {
-          // Claude: Generate session ID at open time and honor run strategy.
-          sessionId = generateClaudeSessionId();
-          command = buildClaudeLaunchCommand(context, sessionId, defaultModel);
-          console.log(`[PREWARM] Auto-open Claude with session ID: ${sessionId}`);
-        } else if (needsPrewarming(agentKey)) {
-          // Codex/Gemini: Use prewarmed session from pool
-          const prewarmedSession = prewarm.acquireSession(context, agentKey, cwd);
-          if (prewarmedSession) {
-            sessionId = prewarmedSession.sessionId;
-            command = buildResumeCommand(prewarmedSession);
-            console.log(`[PREWARM] Auto-open ${agentKey} with pre-warmed session: ${sessionId}`);
-          }
-        }
+      if (agentKey === 'opencode') {
+        opencodeSessionsBefore = await listOpencodeSessions(cwd);
+      }
+
+      if (agentKey === 'claude') {
+        // Claude: generate session ID at open time; others are discovered post-spawn.
+        sessionId = generateClaudeSessionId();
+        command = buildClaudeLaunchCommand(context, sessionId, defaultModel);
+        console.log(`[SESSION] Auto-open Claude with session ID: ${sessionId}`);
       }
 
       const title = buildTerminalTitle(agent.title, undefined, context, sessionId);
@@ -2517,7 +2463,6 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
         startAutoLabelPollerForTerminal(terminal, context);
         if (sessionId) {
           terminals.setSessionId(terminal, sessionId);
-          await prewarm.recordTerminalSession(context, terminalId, sessionId, agentKey, cwd);
         }
       }
 
@@ -2535,6 +2480,9 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
         readiness.armAgentReady(terminal, agentKey && sessionId
           ? { agentKey, sessionId, cwd }
           : {});
+      }
+      if (agentKey === 'opencode' && opencodeSessionsBefore !== null) {
+        detectOpencodeSessionId(terminal, terminalId, cwd, opencodeSessionsBefore, context);
       }
       totalCount++;
     }
@@ -2916,19 +2864,10 @@ async function clearActiveTerminal(context: vscode.ExtensionContext) {
       const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
       const defaultModel = agentKey ? settings.getDefaultModel(context, agentKey) : undefined;
 
-      if (agentKey && supportsPrewarming(agentKey)) {
-        if (agentKey === 'claude') {
-          // Claude: generate UUID on-demand
-          newSessionId = generateClaudeSessionId();
-          command = buildClaudeLaunchCommand(context, newSessionId, defaultModel);
-        } else if (needsPrewarming(agentKey)) {
-          // Codex/Gemini: acquire from prewarmed pool
-          const prewarmedSession = prewarm.acquireSession(context, agentKey, cwd);
-          if (prewarmedSession) {
-            newSessionId = prewarmedSession.sessionId;
-            command = buildResumeCommand(prewarmedSession);
-          }
-        }
+      if (agentKey === 'claude') {
+        // Claude: generate UUID on-demand
+        newSessionId = generateClaudeSessionId();
+        command = buildClaudeLaunchCommand(context, newSessionId, defaultModel);
       }
 
       // 3. Unregister old entry, re-register with new IDs
@@ -2937,10 +2876,11 @@ async function clearActiveTerminal(context: vscode.ExtensionContext) {
       terminals.register(terminal, newTerminalId, agentConfig, pid, context);
 
       // 4. Set new session/agent type
+      if (agentKey && supportsPrewarming(agentKey)) {
+        terminals.setAgentType(terminal, agentKey);
+      }
       if (newSessionId && agentKey && supportsPrewarming(agentKey)) {
         terminals.setSessionId(terminal, newSessionId);
-        terminals.setAgentType(terminal, agentKey);
-        await prewarm.recordTerminalSession(context, newTerminalId, newSessionId, agentKey, cwd);
       }
 
       // 5. Clear labels and start fresh poller
@@ -3045,8 +2985,7 @@ async function updateContextKeys(context: vscode.ExtensionContext): Promise<void
   const viewEnabled = workbench.isStreamlineLayout();
   await vscode.commands.executeCommand('setContext', 'agents.viewEnabled', viewEnabled);
 
-  const warmingEnabled = prewarm.isEnabled(context);
-  await vscode.commands.executeCommand('setContext', 'agents.warmingEnabled', warmingEnabled);
+  await vscode.commands.executeCommand('setContext', 'agents.warmingEnabled', false);
 }
 
 async function detectDefaultAgentTitle(): Promise<string> {
@@ -3301,10 +3240,7 @@ function initForemanRegistry(context: vscode.ExtensionContext): void {
 }
 
 export async function deactivate(): Promise<void> {
-  // Mark clean shutdown for prewarm crash recovery
   if (extensionContext) {
-    await prewarm.markCleanShutdown(extensionContext);
-
     // Persist open agent terminals for restore on next launch (immediate, not debounced)
     terminals.persistNow();
   }
