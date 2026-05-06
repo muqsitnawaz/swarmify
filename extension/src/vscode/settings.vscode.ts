@@ -23,7 +23,7 @@ import * as workspaceConfig from './swarmifyConfig.vscode';
 import { createSymlinksCodebaseWide } from './agentlinks.vscode';
 import { scanMemoryFiles } from './contextFiles';
 import { fetchAllAgentModels, checkInstalledAgentsViaCli, resolveAlias } from '../core/agentModels';
-import { fetchAgentInventories, writeAgentRunStrategy, AgentRunStrategy } from '../core/agentInventory';
+import { fetchAgentInventories, writeAgentRunStrategy, AgentRunStrategy, AgentInventory, normalizeRunStrategy } from '../core/agentInventory';
 import * as workbench from './workbench.vscode';
 import * as theme from './theme.vscode';
 import { buildAgentTerminalEnv } from '../core/terminals';
@@ -805,6 +805,35 @@ export function openPanelAndDispatch(context: vscode.ExtensionContext): void {
   }, alreadyOpen ? 0 : 500);
 }
 
+// Cache for agent inventories. agents view --json takes 4-6s because it hits
+// vendor APIs for usage stats. Within the TTL, repeat calls are instant.
+// Strategy mutations bust the cache so the UI reflects the new state.
+const INVENTORY_CACHE_TTL_MS = 60_000;
+const INVENTORY_AGENT_KEYS = ['claude', 'codex', 'gemini', 'opencode', 'cursor'];
+let cachedInventories: { data: Record<string, AgentInventory>; fetchedAt: number } | null = null;
+let inventoryFetchInflight: Promise<Record<string, AgentInventory>> | null = null;
+
+async function getCachedAgentInventories(force = false): Promise<Record<string, AgentInventory>> {
+  if (!force && cachedInventories && Date.now() - cachedInventories.fetchedAt < INVENTORY_CACHE_TTL_MS) {
+    return cachedInventories.data;
+  }
+  if (inventoryFetchInflight) return inventoryFetchInflight;
+  inventoryFetchInflight = (async () => {
+    const data = await fetchAgentInventories(INVENTORY_AGENT_KEYS);
+    cachedInventories = { data, fetchedAt: Date.now() };
+    return data;
+  })();
+  try {
+    return await inventoryFetchInflight;
+  } finally {
+    inventoryFetchInflight = null;
+  }
+}
+
+function invalidateAgentInventoryCache(): void {
+  cachedInventories = null;
+}
+
 export function openPanel(context: vscode.ExtensionContext): void {
   if (settingsPanel) {
     settingsPanel.reveal();
@@ -873,7 +902,7 @@ export function openPanel(context: vscode.ExtensionContext): void {
       swarm.getSwarmStatus(),
       swarm.getSkillsStatus(),
       workspacePath ? getGitHubRepo(workspacePath) : Promise.resolve(null),
-      fetchAgentInventories(['claude', 'codex', 'gemini', 'opencode', 'cursor']),
+      getCachedAgentInventories(),
     ]);
 
     if (!settingsPanel) return; // Panel may have closed during fetch
@@ -1059,12 +1088,22 @@ export function openPanel(context: vscode.ExtensionContext): void {
         break;
       case 'setAgentRunStrategy': {
         const nextAgentKey = typeof message.agentKey === 'string' ? message.agentKey : '';
-        const nextStrategy = message.strategy as AgentRunStrategy;
+        const nextStrategy: AgentRunStrategy = normalizeRunStrategy(message.strategy);
         if (!nextAgentKey) break;
         writeAgentRunStrategy(nextAgentKey, nextStrategy);
+        invalidateAgentInventoryCache();
         settingsPanel?.webview.postMessage({
           type: 'agentInventoriesData',
-          agentInventories: await fetchAgentInventories(['claude', 'codex', 'gemini', 'opencode', 'cursor']),
+          agentInventories: await getCachedAgentInventories(true),
+        });
+        break;
+      }
+      case 'refreshAgentInventories': {
+        const force = message?.force === true;
+        if (force) invalidateAgentInventoryCache();
+        settingsPanel?.webview.postMessage({
+          type: 'agentInventoriesData',
+          agentInventories: await getCachedAgentInventories(force),
         });
         break;
       }

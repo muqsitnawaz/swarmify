@@ -1,5 +1,17 @@
 import React from 'react'
-import type { AgentInventory } from '../../types'
+import type { AgentInventory, AgentRunStrategy } from '../../types'
+
+const STRATEGY_OPTIONS: Array<{ value: AgentRunStrategy; label: string }> = [
+  { value: 'pinned', label: 'Pinned' },
+  { value: 'available', label: 'Available' },
+  { value: 'balanced', label: 'Balanced' },
+]
+
+const STRATEGY_CAPTIONS: Record<AgentRunStrategy, string> = {
+  pinned: 'Always use the default version',
+  available: 'Default first; switch to a healthy account when default is unavailable',
+  balanced: 'Distribute across healthy accounts, weighted by remaining capacity',
+}
 
 export interface AgentDialOption {
   key: string
@@ -28,7 +40,7 @@ interface AgentDialProps {
   meta?: AgentDialMeta
   shortcut?: string
   inventory?: AgentInventory
-  onToggleRotation?: (enabled: boolean) => void
+  onSetStrategy?: (strategy: AgentRunStrategy) => void
 }
 
 function MiniVU({ level, max = 8 }: { level: number; max?: number }) {
@@ -52,7 +64,7 @@ function usageLabel(status: AgentInventory['versions'][number]['usageStatus']): 
   return 'Unknown'
 }
 
-export function AgentDial({ title, value, options, onChange, meta, shortcut, inventory, onToggleRotation }: AgentDialProps) {
+export function AgentDial({ title, value, options, onChange, meta, shortcut, inventory, onSetStrategy }: AgentDialProps) {
   const selected = options.find(option => option.key === value) ?? options[0]
   const selectedIndex = options.findIndex(option => option.key === value)
   const pointerAngle = selectedIndex >= 0 ? -90 + (360 / options.length) * selectedIndex : -90
@@ -139,35 +151,40 @@ export function AgentDial({ title, value, options, onChange, meta, shortcut, inv
           {inventory && (
             <div className="sw-dial-inventory">
               <div className="sw-dial-deck-row">
-                <span className="sw-dial-deck-label">Route</span>
-                <span className="sw-dial-deck-value">
-                  {inventory.strategy === 'rotate' ? 'Rotate healthy accounts' : inventory.strategy}
-                </span>
-              </div>
-              <div className="sw-dial-deck-row">
                 <span className="sw-dial-deck-label">Accounts</span>
                 <span className="sw-dial-deck-value">
                   {inventory.signedInCount} signed in, {inventory.healthyCount} healthy
                 </span>
               </div>
-              {onToggleRotation && (
-                <div className="sw-dial-toggle-row">
-                  <span className="sw-dial-deck-label">Rotation</span>
-                  <div className="sw-dial-toggle-wrap">
-                    <span className="sw-dial-deck-value">
-                      {inventory.strategy === 'rotate' ? 'On' : 'Off'}
-                    </span>
-                    <button
-                      type="button"
-                      className="toggle-switch"
-                      data-state={inventory.strategy === 'rotate' ? 'on' : 'off'}
-                      role="switch"
-                      aria-checked={inventory.strategy === 'rotate'}
-                      onClick={() => onToggleRotation(inventory.strategy !== 'rotate')}
-                    >
-                      <span className="toggle-knob" />
-                    </button>
+              {onSetStrategy && (
+                <div className="sw-strategy-block">
+                  <div className="sw-strategy-head">
+                    <span className="sw-dial-deck-label">Strategy</span>
                   </div>
+                  <div className="sw-strategy-segmented" role="radiogroup" aria-label="Run strategy">
+                    {STRATEGY_OPTIONS.map((option) => {
+                      const active = inventory.strategy === option.value
+                      const disabled = option.value === 'balanced' && !inventory.canRotate
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          className="sw-strategy-segment"
+                          role="radio"
+                          aria-checked={active}
+                          data-active={active ? 'true' : 'false'}
+                          disabled={disabled}
+                          title={disabled ? 'Need at least 2 signed-in versions to balance' : STRATEGY_CAPTIONS[option.value]}
+                          onClick={() => {
+                            if (!active) onSetStrategy(option.value)
+                          }}
+                        >
+                          {option.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <span className="sw-strategy-caption">{STRATEGY_CAPTIONS[inventory.strategy]}</span>
                 </div>
               )}
               <div className="sw-dial-version-list">

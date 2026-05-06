@@ -194,7 +194,7 @@ export interface SwarmStatus {
   }
 }
 
-export type AgentRunStrategy = 'pinned' | 'available' | 'rotate'
+export type AgentRunStrategy = 'pinned' | 'available' | 'balanced'
 
 export interface AgentInventoryVersion {
   version: string

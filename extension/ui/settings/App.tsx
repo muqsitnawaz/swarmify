@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Button } from './components/ui/button'
 
 // Import extracted modules
@@ -355,6 +355,21 @@ export default function App() {
       fetchContextFiles()
     }
   }, [activeTab, tasksLoaded, tasksLoading, unifiedTasksLoaded, unifiedTasksLoading, contextLoaded, contextLoading])
+
+  // Refetch agent inventories when Panel tab is active and any are missing.
+  // The init fetch can fail when agents-cli isn't on PATH yet; this self-heals
+  // once the user installs the CLI and revisits the Panel tab.
+  const inventoryRefreshAtRef = useRef(0)
+  useEffect(() => {
+    if (activeTab !== 'panel') return
+    const expected = ['claude', 'codex', 'gemini', 'opencode', 'cursor']
+    const missing = expected.some((key) => !agentInventories[key])
+    if (!missing) return
+    const now = Date.now()
+    if (now - inventoryRefreshAtRef.current < 5000) return
+    inventoryRefreshAtRef.current = now
+    vscode.postMessage({ type: 'refreshAgentInventories' })
+  }, [activeTab, agentInventories])
 
   // Poll for tasks and terminals when floor tab is active
   useEffect(() => {
@@ -808,11 +823,11 @@ export default function App() {
           onUpdateTaskSources={handleUpdateTaskSources}
           onConnectLinear={handleConnectLinear}
           onConnectGitHub={handleConnectGitHub}
-          onSetAgentRunStrategy={(agentKey, enabled) => {
+          onSetAgentRunStrategy={(agentKey, strategy) => {
             vscode.postMessage({
               type: 'setAgentRunStrategy',
               agentKey,
-              strategy: enabled ? 'rotate' : 'pinned',
+              strategy,
             })
           }}
         />
