@@ -1,8 +1,9 @@
+import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
-import { exec } from 'child_process';
+import { runAgents } from './agentsBin';
 
 const execAsync = promisify(exec);
 
@@ -87,7 +88,7 @@ export function isPromptPackInstalled(agent: PromptPackAgent, command: string = 
 // Detect whether the agents CLI (@swarmify/agents-cli) is available
 export async function isAgentsCliAvailable(): Promise<boolean> {
   try {
-    await execAsync('agents --version');
+    await runAgents('--version', { timeout: 5_000 });
     return true;
   } catch {
     return false;
@@ -97,7 +98,7 @@ export async function isAgentsCliAvailable(): Promise<boolean> {
 // Get the version of the agents CLI
 export async function getAgentsCliVersion(): Promise<string | null> {
   try {
-    const { stdout } = await execAsync('agents --version');
+    const { stdout } = await runAgents('--version', { timeout: 5_000 });
     const match = stdout.trim().match(/(\d+\.\d+\.\d+)/);
     return match ? match[1] : stdout.trim();
   } catch {

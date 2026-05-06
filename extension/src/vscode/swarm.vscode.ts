@@ -440,7 +440,8 @@ async function ensureAgentsCli(): Promise<boolean> {
 async function setupWithAgentsCli(agent: AgentCli): Promise<boolean> {
   try {
     // Run agents pull with --yes to auto-confirm
-    await execAsync(`agents pull ${agent} --yes`, { timeout: 120000 });
+    const { runAgents } = await import('../core/agentsBin');
+    await runAgents(`pull ${agent} --yes`, { timeout: 120000 });
     return true;
   } catch (err) {
     const error = err as Error & { stderr?: string };

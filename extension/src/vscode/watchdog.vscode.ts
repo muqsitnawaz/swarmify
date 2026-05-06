@@ -108,7 +108,8 @@ function readConfig(): WatchdogConfig {
 
 async function fetchAgentsViewJsonForWatchdog(agentKey: string): Promise<AgentsViewJsonAgent | null> {
   try {
-    const { stdout } = await execAsync(`agents view ${agentKey} --json`, {
+    const { runAgents } = await import('../core/agentsBin');
+    const { stdout } = await runAgents(`view ${agentKey} --json`, {
       maxBuffer: 5 * 1024 * 1024,
     });
     const parsed = JSON.parse(stdout) as AgentsViewJsonAgent;
