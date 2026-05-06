@@ -74,9 +74,34 @@ import {
 import { DEFAULT_DISPLAY_PREFERENCES } from '../core/settings';
 import * as readiness from './terminalReadiness';
 import { resolveAlias, isAgentInstalled } from '../core/agentModels';
-import { readAgentRunStrategy } from '../core/agentInventory';
+// readAgentRunStrategy no longer needed: agents-cli reads strategy from
+// agents.yaml itself when invoked via `agents run`.
+import { resolveAgentsBin, AgentsBinNotFoundError } from '../core/agentsBin';
+
+const AGENTS_CLI_INSTALL_CMD = 'npm install -g @phnx-labs/agents-cli';
+let agentsCliPromptShown = false;
+
+async function ensureAgentsCliInstalled(): Promise<void> {
+  try {
+    await resolveAgentsBin();
+  } catch (err) {
+    if (!(err instanceof AgentsBinNotFoundError) || agentsCliPromptShown) return;
+    agentsCliPromptShown = true;
+    const choice = await vscode.window.showInformationMessage(
+      'Swarmify needs the agents CLI. Install it now?',
+      { modal: false },
+      'Install',
+      'Later',
+    );
+    if (choice === 'Install') {
+      const term = vscode.window.createTerminal({ name: 'Install agents-cli' });
+      term.show();
+      term.sendText(AGENTS_CLI_INSTALL_CMD);
+    }
+  }
+}
 import { supportsPrewarming, buildVersionedResumeCommand, PREWARM_CONFIGS, PrewarmAgentType } from '../core/prewarm';
-import { generateClaudeSessionId, buildClaudeOpenCommand, listOpencodeSessions } from '../core/prewarm.simple';
+import { generateClaudeSessionId, listOpencodeSessions } from '../core/prewarm.simple';
 import { getSessionPathBySessionId, getSessionPreviewInfo, getOpenCodeSessionPreviewInfo, getCursorSessionPreviewInfo } from './sessions.vscode';
 import * as tasksImport from './tasks.vscode';
 import { SOURCE_BADGES } from '../core/tasks';
@@ -124,20 +149,23 @@ function buildTerminalTitle(
   return formatTerminalTitle(prefix, { label: label || undefined, display, sessionChunk, isFocused });
 }
 
-function buildClaudeLaunchCommand(
-  context: vscode.ExtensionContext,
-  sessionId: string,
+// Build the launch command for any built-in agent. Always routes through
+// `agents run <agent> --interactive` so the agents-cli applies the
+// configured strategy (pinned/available/balanced) from agents.yaml. Claude
+// gets --session-id for resume; other agents detect their own session
+// post-spawn.
+type LaunchableAgent = 'claude' | 'codex' | 'gemini' | 'opencode' | 'cursor';
+
+function buildAgentLaunchCommand(
+  agentKey: LaunchableAgent,
+  sessionId: string | null,
   defaultModel?: string,
   additionalFlags?: string,
 ): string {
-  const strategy = readAgentRunStrategy('claude');
-  let command = buildClaudeOpenCommand(sessionId);
-  if (strategy === 'balanced') {
-    command = `agents run claude --interactive --balanced --session-id ${sessionId}`;
-  } else if (strategy !== 'pinned') {
-    command = `agents run claude --interactive --strategy ${strategy} --session-id ${sessionId}`;
+  let command = `agents run ${agentKey} --interactive`;
+  if (sessionId && agentKey === 'claude') {
+    command += ` --session-id ${sessionId}`;
   }
-
   if (defaultModel && (!additionalFlags || !additionalFlags.includes('--model'))) {
     command += ` --model ${defaultModel}`;
   }
@@ -145,6 +173,19 @@ function buildClaudeLaunchCommand(
     command += ` ${additionalFlags.trim()}`;
   }
   return command;
+}
+
+// Back-compat shim: keeps the old name used elsewhere in this file. The
+// strategy argument is no longer needed since agents-cli reads it from
+// agents.yaml directly. `buildClaudeOpenCommand` is no longer called —
+// pinned now also routes through `agents run`.
+function buildClaudeLaunchCommand(
+  _context: vscode.ExtensionContext,
+  sessionId: string,
+  defaultModel?: string,
+  additionalFlags?: string,
+): string {
+  return buildAgentLaunchCommand('claude', sessionId, defaultModel, additionalFlags);
 }
 
 // Terminal readiness detection moved to src/vscode/terminalReadiness.ts.
@@ -533,6 +574,11 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // Store context for deactivate
   extensionContext = context;
+
+  // Prompt to install agents-cli if missing. Don't block activation —
+  // resolveAgentsBin runs in the background; if it throws AgentsBinNotFoundError
+  // we surface a notification with a one-click installer.
+  void ensureAgentsCliInstalled();
 
   // Initialize terminal readiness event tracking (shell integration + close cleanup)
   readiness.initReadiness(context);
@@ -1271,11 +1317,18 @@ async function openSingleAgent(
     opencodeSessionsBefore = await listOpencodeSessions(cwd);
   }
 
-  if (agentKey === 'claude') {
-    // Claude: generate session ID at open time; other agents detect it post-spawn.
-    sessionId = generateClaudeSessionId();
-    command = buildClaudeLaunchCommand(context, sessionId, defaultModel, additionalFlags);
-    console.log(`[SESSION] Claude using on-demand session ID: ${sessionId}`);
+  // All built-in agents launch via `agents run <agent> --interactive` so the
+  // agents-cli picks up the configured strategy (pinned/available/balanced)
+  // from ~/.agents-system/agents.yaml automatically. Only Claude's session
+  // is generated up-front for the resume flow; other agents detect their
+  // session post-spawn.
+  const LAUNCHABLE: ReadonlySet<string> = new Set(['claude', 'codex', 'gemini', 'opencode', 'cursor']);
+  if (agentKey && LAUNCHABLE.has(agentKey)) {
+    if (agentKey === 'claude') {
+      sessionId = generateClaudeSessionId();
+      console.log(`[SESSION] Claude using on-demand session ID: ${sessionId}`);
+    }
+    command = buildAgentLaunchCommand(agentKey as LaunchableAgent, sessionId, defaultModel, additionalFlags);
   }
 
   if (tmuxOk) {
@@ -1651,10 +1704,8 @@ interface CliSessionItem {
 }
 
 async function listSessionsViaCli(limit = 30): Promise<CliSessionItem[]> {
-  const { exec } = await import('child_process');
-  const { promisify } = await import('util');
-  const execAsync = promisify(exec);
-  const { stdout } = await execAsync(`agents sessions list --all -n ${limit} --json`, {
+  const { runAgents } = await import('../core/agentsBin');
+  const { stdout } = await runAgents(`sessions list --all -n ${limit} --json`, {
     maxBuffer: 10 * 1024 * 1024,
   });
   const parsed = JSON.parse(stdout);
@@ -1757,13 +1808,11 @@ async function copySessionTrace(_context: vscode.ExtensionContext) {
   });
   if (!session) return;
 
-  const { exec } = await import('child_process');
-  const { promisify } = await import('util');
-  const execAsync = promisify(exec);
+  const { runAgents } = await import('../core/agentsBin');
   const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 
   try {
-    const { stdout } = await execAsync(`agents sessions view ${session.id} --trace`, {
+    const { stdout } = await runAgents(`sessions view ${session.id} --trace`, {
       maxBuffer: 10 * 1024 * 1024,
       cwd: workspacePath,
     });
@@ -1914,11 +1963,9 @@ async function fetchAgentsViewJson(
     }
   }
 
-  const { exec } = await import('child_process');
-  const { promisify } = await import('util');
-  const execAsync = promisify(exec);
+  const { runAgents } = await import('../core/agentsBin');
   try {
-    const { stdout } = await execAsync(`agents view ${agentKey} --json`, {
+    const { stdout } = await runAgents(`view ${agentKey} --json`, {
       maxBuffer: 5 * 1024 * 1024,
     });
     const parsed = JSON.parse(stdout) as AgentsViewJsonAgent;
