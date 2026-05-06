@@ -8,6 +8,7 @@ import {
   classifyTerminal,
   renderWatchdogPrompt,
   parseWatchdogResponse,
+  isLikelyTrulyBlocked,
   WatchdogCandidate,
   Decision,
 } from '../core/watchdog';
@@ -19,6 +20,7 @@ import {
 import { getAllTerminals, getById, EditorTerminal } from './terminals.vscode';
 import { getSessionPathBySessionId, readTailLines } from './sessions.vscode';
 import { formatEvent, trimToLast, WatchdogEvent } from '../core/watchdogLog';
+import { detectWaitingForInput } from '../core/session.activity';
 
 const WATCHDOG_LOG_PATH = path.join(os.homedir(), '.agents', 'watchdog.log');
 const LOG_MAX_LINES = 500;
@@ -44,6 +46,7 @@ const OPT_OUT_KEY = 'watchdog.optOut';
 const DORMANT_MS = 60 * 60 * 1000;
 const HEADLESS_TIMEOUT_MS = 30_000;
 const TAIL_LINES = 20;
+const WATCHDOG_MODEL = 'haiku';
 
 const execAsync = promisify(exec);
 
@@ -93,9 +96,9 @@ function readConfig(): WatchdogConfig {
   const cfg = vscode.workspace.getConfiguration('agents.watchdog');
   return {
     enabled: cfg.get<boolean>('enabled', true),
-    stallMs: cfg.get<number>('stallSeconds', 90) * 1000,
-    cooldownMs: cfg.get<number>('cooldownSeconds', 300) * 1000,
-    tickMs: cfg.get<number>('tickSeconds', 60) * 1000,
+    stallMs: cfg.get<number>('stallSeconds', 300) * 1000,
+    cooldownMs: cfg.get<number>('cooldownSeconds', 1200) * 1000,
+    tickMs: cfg.get<number>('tickSeconds', 120) * 1000,
     stallNudgeEnabled: cfg.get<boolean>('stallNudge', true),
     autoRotate: cfg.get<boolean>('autoRotate', true),
     rotateCooldownMs: cfg.get<number>('rotateCooldownSeconds', 120) * 1000,
@@ -119,7 +122,7 @@ async function fetchAgentsViewJsonForWatchdog(agentKey: string): Promise<AgentsV
 
 async function runClaudeHeadless(prompt: string): Promise<Decision[]> {
   return new Promise((resolve, reject) => {
-    const child = spawn('claude', ['-p', prompt], {
+    const child = spawn('claude', ['-p', prompt, '--model', WATCHDOG_MODEL], {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let stdout = '';
@@ -196,7 +199,7 @@ async function runSmartWatchdogAgent(
   return new Promise((resolve, reject) => {
     const child = spawn(
       'claude',
-      ['-p', prompt, '--mcp', mcpServerPath],
+      ['-p', prompt, '--mcp', mcpServerPath, '--model', WATCHDOG_MODEL],
       {
         cwd: workspacePath,
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -343,12 +346,17 @@ async function tick(
       if (status.kind !== 'stalled') continue;
 
       const tailLines = await readTailLines(sessionPath, TAIL_LINES);
-      candidates.push({
+      const tailText = tailLines.join('\n');
+      if (detectWaitingForInput(tailText, agentType)) continue;
+
+      const candidate: WatchdogCandidate = {
         terminalId: entry.id,
         agentType,
         tailLines,
         stalledForMs: status.stalledForMs,
-      });
+      };
+      if (!isLikelyTrulyBlocked(candidate)) continue;
+      candidates.push(candidate);
     }
 
     if (candidates.length === 0) return;

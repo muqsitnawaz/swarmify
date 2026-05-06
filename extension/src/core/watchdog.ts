@@ -16,6 +16,52 @@ export interface Decision {
   reason: string;
 }
 
+const FORCE_REVIEW_STALL_MS = 15 * 60 * 1000;
+const BLOCKED_HINTS = [
+  'blocked',
+  'stuck',
+  "can't",
+  'cannot',
+  'unable',
+  'failed',
+  'error',
+  'exception',
+  'traceback',
+  'timed out',
+  'timeout',
+  'rate limit',
+  'permission denied',
+];
+const WAITING_HINTS = [
+  'waiting on user',
+  'awaiting user',
+  'askuserquestion',
+];
+const COMPLETION_HINTS = [
+  'done',
+  'completed',
+  'all set',
+  'finished',
+];
+const TOOL_CALL_HINTS = [
+  '"type":"tool_use"',
+  '"type":"tool_call"',
+  '"type":"function_call"',
+];
+const ASSISTANT_LINE_HINTS = [
+  '"type":"assistant"',
+  '"role":"assistant"',
+  '"payload":{"type":"message"',
+];
+const PROMISE_HINTS = [
+  "i'll",
+  'i will',
+  'let me',
+  'going to',
+  "next i'll",
+  'next i will',
+];
+
 export type StallStatus =
   | { kind: 'active' }
   | { kind: 'dormant' }
@@ -107,4 +153,30 @@ export function parseWatchdogResponse(stdout: string): Decision[] {
     decisions.push({ terminalId, action, text, reason });
   }
   return decisions;
+}
+
+export function isLikelyTrulyBlocked(candidate: WatchdogCandidate): boolean {
+  if (candidate.stalledForMs >= FORCE_REVIEW_STALL_MS) return true;
+  if (candidate.tailLines.length === 0) return false;
+
+  const lowerTail = candidate.tailLines.join('\n').toLowerCase();
+  if (WAITING_HINTS.some((hint) => lowerTail.includes(hint))) return false;
+  if (COMPLETION_HINTS.some((hint) => lowerTail.includes(hint))) return false;
+  if (BLOCKED_HINTS.some((hint) => lowerTail.includes(hint))) return true;
+
+  let sawToolAfter = false;
+  for (let i = candidate.tailLines.length - 1; i >= 0; i--) {
+    const line = candidate.tailLines[i].toLowerCase();
+    if (TOOL_CALL_HINTS.some((hint) => line.includes(hint))) {
+      sawToolAfter = true;
+      continue;
+    }
+    if (!sawToolAfter) {
+      const isAssistantLine = ASSISTANT_LINE_HINTS.some((hint) => line.includes(hint));
+      const hasPromise = PROMISE_HINTS.some((hint) => line.includes(hint));
+      if (isAssistantLine && hasPromise) return true;
+    }
+  }
+
+  return false;
 }
