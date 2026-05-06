@@ -19,7 +19,6 @@ import { discoverRecentSessions, getSessionPathBySessionId } from './sessions.vs
 import { formatTerminalTitle, parseTerminalName, getSessionChunk } from '../core/utils';
 import { getBuiltInByKey } from '../core/agents';
 import { parseEvents } from '../core/watchdogLog';
-import * as prewarm from './prewarm.vscode';
 import * as workspaceConfig from './swarmifyConfig.vscode';
 import { createSymlinksCodebaseWide } from './agentlinks.vscode';
 import { scanMemoryFiles } from './contextFiles';
@@ -1394,17 +1393,16 @@ export function openPanel(context: vscode.ExtensionContext): void {
       case 'getPrewarmStatus':
         settingsPanel?.webview.postMessage({
           type: 'prewarmStatus',
-          enabled: prewarm.isEnabled(context),
-          pools: prewarm.getPoolInfo()
+          enabled: false,
+          pools: []
         });
         break;
       case 'togglePrewarm':
-        const newEnabled = !prewarm.isEnabled(context);
-        await prewarm.setEnabled(context, newEnabled);
+        vscode.window.showInformationMessage('Session warming is no longer used. Session IDs are discovered after launch.');
         settingsPanel?.webview.postMessage({
           type: 'prewarmStatus',
-          enabled: newEnabled,
-          pools: prewarm.getPoolInfo()
+          enabled: false,
+          pools: []
         });
         break;
       case 'getWorkspaceConfig':
