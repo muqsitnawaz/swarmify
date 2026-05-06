@@ -150,7 +150,7 @@ export function AgentDial({ title, value, options, onChange, meta, shortcut, inv
                   {inventory.signedInCount} signed in, {inventory.healthyCount} healthy
                 </span>
               </div>
-              {inventory.canRotate && onToggleRotation && (
+              {onToggleRotation && (
                 <div className="sw-dial-toggle-row">
                   <span className="sw-dial-deck-label">Rotation</span>
                   <div className="sw-dial-toggle-wrap">
