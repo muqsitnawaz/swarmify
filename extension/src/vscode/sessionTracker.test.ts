@@ -2,6 +2,7 @@ import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { createHash } from 'crypto';
 import type * as vscode from 'vscode';
 
 mock.module('vscode', () => ({
@@ -188,6 +189,213 @@ describe('sessionTracker — Codex rollout adoption (no prior sessionId)', () =>
 
     expect(events.length).toBe(0);
     unregisterTerminal(term);
+  });
+
+  test('routes new rollout to unbound same-cwd terminal when another terminal already has a different session', async () => {
+    const existingSessionId = '019dcbf2-aaaa-7fe1-aa30-1eede3d9e700';
+    const newSessionId = '019dcbf2-bbbb-7fe1-aa30-1eede3d9e701';
+    const bound = fakeTerminal('CX-bound');
+    const unbound = fakeTerminal('CX-unbound');
+
+    const events: Array<{ terminal: vscode.Terminal; oldId: string | undefined; newId: string }> = [];
+    onSessionChanged((terminal, oldId, newId) => {
+      events.push({ terminal, oldId, newId });
+    });
+
+    // Existing codex terminal already bound to a different session.
+    __testRegister(bound, 'codex', [tmpDir], existingSessionId);
+    // Same workspace, no session yet (Codex 0.124+ flow).
+    __testRegister(unbound, 'codex', [tmpDir], undefined);
+
+    const rollout = path.join(tmpDir, `rollout-2026-04-26T00-00-00-${newSessionId}.jsonl`);
+    fs.writeFileSync(rollout, JSON.stringify({
+      timestamp: '2026-04-26T07:36:40.810Z',
+      type: 'session_meta',
+      payload: {
+        id: newSessionId,
+        cwd: '/__test__',
+        originator: 'codex-tui',
+        cli_version: '0.124.0',
+      },
+    }) + '\n');
+
+    await waitMs(600);
+
+    const matching = events.filter(e => e.newId === `rollout-2026-04-26T00-00-00-${newSessionId}`);
+    expect(matching.length).toBe(1);
+    expect(matching[0].terminal).toBe(unbound);
+    expect(matching[0].oldId).toBeUndefined();
+
+    unregisterTerminal(bound);
+    unregisterTerminal(unbound);
+  });
+});
+
+describe('sessionTracker — Gemini/OpenCode adoption (no prior sessionId)', () => {
+  test('adopts existing gemini session file on register when project hash matches', async () => {
+    const term = fakeTerminal('GX-existing');
+    const geminiSessionId = '6f8f7c61-8b95-4d84-bf52-7ed8a29f33d3';
+    const expectedProjectHash = createHash('sha256').update('/__test__').digest('hex');
+
+    const events: Array<{ oldId: string | undefined; newId: string }> = [];
+    onSessionChanged((_t, oldId, newId) => {
+      events.push({ oldId, newId });
+    });
+
+    const geminiFile = path.join(tmpDir, 'session-2026-05-04T01-00-deadbeef.json');
+    fs.writeFileSync(geminiFile, JSON.stringify({
+      sessionId: geminiSessionId,
+      projectHash: expectedProjectHash,
+      messages: [],
+    }) + '\n');
+
+    __testRegister(term, 'gemini', [tmpDir], undefined);
+    await waitMs(600);
+
+    expect(events.length).toBe(1);
+    expect(events[0].oldId).toBeUndefined();
+    expect(events[0].newId).toBe(geminiSessionId);
+    unregisterTerminal(term);
+  });
+
+  test('adopts existing opencode session file on register when directory matches', async () => {
+    const term = fakeTerminal('OC-existing');
+    const opencodeSessionId = 'ses_41c85c5a8fferH3SOowLblaPCy';
+
+    const events: Array<{ oldId: string | undefined; newId: string }> = [];
+    onSessionChanged((_t, oldId, newId) => {
+      events.push({ oldId, newId });
+    });
+
+    const opencodeFile = path.join(tmpDir, `${opencodeSessionId}.json`);
+    fs.writeFileSync(opencodeFile, JSON.stringify({
+      id: opencodeSessionId,
+      directory: '/__test__',
+      projectID: 'test-project',
+    }) + '\n');
+
+    __testRegister(term, 'opencode', [tmpDir], undefined);
+    await waitMs(600);
+
+    expect(events.length).toBe(1);
+    expect(events[0].oldId).toBeUndefined();
+    expect(events[0].newId).toBe(opencodeSessionId);
+    unregisterTerminal(term);
+  });
+
+  test('routes new gemini sessions to matching workspace hash across multiple terminals', async () => {
+    const termA = fakeTerminal('GX-A');
+    const termB = fakeTerminal('GX-B');
+    const workspaceA = '/__workspace__/a';
+    const workspaceB = '/__workspace__/b';
+    const sessionA = '60f2bc29-6f55-4463-824b-e5e7f6b0e1a1';
+    const sessionB = 'fe95857c-b07f-4f9b-bfd5-80285f01f5f7';
+    const hashA = createHash('sha256').update(workspaceA).digest('hex');
+    const hashB = createHash('sha256').update(workspaceB).digest('hex');
+
+    const events: Array<{ terminal: vscode.Terminal; newId: string }> = [];
+    onSessionChanged((terminal, _oldId, newId) => {
+      events.push({ terminal, newId });
+    });
+
+    __testRegister(termA, 'gemini', [tmpDir], undefined, workspaceA);
+    __testRegister(termB, 'gemini', [tmpDir], undefined, workspaceB);
+
+    fs.writeFileSync(path.join(tmpDir, 'session-a.json'), JSON.stringify({
+      sessionId: sessionA,
+      projectHash: hashA,
+      messages: [],
+    }) + '\n');
+    fs.writeFileSync(path.join(tmpDir, 'session-b.json'), JSON.stringify({
+      sessionId: sessionB,
+      projectHash: hashB,
+      messages: [],
+    }) + '\n');
+
+    await waitMs(700);
+
+    const routedA = events.find((e) => e.newId === sessionA);
+    const routedB = events.find((e) => e.newId === sessionB);
+    expect(routedA).toBeTruthy();
+    expect(routedB).toBeTruthy();
+    expect(routedA!.terminal).toBe(termA);
+    expect(routedB!.terminal).toBe(termB);
+
+    unregisterTerminal(termA);
+    unregisterTerminal(termB);
+  });
+
+  test('routes new gemini session to unbound same-workspace terminal when another is already bound', async () => {
+    const workspace = '/__workspace__/shared';
+    const projectHash = createHash('sha256').update(workspace).digest('hex');
+    const boundSession = '9d89f4f0-2a43-4a8f-b822-8f2f54666c43';
+    const newSession = '7f744f17-fd89-4c30-92b4-b4742837f533';
+    const bound = fakeTerminal('GX-bound');
+    const unbound = fakeTerminal('GX-unbound');
+
+    const events: Array<{ terminal: vscode.Terminal; oldId: string | undefined; newId: string }> = [];
+    onSessionChanged((terminal, oldId, newId) => {
+      events.push({ terminal, oldId, newId });
+    });
+
+    __testRegister(bound, 'gemini', [tmpDir], boundSession, workspace);
+    __testRegister(unbound, 'gemini', [tmpDir], undefined, workspace);
+
+    fs.writeFileSync(path.join(tmpDir, 'session-new.json'), JSON.stringify({
+      sessionId: newSession,
+      projectHash,
+      messages: [],
+    }) + '\n');
+
+    await waitMs(700);
+
+    const matching = events.filter((e) => e.newId === newSession);
+    expect(matching.length).toBe(1);
+    expect(matching[0].terminal).toBe(unbound);
+    expect(matching[0].oldId).toBeUndefined();
+
+    unregisterTerminal(bound);
+    unregisterTerminal(unbound);
+  });
+
+  test('assigns distinct session ids when two unbound gemini terminals share one workspace', async () => {
+    const workspace = '/__workspace__/shared-2';
+    const projectHash = createHash('sha256').update(workspace).digest('hex');
+    const session1 = 'fe50d2f7-2f7f-40c6-a393-9fb1e8a663ee';
+    const session2 = '2c2fcb54-b928-4f01-95f8-40d57a998a6f';
+    const term1 = fakeTerminal('GX-1');
+    const term2 = fakeTerminal('GX-2');
+
+    const events: Array<{ terminal: vscode.Terminal; newId: string }> = [];
+    onSessionChanged((terminal, _oldId, newId) => {
+      events.push({ terminal, newId });
+    });
+
+    __testRegister(term1, 'gemini', [tmpDir], undefined, workspace);
+    __testRegister(term2, 'gemini', [tmpDir], undefined, workspace);
+
+    fs.writeFileSync(path.join(tmpDir, 'session-1.json'), JSON.stringify({
+      sessionId: session1,
+      projectHash,
+      messages: [],
+    }) + '\n');
+    await waitMs(700);
+
+    fs.writeFileSync(path.join(tmpDir, 'session-2.json'), JSON.stringify({
+      sessionId: session2,
+      projectHash,
+      messages: [],
+    }) + '\n');
+    await waitMs(700);
+
+    const event1 = events.find((e) => e.newId === session1);
+    const event2 = events.find((e) => e.newId === session2);
+    expect(event1).toBeTruthy();
+    expect(event2).toBeTruthy();
+    expect(event1!.terminal).not.toBe(event2!.terminal);
+
+    unregisterTerminal(term1);
+    unregisterTerminal(term2);
   });
 });
 
