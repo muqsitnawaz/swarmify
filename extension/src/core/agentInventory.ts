@@ -1,12 +1,9 @@
-import { exec } from 'child_process';
 import * as fs from 'fs';
 import { homedir } from 'os';
 import * as path from 'path';
-import { promisify } from 'util';
 import YAML from 'yaml';
 import { AgentsViewJsonAgent, sessionUsedPercent } from './resumeInBest';
-
-const execAsync = promisify(exec);
+import { runAgents } from './agentsBin';
 const AGENTS_SYSTEM_CONFIG_PATH = path.join(homedir(), '.agents-system', 'agents.yaml');
 const RUN_STRATEGIES = new Set(['pinned', 'available', 'balanced']);
 
@@ -135,7 +132,7 @@ export function writeAgentRunStrategy(
 
 export async function fetchAgentInventory(agentKey: string): Promise<AgentInventory | null> {
   try {
-    const { stdout } = await execAsync(`agents view ${agentKey} --json`, {
+    const { stdout } = await runAgents(`view ${agentKey} --json`, {
       timeout: 5000,
       maxBuffer: 5 * 1024 * 1024,
     });
@@ -153,7 +150,7 @@ export async function fetchAgentInventory(agentKey: string): Promise<AgentInvent
 export async function fetchAgentInventories(agentKeys: string[]): Promise<Record<string, AgentInventory>> {
   const wanted = new Set(agentKeys);
   try {
-    const { stdout } = await execAsync('agents view --json', {
+    const { stdout } = await runAgents('view --json', {
       timeout: 12000,
       maxBuffer: 10 * 1024 * 1024,
     });
