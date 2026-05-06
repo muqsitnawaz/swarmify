@@ -5,10 +5,11 @@ import * as os from 'os';
 import * as readline from 'readline';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { createHash } from 'crypto';
 
 const execAsync = promisify(exec);
 
-export type TrackedAgentType = 'claude' | 'codex';
+export type TrackedAgentType = 'claude' | 'codex' | 'gemini' | 'opencode';
 
 type SessionChangeListener = (
   terminal: vscode.Terminal,
@@ -41,6 +42,7 @@ const tracked = new Map<vscode.Terminal, TrackedTerminal>();
 const watchersByDir = new Map<string, SharedWatcher>();
 const debounceTimers = new Map<string, NodeJS.Timeout>();
 const lastWriteMs = new Map<string, number>();
+const codexAdoptionClaims = new Set<string>();
 let midnightTimer: NodeJS.Timeout | undefined;
 
 function homeDir(): string {
@@ -80,6 +82,46 @@ function codexRootToday(): string {
   return path.join(homeDir(), '.codex', 'sessions', y, m, d);
 }
 
+function workspaceHash(workspacePath: string): string {
+  return createHash('sha256').update(workspacePath).digest('hex');
+}
+
+function geminiRootsFor(workspacePath: string): string[] {
+  const base = path.basename(workspacePath);
+  const hash = workspaceHash(workspacePath);
+  const roots: string[] = [
+    path.join(homeDir(), '.gemini', 'tmp', hash, 'chats'),
+    path.join(homeDir(), '.gemini', 'tmp', base, 'chats'),
+  ];
+  return [...new Set(roots)];
+}
+
+function opencodeRootsFor(workspacePath: string): string[] {
+  const projectRoot = path.join(homeDir(), '.local', 'share', 'opencode', 'storage', 'project');
+  const sessionRoot = path.join(homeDir(), '.local', 'share', 'opencode', 'storage', 'session');
+  const roots: string[] = [];
+  try {
+    for (const entry of fs.readdirSync(projectRoot, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
+      const fullPath = path.join(projectRoot, entry.name);
+      try {
+        const raw = fs.readFileSync(fullPath, 'utf-8');
+        const parsed = JSON.parse(raw);
+        const worktree = parsed?.worktree;
+        const id = parsed?.id;
+        if (worktree === workspacePath && typeof id === 'string' && id.length > 0) {
+          roots.push(path.join(sessionRoot, id));
+        }
+      } catch {
+        /* ignore malformed project json */
+      }
+    }
+  } catch {
+    /* ignore missing opencode storage */
+  }
+  return [...new Set(roots)];
+}
+
 function msUntilNextMidnight(): number {
   const now = new Date();
   const next = new Date(now);
@@ -97,7 +139,18 @@ function ensureDirExists(dir: string): boolean {
 }
 
 function rootsFor(t: TrackedTerminal): string[] {
-  return t.agentType === 'claude' ? claudeRootsFor(t.workspacePath) : [codexRootToday()];
+  switch (t.agentType) {
+    case 'claude':
+      return claudeRootsFor(t.workspacePath);
+    case 'codex':
+      return [codexRootToday()];
+    case 'gemini':
+      return geminiRootsFor(t.workspacePath);
+    case 'opencode':
+      return opencodeRootsFor(t.workspacePath);
+    default:
+      return [];
+  }
 }
 
 function mountWatcher(dir: string, agentType: TrackedAgentType): void {
@@ -110,10 +163,11 @@ function mountWatcher(dir: string, agentType: TrackedAgentType): void {
     const watcher = fs.watch(dir, { recursive: false }, (event, filename) => {
       if (!filename) return;
       const name = filename.toString();
-      if (event === 'rename') {
-        onRename(dir, name, agentType);
-      } else if (event === 'change') {
+      if (event === 'change') {
         lastWriteMs.set(path.join(dir, name), Date.now());
+      }
+      if (event === 'rename' || event === 'change') {
+        onRename(dir, name, agentType);
       }
     });
     watchersByDir.set(dir, { watcher, refCount: 1, dir, agentType });
@@ -137,7 +191,9 @@ function releaseWatcher(dir: string): void {
 }
 
 function onRename(dir: string, filename: string, agentType: TrackedAgentType): void {
-  if (!filename.endsWith('.jsonl')) return;
+  const isJsonlAgent = agentType === 'claude' || agentType === 'codex';
+  if (isJsonlAgent && !filename.endsWith('.jsonl')) return;
+  if (!isJsonlAgent && !filename.endsWith('.json')) return;
   const full = path.join(dir, filename);
   const existing = debounceTimers.get(full);
   if (existing) clearTimeout(existing);
@@ -152,14 +208,45 @@ function onRename(dir: string, filename: string, agentType: TrackedAgentType): v
 interface ParseResult {
   forkedFromId?: string;
   codexCwd?: string;
+  geminiProjectHash?: string;
+  geminiSessionId?: string;
+  opencodeDirectory?: string;
+  opencodeSessionId?: string;
 }
 
 async function parseHead(file: string, agentType: TrackedAgentType): Promise<ParseResult> {
   const result: ParseResult = {};
-  const stream = fs.createReadStream(file, { encoding: 'utf-8' });
-  const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+  if (agentType === 'gemini' || agentType === 'opencode') {
+    try {
+      const raw = await fs.promises.readFile(file, 'utf-8');
+      const parsed = JSON.parse(raw);
+      if (agentType === 'gemini') {
+        if (typeof parsed?.projectHash === 'string') {
+          result.geminiProjectHash = parsed.projectHash;
+        }
+        if (typeof parsed?.sessionId === 'string') {
+          result.geminiSessionId = parsed.sessionId;
+        }
+      } else {
+        if (typeof parsed?.directory === 'string') {
+          result.opencodeDirectory = parsed.directory;
+        }
+        if (typeof parsed?.id === 'string') {
+          result.opencodeSessionId = parsed.id;
+        }
+      }
+    } catch {
+      /* ignore malformed json */
+    }
+    return result;
+  }
+
+  let stream: fs.ReadStream | undefined;
+  let rl: readline.Interface | undefined;
   let count = 0;
   try {
+    stream = fs.createReadStream(file, { encoding: 'utf-8' });
+    rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
     for await (const line of rl) {
       if (++count > LINE_CAP) break;
       if (!line.trim()) continue;
@@ -187,9 +274,11 @@ async function parseHead(file: string, agentType: TrackedAgentType): Promise<Par
         }
       }
     }
+  } catch {
+    /* ignore transient read errors (deleted/rotated files) */
   } finally {
-    rl.close();
-    stream.destroy();
+    rl?.close();
+    stream?.destroy();
   }
   return result;
 }
@@ -199,7 +288,7 @@ function sessionIdFromFile(file: string): string {
 }
 
 async function processNewFile(file: string, agentType: TrackedAgentType): Promise<void> {
-  const newId = sessionIdFromFile(file);
+  let newId = sessionIdFromFile(file);
   const parsed = await parseHead(file, agentType);
 
   if (agentType === 'claude' && parsed.forkedFromId) {
@@ -213,8 +302,38 @@ async function processNewFile(file: string, agentType: TrackedAgentType): Promis
   if (agentType === 'codex') {
     const candidates = [...tracked.values()].filter(t => t.agentType === 'codex');
     if (parsed.codexCwd) {
-      const match = candidates.find(t => t.workspacePath === parsed.codexCwd);
-      if (match && (!match.sessionId || match.sessionId === newId)) {
+      const match = candidates.find(
+        t => t.workspacePath === parsed.codexCwd && (!t.sessionId || t.sessionId === newId)
+      );
+      if (match) {
+        applyChange(match, newId, file);
+        return;
+      }
+    }
+  }
+
+  if (agentType === 'gemini') {
+    if (parsed.geminiSessionId) newId = parsed.geminiSessionId;
+    if (parsed.geminiProjectHash) {
+      const candidates = [...tracked.values()].filter(t =>
+        t.agentType === 'gemini' && workspaceHash(t.workspacePath) === parsed.geminiProjectHash
+      );
+      const match = candidates.find(t => !t.sessionId || t.sessionId === newId);
+      if (match) {
+        applyChange(match, newId, file);
+        return;
+      }
+    }
+  }
+
+  if (agentType === 'opencode') {
+    if (parsed.opencodeSessionId) newId = parsed.opencodeSessionId;
+    if (parsed.opencodeDirectory) {
+      const candidates = [...tracked.values()].filter(t =>
+        t.agentType === 'opencode' && t.workspacePath === parsed.opencodeDirectory
+      );
+      const match = candidates.find(t => !t.sessionId || t.sessionId === newId);
+      if (match) {
         applyChange(match, newId, file);
         return;
       }
@@ -286,6 +405,8 @@ async function newestDormantTerminal(
 }
 
 function applyChange(t: TrackedTerminal, newId: string, file: string): void {
+  const current = tracked.get(t.terminal);
+  if (current !== t) return;
   if (t.sessionId === newId) return;
   const old = t.sessionId;
   t.sessionId = newId;
@@ -313,10 +434,13 @@ function isSessionIdAlreadyTracked(
   return false;
 }
 
-async function adoptExistingCodexSession(t: TrackedTerminal): Promise<void> {
+async function adoptExistingCodexSession(
+  t: TrackedTerminal,
+  rootsOverride?: string[],
+): Promise<void> {
   if (t.agentType !== 'codex' || t.sessionId) return;
 
-  const roots = rootsFor(t);
+  const roots = rootsOverride && rootsOverride.length > 0 ? rootsOverride : rootsFor(t);
   for (const root of roots) {
     if (!fs.existsSync(root)) continue;
 
@@ -346,12 +470,190 @@ async function adoptExistingCodexSession(t: TrackedTerminal): Promise<void> {
     for (const candidate of files.slice(0, 120)) {
       const candidateId = sessionIdFromFile(candidate.file);
       if (isSessionIdAlreadyTracked('codex', candidateId, t.terminal)) continue;
+      if (codexAdoptionClaims.has(candidateId)) continue;
 
-      const parsed = await parseHead(candidate.file, 'codex');
-      if (parsed.codexCwd !== t.workspacePath) continue;
+      codexAdoptionClaims.add(candidateId);
+      try {
+        if (isSessionIdAlreadyTracked('codex', candidateId, t.terminal)) continue;
+
+        const parsed = await parseHead(candidate.file, 'codex');
+        if (parsed.codexCwd !== t.workspacePath) continue;
+        applyChange(t, candidateId, candidate.file);
+        return;
+      } finally {
+        codexAdoptionClaims.delete(candidateId);
+      }
+    }
+  }
+}
+
+async function adoptExistingClaudeFork(
+  t: TrackedTerminal,
+  rootsOverride?: string[],
+): Promise<void> {
+  if (t.agentType !== 'claude' || !t.sessionId) return;
+
+  const roots = rootsOverride && rootsOverride.length > 0 ? rootsOverride : rootsFor(t);
+  const expectedForkFrom = t.sessionId;
+  for (const root of roots) {
+    if (!fs.existsSync(root)) continue;
+
+    let files: Array<{ file: string; mtimeMs: number }> = [];
+    try {
+      const entries = await fs.promises.readdir(root, { withFileTypes: true });
+      const jsonlFiles = entries
+        .filter((e) => e.isFile() && e.name.endsWith('.jsonl'))
+        .map((e) => path.join(root, e.name));
+      const stats = await Promise.all(
+        jsonlFiles.map(async (file) => {
+          try {
+            const stat = await fs.promises.stat(file);
+            return { file, mtimeMs: stat.mtimeMs };
+          } catch {
+            return null;
+          }
+        }),
+      );
+      files = stats.filter((v): v is { file: string; mtimeMs: number } => v !== null);
+    } catch {
+      continue;
+    }
+
+    files.sort((a, b) => b.mtimeMs - a.mtimeMs);
+    for (const candidate of files.slice(0, 120)) {
+      const parsed = await parseHead(candidate.file, 'claude');
+      if (parsed.forkedFromId !== expectedForkFrom) continue;
+      const candidateId = sessionIdFromFile(candidate.file);
+      if (isSessionIdAlreadyTracked('claude', candidateId, t.terminal)) continue;
       applyChange(t, candidateId, candidate.file);
       return;
     }
+  }
+}
+
+async function adoptExistingGeminiSession(
+  t: TrackedTerminal,
+  rootsOverride?: string[],
+): Promise<void> {
+  if (t.agentType !== 'gemini' || t.sessionId) return;
+
+  const roots = rootsOverride && rootsOverride.length > 0 ? rootsOverride : rootsFor(t);
+  const expectedHash = workspaceHash(t.workspacePath);
+  for (const root of roots) {
+    if (!fs.existsSync(root)) continue;
+
+    let files: Array<{ file: string; mtimeMs: number }> = [];
+    try {
+      const entries = await fs.promises.readdir(root, { withFileTypes: true });
+      const jsonFiles = entries
+        .filter((e) => e.isFile() && e.name.endsWith('.json'))
+        .map((e) => path.join(root, e.name));
+      const stats = await Promise.all(
+        jsonFiles.map(async (file) => {
+          try {
+            const stat = await fs.promises.stat(file);
+            return { file, mtimeMs: stat.mtimeMs };
+          } catch {
+            return null;
+          }
+        }),
+      );
+      files = stats.filter((v): v is { file: string; mtimeMs: number } => v !== null);
+    } catch {
+      continue;
+    }
+
+    files.sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+    for (const candidate of files.slice(0, 120)) {
+      const parsed = await parseHead(candidate.file, 'gemini');
+      const candidateId = parsed.geminiSessionId;
+      if (!candidateId) continue;
+      if (parsed.geminiProjectHash !== expectedHash) continue;
+      if (isSessionIdAlreadyTracked('gemini', candidateId, t.terminal)) continue;
+      applyChange(t, candidateId, candidate.file);
+      return;
+    }
+  }
+}
+
+async function adoptExistingOpencodeSession(
+  t: TrackedTerminal,
+  rootsOverride?: string[],
+): Promise<void> {
+  if (t.agentType !== 'opencode' || t.sessionId) return;
+
+  const roots = rootsOverride && rootsOverride.length > 0 ? rootsOverride : rootsFor(t);
+  for (const root of roots) {
+    if (!fs.existsSync(root)) continue;
+
+    let files: Array<{ file: string; mtimeMs: number }> = [];
+    try {
+      const entries = await fs.promises.readdir(root, { withFileTypes: true });
+      const jsonFiles = entries
+        .filter((e) => e.isFile() && e.name.endsWith('.json'))
+        .map((e) => path.join(root, e.name));
+      const stats = await Promise.all(
+        jsonFiles.map(async (file) => {
+          try {
+            const stat = await fs.promises.stat(file);
+            return { file, mtimeMs: stat.mtimeMs };
+          } catch {
+            return null;
+          }
+        }),
+      );
+      files = stats.filter((v): v is { file: string; mtimeMs: number } => v !== null);
+    } catch {
+      continue;
+    }
+
+    files.sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+    for (const candidate of files.slice(0, 120)) {
+      const parsed = await parseHead(candidate.file, 'opencode');
+      const candidateId = parsed.opencodeSessionId;
+      if (!candidateId) continue;
+      if (parsed.opencodeDirectory !== t.workspacePath) continue;
+      if (isSessionIdAlreadyTracked('opencode', candidateId, t.terminal)) continue;
+      applyChange(t, candidateId, candidate.file);
+      return;
+    }
+  }
+}
+
+async function adoptExistingSessionForTerminal(
+  t: TrackedTerminal,
+  rootsOverride?: string[],
+): Promise<void> {
+  if (t.agentType === 'claude') {
+    await adoptExistingClaudeFork(t, rootsOverride);
+    return;
+  }
+  if (t.agentType === 'codex') {
+    await adoptExistingCodexSession(t, rootsOverride);
+    return;
+  }
+  if (t.agentType === 'gemini') {
+    await adoptExistingGeminiSession(t, rootsOverride);
+    return;
+  }
+  if (t.agentType === 'opencode') {
+    await adoptExistingOpencodeSession(t, rootsOverride);
+  }
+}
+
+function scheduleAdoptionRetry(
+  terminal: vscode.Terminal,
+  entry: TrackedTerminal,
+  rootsOverride?: string[],
+): void {
+  const delays = [450, 1200];
+  for (const delayMs of delays) {
+    setTimeout(() => {
+      if (tracked.get(terminal) !== entry) return;
+      void adoptExistingSessionForTerminal(entry, rootsOverride);
+    }, delayMs);
   }
 }
 
@@ -387,6 +689,7 @@ export function initSessionTracker(context: vscode.ExtensionContext): void {
       debounceTimers.clear();
       tracked.clear();
       lastWriteMs.clear();
+      codexAdoptionClaims.clear();
       listeners = [];
       initialized = false;
     },
@@ -415,11 +718,13 @@ export function registerTerminal(
     mountWatcher(root, agentType);
   }
 
-  // VS Code may restore terminals without AGENT_SESSION_ID in env. For
-  // Codex, recover immediately by scanning today's rollout files for this cwd
-  // instead of waiting for a brand-new file rename event.
-  if (!currentSessionId && agentType === 'codex') {
-    void adoptExistingCodexSession(entry);
+  // VS Code may restore terminals without AGENT_SESSION_ID in env.
+  // Recover immediately by scanning existing session files for this workspace
+  // instead of waiting only for brand-new file events.
+  if ((agentType === 'claude' && currentSessionId) || (agentType !== 'claude' && !currentSessionId)) {
+    void adoptExistingSessionForTerminal(entry);
+    // Fallback for environments where fs.watch may miss/deny create events.
+    scheduleAdoptionRetry(terminal, entry);
   }
 }
 
@@ -457,6 +762,7 @@ export function __reset(): void {
   midnightTimer = undefined;
   tracked.clear();
   lastWriteMs.clear();
+  codexAdoptionClaims.clear();
   listeners = [];
   initialized = false;
 }
@@ -466,16 +772,18 @@ export function __testRegister(
   agentType: TrackedAgentType,
   rootDirs: string[],
   currentSessionId?: string,
+  workspacePath: string = '/__test__',
 ): void {
   const entry: TrackedTerminal = {
     terminal,
     agentType,
-    workspacePath: '/__test__',
+    workspacePath,
     sessionId: currentSessionId,
   };
   tracked.set(terminal, entry);
   for (const root of rootDirs) mountWatcher(root, agentType);
-  if (!currentSessionId && agentType === 'codex') {
-    void adoptExistingCodexSession(entry);
+  if ((agentType === 'claude' && currentSessionId) || (agentType !== 'claude' && !currentSessionId)) {
+    void adoptExistingSessionForTerminal(entry, rootDirs);
+    scheduleAdoptionRetry(terminal, entry, rootDirs);
   }
 }

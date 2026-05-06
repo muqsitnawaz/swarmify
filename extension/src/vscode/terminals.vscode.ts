@@ -379,7 +379,7 @@ function maybeRegisterWithSessionTracker(
   agentType: SessionAgentType | undefined,
   sessionId: string | undefined,
 ): void {
-  if (agentType !== 'claude' && agentType !== 'codex') return;
+  if (agentType !== 'claude' && agentType !== 'codex' && agentType !== 'gemini' && agentType !== 'opencode') return;
   const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   if (!workspacePath) return;
   try {
