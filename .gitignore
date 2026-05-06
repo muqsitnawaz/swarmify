@@ -16,3 +16,6 @@
 **/.npm-cache
 **/.tmp
 extension/undefined.tmp-*
+**/repomix-output.xml
+**/.claude
+**/.ignore
