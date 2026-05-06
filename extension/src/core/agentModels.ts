@@ -1,8 +1,5 @@
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import { AGENT_MODELS } from './settings';
-
-const execAsync = promisify(exec);
+import { runAgents } from './agentsBin';
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const cache = new Map<string, { catalog: AgentCatalog | null; fetchedAt: number }>();
@@ -36,7 +33,7 @@ export async function fetchAgentCatalog(agent: string): Promise<AgentCatalog | n
 
 async function runFetchAgentCatalog(agent: string): Promise<AgentCatalog | null> {
   try {
-    const { stdout } = await execAsync(`agents models ${agent} --json`, {
+    const { stdout } = await runAgents(`models ${agent} --json`, {
       timeout: 5000,
       maxBuffer: 4 * 1024 * 1024,
     });

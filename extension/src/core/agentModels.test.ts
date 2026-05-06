@@ -29,24 +29,25 @@ beforeEach(() => {
 });
 
 test('fetchAgentCatalog returns null when agents-cli is unreachable', async () => {
-  const original = process.env.PATH;
-  process.env.PATH = '/nonexistent';
+  // The resolver bypasses PATH (resolves via shell + filesystem probes), so
+  // unsetting PATH no longer simulates an unreachable CLI. Use the documented
+  // test hook instead.
+  process.env.AGENTS_CLI_DISABLED = '1';
   try {
     const catalog = await fetchAgentCatalog('claude');
     expect(catalog).toBeNull();
   } finally {
-    process.env.PATH = original;
+    delete process.env.AGENTS_CLI_DISABLED;
   }
 });
 
 test('fetchAgentModels falls back to hardcoded AGENT_MODELS when CLI is unreachable', async () => {
-  const original = process.env.PATH;
-  process.env.PATH = '/nonexistent';
+  process.env.AGENTS_CLI_DISABLED = '1';
   try {
     const models = await fetchAgentModels('claude');
     expect(models).toEqual(AGENT_MODELS.claude);
   } finally {
-    process.env.PATH = original;
+    delete process.env.AGENTS_CLI_DISABLED;
   }
 });
 
@@ -91,12 +92,11 @@ test('checkInstalledAgentsViaCli always reports shell=true', async () => {
 test('second call within TTL serves cached catalog (no exec)', async () => {
   if (!(await agentsCliAvailable())) return;
   const first = await fetchAgentModels('claude');
-  const originalPath = process.env.PATH;
-  process.env.PATH = '/nonexistent';
+  process.env.AGENTS_CLI_DISABLED = '1';
   try {
     const second = await fetchAgentModels('claude');
     expect(second).toEqual(first);
   } finally {
-    process.env.PATH = originalPath;
+    delete process.env.AGENTS_CLI_DISABLED;
   }
 });
