@@ -264,7 +264,7 @@ export function PanelTab({
   }
 
   const dialOptions = builtInAgents
-    .filter(agent => agent.key !== 'shell' && (installedAgents[agent.key] ?? true))
+    .filter(agent => agent.key !== 'shell')
     .map(agent => ({
       key: agent.key,
       label: agent.name,
@@ -355,7 +355,7 @@ export function PanelTab({
               skillsTotal: primaryKey !== 'opencode' ? getSkillSummary(primaryKey as any).total : undefined,
             }}
             inventory={primaryInventory}
-            onToggleRotation={primaryInventory?.canRotate ? (enabled) => onSetAgentRunStrategy(primaryKey, enabled) : undefined}
+            onToggleRotation={(enabled) => onSetAgentRunStrategy(primaryKey, enabled)}
           />
           <AgentDial
             title="Secondary Agent"
@@ -379,7 +379,7 @@ export function PanelTab({
               skillsTotal: secondaryKey !== 'opencode' ? getSkillSummary(secondaryKey as any).total : undefined,
             }}
             inventory={secondaryInventory}
-            onToggleRotation={secondaryInventory?.canRotate ? (enabled) => onSetAgentRunStrategy(secondaryKey, enabled) : undefined}
+            onToggleRotation={(enabled) => onSetAgentRunStrategy(secondaryKey, enabled)}
           />
         </div>
       </div>
