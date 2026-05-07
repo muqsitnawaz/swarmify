@@ -59,7 +59,9 @@ async function readState(pid: number): Promise<SessionStateRecord | null> {
  */
 export async function liveSessionIdForShell(shellPid: number | undefined): Promise<string | null> {
   if (!shellPid) return null;
-  const pids = await descendantPids(shellPid);
+  // Check the root pid itself (covers cases where the agent runs directly under
+  // the terminal with no wrapping shell), then descendants.
+  const pids = [shellPid, ...await descendantPids(shellPid)];
   for (const pid of pids) {
     const rec = await readState(pid);
     if (rec) return rec.session_id;
