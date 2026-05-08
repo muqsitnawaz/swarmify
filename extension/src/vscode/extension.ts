@@ -102,7 +102,7 @@ async function ensureAgentsCliInstalled(): Promise<void> {
 }
 import { supportsPrewarming, buildVersionedResumeCommand, PREWARM_CONFIGS, PrewarmAgentType } from '../core/prewarm';
 import { generateClaudeSessionId, listOpencodeSessions } from '../core/prewarm.simple';
-import { liveSessionIdForShell } from '../core/liveSession';
+import { liveSessionIdForShell, pruneStaleSessionState } from '../core/liveSession';
 import { getSessionPathBySessionId, getSessionPreviewInfo, getOpenCodeSessionPreviewInfo, getCursorSessionPreviewInfo } from './sessions.vscode';
 import * as tasksImport from './tasks.vscode';
 import { SOURCE_BADGES } from '../core/tasks';
@@ -580,6 +580,11 @@ export async function activate(context: vscode.ExtensionContext) {
   // resolveAgentsBin runs in the background; if it throws AgentsBinNotFoundError
   // we surface a notification with a one-click installer.
   void ensureAgentsCliInstalled();
+
+  // Drop session-state files left behind by agents that have exited. The
+  // SessionStart hook keys files by pid; without a SessionEnd cleanup hook,
+  // those files would otherwise accumulate forever.
+  void pruneStaleSessionState();
 
   // Initialize terminal readiness event tracking (shell integration + close cleanup)
   readiness.initReadiness(context);
@@ -2739,6 +2744,43 @@ async function tryHydrateStatusBarAgentMeta(
   }
 }
 
+const liveSessionInFlight = new Set<string>();
+
+async function tryHydrateLiveSessionId(
+  terminal: vscode.Terminal,
+  prefix: string
+): Promise<void> {
+  const entry = terminals.getByTerminal(terminal);
+  if (!entry) return;
+  const inflightKey = entry.id || `live:${terminal.name}`;
+  if (liveSessionInFlight.has(inflightKey)) return;
+  liveSessionInFlight.add(inflightKey);
+
+  try {
+    const shellPid = await terminal.processId;
+    const liveId = await liveSessionIdForShell(shellPid);
+    if (!liveId) return;
+
+    if (entry.sessionId !== liveId) {
+      terminals.setSessionId(terminal, liveId);
+    }
+
+    if (!agentStatusBarItem || vscode.window.activeTerminal !== terminal) return;
+    const rawLabel = entry.label;
+    const displayLabel = rawLabel ? rawLabel.replace(/<[^>]*>/g, '').trim() : null;
+    agentStatusBarItem.text = formatAgentStatusBarText(
+      getExpandedAgentName(prefix),
+      entry.version || entry.statusVersion,
+      normalizeStatusEmail(entry.account || entry.statusAccount),
+      displayLabel,
+      liveId,
+      entry.agentType === 'codex',
+    );
+  } finally {
+    liveSessionInFlight.delete(inflightKey);
+  }
+}
+
 function updateStatusBarForTerminal(terminal: vscode.Terminal, extensionPath: string) {
   if (!agentStatusBarItem) return;
 
@@ -2768,6 +2810,11 @@ function updateStatusBarForTerminal(terminal: vscode.Terminal, extensionPath: st
     if (entry && (!version || !account)) {
       void tryHydrateStatusBarAgentMeta(terminal, entry, info.prefix);
     }
+    // Async-resolve the live session id from the SessionStart hook's state file
+    // and re-render. Catches the case where the user exited and reran the
+    // agent in the same terminal, or fired /clear — entry.sessionId is the
+    // spawn-time value and goes stale; the hook's per-pid file has the truth.
+    void tryHydrateLiveSessionId(terminal, info.prefix);
 
     return;
   }
