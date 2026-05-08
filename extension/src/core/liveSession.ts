@@ -72,3 +72,36 @@ export async function liveSessionIdForShell(shellPid: number | undefined): Promi
   }
   return best?.session_id ?? null;
 }
+
+/**
+ * Delete state files whose PID is no longer alive. Run on extension activation
+ * to bound the size of ~/.agents-system/state/sessions/. Cheap (~50 stat+kill
+ * calls per accumulation cycle).
+ */
+export async function pruneStaleSessionState(): Promise<number> {
+  let files: string[];
+  try {
+    files = await fs.readdir(STATE_DIR);
+  } catch {
+    return 0;
+  }
+  let removed = 0;
+  for (const name of files) {
+    if (!name.endsWith('.json')) continue;
+    const pid = Number(name.slice(0, -5));
+    if (!Number.isFinite(pid) || pid <= 0) continue;
+    try {
+      process.kill(pid, 0);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ESRCH') {
+        try {
+          await fs.unlink(path.join(STATE_DIR, name));
+          removed++;
+        } catch {
+          // best-effort
+        }
+      }
+    }
+  }
+  return removed;
+}
