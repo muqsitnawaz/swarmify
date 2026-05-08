@@ -60,11 +60,15 @@ async function readState(pid: number): Promise<SessionStateRecord | null> {
 export async function liveSessionIdForShell(shellPid: number | undefined): Promise<string | null> {
   if (!shellPid) return null;
   // Check the root pid itself (covers cases where the agent runs directly under
-  // the terminal with no wrapping shell), then descendants.
+  // the terminal with no wrapping shell), then descendants. When multiple pids
+  // in the tree have state files (e.g. a wrapper + the actual agent both fire
+  // SessionStart), prefer the most recently-written one — that's the active
+  // session the user is interacting with.
   const pids = [shellPid, ...await descendantPids(shellPid)];
+  let best: SessionStateRecord | null = null;
   for (const pid of pids) {
     const rec = await readState(pid);
-    if (rec) return rec.session_id;
+    if (rec && (!best || rec.ts > best.ts)) best = rec;
   }
-  return null;
+  return best?.session_id ?? null;
 }
