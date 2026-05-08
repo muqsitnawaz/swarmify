@@ -102,6 +102,7 @@ async function ensureAgentsCliInstalled(): Promise<void> {
 }
 import { supportsPrewarming, buildVersionedResumeCommand, PREWARM_CONFIGS, PrewarmAgentType } from '../core/prewarm';
 import { generateClaudeSessionId, listOpencodeSessions } from '../core/prewarm.simple';
+import { liveSessionIdForShell } from '../core/liveSession';
 import { getSessionPathBySessionId, getSessionPreviewInfo, getOpenCodeSessionPreviewInfo, getCursorSessionPreviewInfo } from './sessions.vscode';
 import * as tasksImport from './tasks.vscode';
 import { SOURCE_BADGES } from '../core/tasks';
@@ -602,6 +603,8 @@ export async function activate(context: vscode.ExtensionContext) {
     100
   );
   agentStatusBarItem.text = 'Agents';
+  agentStatusBarItem.command = 'agents.sessionId';
+  agentStatusBarItem.tooltip = 'Copy session ID';
   agentStatusBarItem.show();
   context.subscriptions.push(agentStatusBarItem);
 
@@ -1854,13 +1857,21 @@ async function copySessionId() {
     return;
   }
 
-  if (!terminalEntry.sessionId) {
+  // The session id stored on terminalEntry is the spawn-time value. It goes
+  // stale when the user exits and reruns the agent in the same terminal, or
+  // after /clear. Prefer the live id captured by the SessionStart hook
+  // (~/.agents-system/state/sessions/<agent-pid>.json).
+  const shellPid = await activeTerminal.processId;
+  const liveId = await liveSessionIdForShell(shellPid);
+  const sessionId = liveId || terminalEntry.sessionId;
+
+  if (!sessionId) {
     vscode.window.showInformationMessage('No session ID available');
     return;
   }
 
-  await vscode.env.clipboard.writeText(terminalEntry.sessionId);
-  vscode.window.setStatusBarMessage(`Session ID copied: ${terminalEntry.sessionId.slice(0, 8)}...`, 3000);
+  await vscode.env.clipboard.writeText(sessionId);
+  vscode.window.setStatusBarMessage(`Session ID copied: ${sessionId.slice(0, 8)}...`, 3000);
 }
 
 function agentKeyFromSession(agent: CliSessionItem['agent']): PrewarmAgentType | null {
