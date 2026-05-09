@@ -1723,14 +1723,33 @@ export function openPanel(context: vscode.ExtensionContext): void {
   const terminalListener = vscode.window.onDidOpenTerminal(debouncedTerminalUpdate);
   const terminalCloseListener = vscode.window.onDidCloseTerminal(debouncedTerminalUpdate);
 
+  // Pause webview polling when the panel is hidden behind another tab.
+  // retainContextWhenHidden keeps the React tree alive so it can re-render
+  // instantly on focus, but its setInterval-driven fetches don't need to
+  // keep hitting the network/disk when the user can't see the result.
+  const visibilityListener = settingsPanel.onDidChangeViewState((e) => {
+    settingsPanel?.webview.postMessage({
+      type: 'panelVisibility',
+      visible: e.webviewPanel.visible,
+    });
+  });
+
   settingsPanel.onDidDispose(() => {
     settingsPanel = undefined;
     terminalListener.dispose();
     terminalCloseListener.dispose();
+    visibilityListener.dispose();
     if (terminalUpdateTimeout) clearTimeout(terminalUpdateTimeout);
     cleanupSessionWatchers();
     swarm.setCloudUpdateListener(null);
     swarm.stopAllCloudStreams();
+    // Foreman owns ffmpeg/ffplay child processes and an OpenAI Realtime
+    // WebSocket. The orb's React unmount cleanup doesn't reliably run when
+    // the whole webview is destroyed, so close the session here.
+    if (foremanSession) {
+      foremanSession.close();
+      foremanSession = undefined;
+    }
   }, undefined, context.subscriptions);
 }
 
