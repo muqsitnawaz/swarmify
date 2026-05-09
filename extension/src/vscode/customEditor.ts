@@ -1,7 +1,10 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
+import { execFile } from 'child_process';
 import { maybePromptForAgentSymlinks } from './agentlinks.vscode';
+import { resolvePdfEngine, buildPdfArgs } from '../core/pdfEngine';
 
 // Track spawned agent terminals per document URI
 const documentAgents = new Map<string, vscode.Terminal>();
@@ -94,6 +97,9 @@ export class AgentsMarkdownEditorProvider implements vscode.CustomTextEditorProv
 
       case 'aiAction':
         return this.handleAIAction(message, webview);
+
+      case 'exportPdf':
+        return this.exportToPdf(message.html, document, webview);
     }
   }
 
@@ -396,6 +402,131 @@ ${selection}
       type: 'assetSaved',
       path: relativePath,
     });
+  }
+
+  private async exportToPdf(
+    bodyHtml: string,
+    document: vscode.TextDocument,
+    webview: vscode.Webview,
+  ): Promise<void> {
+    const engine = resolvePdfEngine();
+    if (!engine) {
+      webview.postMessage({
+        type: 'exportPdfError',
+        reason: 'No PDF engine found. Install Google Chrome or Prince.',
+      });
+      return;
+    }
+
+    const baseName = path.basename(document.uri.fsPath, path.extname(document.uri.fsPath));
+    const downloadsDir = path.join(os.homedir(), 'Downloads');
+    if (!fs.existsSync(downloadsDir)) {
+      fs.mkdirSync(downloadsDir, { recursive: true });
+    }
+
+    let pdfName = `${baseName}.pdf`;
+    let counter = 1;
+    while (fs.existsSync(path.join(downloadsDir, pdfName))) {
+      pdfName = `${baseName}-${counter}.pdf`;
+      counter++;
+    }
+    const pdfPath = path.join(downloadsDir, pdfName);
+
+    const tmpHtml = path.join(os.tmpdir(), `agents-md-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.html`);
+    fs.writeFileSync(tmpHtml, this.wrapHtmlForPrint(bodyHtml, baseName));
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        execFile(
+          engine.binary,
+          buildPdfArgs(engine, tmpHtml, pdfPath),
+          { timeout: 60_000 },
+          (err) => {
+            if (err) reject(err);
+            else resolve();
+          },
+        );
+      });
+
+      if (!fs.existsSync(pdfPath)) {
+        throw new Error('PDF was not produced');
+      }
+
+      await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(pdfPath));
+      webview.postMessage({ type: 'exportPdfDone', path: pdfPath });
+    } catch (err) {
+      webview.postMessage({
+        type: 'exportPdfError',
+        reason: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      try { fs.unlinkSync(tmpHtml); } catch { /* ignore */ }
+    }
+  }
+
+  private wrapHtmlForPrint(bodyHtml: string, title: string): string {
+    const safeTitle = title.replace(/[<>&"]/g, '');
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>${safeTitle}</title>
+<style>
+@page { size: A4; margin: 1in; }
+* { box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  font-size: 12pt;
+  line-height: 1.6;
+  color: #1a1a1a;
+  background: #fff;
+  margin: 0;
+}
+h1 { font-size: 24pt; margin: 24pt 0 12pt; page-break-after: avoid; }
+h2 { font-size: 18pt; margin: 20pt 0 10pt; page-break-after: avoid; }
+h3 { font-size: 14pt; margin: 16pt 0 8pt; page-break-after: avoid; }
+p { margin: 0 0 10pt; }
+ul, ol { margin: 0 0 10pt 24pt; }
+li { margin-bottom: 4pt; }
+code {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 10pt;
+  background: #f4f4f4;
+  padding: 1pt 4pt;
+  border-radius: 3pt;
+}
+pre {
+  background: #f4f4f4;
+  padding: 12pt;
+  border-radius: 4pt;
+  overflow-x: auto;
+  page-break-inside: avoid;
+  margin: 0 0 12pt;
+}
+pre code { background: none; padding: 0; font-size: 9.5pt; line-height: 1.5; }
+blockquote {
+  border-left: 3pt solid #ddd;
+  margin: 0 0 12pt;
+  padding: 0 12pt;
+  color: #555;
+}
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0 0 12pt;
+  page-break-inside: avoid;
+}
+th, td { border: 1pt solid #ccc; padding: 6pt 10pt; text-align: left; }
+th { background: #f4f4f4; }
+img { max-width: 100%; height: auto; }
+a { color: #0366d6; text-decoration: none; }
+hr { border: none; border-top: 1pt solid #ddd; margin: 16pt 0; }
+</style>
+</head>
+<body>
+${bodyHtml}
+</body>
+</html>`;
   }
 
   private updateWebview(webview: vscode.Webview, document: vscode.TextDocument): void {
