@@ -929,6 +929,14 @@ export function openPanel(context: vscode.ExtensionContext): void {
   settingsPanel.webview.onDidReceiveMessage(async (message) => {
     switch (message.type) {
       case 'ready':
+        // Post the panel's actual visibility once so the webview doesn't have
+        // to assume "we mounted, so we must be visible." onDidChangeViewState
+        // only fires on transitions, so without this seed a panel that opened
+        // hidden would poll until the user revealed-then-hid it.
+        settingsPanel?.webview.postMessage({
+          type: 'panelVisibility',
+          visible: settingsPanel.visible,
+        });
         updateWebview();
         break;
       case 'saveSettings':
