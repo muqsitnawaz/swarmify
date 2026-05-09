@@ -25,6 +25,7 @@ import Toggle from '../extensions/Toggle';
 import VideoBlock from '../extensions/VideoBlock';
 import FileAttachment from '../extensions/FileAttachment';
 import KeyboardShortcuts from '../extensions/KeyboardShortcuts';
+import { parseFrontmatter, reattachFrontmatter } from '../frontmatter';
 
 const lowlight = createLowlight(common);
 
@@ -36,10 +37,12 @@ interface EditorProps {
   onSendToActiveAgent: (selection: string) => void;
   hasActiveAgent: boolean;
   onEditorReady: (editor: TiptapEditor) => void;
+  onFrontmatterParsed?: (data: Record<string, unknown>, hasFrontmatter: boolean) => void;
 }
 
-function Editor({ initialContent, onChange, onSaveAsset, onSendToAgent, onSendToActiveAgent, hasActiveAgent, onEditorReady }: EditorProps) {
+function Editor({ initialContent, onChange, onSaveAsset, onSendToAgent, onSendToActiveAgent, hasActiveAgent, onEditorReady, onFrontmatterParsed }: EditorProps) {
   const isUpdatingRef = useRef(false);
+  const frontmatterRef = useRef<{ data: Record<string, unknown>; hasFrontmatter: boolean }>({ data: {}, hasFrontmatter: false });
 
     const editor = useEditor({
       extensions: [
@@ -167,8 +170,10 @@ function Editor({ initialContent, onChange, onSaveAsset, onSendToAgent, onSendTo
       },
       onUpdate: ({ editor }) => {
         if (!isUpdatingRef.current) {
-          const markdown = editor.storage.markdown.getMarkdown();
-          onChange(markdown);
+          const body = editor.storage.markdown.getMarkdown();
+          const fm = frontmatterRef.current;
+          const merged = reattachFrontmatter(fm.data, body, fm.hasFrontmatter);
+          onChange(merged);
         }
       },
     });
@@ -176,10 +181,19 @@ function Editor({ initialContent, onChange, onSaveAsset, onSendToAgent, onSendTo
     // Update editor when content changes externally
     useEffect(() => {
       if (editor && initialContent !== undefined) {
+        const parsed = parseFrontmatter(initialContent);
+        const prev = frontmatterRef.current;
+        const fmChanged =
+          prev.hasFrontmatter !== parsed.hasFrontmatter ||
+          JSON.stringify(prev.data) !== JSON.stringify(parsed.data);
+        frontmatterRef.current = { data: parsed.data, hasFrontmatter: parsed.hasFrontmatter };
+        if (fmChanged) {
+          onFrontmatterParsed?.(parsed.data, parsed.hasFrontmatter);
+        }
         const currentMarkdown = editor.storage.markdown.getMarkdown();
-        if (currentMarkdown !== initialContent) {
+        if (currentMarkdown !== parsed.body) {
           isUpdatingRef.current = true;
-          editor.commands.setContent(initialContent);
+          editor.commands.setContent(parsed.body);
           isUpdatingRef.current = false;
         }
       }
