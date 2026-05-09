@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import Editor from './components/Editor';
 import Outline from './components/Outline';
+import FrontmatterPanel from './components/FrontmatterPanel';
+import Toolbar from './components/Toolbar';
 import { Editor as TiptapEditor } from '@tiptap/core';
 
 declare const acquireVsCodeApi: () => any;
@@ -11,6 +13,9 @@ function App() {
   const [isReady, setIsReady] = useState(false);
   const [editor, setEditor] = useState<TiptapEditor | null>(null);
   const [hasActiveAgent, setHasActiveAgent] = useState(false);
+  const [frontmatter, setFrontmatter] = useState<Record<string, unknown>>({});
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   useEffect(() => {
     // Handle messages from extension
@@ -29,6 +34,14 @@ function App() {
           break;
         case 'activeAgentChanged':
           setHasActiveAgent(message.hasActiveAgent);
+          break;
+        case 'exportPdfDone':
+          setExporting(false);
+          setExportError(null);
+          break;
+        case 'exportPdfError':
+          setExporting(false);
+          setExportError(message.reason || 'PDF export failed');
           break;
       }
     };
@@ -73,6 +86,20 @@ function App() {
     });
   };
 
+  const handleFrontmatterParsed = (data: Record<string, unknown>) => {
+    setFrontmatter(data);
+  };
+
+  const handleExportPdf = () => {
+    if (!editor) return;
+    setExporting(true);
+    setExportError(null);
+    vscode.postMessage({
+      type: 'exportPdf',
+      html: editor.getHTML(),
+    });
+  };
+
   if (!isReady) {
     return (
       <div style={{
@@ -91,15 +118,24 @@ function App() {
   return (
     <div className="editor-layout">
       <Outline editor={editor} />
-      <Editor
-        initialContent={content}
-        onChange={handleContentChange}
-        onSaveAsset={handleSaveAsset}
-        onSendToAgent={handleSendToAgent}
-        onSendToActiveAgent={handleSendToActiveAgent}
-        hasActiveAgent={hasActiveAgent}
-        onEditorReady={setEditor}
-      />
+      <div className="editor-main">
+        <Toolbar
+          onExportPdf={handleExportPdf}
+          exporting={exporting}
+          exportError={exportError}
+        />
+        <FrontmatterPanel data={frontmatter} />
+        <Editor
+          initialContent={content}
+          onChange={handleContentChange}
+          onSaveAsset={handleSaveAsset}
+          onSendToAgent={handleSendToAgent}
+          onSendToActiveAgent={handleSendToActiveAgent}
+          hasActiveAgent={hasActiveAgent}
+          onEditorReady={setEditor}
+          onFrontmatterParsed={handleFrontmatterParsed}
+        />
+      </div>
     </div>
   );
 }
