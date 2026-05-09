@@ -27,7 +27,7 @@ import {
   SESSIONS_PER_PAGE,
   createBuiltInAgents,
 } from './constants'
-import { useSystemTheme, getVsCodeApi, getIcons, postMessage } from './hooks'
+import { useSystemTheme, getVsCodeApi, getIcons, postMessage, usePanelVisibility } from './hooks'
 import { validateAliasName } from './utils'
 
 // New layout shell
@@ -69,6 +69,7 @@ function getAgentWithHighestRunningCount(runningCounts: RunningCounts): string |
 
 export default function App() {
   const isLightTheme = useSystemTheme()
+  const panelVisible = usePanelVisibility()
 
   // Core settings state
   const [settings, setSettings] = useState<AgentSettings | null>(null)
@@ -371,25 +372,28 @@ export default function App() {
     vscode.postMessage({ type: 'refreshAgentInventories' })
   }, [activeTab, agentInventories])
 
-  // Poll for tasks and terminals when floor tab is active
+  // Poll for tasks and terminals when floor tab is active and the panel is
+  // visible. retainContextWhenHidden keeps the React tree alive when the tab
+  // is hidden behind another, so without the visibility gate these would
+  // keep firing network requests for a UI nobody is looking at.
   useEffect(() => {
-    if (activeTab !== 'floor' || !tasksLoaded) return
+    if (activeTab !== 'floor' || !tasksLoaded || !panelVisible) return
     const interval = setInterval(() => {
       vscode.postMessage({ type: 'fetchTasks' })
       vscode.postMessage({ type: 'fetchAllTerminals' })
     }, 10_000)
     return () => clearInterval(interval)
-  }, [activeTab, tasksLoaded])
+  }, [activeTab, tasksLoaded, panelVisible])
 
   // Poll watchdog log when floor tab is active and watchdog is enabled
   useEffect(() => {
-    if (activeTab !== 'floor' || !watchdogEnabled) return
+    if (activeTab !== 'floor' || !watchdogEnabled || !panelVisible) return
     vscode.postMessage({ type: 'getWatchdogLog' })
     const interval = setInterval(() => {
       vscode.postMessage({ type: 'getWatchdogLog' })
     }, 15_000)
     return () => clearInterval(interval)
-  }, [activeTab, watchdogEnabled])
+  }, [activeTab, watchdogEnabled, panelVisible])
 
   // Global ⌘K / Ctrl+K opens the command palette. `stopPropagation` +
   // `preventDefault` are intentional — VS Code's webview otherwise
