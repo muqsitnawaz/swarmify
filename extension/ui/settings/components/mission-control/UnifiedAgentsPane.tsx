@@ -3,7 +3,7 @@ import type { TaskSummary, TerminalDetail as TerminalInfo, AgentDetail, UnifiedT
 import { AgentAvatar, agentShortChunk } from './AgentAvatar'
 import { Icon } from './icons'
 import { relTime, taskNameToTitle, swarmOverallStatus, shortDuration } from './types'
-import { postMessage } from '../../hooks'
+import { postMessage, usePanelVisibility } from '../../hooks'
 import { ExtLink } from '../common'
 import { renderTodoDescription } from '../../utils/markdown'
 import { CMD_PALETTE_EVENTS } from './CommandPalette'
@@ -406,6 +406,7 @@ interface UnifiedAgentsPaneProps {
 }
 
 export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks, unifiedTasksLoading, onDispatch, onNavigate, openDispatchTrigger, openDetailTaskId, onDetailTaskConsumed, onThroughputChange, githubRepo, watchdogEnabled = false, watchdogEvents = [] }: UnifiedAgentsPaneProps) {
+  const panelVisible = usePanelVisibility()
   const [newMenuOpen, setNewMenuOpen] = useState(false)
   const [statPopover, setStatPopover] = useState<'shipped' | 'open' | 'running' | 'nextup' | 'files' | null>(null)
   const [dispatchOpen, setDispatchOpen] = useState(false)
@@ -808,11 +809,12 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
       onThroughputChange?.(0)
       return
     }
+    if (!panelVisible) return
     const poll = () => postMessage({ type: 'getFloorThroughput' })
     poll()
     const id = setInterval(poll, 2500)
     return () => clearInterval(id)
-  }, [activeItems.length, onThroughputChange])
+  }, [activeItems.length, onThroughputChange, panelVisible])
   useEffect(() => {
     const handler = (event: MessageEvent) => {
       const msg = event.data
