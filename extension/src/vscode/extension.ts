@@ -590,11 +590,13 @@ export async function activate(context: vscode.ExtensionContext) {
   readiness.initReadiness(context);
 
   sessionTracker.initSessionTracker(context);
-  sessionTracker.onSessionChanged((terminal, _oldId, newId) => {
-    terminals.setSessionId(terminal, newId);
-    startAutoLabelPollerForTerminal(terminal, context);
-    updateStatusBarForTerminal(terminal, context.extensionPath);
-  });
+  context.subscriptions.push(
+    sessionTracker.onSessionChanged((terminal, _oldId, newId) => {
+      terminals.setSessionId(terminal, newId);
+      startAutoLabelPollerForTerminal(terminal, context);
+      updateStatusBarForTerminal(terminal, context.extensionPath);
+    }),
+  );
 
   // Cross-window live-terminal registry: every VS Code window publishes its
   // agent terminals to a shared JSON file so the Foreman (and future tools)
@@ -3331,7 +3333,7 @@ function initForemanRegistry(context: vscode.ExtensionContext): void {
   const publish = async () => {
     try {
       const snap = await registry.snapshotOwnTerminals();
-      registry.publishLiveTerminals(snap);
+      await registry.publishLiveTerminals(snap);
     } catch { /* best effort */ }
   };
   context.subscriptions.push(
@@ -3339,7 +3341,10 @@ function initForemanRegistry(context: vscode.ExtensionContext): void {
     vscode.window.onDidCloseTerminal(() => { void publish(); }),
     vscode.window.onDidChangeTerminalState(() => { void publish(); }),
   );
-  timer = setInterval(publish, 15_000);
+  // Long keepalive: publish() itself skips the disk write when nothing
+  // changed and the keepalive window isn't due, so this interval is just a
+  // safety net. Kept under STALE_WINDOW_MS (10 min) so peers don't prune us.
+  timer = setInterval(publish, 60_000);
   context.subscriptions.push({ dispose: () => { if (timer) clearInterval(timer); } });
   void publish();
 }

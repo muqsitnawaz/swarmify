@@ -18,12 +18,17 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import * as vscode from 'vscode';
+import { createHash } from 'crypto';
 import { computeWindowId } from '../core/foreman.windowId';
 
 const REGISTRY_DIR = path.join(os.homedir(), '.agents', 'terminals');
 const REGISTRY_FILE = path.join(REGISTRY_DIR, 'live-terminals.json');
 const LEGACY_REGISTRY_FILE = path.join(os.homedir(), '.agents', 'swarmify', 'live-terminals.json');
 const STALE_WINDOW_MS = 10 * 60_000;
+// Force a write at least this often even when our slice is unchanged, so
+// peers don't prune us as crashed (peer prune trigger: `at` older than
+// STALE_WINDOW_MS AND every pid in our slice is dead).
+const KEEPALIVE_FORCE_MS = 4 * 60_000;
 
 export interface LiveTerminal {
   sessionId: string;
@@ -48,6 +53,22 @@ function getOwnWindowId(): string {
   return ownWindowId;
 }
 
+async function readRegistryAsync(): Promise<RegistryFile> {
+  try {
+    const raw = await fs.promises.readFile(REGISTRY_FILE, 'utf8');
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    try {
+      const raw = await fs.promises.readFile(LEGACY_REGISTRY_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+}
+
 function readRegistry(): RegistryFile {
   try {
     const raw = fs.readFileSync(REGISTRY_FILE, 'utf8');
@@ -64,14 +85,12 @@ function readRegistry(): RegistryFile {
   }
 }
 
-function writeRegistry(reg: RegistryFile): void {
+async function writeRegistryAsync(reg: RegistryFile): Promise<void> {
   try {
-    if (!fs.existsSync(REGISTRY_DIR)) {
-      fs.mkdirSync(REGISTRY_DIR, { recursive: true });
-    }
+    await fs.promises.mkdir(REGISTRY_DIR, { recursive: true });
     const tmp = `${REGISTRY_FILE}.tmp-${process.pid}`;
-    fs.writeFileSync(tmp, JSON.stringify(reg, null, 2));
-    fs.renameSync(tmp, REGISTRY_FILE);
+    await fs.promises.writeFile(tmp, JSON.stringify(reg, null, 2));
+    await fs.promises.rename(tmp, REGISTRY_FILE);
   } catch {
     /* best effort */
   }
@@ -89,17 +108,38 @@ function isPidAlive(pid: number): boolean {
   }
 }
 
-// Publish this window's live terminals. Call on terminal open/close and every
-// few seconds as a keepalive. Only writes if the set changed or the keepalive
-// window is due.
-export function publishLiveTerminals(terminals: LiveTerminal[]): void {
-  const reg = readRegistry();
+let lastPublishedHash: string | undefined;
+let lastPublishedAtMs = 0;
+
+function hashEntries(entries: LiveTerminal[]): string {
+  // Stable hash of the slice content (sessionId+pid+kind+label+cwd). The
+  // `at` timestamp is excluded — it changes every call and would make every
+  // hash unique.
+  const stable = entries
+    .map((e) => `${e.sessionId}|${e.pid}|${e.kind}|${e.label ?? ''}|${e.cwd ?? ''}`)
+    .sort()
+    .join('\n');
+  return createHash('sha1').update(stable).digest('hex');
+}
+
+// Publish this window's live terminals. Skips the disk write when our slice
+// is unchanged AND a keepalive isn't due — the previous implementation did
+// a sync read+write of the whole registry on every terminal event AND on a
+// 15s interval, blocking the extension-host thread for no information gain.
+export async function publishLiveTerminals(terminals: LiveTerminal[]): Promise<void> {
+  const hash = hashEntries(terminals);
+  const now = Date.now();
+  const unchanged = hash === lastPublishedHash;
+  const keepaliveDue = now - lastPublishedAtMs >= KEEPALIVE_FORCE_MS;
+  if (unchanged && !keepaliveDue) return;
+
+  const reg = await readRegistryAsync();
   reg[getOwnWindowId()] = {
     at: new Date().toISOString(),
     entries: terminals,
   };
   // Garbage-collect peer slices that look crashed (old timestamp + all pids dead).
-  const cutoff = Date.now() - STALE_WINDOW_MS;
+  const cutoff = now - STALE_WINDOW_MS;
   for (const [winId, slice] of Object.entries(reg)) {
     if (winId === getOwnWindowId()) continue;
     const at = Date.parse(slice?.at ?? '');
@@ -107,7 +147,9 @@ export function publishLiveTerminals(terminals: LiveTerminal[]): void {
     const anyAlive = (slice.entries ?? []).some((e) => isPidAlive(e.pid));
     if (!anyAlive) delete reg[winId];
   }
-  writeRegistry(reg);
+  await writeRegistryAsync(reg);
+  lastPublishedHash = hash;
+  lastPublishedAtMs = now;
 }
 
 // Read all live terminals across every IDE window, filtered to pid-alive only.
