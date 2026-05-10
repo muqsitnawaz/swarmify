@@ -8,7 +8,7 @@ import * as net from 'net';
 import * as path from 'path';
 import * as os from 'os';
 
-const SOCKET_PATH = path.join(os.homedir(), '.agents-system', 'watchdog.sock');
+const SOCKET_PATH = path.join(os.homedir(), '.agents', '.tmp', 'watchdog.sock');
 
 const server = new Server(
   { name: 'watchdog', version: '1.0.0' },
