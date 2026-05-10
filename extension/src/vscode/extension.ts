@@ -1072,6 +1072,20 @@ export async function activate(context: vscode.ExtensionContext) {
     );
   }
 
+  // Register unified agent version picker (all agents in one list, ranked by usage)
+  context.subscriptions.push(
+    vscode.commands.registerCommand('agents.newAgentPickVersion', async () => {
+      const result = await pickAnyAgentVersion(context.extensionPath);
+      if (!result) return;
+      const def = getBuiltInByKey(result.agentKey);
+      if (!def) return;
+      const agentConfig = getBuiltInByTitle(context.extensionPath, def.title);
+      if (agentConfig) {
+        openSingleAgent(context, agentConfig, undefined, result.version);
+      }
+    })
+  );
+
   // Dynamically register custom agent commands
   const customAgentSettings = settings.getSettings(context);
   for (const custom of customAgentSettings.custom) {
@@ -1809,6 +1823,11 @@ async function pickAgentVersion(agentKey: string): Promise<AgentVersionInfo | nu
     return null;
   }
 
+  const pinButton: vscode.QuickInputButton = {
+    iconPath: new vscode.ThemeIcon('pin'),
+    tooltip: 'Pin as default version',
+  };
+
   const items: VersionQuickPickItem[] = versions.map(v => {
     const statusIcon = v.usageStatus === 'available' ? '$(check)' :
                        v.usageStatus === 'rate_limited' ? '$(warning)' :
@@ -1822,16 +1841,160 @@ async function pickAgentVersion(agentKey: string): Promise<AgentVersionInfo | nu
       description: `${v.email || 'not signed in'}${status ? ` - ${status}` : ''}`,
       detail: `${statusIcon} ${v.plan || ''}${usage ? ` - ${usage}` : ''}`.trim(),
       version: v,
+      buttons: v.isDefault ? [] : [pinButton],
     };
   });
 
-  const picked = await vscode.window.showQuickPick<VersionQuickPickItem>(items, {
-    title: `Pick ${agentKey} version`,
-    placeHolder: 'Select a version to launch',
-    matchOnDescription: true,
+  return new Promise((resolve) => {
+    const quickPick = vscode.window.createQuickPick<VersionQuickPickItem>();
+    quickPick.title = `Pick ${agentKey} version`;
+    quickPick.placeholder = 'Select to launch, or click pin icon to set as default';
+    quickPick.items = items;
+    quickPick.matchOnDescription = true;
+
+    quickPick.onDidTriggerItemButton(async (e) => {
+      const item = e.item;
+      const { runAgents } = await import('../core/agentsBin');
+      try {
+        await runAgents(`use ${agentKey}@${item.version.version}`);
+        vscode.window.showInformationMessage(`Pinned ${agentKey}@${item.version.version} as default`);
+      } catch (err: any) {
+        vscode.window.showErrorMessage(`Failed to pin: ${err.message || err}`);
+      }
+      quickPick.hide();
+      resolve(null);
+    });
+
+    quickPick.onDidAccept(() => {
+      const selected = quickPick.selectedItems[0];
+      quickPick.hide();
+      resolve(selected?.version ?? null);
+    });
+
+    quickPick.onDidHide(() => {
+      quickPick.dispose();
+      resolve(null);
+    });
+
+    quickPick.show();
+  });
+}
+
+interface UnifiedVersionInfo extends AgentVersionInfo {
+  agentKey: string;
+  agentTitle: string;
+}
+
+interface UnifiedVersionQuickPickItem extends vscode.QuickPickItem {
+  unified: UnifiedVersionInfo;
+}
+
+function usageRank(status?: string): number {
+  switch (status) {
+    case 'available': return 0;
+    case 'rate_limited': return 1;
+    case 'out_of_credits': return 2;
+    default: return 3;
+  }
+}
+
+async function pickAnyAgentVersion(
+  extensionPath: string
+): Promise<{ agentKey: string; version: string } | null> {
+  const AGENTS_TO_FETCH = ['claude', 'codex', 'gemini', 'cursor'];
+  const allVersions: UnifiedVersionInfo[] = [];
+
+  const results = await Promise.allSettled(
+    AGENTS_TO_FETCH.map(async (agentKey) => {
+      const versions = await listAgentVersions(agentKey);
+      const def = getBuiltInByKey(agentKey);
+      return versions.map(v => ({
+        ...v,
+        agentKey,
+        agentTitle: def?.title || agentKey,
+      }));
+    })
+  );
+
+  for (const result of results) {
+    if (result.status === 'fulfilled') {
+      allVersions.push(...result.value);
+    }
+  }
+
+  if (allVersions.length === 0) {
+    vscode.window.showInformationMessage('No agent versions installed');
+    return null;
+  }
+
+  allVersions.sort((a, b) => {
+    const rankDiff = usageRank(a.usageStatus) - usageRank(b.usageStatus);
+    if (rankDiff !== 0) return rankDiff;
+    const aWeek = a.windows?.find(w => w.key === 'week')?.usedPercent ?? 100;
+    const bWeek = b.windows?.find(w => w.key === 'week')?.usedPercent ?? 100;
+    return aWeek - bWeek;
   });
 
-  return picked?.version ?? null;
+  const pinButton: vscode.QuickInputButton = {
+    iconPath: new vscode.ThemeIcon('pin'),
+    tooltip: 'Pin as default version',
+  };
+
+  const items: UnifiedVersionQuickPickItem[] = allVersions.map(v => {
+    const statusIcon = v.usageStatus === 'available' ? '$(check)' :
+                       v.usageStatus === 'rate_limited' ? '$(warning)' :
+                       v.usageStatus === 'out_of_credits' ? '$(error)' : '';
+    const defaultTag = v.isDefault ? '$(pinned) ' : '';
+    const usage = formatVersionUsage(v);
+    const status = formatUsageStatus(v.usageStatus);
+    const agentLabel = v.agentKey.charAt(0).toUpperCase() + v.agentKey.slice(1);
+
+    return {
+      label: `${defaultTag}${agentLabel} ${v.version}`,
+      description: `${v.email || 'not signed in'}${status ? ` - ${status}` : ''}`,
+      detail: `${statusIcon} ${v.plan || ''}${usage ? ` - ${usage}` : ''}`.trim(),
+      unified: v,
+      buttons: v.isDefault ? [] : [pinButton],
+    };
+  });
+
+  return new Promise((resolve) => {
+    const quickPick = vscode.window.createQuickPick<UnifiedVersionQuickPickItem>();
+    quickPick.title = 'Pick agent version';
+    quickPick.placeholder = 'Select to launch, or click pin icon to set as default';
+    quickPick.items = items;
+    quickPick.matchOnDescription = true;
+
+    quickPick.onDidTriggerItemButton(async (e) => {
+      const item = e.item;
+      const { runAgents } = await import('../core/agentsBin');
+      try {
+        await runAgents(`use ${item.unified.agentKey}@${item.unified.version}`);
+        vscode.window.showInformationMessage(`Pinned ${item.unified.agentKey}@${item.unified.version} as default`);
+      } catch (err: any) {
+        vscode.window.showErrorMessage(`Failed to pin: ${err.message || err}`);
+      }
+      quickPick.hide();
+      resolve(null);
+    });
+
+    quickPick.onDidAccept(() => {
+      const selected = quickPick.selectedItems[0];
+      quickPick.hide();
+      if (selected) {
+        resolve({ agentKey: selected.unified.agentKey, version: selected.unified.version });
+      } else {
+        resolve(null);
+      }
+    });
+
+    quickPick.onDidHide(() => {
+      quickPick.dispose();
+      resolve(null);
+    });
+
+    quickPick.show();
+  });
 }
 
 async function listSessionsViaCli(limit = 30): Promise<CliSessionItem[]> {
