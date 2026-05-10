@@ -162,8 +162,10 @@ function buildAgentLaunchCommand(
   sessionId: string | null,
   defaultModel?: string,
   additionalFlags?: string,
+  pinnedVersion?: string,
 ): string {
-  let command = `agents run ${agentKey} --interactive`;
+  const agentSpec = pinnedVersion ? `${agentKey}@${pinnedVersion}` : agentKey;
+  let command = `agents run ${agentSpec} --interactive`;
   if (sessionId && agentKey === 'claude') {
     command += ` --session-id ${sessionId}`;
   }
@@ -1053,6 +1055,23 @@ export async function activate(context: vscode.ExtensionContext) {
     );
   }
 
+  // Register version picker commands for agents that support multiple versions
+  const VERSIONABLE_AGENTS = ['claude', 'codex', 'gemini', 'cursor'];
+  for (const def of BUILT_IN_AGENTS) {
+    if (!VERSIONABLE_AGENTS.includes(def.key)) continue;
+    const pickVersionCommandId = `${def.commandId}PickVersion`;
+    context.subscriptions.push(
+      vscode.commands.registerCommand(pickVersionCommandId, async () => {
+        const version = await pickAgentVersion(def.key);
+        if (!version) return;
+        const agentConfig = getBuiltInByTitle(context.extensionPath, def.title);
+        if (agentConfig) {
+          openSingleAgent(context, agentConfig, undefined, version.version);
+        }
+      })
+    );
+  }
+
   // Dynamically register custom agent commands
   const customAgentSettings = settings.getSettings(context);
   for (const custom of customAgentSettings.custom) {
@@ -1291,7 +1310,8 @@ export async function activate(context: vscode.ExtensionContext) {
 async function openSingleAgent(
   context: vscode.ExtensionContext,
   agentConfig: Omit<AgentConfig, 'count'>,
-  additionalFlags?: string
+  additionalFlags?: string,
+  pinnedVersion?: string
 ) {
   const config = vscode.workspace.getConfiguration('agents');
   const enableTmux = config.get<boolean>('enableTmux', false);
@@ -1338,7 +1358,7 @@ async function openSingleAgent(
       sessionId = generateClaudeSessionId();
       console.log(`[SESSION] Claude using on-demand session ID: ${sessionId}`);
     }
-    command = buildAgentLaunchCommand(agentKey as LaunchableAgent, sessionId, defaultModel, additionalFlags);
+    command = buildAgentLaunchCommand(agentKey as LaunchableAgent, sessionId, defaultModel, additionalFlags, pinnedVersion);
   }
 
   if (tmuxOk) {
@@ -1373,6 +1393,9 @@ async function openSingleAgent(
       if (agentKey && supportsPrewarming(agentKey)) {
         startAutoLabelPollerForTerminal(terminal, context);
       }
+    }
+    if (pinnedVersion) {
+      terminals.setVersion(terminal, pinnedVersion);
     }
 
     // OpenCode: Detect session ID asynchronously after spawn
@@ -1412,6 +1435,9 @@ async function openSingleAgent(
     if (agentKey && supportsPrewarming(agentKey)) {
       startAutoLabelPollerForTerminal(terminal, context);
     }
+  }
+  if (pinnedVersion) {
+    terminals.setVersion(terminal, pinnedVersion);
   }
 
   if (command) {
@@ -1711,6 +1737,101 @@ interface CliSessionItem {
   topic?: string;
   messageCount?: number;
   tokenCount?: number;
+}
+
+interface AgentVersionInfo {
+  version: string;
+  isDefault: boolean;
+  signedIn: boolean;
+  email?: string;
+  plan?: string;
+  usageStatus?: 'available' | 'rate_limited' | 'out_of_credits';
+  windows?: Array<{
+    key: string;
+    usedPercent: number;
+    resetsAt: string;
+  }>;
+  lastActive?: string;
+  path?: string;
+}
+
+interface AgentViewResponse {
+  agent: string;
+  versions: AgentVersionInfo[];
+}
+
+async function listAgentVersions(agentKey: string): Promise<AgentVersionInfo[]> {
+  const { runAgents } = await import('../core/agentsBin');
+  try {
+    const { stdout } = await runAgents(`view ${agentKey} --json`, {
+      maxBuffer: 10 * 1024 * 1024,
+    });
+    const parsed: AgentViewResponse = JSON.parse(stdout);
+    return parsed.versions || [];
+  } catch {
+    return [];
+  }
+}
+
+function formatUsageStatus(status?: string): string {
+  switch (status) {
+    case 'available': return 'available';
+    case 'rate_limited': return 'rate limited';
+    case 'out_of_credits': return 'out of credits';
+    default: return '';
+  }
+}
+
+function formatVersionUsage(version: AgentVersionInfo): string {
+  const weekWindow = version.windows?.find(w => w.key === 'week');
+  if (weekWindow) {
+    return `${weekWindow.usedPercent}% used`;
+  }
+  return '';
+}
+
+interface VersionQuickPickItem extends vscode.QuickPickItem {
+  version: AgentVersionInfo;
+}
+
+async function pickAgentVersion(agentKey: string): Promise<AgentVersionInfo | null> {
+  let versions: AgentVersionInfo[];
+  try {
+    versions = await listAgentVersions(agentKey);
+  } catch (err: any) {
+    const msg = err?.stderr || err?.message || String(err);
+    vscode.window.showInformationMessage(`Failed to list versions: ${msg.slice(0, 120)}`);
+    return null;
+  }
+
+  if (versions.length === 0) {
+    vscode.window.showInformationMessage(`No ${agentKey} versions installed`);
+    return null;
+  }
+
+  const items: VersionQuickPickItem[] = versions.map(v => {
+    const statusIcon = v.usageStatus === 'available' ? '$(check)' :
+                       v.usageStatus === 'rate_limited' ? '$(warning)' :
+                       v.usageStatus === 'out_of_credits' ? '$(error)' : '';
+    const defaultTag = v.isDefault ? '$(pinned) ' : '';
+    const usage = formatVersionUsage(v);
+    const status = formatUsageStatus(v.usageStatus);
+
+    return {
+      label: `${defaultTag}${v.version}`,
+      description: `${v.email || 'not signed in'}${status ? ` - ${status}` : ''}`,
+      detail: `${statusIcon} ${v.plan || ''}${usage ? ` - ${usage}` : ''}`.trim(),
+      version: v,
+    };
+  });
+
+  const picked = await vscode.window.showQuickPick<VersionQuickPickItem>(items, {
+    title: `Pick ${agentKey} version`,
+    placeHolder: 'Select a version to launch',
+    matchOnDescription: true,
+  });
+
+  return picked?.version ?? null;
 }
 
 async function listSessionsViaCli(limit = 30): Promise<CliSessionItem[]> {
