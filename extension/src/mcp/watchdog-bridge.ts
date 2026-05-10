@@ -5,7 +5,7 @@ import * as os from 'os';
 import * as vscode from 'vscode';
 import { getAllTerminals } from '../vscode/terminals.vscode';
 
-const SOCKET_PATH = path.join(os.homedir(), '.agents-system', 'watchdog.sock');
+const SOCKET_PATH = path.join(os.homedir(), '.agents', '.tmp', 'watchdog.sock');
 const WATCHDOG_LOG = path.join(os.homedir(), '.agents', 'watchdog.log');
 
 export interface WatchdogBridge {
