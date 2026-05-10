@@ -123,6 +123,38 @@
         "title": "Agents: New Alias"
       },
       {
+        "command": "agents.newClaudePickVersion",
+        "title": "Agents: New Claude (Pick Version)",
+        "icon": {
+          "light": "assets/claude.png",
+          "dark": "assets/claude.png"
+        }
+      },
+      {
+        "command": "agents.newCodexPickVersion",
+        "title": "Agents: New Codex (Pick Version)",
+        "icon": {
+          "light": "assets/chatgpt-light.png",
+          "dark": "assets/chatgpt.png"
+        }
+      },
+      {
+        "command": "agents.newGeminiPickVersion",
+        "title": "Agents: New Gemini (Pick Version)",
+        "icon": {
+          "light": "assets/gemini.png",
+          "dark": "assets/gemini.png"
+        }
+      },
+      {
+        "command": "agents.newCursorPickVersion",
+        "title": "Agents: New Cursor (Pick Version)",
+        "icon": {
+          "light": "assets/cursor-light.png",
+          "dark": "assets/cursor.png"
+        }
+      },
+      {
         "command": "agents.quickLaunch1",
         "title": "Agents: Quick Launch 1"
       },
