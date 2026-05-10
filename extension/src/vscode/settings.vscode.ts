@@ -465,6 +465,11 @@ const sessionWatchers = new Map<string, fs.FSWatcher>();
 let sessionUpdateTimeout: NodeJS.Timeout | undefined;
 let currentlySubscribedAgentType: string | null = null;
 
+// Cache for getFloorThroughput, keyed by session file path. Skip the read+
+// parse when the file's mtime+size are unchanged since the previous poll —
+// the webview polls every 2.5s and most polls hit unchanged files.
+const throughputCache = new Map<string, { mtimeMs: number; size: number; tokensPerSec: number }>();
+
 // Notify settings panel when integration status changes
 export function notifyIntegrationStatus(provider: string, connected: boolean): void {
   settingsPanel?.webview.postMessage({ type: 'integrationStatus', provider, connected });
@@ -1214,13 +1219,23 @@ export function openPanel(context: vscode.ExtensionContext): void {
             if (!sessionPath) return;
             const stat = await fs.promises.stat(sessionPath);
             const size = stat.size;
+            // Cache by (mtime, size). The webview polls every 2.5s; without
+            // this cache an idle Gemini session forced a full multi-MB JSON
+            // re-read every poll for an unchanged result.
+            const cached = throughputCache.get(sessionPath);
+            if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === size) {
+              total += cached.tokensPerSec;
+              return;
+            }
             const fh = await fs.promises.open(sessionPath, 'r');
             try {
               const readStart = agentType === 'gemini' ? 0 : Math.max(0, size - 256 * 1024);
               const buf = Buffer.alloc(size - readStart);
               await fh.read(buf, 0, buf.length, readStart);
               const content = buf.toString('utf-8');
-              total += computeOutputTokensPerSec(content, agentType, 60);
+              const tps = computeOutputTokensPerSec(content, agentType, 60);
+              total += tps;
+              throughputCache.set(sessionPath, { mtimeMs: stat.mtimeMs, size, tokensPerSec: tps });
             } finally {
               await fh.close();
             }
