@@ -47,19 +47,31 @@ export class AgentsMarkdownEditorProvider implements vscode.CustomTextEditorProv
     webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview, document);
 
     // Handle messages from webview
-    webviewPanel.webview.onDidReceiveMessage((message) => {
+    const messageSubscription = webviewPanel.webview.onDidReceiveMessage((message) => {
       this.handleMessage(message, document, webviewPanel.webview);
     });
 
-    // Handle document changes (external edits)
+    // Handle document changes (external edits). Debounce so a long sequence
+    // of keystrokes (TipTap re-emits per character) doesn't re-serialize the
+    // entire doc and postMessage it on every keystroke.
+    let updateTimer: NodeJS.Timeout | undefined;
+    const scheduleUpdate = (): void => {
+      if (updateTimer) return;
+      updateTimer = setTimeout(() => {
+        updateTimer = undefined;
+        this.updateWebview(webviewPanel.webview, document);
+      }, 250);
+    };
     const changeDocumentSubscription = vscode.workspace.onDidChangeTextDocument((e) => {
       if (e.document.uri.toString() === document.uri.toString()) {
-        this.updateWebview(webviewPanel.webview, document);
+        scheduleUpdate();
       }
     });
 
     webviewPanel.onDidDispose(() => {
       changeDocumentSubscription.dispose();
+      messageSubscription.dispose();
+      if (updateTimer) clearTimeout(updateTimer);
     });
 
     // Send initial content to webview
@@ -184,7 +196,10 @@ The user selected the above text from a markdown file. Help them with whatever t
       const docUri = document.uri.toString();
       documentAgents.set(docUri, terminal);
 
-      // Clean up when terminal is disposed
+      // Clean up when terminal is disposed. Pushed into context.subscriptions
+      // so the listener is still cleared if the extension deactivates while
+      // the terminal is alive — without it, we leak one listener per
+      // "Send to Agent" action across reloads.
       const disposeListener = vscode.window.onDidCloseTerminal((closedTerminal) => {
         if (closedTerminal === terminal) {
           documentAgents.delete(docUri);
@@ -192,6 +207,7 @@ The user selected the above text from a markdown file. Help them with whatever t
           disposeListener.dispose();
         }
       });
+      this.context.subscriptions.push(disposeListener);
 
       webview.postMessage({
         type: 'agentResult',
