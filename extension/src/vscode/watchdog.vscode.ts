@@ -236,6 +236,13 @@ async function runSmartWatchdogAgent(
 }
 
 let tickInFlight = false;
+// Idle-window gating: when the IDE window has been unfocused for this long,
+// skip ticks. The watchdog does network-bound `agents view` calls and may
+// spawn `claude` headless subprocesses — none of which are useful when the
+// user isn't watching. Tick count per hour drops from 30 to ~0 on background
+// windows.
+const WATCHDOG_IDLE_SKIP_MS = 5 * 60_000;
+let lastFocusedAtMs = Date.now();
 
 async function tick(
   context: vscode.ExtensionContext,
@@ -248,6 +255,20 @@ async function tick(
   try {
     const cfg = readConfig();
     if (!cfg.enabled) return;
+
+    // Skip if no agent terminals exist in this window — the watchdog has
+    // nothing to nudge or rotate without one.
+    const tracked = getAllTerminals().filter(
+      (e) => !!e.sessionId && !!e.agentType,
+    );
+    if (tracked.length === 0) return;
+
+    // Skip when the window has been unfocused long enough that the user is
+    // clearly elsewhere. `vscode.window.state.focused` is a live snapshot;
+    // we keep our own freshness clock so we don't hammer when the user
+    // hasn't touched the window in minutes.
+    if (vscode.window.state.focused) lastFocusedAtMs = Date.now();
+    if (Date.now() - lastFocusedAtMs >= WATCHDOG_IDLE_SKIP_MS) return;
 
     const now = Date.now();
     const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -262,7 +283,7 @@ async function tick(
       return data;
     };
 
-    for (const entry of getAllTerminals()) {
+    for (const entry of tracked) {
       if (!entry.sessionId || !entry.agentType) continue;
       const agentType = entry.agentType;
       if (agentType !== 'claude' && agentType !== 'codex' && agentType !== 'gemini') continue;
