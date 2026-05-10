@@ -1,6 +1,6 @@
 /**
  * Verifies the windowId formula used by foreman.registry to slice
- * `~/.agents/terminals/live-terminals.json` per VS Code window.
+ * `~/.agents/.cache/terminals/live-terminals.json` per VS Code window.
  *
  * Background: VSCodium is a telemetry-stripped Code-OSS fork. Its
  * `vscode.env.sessionId` returns the literal placeholder `"someValue.sessionId"`
