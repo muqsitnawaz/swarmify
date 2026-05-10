@@ -50,10 +50,62 @@ interface Registered {
   disposables: vscode.Disposable[];
   timers: NodeJS.Timeout[];
   watchers: fs.FSWatcher[];
+  fastPathDisposers: Array<() => void>;
   agentArmed: boolean;
 }
 
 const registry = new Map<vscode.Terminal, Registered>();
+
+// Singleton watcher per session-root path. Without this, every terminal would
+// mount its own recursive fs.watch on ~/.claude/projects (and per-version
+// homes), and on macOS each subscription re-arms FSEvents over a multi-GB
+// tree. With 20+ terminals open, the duplication caused observable system
+// load. Refcounted: the watcher closes when the last callback unregisters.
+interface SharedReadinessWatcher {
+  watcher: fs.FSWatcher;
+  callbacks: Set<(filename: string) => void>;
+}
+const sharedWatchers = new Map<string, SharedReadinessWatcher>();
+
+function addSharedWatcher(
+  root: string,
+  callback: (filename: string) => void,
+): () => void {
+  let entry = sharedWatchers.get(root);
+  if (!entry) {
+    let watcher: fs.FSWatcher;
+    try {
+      watcher = fs.watch(root, { recursive: true }, (_event, filename) => {
+        if (!filename) return;
+        const name = filename.toString();
+        const e = sharedWatchers.get(root);
+        if (!e) return;
+        for (const cb of e.callbacks) {
+          try { cb(name); } catch { /* ignore */ }
+        }
+      });
+    } catch {
+      return () => { /* noop */ };
+    }
+    entry = { watcher, callbacks: new Set() };
+    sharedWatchers.set(root, entry);
+  }
+  entry.callbacks.add(callback);
+  return () => {
+    const e = sharedWatchers.get(root);
+    if (!e) return;
+    e.callbacks.delete(callback);
+    if (e.callbacks.size === 0) {
+      try { e.watcher.close(); } catch { /* ignore */ }
+      sharedWatchers.delete(root);
+    }
+  };
+}
+
+// Cache version-directory enumeration. Without this, every terminal
+// registration runs a synchronous readdir over ~/.agents/versions/claude on
+// the extension-host thread.
+let cachedClaudeRoots: string[] | undefined;
 
 let shellIntegrationDisposable: vscode.Disposable | null = null;
 let closeDisposable: vscode.Disposable | null = null;
@@ -99,6 +151,7 @@ export function registerTerminal(
     disposables: [],
     timers: [],
     watchers: [],
+    fastPathDisposers: [],
     agentArmed: opts.restored === true,
   };
   registry.set(terminal, r);
@@ -207,6 +260,9 @@ export function disposeTerminal(terminal: vscode.Terminal): void {
   for (const t of r.timers) clearTimeout(t);
   for (const w of r.watchers) {
     try { w.close(); } catch { /* ignore */ }
+  }
+  for (const d of r.fastPathDisposers) {
+    try { d(); } catch { /* ignore */ }
   }
   coreDispose(r.entry, 'terminal closed');
 }
@@ -353,6 +409,11 @@ function startAgentReadyProbe(r: Registered): void {
 // `{sessionId}.*` (jsonl/json) appears, the TUI has booted far enough to
 // write its session metadata — a deterministic signal even when the
 // process-state probe is still being fooled by network I/O.
+// Hard timeout to tear down the fast-path callback even if agentReady never
+// fires. Without this, an agent that fails to start leaks the watcher for the
+// full terminal lifetime — death by a thousand cuts as terminals accumulate.
+const FAST_PATH_SAFETY_TIMEOUT_MS = 30_000;
+
 function armSessionFileFastPath(
   r: Registered,
   agentKey: FastPathAgentKey,
@@ -369,21 +430,27 @@ function armSessionFileFastPath(
     return base.includes(sessionIdLower);
   };
 
+  const tearDown = (): void => {
+    while (r.fastPathDisposers.length > 0) {
+      const d = r.fastPathDisposers.pop();
+      if (d) { try { d(); } catch { /* ignore */ } }
+    }
+  };
+
   for (const root of roots) {
     if (!fs.existsSync(root)) continue;
-    try {
-      const watcher = fs.watch(root, { recursive: true }, (_event, filename) => {
-        if (!filename) return;
-        if (hasFired(r.entry, 'agentReady')) return;
-        if (checkFilename(filename.toString())) {
-          markEvent(r.entry, 'agentReady');
-        }
-      });
-      r.watchers.push(watcher);
-    } catch {
-      // Best-effort; the process-state probe still runs in parallel.
-    }
+    const dispose = addSharedWatcher(root, (filename) => {
+      if (hasFired(r.entry, 'agentReady')) return;
+      if (checkFilename(filename)) {
+        markEvent(r.entry, 'agentReady');
+        tearDown();
+      }
+    });
+    r.fastPathDisposers.push(dispose);
   }
+
+  const safetyTimer = setTimeout(tearDown, FAST_PATH_SAFETY_TIMEOUT_MS);
+  r.timers.push(safetyTimer);
 }
 
 function sessionRootsForAgent(
@@ -392,6 +459,7 @@ function sessionRootsForAgent(
   const home = os.homedir();
   switch (agentKey) {
     case 'claude': {
+      if (cachedClaudeRoots) return cachedClaudeRoots;
       // Shim sets CLAUDE_CONFIG_DIR per version, so files land under
       // ~/.agents/versions/claude/{v}/home/.claude/projects/... — watch both.
       const roots = [path.join(home, '.claude', 'projects')];
@@ -404,6 +472,7 @@ function sessionRootsForAgent(
           }
         } catch { /* ignore */ }
       }
+      cachedClaudeRoots = roots;
       return roots;
     }
     case 'codex':
@@ -427,6 +496,14 @@ export function __clearRegistryForTests(): void {
     for (const w of r.watchers) {
       try { w.close(); } catch { /* ignore */ }
     }
+    for (const d of r.fastPathDisposers) {
+      try { d(); } catch { /* ignore */ }
+    }
   }
   registry.clear();
+  for (const [, sw] of sharedWatchers) {
+    try { sw.watcher.close(); } catch { /* ignore */ }
+  }
+  sharedWatchers.clear();
+  cachedClaudeRoots = undefined;
 }
