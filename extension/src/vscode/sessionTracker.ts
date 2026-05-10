@@ -35,6 +35,11 @@ interface SharedWatcher {
 const DEBOUNCE_MS = 300;
 const LINE_CAP = 100;
 const DORMANT_THRESHOLD_MS = 10_000;
+// Bound for `lastWriteMs`: every fs.watch event on a watched session dir adds
+// an entry, but we only delete entries for tracked files. Without an upper
+// bound the map grows for the entire extension-host lifetime — over a long
+// day it accumulates thousands of stale paths.
+const LAST_WRITE_MAX = 5000;
 
 let initialized = false;
 let listeners: SessionChangeListener[] = [];
@@ -53,23 +58,34 @@ function workspaceToClaudeFolder(workspacePath: string): string {
   return workspacePath.replace(/[\/\.]/g, '-');
 }
 
-function claudeRootsFor(workspacePath: string): string[] {
-  const folder = workspaceToClaudeFolder(workspacePath);
-  const roots: string[] = [];
-  const canonical = path.join(homeDir(), '.claude', 'projects', folder);
-  roots.push(canonical);
+// Cached enumeration of installed Claude versions. Without this, every
+// terminal registration runs a synchronous readdir on the extension-host
+// thread.
+let cachedClaudeVersions: string[] | undefined;
+
+function claudeVersionDirs(): string[] {
+  if (cachedClaudeVersions) return cachedClaudeVersions;
   const versionsDir = path.join(homeDir(), '.agents', 'versions', 'claude');
+  const versions: string[] = [];
   if (fs.existsSync(versionsDir)) {
     try {
       for (const entry of fs.readdirSync(versionsDir, { withFileTypes: true })) {
-        if (!entry.isDirectory()) continue;
-        roots.push(
-          path.join(versionsDir, entry.name, 'home', '.claude', 'projects', folder),
-        );
+        if (entry.isDirectory()) versions.push(entry.name);
       }
     } catch {
       /* ignore */
     }
+  }
+  cachedClaudeVersions = versions;
+  return versions;
+}
+
+function claudeRootsFor(workspacePath: string): string[] {
+  const folder = workspaceToClaudeFolder(workspacePath);
+  const roots: string[] = [path.join(homeDir(), '.claude', 'projects', folder)];
+  const versionsDir = path.join(homeDir(), '.agents', 'versions', 'claude');
+  for (const ver of claudeVersionDirs()) {
+    roots.push(path.join(versionsDir, ver, 'home', '.claude', 'projects', folder));
   }
   return roots;
 }
@@ -153,6 +169,19 @@ function rootsFor(t: TrackedTerminal): string[] {
   }
 }
 
+// Insertion-order eviction: Map keeps insertion order, so the first key is
+// the oldest. Drop one when we exceed the cap, then re-insert (which moves
+// existing keys to the end).
+function recordWrite(filePath: string): void {
+  if (lastWriteMs.has(filePath)) {
+    lastWriteMs.delete(filePath);
+  } else if (lastWriteMs.size >= LAST_WRITE_MAX) {
+    const oldest = lastWriteMs.keys().next().value;
+    if (oldest !== undefined) lastWriteMs.delete(oldest);
+  }
+  lastWriteMs.set(filePath, Date.now());
+}
+
 function mountWatcher(dir: string, agentType: TrackedAgentType): void {
   if (watchersByDir.has(dir)) {
     watchersByDir.get(dir)!.refCount++;
@@ -164,7 +193,7 @@ function mountWatcher(dir: string, agentType: TrackedAgentType): void {
       if (!filename) return;
       const name = filename.toString();
       if (event === 'change') {
-        lastWriteMs.set(path.join(dir, name), Date.now());
+        recordWrite(path.join(dir, name));
       }
       if (event === 'rename' || event === 'change') {
         onRename(dir, name, agentType);
@@ -765,6 +794,7 @@ export function __reset(): void {
   codexAdoptionClaims.clear();
   listeners = [];
   initialized = false;
+  cachedClaudeVersions = undefined;
 }
 
 export function __testRegister(
