@@ -11,7 +11,7 @@ import { AgentConfig } from './agents.vscode';
 const execFileAsync = promisify(execFile);
 import { generateTerminalId, resolveRestoredVersion, RunningCounts } from '../core/terminals';
 import * as sessionsPersist from '../core/sessions.persist';
-import { getSessionPathBySessionId, getSessionPreviewInfo, getOpenCodeSessionPreviewInfo, getCursorSessionPreviewInfo, SessionPreviewInfo } from './sessions.vscode';
+import { getSessionPathBySessionId, getSessionPreviewInfo, getOpenCodeSessionPreviewInfo, getCursorSessionPreviewInfo, SessionPreviewInfo, readTailLines } from './sessions.vscode';
 import { extractCurrentActivity, formatActivity, detectWaitingForInput } from '../core/session.activity';
 import { extractSessionQuickDetails, SessionQuickDetails, SessionQuickSummary, SessionSummaryAgentType } from '../core/session.summary';
 import {
@@ -798,22 +798,37 @@ type SessionSummaryCacheEntry = {
 };
 const sessionSummaryCache = new Map<string, SessionSummaryCacheEntry>();
 
-// Read last N lines of a session file for activity extraction
+// Read last N lines of a session file for activity extraction. Uses the
+// 64KB-backward-seek util in sessions.vscode.ts — earlier this function read
+// the entire (multi-MB) file just to slice the last 20 lines, on every
+// dashboard tab switch.
 async function readSessionTailLines(filePath: string, maxLines: number = 20): Promise<string> {
-  try {
-    const content = await fs.readFile(filePath, 'utf-8');
-    const lines = content.split(/\r?\n/).filter(l => l.trim());
-    return lines.slice(-maxLines).join('\n');
-  } catch {
-    return '';
-  }
+  const lines = await readTailLines(filePath, maxLines);
+  return lines.join('\n');
 }
 
+const SESSION_CONTENT_TAIL_BYTES = 256 * 1024;
+
+// Bounded-size read for session-summary parsing. The previous implementation
+// did a full fs.readFile on every mtime change; for a 50MB Claude session
+// changing on every message, the cache invalidated continuously and the
+// extension host re-read the full file every dashboard refresh. Capped at
+// 256KB tail, which is enough for the head/tail metadata the summary
+// extractor uses.
 async function readSessionContent(filePath: string): Promise<string> {
+  let handle: Awaited<ReturnType<typeof fs.open>> | undefined;
   try {
-    return await fs.readFile(filePath, 'utf-8');
+    handle = await fs.open(filePath, 'r');
+    const { size } = await handle.stat();
+    if (size === 0) return '';
+    const readStart = Math.max(0, size - SESSION_CONTENT_TAIL_BYTES);
+    const buf = Buffer.alloc(size - readStart);
+    await handle.read(buf, 0, buf.length, readStart);
+    return buf.toString('utf-8');
   } catch {
     return '';
+  } finally {
+    await handle?.close().catch(() => {});
   }
 }
 
