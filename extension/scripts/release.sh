@@ -213,7 +213,7 @@ if [ ! -f "$VSIX" ]; then
 fi
 
 echo "Publishing $VSIX to VS Code Marketplace..."
-vsce publish --packagePath "$VSIX" "${VSCE_FLAGS[@]}"
+vsce publish --packagePath "$VSIX" ${VSCE_FLAGS[@]+"${VSCE_FLAGS[@]}"}
 
 if [ -n "$PUBLISHED_OVSX" ]; then
     echo "Publishing $VSIX to Open VSX..."
