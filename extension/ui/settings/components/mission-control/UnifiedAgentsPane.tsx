@@ -1721,7 +1721,7 @@ function IntakeBanner({ team, teammates }: { team: string; teammates: { teammate
   )
 }
 
-type IdentityLabel = { text: string; variant: 'plain' | 'cloud' | 'team' | 'plan' | 'ralph' }
+type IdentityLabel = { text: string; variant: 'plain' | 'cloud' | 'team' | 'plan' | 'ralph' | 'auto' }
 
 function identityLabel(item: UnifiedAgent): IdentityLabel {
   const termLabel = item.terminal?.label?.trim()
@@ -1735,6 +1735,7 @@ function identityLabel(item: UnifiedAgent): IdentityLabel {
   }
   if (item.mode === 'plan') return { text: 'PLAN', variant: 'plan' }
   if (item.mode === 'ralph') return { text: 'RALPH', variant: 'ralph' }
+  if (item.mode === 'auto') return { text: 'AUTO', variant: 'auto' }
   const chunk = agentShortChunk(item.terminal?.sessionId) || item.id.slice(-8)
   return { text: chunk, variant: 'plain' }
 }
