@@ -1615,7 +1615,8 @@
 .sw-floor-agent-card-chunk.cloud,
 .sw-floor-agent-card-chunk.team,
 .sw-floor-agent-card-chunk.plan,
-.sw-floor-agent-card-chunk.ralph {
+.sw-floor-agent-card-chunk.ralph,
+.sw-floor-agent-card-chunk.auto {
   font-weight: 700;
   letter-spacing: 1px;
   text-transform: uppercase;
@@ -1628,6 +1629,7 @@
 .sw-floor-agent-card-chunk.team { color: #8b5cf6; }
 .sw-floor-agent-card-chunk.plan { color: #10b981; }
 .sw-floor-agent-card-chunk.ralph { color: #EF4444; }
+.sw-floor-agent-card-chunk.auto { color: #f59e0b; }
 
 .sw-floor-agent-card-status-line {
   display: flex;

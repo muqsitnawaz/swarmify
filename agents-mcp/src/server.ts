@@ -185,8 +185,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             mode: {
               type: 'string',
-              enum: ['plan', 'edit', 'cloud', 'ralph'],
-              description: "'edit' allows file modifications, 'plan' is read-only (default), 'cloud' runs on cloud infrastructure (claude/codex only), 'ralph' is DEPRECATED (removed in 0.4.0).",
+              enum: ['plan', 'edit', 'auto', 'cloud', 'ralph'],
+              description: "'edit' allows file modifications, 'plan' is read-only (default), 'auto' lets Claude decide permissions automatically (claude only), 'cloud' runs on cloud infrastructure (claude/codex only), 'ralph' is DEPRECATED (removed in 0.4.0).",
             },
             effort: {
               type: 'string',
