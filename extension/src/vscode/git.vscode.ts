@@ -3,12 +3,12 @@
 import * as vscode from 'vscode';
 import {
   buildCommitPrompt,
-  buildSystemPrompt,
   formatChangeStatus,
   parseIgnorePatterns,
   prepareCommitContext,
   shouldIgnoreFile
 } from '../core/git';
+import { generateCommitMessageWithClaude } from '../core/commitgen';
 
 export async function generateCommitMessage(sourceControl?: { rootUri?: vscode.Uri }): Promise<void> {
   const gitExtension = vscode.extensions.getExtension('vscode.git')?.exports;
@@ -66,6 +66,7 @@ export async function generateCommitMessage(sourceControl?: { rootUri?: vscode.U
   const ignoreFilesRaw = config.get<string>('ignoreFiles', '');
   const disableAutopush = config.get<boolean>('disableAutopush', false);
   const disableAutocommit = config.get<boolean>('disableAutocommit', false);
+  const commitGenTimeoutMs = config.get<number>('commitGenTimeoutMs', 60000);
 
   await vscode.window.withProgress({
     location: vscode.ProgressLocation.SourceControl,
@@ -152,55 +153,9 @@ export async function generateCommitMessage(sourceControl?: { rootUri?: vscode.U
 
       const promptText = buildCommitPrompt(allStatusChanges, diffSummary, commitMessageExamples);
 
-      // Get OpenAI API key from settings
-      const apiKey = config.get<string>('openaiApiKey', '');
-      if (!apiKey) {
-        throw new Error('OpenAI API key not configured. Set agents.openaiApiKey in VS Code settings.');
-      }
-
-      let commitMessage: string;
-      try {
-        const response = await fetch('https://api.openai.com/v1/responses', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`
-          },
-          body: JSON.stringify({
-            model: 'gpt-4o-mini',
-            input: [
-              { role: 'developer', content: buildSystemPrompt(commitMessageExamples) },
-              { role: 'user', content: promptText }
-            ]
-          })
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`OpenAI API error (${response.status}): ${errorText}`);
-        }
-
-        interface OpenAIResponseContent {
-          type: string;
-          text?: string;
-        }
-        interface OpenAIResponseOutput {
-          content?: OpenAIResponseContent[];
-        }
-        const data = await response.json() as {
-          output?: OpenAIResponseOutput[];
-        };
-
-        // Responses API: output[0].content[] - find the output_text content item
-        const outputContent = data.output?.[0]?.content;
-        const textContent = outputContent?.find((c: OpenAIResponseContent) => c.type === 'output_text');
-        commitMessage = textContent?.text?.trim() || '';
-
-        if (!commitMessage) {
-          throw new Error('Empty response from OpenAI API');
-        }
-      } catch (error) {
-        throw new Error(`Failed to generate commit message: ${error instanceof Error ? error.message : String(error)}`);
+      const commitMessage = await generateCommitMessageWithClaude(promptText, commitGenTimeoutMs);
+      if (!commitMessage) {
+        throw new Error('Failed to generate commit message via `agents run claude --model haiku`. Check that the agents CLI is installed and Claude is signed in.');
       }
 
       repo.inputBox.value = commitMessage;
