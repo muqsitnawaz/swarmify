@@ -1,34 +1,13 @@
 import { describe, expect, test } from 'bun:test';
 import {
   buildCommitPrompt,
-  buildSystemPrompt,
   detectDirectoryMoves,
   formatChangeStatus,
-  getApiEndpoint,
   parseIgnorePatterns,
   prepareCommitContext,
   shouldIgnoreFile,
   summarizeDiff
 } from './git';
-
-describe('getApiEndpoint', () => {
-  test('returns openai endpoint for openai provider', () => {
-    expect(getApiEndpoint('openai')).toBe('https://api.openai.com/v1/chat/completions');
-  });
-
-  test('returns openrouter endpoint for openrouter provider', () => {
-    expect(getApiEndpoint('openrouter')).toBe('https://openrouter.ai/api/v1/chat/completions');
-  });
-
-  test('returns custom URL if provider starts with http', () => {
-    const customUrl = 'https://custom-api.example.com/v1/chat';
-    expect(getApiEndpoint(customUrl)).toBe(customUrl);
-  });
-
-  test('returns openai endpoint as default', () => {
-    expect(getApiEndpoint('unknown')).toBe('https://api.openai.com/v1/chat/completions');
-  });
-});
 
 describe('parseIgnorePatterns', () => {
   test('returns empty array for empty string', () => {
@@ -81,27 +60,6 @@ describe('shouldIgnoreFile', () => {
     expect(shouldIgnoreFile('/dist/out.js', patterns)).toBe(true);
     expect(shouldIgnoreFile('/src/main.ts', patterns)).toBe(false);
     expect(shouldIgnoreFile('/package-lock.json', patterns)).toBe(false);  // .json doesn't match *.lock
-  });
-});
-
-describe('buildSystemPrompt', () => {
-  test('returns base prompt without examples', () => {
-    const prompt = buildSystemPrompt([]);
-    expect(prompt).toContain('helpful assistant');
-    expect(prompt).toContain('commit messages');
-    expect(prompt).not.toContain('examples');
-  });
-
-  test('includes examples when provided', () => {
-    const prompt = buildSystemPrompt(['fix: bug fix', 'feat: new feature']);
-    expect(prompt).toContain('2 examples');
-    expect(prompt).toContain('fix: bug fix');
-    expect(prompt).toContain('feat: new feature');
-  });
-
-  test('calculates max length from examples', () => {
-    const prompt = buildSystemPrompt(['short', 'this is a much longer commit message example']);
-    expect(prompt).toContain('no longer than');
   });
 });
 
@@ -278,21 +236,31 @@ describe('buildCommitPrompt', () => {
       'fix: resolve null pointer in payment handler'
     ];
     const prompt = buildCommitPrompt('Modified: auth.ts', '', examples);
-    expect(prompt).toContain('Commit message style examples:');
+    expect(prompt).toContain('Style examples');
     expect(prompt).toContain('- feat: add user authentication with jwt tokens');
     expect(prompt).toContain('- fix: resolve null pointer in payment handler');
   });
 
   test('excludes examples section when none provided', () => {
     const prompt = buildCommitPrompt('Modified: file.ts', '', []);
-    expect(prompt).not.toContain('Commit message style examples:');
+    expect(prompt).not.toContain('Style examples');
   });
 
-  test('includes format instructions', () => {
+  test('includes format and rules instructions', () => {
     const prompt = buildCommitPrompt('Modified: file.ts', '', []);
     expect(prompt).toContain('Format: <type>: <description>');
-    expect(prompt).toContain('Types: feat, fix, docs, refactor, test, build, release');
-    expect(prompt).toContain('Return only the commit message, no explanation');
+    expect(prompt).toContain('Types: feat, fix, docs, refactor, test, build, release, chore');
+    expect(prompt).toContain('Single line, under 72 characters');
+    expect(prompt).toContain('Imperative mood');
+    expect(prompt).toContain('No body, no trailers, no Co-Authored-By');
+    expect(prompt).toContain('No scope prefix');
+  });
+
+  test('forbids tool use up front', () => {
+    const prompt = buildCommitPrompt('Modified: file.ts', '', []);
+    expect(prompt).toContain('Respond IMMEDIATELY');
+    expect(prompt).toContain('Do NOT investigate');
+    expect(prompt).toContain('do NOT use tools');
   });
 
   test('generates complete prompt structure', () => {
@@ -302,11 +270,10 @@ describe('buildCommitPrompt', () => {
 
     const prompt = buildCommitPrompt(status, diff, examples);
 
-    // Check overall structure
-    expect(prompt).toMatch(/^Generate a concise git commit message/);
+    expect(prompt).toMatch(/^Write ONE conventional-commit message/);
+    expect(prompt.indexOf('Format:')).toBeLessThan(prompt.indexOf('Git status:'));
     expect(prompt.indexOf('Git status:')).toBeLessThan(prompt.indexOf('Diff preview:'));
-    expect(prompt.indexOf('Diff preview:')).toBeLessThan(prompt.indexOf('Commit message style examples:'));
-    expect(prompt.indexOf('Commit message style examples:')).toBeLessThan(prompt.indexOf('Return only'));
+    expect(prompt.indexOf('Diff preview:')).toBeLessThan(prompt.indexOf('Style examples'));
   });
 });
 

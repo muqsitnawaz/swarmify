@@ -1,17 +1,5 @@
 // Git commit generation - pure functions (testable)
 
-// Get API endpoint for provider
-export function getApiEndpoint(provider: string): string {
-  if (provider === 'openai') {
-    return 'https://api.openai.com/v1/chat/completions';
-  } else if (provider === 'openrouter') {
-    return 'https://openrouter.ai/api/v1/chat/completions';
-  } else if (provider.startsWith('http')) {
-    return provider;
-  }
-  return 'https://api.openai.com/v1/chat/completions';
-}
-
 // Parse ignore patterns from comma-separated string
 export function parseIgnorePatterns(ignoreFilesRaw: string): string[] {
   if (!ignoreFilesRaw) return [];
@@ -26,25 +14,6 @@ export function shouldIgnoreFile(filePath: string, ignorePatterns: string[]): bo
     }
     return filePath.includes(`/${pattern}/`) || filePath.includes(`/${pattern}`) || filePath.endsWith(`/${pattern}`);
   });
-}
-
-// Build system prompt for commit message generation
-export function buildSystemPrompt(commitMessageExamples: string[]): string {
-  let systemPrompt = "You are a helpful assistant that generates commit messages based on the provided git diffs. ";
-
-  if (commitMessageExamples.length > 0) {
-    let maxMessageLen = 50;
-    for (const example of commitMessageExamples) {
-      if (example.length > maxMessageLen) {
-        maxMessageLen = example.length;
-      }
-    }
-    systemPrompt += `Please generate the commit message following the style in these ${commitMessageExamples.length} examples: - ${commitMessageExamples.join('\n- ')}\n`;
-    systemPrompt += `The commit message should be no longer than ${maxMessageLen} characters.\n`;
-  }
-
-  systemPrompt += "You should only output the commit message and nothing else.";
-  return systemPrompt;
 }
 
 // Format git status for a change
@@ -236,25 +205,37 @@ export interface CommitContext {
 const MAX_CONTEXT_SIZE = 50 * 1024;
 const MAX_STATUS_FILES = 100;
 
-// Build the prompt sent to Claude CLI for commit message generation
+// Build the prompt sent to Claude CLI for commit message generation.
+// Style rules mirror ~/.agents-system/commands/commit.md.
 export function buildCommitPrompt(
   statusChanges: string,
   diffSummary: string,
   commitMessageExamples: string[]
 ): string {
   const examplesSection = commitMessageExamples.length > 0
-    ? `\n\nCommit message style examples:\n${commitMessageExamples.map(ex => `- ${ex}`).join('\n')}`
+    ? `\n\nStyle examples (match the voice):\n${commitMessageExamples.map(ex => `- ${ex}`).join('\n')}`
     : '';
 
-  return `Generate a concise git commit message for these changes.
+  return `Write ONE conventional-commit message for the staged changes below.
+
+Respond IMMEDIATELY with only the commit message. Do NOT investigate, do NOT read files, do NOT use tools.
+
+Format: <type>: <description>
+Types: feat, fix, docs, refactor, test, build, release, chore
+
+Rules:
+- Single line, under 72 characters.
+- Lowercase. Imperative mood ("add", "fix", "update" — not "added", "fixes").
+- No body, no trailers, no Co-Authored-By, no "Generated with" lines.
+- No scope prefix like feat(api): — just feat:.
+- No emojis. No quotes around the message. No leading/trailing punctuation.
 
 Git status:
 ${statusChanges}
 
 ${diffSummary ? `Diff preview:\n${diffSummary}` : ''}${examplesSection}
 
-Return only the commit message, no explanation. Format: <type>: <description>
-Types: feat, fix, docs, refactor, test, build, release`;
+Output the commit message and nothing else.`;
 }
 
 export function prepareCommitContext(
