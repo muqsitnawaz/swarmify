@@ -70,10 +70,11 @@ beforeEach(() => {
 
 // ─── Bug proofs ───────────────────────────────────────────────────────────────
 
-describe('BUG C: setSessionId does not clear autoLabel', () => {
-  test('autoLabel survives a setSessionId call with a new session', () => {
+describe('BUG C: setSessionId clears autoLabel on session change', () => {
+  test('autoLabel is cleared by setSessionId when an existing session changes', () => {
     const term = fakeTerm('CC-bug-c');
     t.register(term, 'CC-001', fakeAgentConfig(), undefined);
+    t.setSessionId(term, 'old-session-id-aaaa');
 
     // Simulate a label being set after first session adoption
     t.setAutoLabel(term, 'fix the auth bug');
@@ -85,9 +86,7 @@ describe('BUG C: setSessionId does not clear autoLabel', () => {
     t.setSessionId(term, 'new-session-id-aaaa');
 
     const after = t.getByTerminal(term);
-    // BUG: autoLabel still set — it was NOT cleared by setSessionId
-    expect(after?.autoLabel).toBe('fix the auth bug');
-    // The session ID updated but the stale label remains
+    expect(after?.autoLabel).toBeUndefined();
     expect(after?.sessionId).toBe('new-session-id-aaaa');
   });
 });
@@ -126,8 +125,8 @@ describe('BUG A: startAutoLabelPoller guard blocks restart once autoLabel is set
   });
 });
 
-describe('BUG A+B+C: full chain — session changes, label never refreshes', () => {
-  test('after onSessionChanged fires, label poller cannot restart because autoLabel is still set', async () => {
+describe('BUG A+B+C: full chain — session changes allow label refresh', () => {
+  test('after onSessionChanged fires, label poller can restart because autoLabel is cleared', async () => {
     const term = fakeTerm('CC-full-chain');
     t.register(term, 'CC-004', fakeAgentConfig(), undefined);
 
@@ -137,25 +136,22 @@ describe('BUG A+B+C: full chain — session changes, label never refreshes', () 
 
     // Session changes (simulating onSessionChanged handler in extension.ts:596-600)
     t.setSessionId(term, 'session-2');
-    // BUG B: setSessionId did not clear autoLabel (Bug C)
-    // BUG A: now startAutoLabelPoller will be blocked by the old label
+    // setSessionId clears autoLabel so startAutoLabelPoller is not blocked by the old label
 
     let pollCount = 0;
     t.startAutoLabelPoller(term, async () => { pollCount++; });
     await new Promise(r => setTimeout(r, 50));
 
-    // BUG: poll count is 0 — the label for session-2 is never fetched
-    // The user sees "label from session 1" forever even though they're on session-2
-    expect(pollCount).toBe(0);
+    expect(pollCount).toBeGreaterThan(0);
 
     const entry = t.getByTerminal(term);
     expect(entry?.sessionId).toBe('session-2');      // session updated
-    expect(entry?.autoLabel).toBe('label from session 1'); // label stale
+    expect(entry?.autoLabel).toBeUndefined();
   });
 });
 
-describe('BUG I: setLabel does not immediately stop autoLabelPoller', () => {
-  test('poller interval keeps running for one more tick after manual label is set via setLabel', async () => {
+describe('BUG I: setLabel immediately stops autoLabelPoller', () => {
+  test('poller interval is cleared after manual label is set via setLabel', async () => {
     const term = fakeTerm('CC-bug-i');
     t.register(term, 'CC-005', fakeAgentConfig(), undefined);
 
@@ -169,15 +165,12 @@ describe('BUG I: setLabel does not immediately stop autoLabelPoller', () => {
     await new Promise(r => setTimeout(r, 30));
     expect(pollCount).toBe(1); // immediate fire on start
 
-    // User sets a manual label (Cmd+L) — setLabel does NOT stop the interval
-    // The interval will fire once more before the self-clear guard catches it
+    // User sets a manual label (Cmd+L), which stops the interval immediately
     const fakeContext = undefined as any;
     await t.setLabel(term, 'manual label', fakeContext);
 
     const entry = t.getByTerminal(term);
-    // The interval IS still running after setLabel (Bug I)
-    // It will self-clear on next tick, but one stale tick can still fire
-    expect(entry?.autoLabelPollerId).toBeDefined();
+    expect(entry?.autoLabelPollerId).toBeUndefined();
 
     t.stopAutoLabelPoller(term);
   });
