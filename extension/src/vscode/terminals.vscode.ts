@@ -406,6 +406,44 @@ export function setAgentType(terminal: vscode.Terminal, agentType: SessionAgentT
   }
 }
 
+// Convert an SH-registered terminal into an agent terminal once the user has
+// launched an agent CLI inside it. Mutates the existing entry in place so
+// every consumer (dashboard, status bar, session tracker, label generation,
+// autogit, swarm) starts treating the tab as the detected agent.
+//
+// The VS Code tab icon and `creationOptions` are immutable, so the visible
+// tab keeps its SH chip — only the internal registry and downstream display
+// names update.
+//
+// Idempotent: a non-SH entry is returned unchanged.
+export function adoptShellAsAgent(
+  terminal: vscode.Terminal,
+  newAgentConfig: Omit<AgentConfig, 'count'>,
+  agentType: SessionAgentType,
+  sessionId: string | undefined
+): boolean {
+  const entry = getByTerminal(terminal);
+  if (!entry) {
+    console.error(`[TERMINALS] adoptShellAsAgent: terminal "${terminal.name}" not in registry`);
+    return false;
+  }
+  if (entry.agentConfig?.prefix !== 'sh') {
+    console.log(`[TERMINALS] adoptShellAsAgent: terminal "${terminal.name}" already adopted (prefix=${entry.agentConfig?.prefix}), skipping`);
+    return false;
+  }
+
+  console.log(`[TERMINALS] Adopting SH terminal "${terminal.name}" (id=${entry.id}) as ${newAgentConfig.title}, sessionId=${sessionId}`);
+  entry.agentConfig = newAgentConfig;
+  entry.agentType = agentType;
+  if (sessionId) {
+    entry.sessionId = sessionId;
+  }
+
+  schedulePersist();
+  maybeRegisterWithSessionTracker(terminal, agentType, entry.sessionId);
+  return true;
+}
+
 export function setVersion(terminal: vscode.Terminal, version: string): void {
   const entry = getByTerminal(terminal);
   if (entry) {
