@@ -36,6 +36,7 @@ export function createTmuxTerminal(
     iconPath?: vscode.Uri;
     env?: Record<string, string>;
     viewColumn?: vscode.ViewColumn;
+    cwd?: string;
   }
 ): vscode.Terminal {
   const session = `agents-${Date.now()}`;
@@ -49,6 +50,7 @@ export function createTmuxTerminal(
       ...options.env,
       TMUX_AGENT_SESSION: session,
     },
+    cwd: options.cwd,
     isTransient: true
   });
 
