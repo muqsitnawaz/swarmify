@@ -412,3 +412,190 @@ describe('sessionTracker — lifecycle', () => {
     unregisterTerminal(term);
   });
 });
+
+// ─── Bug proofs ──────────────────────────────────────────────────────────────
+
+describe('BUG: wrong version path — versioned Claude dirs not watched', () => {
+  test('session file in a secondary root is detected when that root is registered', async () => {
+    // Proves the mechanism works — if both roots are given, both are watched.
+    const baseRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-base-'));
+    const versionedRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-ver-'));
+    const sessionId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+    const term = fakeTerminal('CC-versioned');
+
+    const events: string[] = [];
+    onSessionChanged((_t, _old, newId) => events.push(newId));
+
+    // Register with BOTH roots (what the correct code would do)
+    __testRegister(term, 'claude', [baseRoot, versionedRoot], sessionId);
+
+    const forkId = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
+    fs.writeFileSync(
+      path.join(versionedRoot, `${forkId}.jsonl`),
+      JSON.stringify({ forkedFrom: { sessionId } }) + '\n'
+    );
+    await waitMs(600);
+
+    expect(events).toContain(forkId);
+    unregisterTerminal(term);
+    fs.rmSync(baseRoot, { recursive: true, force: true });
+    fs.rmSync(versionedRoot, { recursive: true, force: true });
+  });
+
+  test('session file in a secondary root is NOT detected when only the base root is registered', async () => {
+    // Proves the bug: if claudeVersionDirs() returns [], the versioned root is
+    // never watched and new sessions created there are silently dropped.
+    const baseRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-base-'));
+    const versionedRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-ver-'));
+    const sessionId = 'aaaaaaaa-bbbb-cccc-dddd-111111111111';
+    const term = fakeTerminal('CC-base-only');
+
+    const events: string[] = [];
+    onSessionChanged((_t, _old, newId) => events.push(newId));
+
+    // Register with ONLY the base root (what the buggy code does when
+    // ~/.agents/versions/claude/ doesn't exist and claudeVersionDirs() → [])
+    __testRegister(term, 'claude', [baseRoot], sessionId);
+
+    const forkId = 'ffffffff-ffff-ffff-ffff-222222222222';
+    fs.writeFileSync(
+      path.join(versionedRoot, `${forkId}.jsonl`),
+      JSON.stringify({ forkedFrom: { sessionId } }) + '\n'
+    );
+    await waitMs(600);
+
+    // No event — versioned root not watched
+    expect(events).toHaveLength(0);
+    unregisterTerminal(term);
+    fs.rmSync(baseRoot, { recursive: true, force: true });
+    fs.rmSync(versionedRoot, { recursive: true, force: true });
+  });
+});
+
+describe('BUG: /continue chain-break — warm old file blocks correlateKillRestart', () => {
+  test('new fork whose forkedFrom is untracked AND old file is warm → silently dropped', async () => {
+    // Scenario: terminal tracked with sessionId=A, old A.jsonl is warm.
+    // New B.jsonl appears with forkedFrom=X (not A — chain break).
+    // findTrackedBySessionId(X) misses → falls to correlateKillRestart.
+    // A.jsonl was just written → not dormant → correlateKillRestart bails.
+    // Result: B is never attributed to any terminal.
+    const oldSessionId = '11111111-0000-0000-0000-000000000001';
+    const term = fakeTerminal('CC-warm-chain-break');
+
+    const events: string[] = [];
+    onSessionChanged((_t, _old, newId) => events.push(newId));
+
+    __testRegister(term, 'claude', [tmpDir], oldSessionId);
+
+    // Warm the old tracked file (simulates Claude writing to it during /continue)
+    const trackedFile = path.join(tmpDir, `${oldSessionId}.jsonl`);
+    fs.writeFileSync(trackedFile, '{"type":"user"}\n');
+    await waitMs(400);
+    fs.appendFileSync(trackedFile, '{"type":"assistant"}\n');
+    await waitMs(50);
+
+    // New session with forkedFrom pointing to a DIFFERENT (untracked) parent
+    const unknownParent = 'deadbeef-0000-0000-0000-000000000000';
+    const newSessionId = '22222222-0000-0000-0000-000000000002';
+    fs.writeFileSync(
+      path.join(tmpDir, `${newSessionId}.jsonl`),
+      JSON.stringify({ forkedFrom: { sessionId: unknownParent } }) + '\n'
+    );
+    await waitMs(600);
+
+    // Bug: new session silently dropped — no event fires
+    expect(events).toHaveLength(0);
+    unregisterTerminal(term);
+  });
+
+  test('new session without forkedFrom AND old file is dormant → fires via correlateKillRestart', async () => {
+    // Complement: proves correlateKillRestart DOES work when the file is dormant.
+    // CRITICAL PRECONDITION: trackedFile must be set via a prior applyChange.
+    // A freshly registered terminal with no adoption has trackedFile=undefined,
+    // so correlateKillRestart skips it entirely (filter at sessionTracker.ts:393).
+    // We set up the precondition by first letting a forked session be adopted.
+    const session1 = '33333333-0000-0000-0000-000000000003';
+    const session2 = '44444444-0000-0000-0000-000000000004';
+    const session3 = '55555555-0000-0000-0000-000000000005';
+    const term = fakeTerminal('CC-dormant-restart');
+
+    const events: string[] = [];
+    onSessionChanged((_t, _old, newId) => events.push(newId));
+
+    // Register with session1 — trackedFile is NOT yet set
+    __testRegister(term, 'claude', [tmpDir], session1);
+
+    // Step 1: session2 forks from session1 → applyChange fires → trackedFile=session2.jsonl
+    fs.writeFileSync(
+      path.join(tmpDir, `${session2}.jsonl`),
+      JSON.stringify({ forkedFrom: { sessionId: session1 } }) + '\n'
+    );
+    await waitMs(600);
+    expect(events).toContain(session2); // adoption confirmed, trackedFile now set
+
+    // Step 2: wait past DORMANT_THRESHOLD_MS so session2.jsonl goes dormant
+    await waitMs(11000);
+
+    // Step 3: session3 appears without forkedFrom — correlateKillRestart should pick it up
+    fs.writeFileSync(
+      path.join(tmpDir, `${session3}.jsonl`),
+      '{"type":"user"}\n'
+    );
+    await waitMs(600);
+
+    expect(events).toContain(session3);
+    unregisterTerminal(term);
+  }, 15000);
+});
+
+describe('BUG: Codex — yesterday\'s session directory not watched', () => {
+  test('session file in yesterday\'s dir is NOT detected when only today\'s dir is registered', async () => {
+    const todayDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-today-'));
+    const yesterdayDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-yesterday-'));
+    const newSessionId = 'rollout-2026-05-16T00-00-00-55555555-5555-5555-5555-555555555555';
+    const term = fakeTerminal('CX-yesterday');
+
+    const events: string[] = [];
+    onSessionChanged((_t, _old, newId) => events.push(newId));
+
+    // Register with ONLY today's dir (what codexRootToday() produces after midnight)
+    __testRegister(term, 'codex', [todayDir], undefined);
+
+    // Write rollout file in yesterday's dir
+    fs.writeFileSync(
+      path.join(yesterdayDir, `${newSessionId}.jsonl`),
+      JSON.stringify({ type: 'session_meta', payload: { cwd: '/__test__' } }) + '\n'
+    );
+    await waitMs(600);
+
+    // Bug: file is in an unwatched directory — no event fires
+    expect(events).toHaveLength(0);
+    unregisterTerminal(term);
+    fs.rmSync(todayDir, { recursive: true, force: true });
+    fs.rmSync(yesterdayDir, { recursive: true, force: true });
+  });
+
+  test('session file in yesterday\'s dir IS detected when that dir is also registered', async () => {
+    const todayDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-today2-'));
+    const yesterdayDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-yest2-'));
+    const newSessionId = 'rollout-2026-05-16T00-00-00-66666666-6666-6666-6666-666666666666';
+    const term = fakeTerminal('CX-yesterday-fix');
+
+    const events: string[] = [];
+    onSessionChanged((_t, _old, newId) => events.push(newId));
+
+    // Register with BOTH dirs (what the fix would do)
+    __testRegister(term, 'codex', [todayDir, yesterdayDir], undefined);
+
+    fs.writeFileSync(
+      path.join(yesterdayDir, `${newSessionId}.jsonl`),
+      JSON.stringify({ type: 'session_meta', payload: { cwd: '/__test__' } }) + '\n'
+    );
+    await waitMs(600);
+
+    expect(events.some(id => id.includes('66666666'))).toBe(true);
+    unregisterTerminal(term);
+    fs.rmSync(todayDir, { recursive: true, force: true });
+    fs.rmSync(yesterdayDir, { recursive: true, force: true });
+  });
+});

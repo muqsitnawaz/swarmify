@@ -9,6 +9,21 @@ import * as os from 'os';
 import * as path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+
+// Diagnostic file logger for shell adoption — VS Code's console.log doesn't
+// land in any persisted log file, so we mirror adoption events to disk for
+// post-hoc debugging. Path: ~/.cache/swarmify/shell-adoption.log
+const ADOPTION_LOG_PATH = path.join(os.homedir(), '.cache', 'swarmify', 'shell-adoption.log');
+let adoptionLogReady = false;
+function adoptLog(msg: string): void {
+  try {
+    if (!adoptionLogReady) {
+      fs.mkdirSync(path.dirname(ADOPTION_LOG_PATH), { recursive: true });
+      adoptionLogReady = true;
+    }
+    fs.appendFileSync(ADOPTION_LOG_PATH, `${new Date().toISOString()} ${msg}\n`);
+  } catch { /* ignore */ }
+}
 import {
   ReadinessEntry,
   ReadinessEvent,
@@ -18,6 +33,9 @@ import {
   waitFor as coreWaitFor,
   dispose as coreDispose,
   hasFired,
+  AgentLauncherKey,
+  detectAgentKeyFromArgs,
+  extractSessionIdFromArgs,
 } from '../core/terminalReadiness';
 
 const execAsync = promisify(exec);
@@ -196,7 +214,8 @@ export function resetAfterAgentExit(terminal: vscode.Terminal): void {
 //   2) Session-file fast path: if agentKey + sessionId provided, fs.watch
 //      for the agent's session file to appear. Claude/Codex/Gemini/OpenCode
 //      all write a session file when the TUI is up.
-export type FastPathAgentKey = 'claude' | 'codex' | 'gemini' | 'cursor' | 'opencode';
+export type FastPathAgentKey = AgentLauncherKey;
+export { detectAgentKeyFromArgs, extractSessionIdFromArgs };
 
 export interface ArmAgentOptions {
   // Any string is accepted for ergonomics; only known agent keys get the
@@ -256,6 +275,7 @@ export function disposeTerminal(terminal: vscode.Terminal): void {
   const r = registry.get(terminal);
   if (!r) return;
   registry.delete(terminal);
+  shellAdoptions.delete(terminal);
   for (const d of r.disposables) d.dispose();
   for (const t of r.timers) clearTimeout(t);
   for (const w of r.watchers) {
@@ -265,6 +285,217 @@ export function disposeTerminal(terminal: vscode.Terminal): void {
     try { d(); } catch { /* ignore */ }
   }
   coreDispose(r.entry, 'terminal closed');
+}
+
+// --- Shell adoption ------------------------------------------------------
+//
+// Polls the descendant process tree of an SH terminal looking for known
+// agent CLIs. Fires `onAdopted` once with the detected agent and its
+// session id (when resolvable). Stops itself after firing.
+//
+// Detection handles:
+//   - direct invocation: `claude`, `codex`, `gemini`, `cursor-agent`, `opencode`
+//   - node-wrapped binaries (where comm shows `node`) via args inspection
+//   - `agents run <agent>` wrappers from agents-cli
+//
+// Session id resolution:
+//   1. Inspect the agent process args for `--session-id <uuid>`
+//   2. Fall back to scanning the agent's session-file root for a file with
+//      mtime >= the agent process start time
+
+const SHELL_ADOPTION_POLL_MS = 2000;
+const SHELL_ADOPTION_MAX_LIFETIME_MS = 10 * 60 * 1000;
+const SHELL_ADOPTION_TREE_DEPTH = 5;
+const SHELL_ADOPTION_SESSION_LOOKBACK_MS = 60 * 1000;
+
+const SESSION_UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+
+export interface ShellAdoptionInfo {
+  agentKey: FastPathAgentKey;
+  sessionId: string | undefined;
+  childPid: number;
+}
+
+export type ShellAdoptionCallback = (info: ShellAdoptionInfo) => void;
+
+interface ShellAdoptionState {
+  startedAt: number;
+  armed: boolean;
+}
+
+const shellAdoptions = new WeakMap<vscode.Terminal, ShellAdoptionState>();
+
+export function armShellAdoption(
+  terminal: vscode.Terminal,
+  onAdopted: ShellAdoptionCallback
+): void {
+  const r = registry.get(terminal);
+  if (!r) {
+    adoptLog(`armShellAdoption: terminal "${terminal.name}" not in readiness registry — bailing`);
+    return;
+  }
+  if (shellAdoptions.has(terminal)) {
+    adoptLog(`armShellAdoption: terminal "${terminal.name}" already armed — skipping`);
+    return;
+  }
+  const state: ShellAdoptionState = { startedAt: Date.now(), armed: true };
+  shellAdoptions.set(terminal, state);
+  adoptLog(`armShellAdoption: armed for terminal "${terminal.name}" (pid=${r.pid})`);
+
+  let tickCount = 0;
+  const tick = async () => {
+    tickCount++;
+    if (!state.armed) return;
+    if (r.entry.disposed) {
+      adoptLog(`tick #${tickCount} for "${terminal.name}": entry disposed, stopping`);
+      shellAdoptions.delete(terminal);
+      return;
+    }
+    if (Date.now() - state.startedAt > SHELL_ADOPTION_MAX_LIFETIME_MS) {
+      adoptLog(`tick #${tickCount} for "${terminal.name}": max lifetime exceeded, dropping`);
+      shellAdoptions.delete(terminal);
+      return;
+    }
+    if (r.pid === null) {
+      adoptLog(`tick #${tickCount} for "${terminal.name}": pid not yet resolved, retrying`);
+      const t = setTimeout(tick, SHELL_ADOPTION_POLL_MS);
+      r.timers.push(t);
+      return;
+    }
+
+    try {
+      const match = await findAgentInTree(r.pid, SHELL_ADOPTION_TREE_DEPTH);
+      if (match) {
+        adoptLog(`tick #${tickCount} for "${terminal.name}" (shellPid=${r.pid}): MATCH agentKey=${match.agentKey} childPid=${match.childPid} sessionIdFromArgs=${match.sessionId}`);
+        const sessionId = match.sessionId
+          ?? await locateSessionIdForAgent(match.agentKey, match.childPid);
+        adoptLog(`tick #${tickCount} for "${terminal.name}": resolved sessionId=${sessionId}`);
+        state.armed = false;
+        shellAdoptions.delete(terminal);
+        try {
+          onAdopted({ agentKey: match.agentKey, sessionId, childPid: match.childPid });
+          adoptLog(`tick #${tickCount} for "${terminal.name}": onAdopted callback returned cleanly`);
+        } catch (err) {
+          adoptLog(`tick #${tickCount} for "${terminal.name}": onAdopted callback threw: ${err}`);
+          console.error('[READINESS] shell adoption callback threw', err);
+        }
+        return;
+      } else if (tickCount % 5 === 1) {
+        // log every ~10s while idle so we can see polling is alive
+        adoptLog(`tick #${tickCount} for "${terminal.name}" (shellPid=${r.pid}): no agent CLI in descendant tree`);
+      }
+    } catch (err) {
+      adoptLog(`tick #${tickCount} for "${terminal.name}": probe threw ${err}`);
+    }
+
+    const t = setTimeout(tick, SHELL_ADOPTION_POLL_MS);
+    r.timers.push(t);
+  };
+
+  const first = setTimeout(tick, SHELL_ADOPTION_POLL_MS);
+  r.timers.push(first);
+}
+
+interface AgentInTreeMatch {
+  agentKey: FastPathAgentKey;
+  childPid: number;
+  sessionId?: string;
+}
+
+async function findAgentInTree(
+  rootPid: number,
+  maxDepth: number
+): Promise<AgentInTreeMatch | null> {
+  let frontier = [rootPid];
+  for (let depth = 0; depth < maxDepth && frontier.length > 0; depth++) {
+    const childrenResults = await Promise.all(
+      frontier.map(async (pid) => {
+        try {
+          const { stdout } = await execAsync(`pgrep -P ${pid}`);
+          return stdout.trim().split(/\s+/).filter(Boolean).map((s) => parseInt(s, 10));
+        } catch {
+          return [];
+        }
+      })
+    );
+    const nextFrontier = childrenResults.flat().filter((n) => Number.isFinite(n));
+    for (const childPid of nextFrontier) {
+      try {
+        const { stdout: argsOut } = await execAsync(`ps -p ${childPid} -o args=`);
+        const args = argsOut.trim();
+        const agentKey = detectAgentKeyFromArgs(args);
+        if (agentKey) {
+          return { agentKey, childPid, sessionId: extractSessionIdFromArgs(args) };
+        }
+      } catch {
+        // child may have exited; skip
+      }
+    }
+    frontier = nextFrontier;
+  }
+  return null;
+}
+
+async function locateSessionIdForAgent(
+  agentKey: FastPathAgentKey,
+  childPid: number
+): Promise<string | undefined> {
+  let childStartMs = Date.now() - SHELL_ADOPTION_SESSION_LOOKBACK_MS;
+  try {
+    const { stdout } = await execAsync(`ps -p ${childPid} -o lstart=`);
+    const parsed = Date.parse(stdout.trim());
+    if (!Number.isNaN(parsed)) childStartMs = parsed - 1000;
+  } catch {
+    // fall back to lookback window
+  }
+
+  const roots = sessionRootsForAgent(agentKey);
+  let best: { sessionId: string; mtimeMs: number } | null = null;
+  for (const root of roots) {
+    if (!fs.existsSync(root)) continue;
+    const found = await collectRecentSessionFiles(root, childStartMs);
+    for (const f of found) {
+      const m = f.filename.match(SESSION_UUID_RE);
+      if (!m) continue;
+      if (!best || f.mtimeMs > best.mtimeMs) {
+        best = { sessionId: m[0], mtimeMs: f.mtimeMs };
+      }
+    }
+  }
+  return best?.sessionId;
+}
+
+async function collectRecentSessionFiles(
+  root: string,
+  sinceMs: number
+): Promise<Array<{ filename: string; mtimeMs: number }>> {
+  const out: Array<{ filename: string; mtimeMs: number }> = [];
+
+  const walk = async (dir: string, depth: number): Promise<void> => {
+    if (depth > 4) return;
+    let entries: fs.Dirent[];
+    try {
+      entries = await fs.promises.readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      const full = path.join(dir, e.name);
+      try {
+        const stat = await fs.promises.stat(full);
+        if (e.isDirectory()) {
+          if (stat.mtimeMs >= sinceMs - 1000) await walk(full, depth + 1);
+        } else if (stat.mtimeMs >= sinceMs - 1000) {
+          out.push({ filename: e.name, mtimeMs: stat.mtimeMs });
+        }
+      } catch {
+        // ignore stat errors
+      }
+    }
+  };
+
+  await walk(root, 0);
+  return out;
 }
 
 // --- Probes ---------------------------------------------------------------
@@ -490,7 +721,8 @@ function sessionRootsForAgent(
 // --- Test-only helpers ---------------------------------------------------
 
 export function __clearRegistryForTests(): void {
-  for (const r of registry.values()) {
+  for (const [terminal, r] of registry.entries()) {
+    shellAdoptions.delete(terminal);
     for (const d of r.disposables) d.dispose();
     for (const t of r.timers) clearTimeout(t);
     for (const w of r.watchers) {

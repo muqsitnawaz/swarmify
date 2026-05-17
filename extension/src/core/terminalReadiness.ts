@@ -165,3 +165,41 @@ export function dispose(entry: ReadinessEntry, reason: string = 'disposed'): voi
   }
   entry.waiters.clear();
 }
+
+// --- Agent CLI detection (pure helpers) -----------------------------------
+
+export type AgentLauncherKey = 'claude' | 'codex' | 'gemini' | 'cursor' | 'opencode';
+
+/**
+ * Detect a known agent CLI from a `ps -o args=` output string.
+ * Handles direct invocation, absolute paths, node-wrapped scripts, and
+ * `agents run <agent>` wrappers from agents-cli.
+ */
+export function detectAgentKeyFromArgs(args: string): AgentLauncherKey | null {
+  const runMatch = args.match(/\bagents\s+run\s+(claude|codex|gemini|cursor|opencode)\b/);
+  if (runMatch) return runMatch[1] as AgentLauncherKey;
+
+  const tokens = args.split(/\s+/).filter(Boolean);
+  for (const tok of tokens) {
+    const base = (tok.split('/').pop() || '').toLowerCase();
+    if (base === 'claude' || base === 'claude.js') return 'claude';
+    if (base === 'codex' || base === 'codex.js') return 'codex';
+    if (base === 'gemini' || base === 'gemini.js') return 'gemini';
+    if (base === 'cursor-agent') return 'cursor';
+    if (base === 'opencode') return 'opencode';
+  }
+  return null;
+}
+
+/**
+ * Extract a session UUID from agent CLI args. Recognizes:
+ *   --session-id <uuid>
+ *   --session-id=<uuid>
+ *   --session <uuid>
+ */
+export function extractSessionIdFromArgs(args: string): string | undefined {
+  const m = args.match(
+    /--session(?:-id)?[\s=]([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i
+  );
+  return m?.[1];
+}
