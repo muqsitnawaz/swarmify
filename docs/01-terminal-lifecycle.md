@@ -367,6 +367,61 @@ Extension host                       ReadinessEntry
 
 No pgrep, no ps, no fs.watch. All four events fire immediately.
 
+## Sequence: Shell Adoption
+
+When the user spawns an `SH` terminal and later runs `claude` / `codex` /
+`gemini` / `cursor-agent` / `opencode` inside it, the extension promotes the
+internal `EditorTerminal` entry from "shell" to the detected agent so
+dashboards, the session tracker, label generation, autogit, recap, and swarm
+treat it as that agent.
+
+```
+Extension host                       ReadinessEntry / Registry
+    │                                      │
+    │  openSingleAgent (agentKey='shell')  │
+    │─terminals.register(prefix='sh')─────▶
+    │─readiness.registerTerminal──────────▶ tabReady → shellReady → promptReady
+    │─armShellAdoptionForTerminal─────────▶ schedule armShellAdoption (every 2s)
+    │                                      │
+    │  ...user types `claude` at prompt... │
+    │                                      │
+    │                                      ▼ tick (2s loop, depth-5 BFS over pgrep -P)
+    │                                      │   ps -p $childPid -o args=
+    │                                      │   detectAgentKeyFromArgs(args)
+    │                                      │   extractSessionIdFromArgs(args)
+    │                                      │     OR fallback: stat session-file
+    │                                      │     root for uuid filename with
+    │                                      │     mtime ≥ child start time
+    │                                      ▼
+    │  ◀──────── onAdopted({agentKey, sessionId}) ──────────
+    │                                      │
+    │─terminals.adoptShellAsAgent──────────▶ entry.agentConfig = newConfig
+    │  (mutates in place, idempotent)         entry.agentType = agentKey
+    │                                         entry.sessionId = uuid
+    │                                         schedulePersist + sessionTracker
+    │                                      │
+    │  registers session tracker watcher, starts auto-label poller
+    │                                      │
+    ▼                                      ▼
+```
+
+What does NOT change:
+- The VS Code tab's `iconPath` (frozen at `createTerminal`).
+- The VS Code tab's `name` (frozen if passed at `createTerminal`; otherwise
+  whatever the agent CLI's OSC `\x1b]0;...\x07` sequence sets it to).
+- `terminalId` / env vars — these stay `SH-…` for back-reference.
+
+Hard limits:
+- One-shot — after firing, the probe disposes itself.
+- 10-minute lifetime — if no agent CLI appears, the probe drops to avoid
+  leaking polling load per-terminal.
+- Idempotent — re-arming a terminal that has already been adopted is a no-op
+  (checked in both `armShellAdoption` and `adoptShellAsAgent`).
+
+Diagnostic log: `~/.cache/swarmify/shell-adoption.log` — every poll tick,
+every detection, every adoption. VS Code's `console.log` doesn't land in any
+persisted log file, so this is the only post-hoc trace.
+
 ## Data Flow
 
 Every signal source → a shape of data → a deterministic transformation → a
