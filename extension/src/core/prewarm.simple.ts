@@ -49,7 +49,7 @@ const SIMPLE_PREWARM_CONFIGS: Record<PrewarmAgentType, SimplePrewarmConfig> = {
       const match = clean.match(/session id:\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
       return match ? match[1] : null;
     },
-    timeout: 60000,
+    timeout: 20000,
   },
   cursor: {
     // Spawn cursor-agent with a simple prompt, wait for JSON response
@@ -165,6 +165,10 @@ function spawnKillMethod(
       env: { ...process.env },
       stdio: ['pipe', 'pipe', 'pipe'],
     });
+
+    // Close stdin immediately so processes waiting for input (e.g. codex)
+    // receive EOF and exit rather than hanging until the timeout fires.
+    proc.stdin?.end();
 
     const finish = (result: PrewarmResult) => {
       if (resolved) return;
