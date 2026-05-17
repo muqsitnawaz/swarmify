@@ -95,7 +95,7 @@ function buildUnifiedList(terminals: TerminalInfo[], tasks: TaskSummary[]): Unif
       status: isActive ? 'running' : 'idle',
       files,
       toolCalls: t.quickSummary?.toolCalls ?? 0,
-      mode: t.role || 'edit',
+      mode: t.role || 'auto',
     })
   }
 
@@ -612,7 +612,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
         status: 'running',
         files: [],
         toolCalls: 0,
-        mode: p.target === 'cloud' ? 'cloud' : 'edit',
+        mode: p.target === 'cloud' ? 'cloud' : 'auto',
         cloudProvider: p.target === 'cloud' ? 'anthropic' : null,
       }))
   }, [pendingDispatches, tick])
