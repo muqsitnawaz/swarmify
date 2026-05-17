@@ -2876,10 +2876,10 @@ async function openAgentTerminals(context: vscode.ExtensionContext) {
         // Set agent type unconditionally so sessionTracker fs watcher can adopt
         // a session id from the CLI's rollout file (Codex 0.124+ banner has none).
         terminals.setAgentType(terminal, agentKey);
-        startAutoLabelPollerForTerminal(terminal, context);
         if (sessionId) {
           terminals.setSessionId(terminal, sessionId);
         }
+        startAutoLabelPollerForTerminal(terminal, context);
       }
 
       if (command) {
@@ -3443,6 +3443,9 @@ async function reloadActiveTerminal(context: vscode.ExtensionContext) {
     }
 
     const agentConfig = entry.agentConfig;
+    if (agentConfig.prefix) {
+      await tryHydrateLiveSessionId(terminal, agentConfig.prefix);
+    }
     const sessionId = entry.sessionId;
     const agentType = entry.agentType;
 
@@ -3519,6 +3522,9 @@ async function closeActiveAgentWithRecap(context: vscode.ExtensionContext): Prom
   }
 
   const entry = terminals.getByTerminal(terminal);
+  if (entry?.agentConfig?.prefix) {
+    await tryHydrateLiveSessionId(terminal, entry.agentConfig.prefix);
+  }
   const agentType = entry?.agentType;
   const sessionId = entry?.sessionId;
   const version = entry?.version;
@@ -3644,6 +3650,11 @@ async function spawnWithContext(context: vscode.ExtensionContext): Promise<void>
   if (!activeTerminal) {
     vscode.window.showErrorMessage('No active terminal to continue from.');
     return;
+  }
+
+  const entryBefore = terminals.getByTerminal(activeTerminal);
+  if (entryBefore?.agentConfig?.prefix) {
+    await tryHydrateLiveSessionId(activeTerminal, entryBefore.agentConfig.prefix);
   }
 
   const entry = terminals.getByTerminal(activeTerminal);
