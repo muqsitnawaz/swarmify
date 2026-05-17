@@ -307,6 +307,8 @@ export async function setLabel(
 
     // Persist to disk
     schedulePersist();
+
+    stopAutoLabelPoller(terminal);
   } else {
     console.log(`[DEBUG setLabel] No entry found for terminal - label NOT saved!`);
   }
@@ -362,7 +364,15 @@ export function stopAutoLabelPoller(terminal: vscode.Terminal): void {
 export function setSessionId(terminal: vscode.Terminal, sessionId: string): void {
   const entry = getByTerminal(terminal);
   if (entry) {
+    const prevSessionId = entry.sessionId;
     entry.sessionId = sessionId;
+    if (prevSessionId && prevSessionId !== sessionId) {
+      entry.autoLabel = undefined;
+      if (entry.autoLabelPollerId) {
+        clearInterval(entry.autoLabelPollerId);
+        entry.autoLabelPollerId = undefined;
+      }
+    }
     console.log(`[TERMINALS] Set sessionId for terminal "${terminal.name}": ${sessionId}`);
 
     // Persist to disk
