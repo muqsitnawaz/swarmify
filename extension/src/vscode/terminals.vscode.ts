@@ -91,7 +91,7 @@ const STATUS_BAR_LABELS_KEY = 'agentStatusBarLabels';
 type StatusBarLabelsStorage = { [pid: number]: string };
 
 // Re-export PersistedSession from sessions.persist for external use
-export { PersistedSession } from '../core/sessions.persist';
+export type { PersistedSession } from '../core/sessions.persist';
 
 export function loadStatusBarLabels(context: vscode.ExtensionContext): StatusBarLabelsStorage {
   const stored = context.globalState.get<StatusBarLabelsStorage>(STATUS_BAR_LABELS_KEY);
