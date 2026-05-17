@@ -3,7 +3,7 @@
   "displayName": "Swarmify",
   "publisher": "swarmify",
   "description": "Turn your IDE into an Integrated Agents Environment. Run Claude, Codex, Gemini, and Cursor at scale with keyboard-first navigation.",
-  "version": "0.9.215",
+  "version": "0.9.216",
   "license": "MIT",
   "author": "Muqsit Nawaz <dev@muqsitnawaz.com>",
   "icon": "assets/agents.png",
@@ -371,7 +371,7 @@
         "agents.worktreePerTerminal": {
           "type": "boolean",
           "default": false,
-          "description": "Each new agent terminal (Cmd+Shift+A/B/H/V/J/K) starts in its own git worktree at <repo>/.agents/worktrees/<terminal-id> on branch agent/<terminal-id>. Isolates parallel agents so they cannot see or overwrite each other's uncommitted work. Requires agents-cli with `agents worktree` support. Off by default."
+          "description": "Each new agent terminal (Cmd+Shift+A/B/H/V/J/K) starts in its own git worktree at <repo>/.history/worktrees/<terminal-id> on branch agent/<terminal-id>. Isolates parallel agents so they cannot see or overwrite each other's uncommitted work. Requires agents-cli with `agents worktree` support. Off by default."
         },
         "agents.disableAutopush": {
           "type": "boolean",
