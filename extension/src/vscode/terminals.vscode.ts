@@ -166,7 +166,7 @@ let persistTimeout: NodeJS.Timeout | null = null;
  * Call this after any terminal state change.
  */
 export function schedulePersist(): void {
-  const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  const workspacePath = vscode.workspace?.workspaceFolders?.[0]?.uri.fsPath;
   if (!workspacePath) return;
 
   if (persistTimeout) clearTimeout(persistTimeout);
@@ -181,7 +181,7 @@ export function schedulePersist(): void {
  * Persist immediately (for critical operations like deactivate).
  */
 export function persistNow(): void {
-  const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  const workspacePath = vscode.workspace?.workspaceFolders?.[0]?.uri.fsPath;
   if (!workspacePath) return;
 
   if (persistTimeout) {
@@ -390,7 +390,7 @@ function maybeRegisterWithSessionTracker(
   sessionId: string | undefined,
 ): void {
   if (agentType !== 'claude' && agentType !== 'codex' && agentType !== 'gemini' && agentType !== 'opencode') return;
-  const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  const workspacePath = vscode.workspace?.workspaceFolders?.[0]?.uri.fsPath;
   if (!workspacePath) return;
   try {
     registerSessionTracker(terminal, agentType, workspacePath, sessionId);
@@ -529,7 +529,7 @@ export async function scanExisting(
   let registeredCount = 0;
 
   // Load persisted sessions for session recovery
-  const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  const workspacePath = vscode.workspace?.workspaceFolders?.[0]?.uri.fsPath;
   const persistedSessions = workspacePath ? sessionsPersist.getWorkspaceSessions(workspacePath) : [];
   const usedPersistedIds = new Set<string>();
   console.log(`[TERMINALS] Loaded ${persistedSessions.length} persisted sessions`);
