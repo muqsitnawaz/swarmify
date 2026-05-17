@@ -62,6 +62,7 @@ import {
   SessionAgentType
 } from '../core/utils';
 import { generateLabelWithLLM } from '../core/labelgen';
+import { resolveTerminalCwd, tryReleaseWorktreeForTerminal } from '../core/worktree';
 import * as path from 'path';
 import {
   createTmuxTerminal,
@@ -1276,6 +1277,17 @@ export async function activate(context: vscode.ExtensionContext) {
         });
       }
 
+      // Lazy release of the per-terminal worktree (no-op unless
+      // agents.worktreePerTerminal is enabled). Safe-by-default: only removes
+      // when clean and merged; otherwise leaves the worktree for the user to
+      // inspect or for `agents worktree prune` to revisit later.
+      if (entry?.id) {
+        const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (workspaceFolder) {
+          tryReleaseWorktreeForTerminal(workspaceFolder, entry.id);
+        }
+      }
+
       terminals.unregister(terminal);
       updateActiveAgentContextKey(vscode.window.activeTerminal, context.extensionPath);
     })
@@ -1411,7 +1423,14 @@ async function openSingleAgent(
   }
 
   // Handle session ID for supported agent types
-  const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
+
+  // Generate the terminal-id up front so both the tmux and the non-tmux
+  // branches reuse it. This also lets us provision a per-terminal worktree
+  // (opt-in via agents.worktreePerTerminal) before the terminal is created.
+  const terminalId = terminals.nextId(agentConfig.prefix);
+  const { cwd, isolated: worktreeIsolated } = await resolveTerminalCwd(workspaceFolder, terminalId);
+
   let sessionId: string | null = null;
 
   // Track OpenCode sessions before spawn to detect new one
@@ -1436,7 +1455,6 @@ async function openSingleAgent(
 
   if (tmuxOk) {
     const title = buildTerminalTitle(agentConfig.title, undefined, context, sessionId);
-    const terminalId = terminals.nextId(agentConfig.prefix);
     const agentType = builtInDef?.key ?? agentConfig.title;
     const terminal = createTmuxTerminal(
       title,
@@ -1445,7 +1463,8 @@ async function openSingleAgent(
       {
         iconPath: agentConfig.iconPath as vscode.Uri,
         env: buildAgentTerminalEnv(terminalId, sessionId, cwd),
-        viewColumn: vscode.ViewColumn.Active
+        viewColumn: vscode.ViewColumn.Active,
+        cwd: worktreeIsolated ? cwd : undefined,
       }
     );
 
@@ -1489,14 +1508,13 @@ async function openSingleAgent(
     preserveFocus: false
   };
 
-  // Generate ID first for env var
-  const terminalId = terminals.nextId(agentConfig.prefix);
   const title = buildTerminalTitle(agentConfig.title, undefined, context, sessionId);
   const terminal = vscode.window.createTerminal({
     iconPath: agentConfig.iconPath,
     location: editorLocation,
     name: title,
     env: buildAgentTerminalEnv(terminalId, sessionId, cwd),
+    cwd: worktreeIsolated ? cwd : undefined,
     isTransient: true
   });
 
@@ -2741,8 +2759,9 @@ export async function openSingleAgentWithQueue(
     preserveFocus: false
   };
 
-  const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
   const terminalId = terminals.nextId(agentConfig.prefix);
+  const { cwd, isolated: worktreeIsolated } = await resolveTerminalCwd(workspaceFolder, terminalId);
 
   // Determine agent key and handle session ID
   const builtInDef = getBuiltInByPrefix(agentConfig.prefix);
@@ -2769,6 +2788,7 @@ export async function openSingleAgentWithQueue(
     location: editorLocation,
     name: title,
     env: buildAgentTerminalEnv(terminalId, sessionId, cwd),
+    cwd: worktreeIsolated ? cwd : undefined,
     isTransient: true
   });
 
