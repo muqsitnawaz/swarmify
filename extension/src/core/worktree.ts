@@ -3,7 +3,7 @@
  *
  * When the `agents.worktreePerTerminal` workspace setting is enabled, every
  * new agent terminal (Cmd+Shift+A/B/H/V/J/K) is started in its own git
- * worktree at <repo>/.agents/worktrees/<terminal-id> on branch
+ * worktree at <repo>/.history/worktrees/<terminal-id> on branch
  * agent/<terminal-id>. This isolates parallel agents so their uncommitted
  * work doesn't appear in each other's `git status`.
  *
