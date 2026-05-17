@@ -458,7 +458,7 @@ export async function getClaudeProjectRoots(homeDir: string = homedir()): Promis
   const roots: string[] = [path.join(homeDir, '.claude', 'projects')];
   const versionHomes = [
     path.join(homeDir, '.agents-system', 'versions', 'claude'),
-    path.join(homeDir, '.agents', 'versions', 'claude'),
+    path.join(homeDir, '.agents', '.history', 'versions', 'claude'),
   ];
   for (const versionsDir of versionHomes) {
     const versions = await safeReaddir(versionsDir);

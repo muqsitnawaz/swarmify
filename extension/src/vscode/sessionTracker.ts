@@ -27,6 +27,8 @@ interface TrackedTerminal {
 
 interface SharedWatcher {
   watcher: fs.FSWatcher;
+  pollListener: (curr: fs.Stats, prev: fs.Stats) => void;
+  knownFiles: Set<string>;
   refCount: number;
   dir: string;
   agentType: TrackedAgentType;
@@ -65,7 +67,7 @@ let cachedClaudeVersions: string[] | undefined;
 
 function claudeVersionDirs(): string[] {
   if (cachedClaudeVersions) return cachedClaudeVersions;
-  const versionsDir = path.join(homeDir(), '.agents', 'versions', 'claude');
+  const versionsDir = path.join(homeDir(), '.agents', '.history', 'versions', 'claude');
   const versions: string[] = [];
   if (fs.existsSync(versionsDir)) {
     try {
@@ -83,7 +85,7 @@ function claudeVersionDirs(): string[] {
 function claudeRootsFor(workspacePath: string): string[] {
   const folder = workspaceToClaudeFolder(workspacePath);
   const roots: string[] = [path.join(homeDir(), '.claude', 'projects', folder)];
-  const versionsDir = path.join(homeDir(), '.agents', 'versions', 'claude');
+  const versionsDir = path.join(homeDir(), '.agents', '.history', 'versions', 'claude');
   for (const ver of claudeVersionDirs()) {
     roots.push(path.join(versionsDir, ver, 'home', '.claude', 'projects', folder));
   }
@@ -96,6 +98,15 @@ function codexRootToday(): string {
   const m = String(now.getMonth() + 1).padStart(2, '0');
   const d = String(now.getDate()).padStart(2, '0');
   return path.join(homeDir(), '.codex', 'sessions', y, m, d);
+}
+
+function codexRootYesterday(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  const y = String(d.getFullYear());
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return path.join(homeDir(), '.codex', 'sessions', y, m, day);
 }
 
 function workspaceHash(workspacePath: string): string {
@@ -159,7 +170,7 @@ function rootsFor(t: TrackedTerminal): string[] {
     case 'claude':
       return claudeRootsFor(t.workspacePath);
     case 'codex':
-      return [codexRootToday()];
+      return [codexRootToday(), codexRootYesterday()];
     case 'gemini':
       return geminiRootsFor(t.workspacePath);
     case 'opencode':
@@ -189,9 +200,16 @@ function mountWatcher(dir: string, agentType: TrackedAgentType): void {
   }
   if (!ensureDirExists(dir)) return;
   try {
+    let knownFiles = new Set<string>();
+    try {
+      knownFiles = new Set(fs.readdirSync(dir));
+    } catch {
+      knownFiles = new Set();
+    }
     const watcher = fs.watch(dir, { recursive: false }, (event, filename) => {
       if (!filename) return;
       const name = filename.toString();
+      knownFiles.add(name);
       if (event === 'change') {
         recordWrite(path.join(dir, name));
       }
@@ -199,7 +217,22 @@ function mountWatcher(dir: string, agentType: TrackedAgentType): void {
         onRename(dir, name, agentType);
       }
     });
-    watchersByDir.set(dir, { watcher, refCount: 1, dir, agentType });
+    const pollListener = (curr: fs.Stats, prev: fs.Stats): void => {
+      if (curr.mtimeMs === prev.mtimeMs) return;
+      let names: string[];
+      try {
+        names = fs.readdirSync(dir);
+      } catch {
+        return;
+      }
+      for (const name of names) {
+        if (knownFiles.has(name)) continue;
+        knownFiles.add(name);
+        onRename(dir, name, agentType);
+      }
+    };
+    fs.watchFile(dir, { interval: 100 }, pollListener);
+    watchersByDir.set(dir, { watcher, pollListener, knownFiles, refCount: 1, dir, agentType });
   } catch {
     /* ignore */
   }
@@ -212,6 +245,7 @@ function releaseWatcher(dir: string): void {
   if (w.refCount <= 0) {
     try {
       w.watcher.close();
+      fs.unwatchFile(dir, w.pollListener);
     } catch {
       /* ignore */
     }
@@ -343,6 +377,7 @@ async function processNewFile(file: string, agentType: TrackedAgentType): Promis
 
   if (agentType === 'gemini') {
     if (parsed.geminiSessionId) newId = parsed.geminiSessionId;
+    if (isSessionIdAlreadyTracked('gemini', newId)) return;
     if (parsed.geminiProjectHash) {
       const candidates = [...tracked.values()].filter(t =>
         t.agentType === 'gemini' && workspaceHash(t.workspacePath) === parsed.geminiProjectHash
@@ -357,6 +392,7 @@ async function processNewFile(file: string, agentType: TrackedAgentType): Promis
 
   if (agentType === 'opencode') {
     if (parsed.opencodeSessionId) newId = parsed.opencodeSessionId;
+    if (isSessionIdAlreadyTracked('opencode', newId)) return;
     if (parsed.opencodeDirectory) {
       const candidates = [...tracked.values()].filter(t =>
         t.agentType === 'opencode' && t.workspacePath === parsed.opencodeDirectory
@@ -698,6 +734,7 @@ export function initSessionTracker(context: vscode.ExtensionContext): void {
     const activeCodex = [...tracked.values()].filter(t => t.agentType === 'codex');
     if (activeCodex.length > 0) {
       mountWatcher(codexRootToday(), 'codex');
+      mountWatcher(codexRootYesterday(), 'codex');
     }
     midnightTimer = setTimeout(rearmCodex, msUntilNextMidnight());
   };
@@ -780,6 +817,7 @@ export function __reset(): void {
   for (const [, sw] of watchersByDir) {
     try {
       sw.watcher.close();
+      fs.unwatchFile(sw.dir, sw.pollListener);
     } catch {
       /* ignore */
     }

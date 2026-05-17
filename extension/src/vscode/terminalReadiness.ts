@@ -121,7 +121,7 @@ function addSharedWatcher(
 }
 
 // Cache version-directory enumeration. Without this, every terminal
-// registration runs a synchronous readdir over ~/.agents/versions/claude on
+// registration runs a synchronous readdir over ~/.agents/.history/versions/claude on
 // the extension-host thread.
 let cachedClaudeRoots: string[] | undefined;
 
@@ -692,9 +692,9 @@ function sessionRootsForAgent(
     case 'claude': {
       if (cachedClaudeRoots) return cachedClaudeRoots;
       // Shim sets CLAUDE_CONFIG_DIR per version, so files land under
-      // ~/.agents/versions/claude/{v}/home/.claude/projects/... — watch both.
+      // ~/.agents/.history/versions/claude/{v}/home/.claude/projects/... — watch both.
       const roots = [path.join(home, '.claude', 'projects')];
-      const versionsDir = path.join(home, '.agents', 'versions', 'claude');
+      const versionsDir = path.join(home, '.agents', '.history', 'versions', 'claude');
       if (fs.existsSync(versionsDir)) {
         try {
           for (const entry of fs.readdirSync(versionsDir, { withFileTypes: true })) {
