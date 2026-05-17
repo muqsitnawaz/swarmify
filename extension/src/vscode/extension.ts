@@ -17,6 +17,7 @@ import { startWatchdogBridge } from '../mcp/watchdog-bridge';
 import * as notifications from './notifications.vscode';
 import * as terminals from './terminals.vscode';
 import * as sessionTracker from './sessionTracker';
+import { runRecapHeadless, isRecapSupported } from './recap.vscode';
 import { buildAgentTerminalEnv } from '../core/terminals';
 import {
   AgentsViewJsonAgent,
@@ -625,6 +626,15 @@ export async function activate(context: vscode.ExtensionContext) {
     (terminal) => startAutoLabelPollerForTerminal(terminal, context)
   )
     .then(() => restoreAgentTerminals(context))
+    .then(() => {
+      // Adopt any SH terminals that are already running an agent CLI
+      // (e.g. user launched claude before reload).
+      for (const entry of terminals.getAllTerminals()) {
+        if (entry.agentConfig?.prefix === 'sh') {
+          armShellAdoptionForTerminal(entry.terminal, context);
+        }
+      }
+    })
     .catch(err => {
       console.error('[EXTENSION] Error scanning/restoring terminals:', err);
     });
@@ -672,6 +682,10 @@ export async function activate(context: vscode.ExtensionContext) {
         if (agentType) {
           startAutoLabelPollerForTerminal(terminal, context);
         }
+      }
+
+      if (info.prefix === 'SH') {
+        armShellAdoptionForTerminal(terminal, context);
       }
     })
   );
@@ -771,6 +785,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // Set initial context keys and subscribe to config changes
   await updateContextKeys(context);
+  updateActiveAgentContextKey(vscode.window.activeTerminal, context.extensionPath);
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration(async (e) => {
       if (e.affectsConfiguration('agents')) {
@@ -969,6 +984,32 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
+    vscode.commands.registerCommand('agents.enableReader', async () => {
+      const current = settings.getSettings(context);
+      const next: AgentSettings = {
+        ...current,
+        editor: { ...(current.editor ?? { markdownViewerEnabled: true }), markdownViewerEnabled: true }
+      };
+      await settings.saveSettings(context, next);
+      vscode.window.showInformationMessage('Markdown reader enabled. .md files will open in the Agents Markdown Editor.');
+      await updateContextKeys(context);
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('agents.disableReader', async () => {
+      const current = settings.getSettings(context);
+      const next: AgentSettings = {
+        ...current,
+        editor: { ...(current.editor ?? { markdownViewerEnabled: true }), markdownViewerEnabled: false }
+      };
+      await settings.saveSettings(context, next);
+      vscode.window.showInformationMessage('Markdown reader disabled. .md files will open in the default text editor.');
+      await updateContextKeys(context);
+    })
+  );
+
+  context.subscriptions.push(
     vscode.commands.registerCommand('agents.newTask', () => newTaskWithContext(context))
   );
 
@@ -977,7 +1018,23 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
+    vscode.commands.registerCommand('agents.spawnWithPrompt', async (args?: { agent?: string; prompt?: string }) => {
+      await spawnWithPrompt(context, args);
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('agents.spawnWithContext', async () => {
+      await spawnWithContext(context);
+    })
+  );
+
+  context.subscriptions.push(
     vscode.commands.registerCommand('agents.handoff', () => handoffToAgent(context))
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('agents.closeWithRecap', () => closeActiveAgentWithRecap(context))
   );
 
   context.subscriptions.push(
@@ -1220,12 +1277,14 @@ export async function activate(context: vscode.ExtensionContext) {
       }
 
       terminals.unregister(terminal);
+      updateActiveAgentContextKey(vscode.window.activeTerminal, context.extensionPath);
     })
   );
 
   // Update status bar when active terminal changes
   context.subscriptions.push(
     vscode.window.onDidChangeActiveTerminal((terminal) => {
+      updateActiveAgentContextKey(terminal, context.extensionPath);
       if (!agentStatusBarItem) return;
 
       if (!terminal) {
@@ -1412,6 +1471,10 @@ async function openSingleAgent(
       terminals.setVersion(terminal, pinnedVersion);
     }
 
+    if (agentKey === 'shell') {
+      armShellAdoptionForTerminal(terminal, context);
+    }
+
     // OpenCode: Detect session ID asynchronously after spawn
     if (agentKey === 'opencode' && opencodeSessionsBefore !== null) {
       detectOpencodeSessionId(terminal, terminalId, cwd, opencodeSessionsBefore, context);
@@ -1468,6 +1531,10 @@ async function openSingleAgent(
     readiness.armAgentReady(terminal, agentKey && sessionId
       ? { agentKey, sessionId, cwd }
       : {});
+  }
+
+  if (agentKey === 'shell') {
+    armShellAdoptionForTerminal(terminal, context);
   }
 
   // OpenCode: Detect session ID asynchronously after spawn
@@ -2896,6 +2963,60 @@ function startAutoLabelPollerForTerminal(terminal: vscode.Terminal, context: vsc
   });
 }
 
+// Arm shell-adoption on an SH terminal: poll its descendant process tree for
+// a known agent CLI (claude/codex/gemini/cursor/opencode). On detection,
+// re-register the entry as the detected agent so the dashboard, session
+// tracker, label generation, autogit, and recap all treat it as that agent.
+// The VS Code tab icon is immutable so it keeps the SH chip — internal
+// state and downstream display only.
+function armShellAdoptionForTerminal(terminal: vscode.Terminal, context: vscode.ExtensionContext): void {
+  const entry = terminals.getByTerminal(terminal);
+  if (!entry) {
+    appendAdoptionLog(`armShellAdoptionForTerminal: "${terminal.name}" not in terminals registry — skipping`);
+    return;
+  }
+  if (entry.agentConfig?.prefix !== 'sh') {
+    appendAdoptionLog(`armShellAdoptionForTerminal: "${terminal.name}" prefix=${entry.agentConfig?.prefix}, not 'sh' — skipping`);
+    return;
+  }
+
+  appendAdoptionLog(`armShellAdoptionForTerminal: calling readiness.armShellAdoption for "${terminal.name}" (id=${entry.id})`);
+
+  readiness.armShellAdoption(terminal, ({ agentKey, sessionId }) => {
+    appendAdoptionLog(`armShellAdoptionForTerminal callback: agentKey=${agentKey} sessionId=${sessionId} terminal="${terminal.name}"`);
+    const def = getBuiltInByKey(agentKey);
+    if (!def) {
+      appendAdoptionLog(`armShellAdoptionForTerminal callback: no built-in def for "${agentKey}" — aborting`);
+      console.warn(`[ADOPT] No built-in def for agent key "${agentKey}"`);
+      return;
+    }
+    const newConfig = createAgentConfig(
+      context.extensionPath,
+      def.title,
+      def.command,
+      def.icon,
+      def.prefix
+    );
+    const adopted = terminals.adoptShellAsAgent(terminal, newConfig, agentKey, sessionId);
+    appendAdoptionLog(`armShellAdoptionForTerminal callback: adoptShellAsAgent returned ${adopted}`);
+    if (!adopted) return;
+    if (sessionId && supportsPrewarming(agentKey)) {
+      startAutoLabelPollerForTerminal(terminal, context);
+    }
+    if (vscode.window.activeTerminal === terminal) {
+      updateStatusBarForTerminal(terminal, context.extensionPath);
+    }
+  });
+}
+
+function appendAdoptionLog(msg: string): void {
+  try {
+    const file = path.join(os.homedir(), '.cache', 'swarmify', 'shell-adoption.log');
+    fsSync.mkdirSync(path.dirname(file), { recursive: true });
+    fsSync.appendFileSync(file, `${new Date().toISOString()} [ext] ${msg}\n`);
+  } catch { /* ignore */ }
+}
+
 /**
  * Try to fetch and set the auto-label when terminal gains focus.
  * This provides immediate label update instead of waiting for the 5-minute poller.
@@ -3377,6 +3498,58 @@ async function updateContextKeys(context: vscode.ExtensionContext): Promise<void
   await vscode.commands.executeCommand('setContext', 'agents.viewEnabled', viewEnabled);
 
   await vscode.commands.executeCommand('setContext', 'agents.warmingEnabled', false);
+
+  const readerEnabled = settings.getSettings(context).editor?.markdownViewerEnabled ?? true;
+  await vscode.commands.executeCommand('setContext', 'agents.readerEnabled', readerEnabled);
+}
+
+function updateActiveAgentContextKey(
+  terminal: vscode.Terminal | undefined,
+  extensionPath: string
+): void {
+  const isAgent = !!terminal && identifyAgentTerminal(terminal, extensionPath).isAgent;
+  vscode.commands.executeCommand('setContext', 'agents.activeIsAgent', isAgent);
+}
+
+async function closeActiveAgentWithRecap(context: vscode.ExtensionContext): Promise<void> {
+  const terminal = vscode.window.activeTerminal;
+  if (!terminal) {
+    await vscode.commands.executeCommand('workbench.action.terminal.kill');
+    return;
+  }
+
+  const entry = terminals.getByTerminal(terminal);
+  const agentType = entry?.agentType;
+  const sessionId = entry?.sessionId;
+  const version = entry?.version;
+  const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+
+  // Not an agent terminal, or missing info we need — fall back to default close.
+  if (!entry?.agentConfig || !sessionId || !agentType || !workspacePath || !isRecapSupported(agentType)) {
+    await vscode.commands.executeCommand('workbench.action.terminal.kill');
+    return;
+  }
+
+  // Launch the headless recap before disposing so the JSONL has stabilized.
+  // We await up to the spawn() so we know the child has the file handle;
+  // child.unref() inside runRecapHeadless means it survives this function.
+  try {
+    await runRecapHeadless({
+      sessionId,
+      agentType,
+      version,
+      workspacePath,
+      extensionPath: context.extensionPath,
+    });
+  } catch (err) {
+    console.warn('[recap] runRecapHeadless failed', err);
+  }
+
+  try {
+    terminal.dispose();
+  } catch (err) {
+    console.warn('[recap] terminal.dispose() failed', err);
+  }
 }
 
 async function detectDefaultAgentTitle(): Promise<string> {
@@ -3435,6 +3608,57 @@ async function maybeRunFirstSetup(context: vscode.ExtensionContext, force = fals
 }
 
 // Git functions are now in ./git.vscode
+
+async function spawnWithPrompt(
+  context: vscode.ExtensionContext,
+  args?: { agent?: string; prompt?: string }
+): Promise<void> {
+  let agentKey: string | undefined = args?.agent;
+  let prompt: string | undefined = args?.prompt;
+
+  if (!agentKey) {
+    const items = BUILT_IN_AGENTS.map(a => ({ label: a.title, description: a.key }));
+    const picked = await vscode.window.showQuickPick(items, { placeHolder: 'Pick agent type' });
+    if (!picked) return;
+    agentKey = picked.description!;
+  }
+
+  if (prompt === undefined) {
+    prompt = await vscode.window.showInputBox({ prompt: 'Prompt to send to the new agent' });
+    if (prompt === undefined) return;
+  }
+  if (!prompt.trim()) return;
+
+  const def = getBuiltInByKey(agentKey);
+  if (!def) {
+    vscode.window.showErrorMessage(`Unknown agent: ${agentKey}`);
+    return;
+  }
+
+  const agentConfig = createAgentConfig(context.extensionPath, def.title, def.command, def.icon, def.prefix);
+  await openSingleAgentWithQueue(context, agentConfig, [prompt]);
+}
+
+async function spawnWithContext(context: vscode.ExtensionContext): Promise<void> {
+  const activeTerminal = vscode.window.activeTerminal;
+  if (!activeTerminal) {
+    vscode.window.showErrorMessage('No active terminal to continue from.');
+    return;
+  }
+
+  const entry = terminals.getByTerminal(activeTerminal);
+  if (!entry?.sessionId) {
+    vscode.window.showErrorMessage('No session ID found for the active terminal.');
+    return;
+  }
+
+  if (!entry.agentConfig) {
+    vscode.window.showErrorMessage('Active terminal is not an agent terminal.');
+    return;
+  }
+
+  await openSingleAgentWithQueue(context, entry.agentConfig, [`/continue ${entry.sessionId}`]);
+}
 
 // Store context reference for deactivate
 let extensionContext: vscode.ExtensionContext | undefined;
@@ -3500,6 +3724,10 @@ async function restoreAgentTerminals(context: vscode.ExtensionContext): Promise<
     // and falls through to the full profile switch.
     if (session.version) {
       terminals.setVersion(terminal, session.version);
+    }
+
+    if (session.prefix.toLowerCase() === 'sh') {
+      armShellAdoptionForTerminal(terminal, context);
     }
 
     // Restore session tracking metadata if present

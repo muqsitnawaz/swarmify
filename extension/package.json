@@ -3,7 +3,7 @@
   "displayName": "Swarmify",
   "publisher": "swarmify",
   "description": "Turn your IDE into an Integrated Agents Environment. Run Claude, Codex, Gemini, and Cursor at scale with keyboard-first navigation.",
-  "version": "0.9.209",
+  "version": "0.9.214",
   "license": "MIT",
   "author": "Muqsit Nawaz <dev@muqsitnawaz.com>",
   "icon": "assets/agents.png",
@@ -227,6 +227,10 @@
         "title": "Agents: Handoff"
       },
       {
+        "command": "agents.closeWithRecap",
+        "title": "Agents: Close Terminal With Recap"
+      },
+      {
         "command": "agents.askAnotherAgent",
         "title": "Agents: Start Task"
       },
@@ -275,6 +279,14 @@
         "title": "Agents: Disable Warming"
       },
       {
+        "command": "agents.enableReader",
+        "title": "Agents: Enable Reader"
+      },
+      {
+        "command": "agents.disableReader",
+        "title": "Agents: Disable Reader"
+      },
+      {
         "command": "agents.init",
         "title": "Agents: Init"
       },
@@ -309,6 +321,14 @@
       {
         "command": "agents.watchdog.toggleTerminal",
         "title": "Agents: Toggle Watchdog for Active Terminal"
+      },
+      {
+        "command": "agents.spawnWithPrompt",
+        "title": "Agents: Spawn with Prompt"
+      },
+      {
+        "command": "agents.spawnWithContext",
+        "title": "Agents: Spawn with Context"
       }
     ],
     "configuration": {
@@ -466,6 +486,16 @@
           "command": "agents.disableWarming",
           "when": "agents.warmingEnabled",
           "group": "navigation@5"
+        },
+        {
+          "command": "agents.enableReader",
+          "when": "!agents.readerEnabled",
+          "group": "navigation@6"
+        },
+        {
+          "command": "agents.disableReader",
+          "when": "agents.readerEnabled",
+          "group": "navigation@6"
         }
       ]
     },
@@ -501,7 +531,12 @@
         "mac": "cmd+shift+n"
       },
       {
-        "command": "agents.askAnotherAgent",
+        "command": "agents.spawnWithPrompt",
+        "key": "ctrl+shift+j",
+        "mac": "cmd+shift+j"
+      },
+      {
+        "command": "agents.spawnWithContext",
         "key": "ctrl+shift+k",
         "mac": "cmd+shift+k"
       },
@@ -589,6 +624,12 @@
         "command": "agents.resumeCurrentInBestProfile",
         "key": "ctrl+shift+j",
         "mac": "cmd+shift+j"
+      },
+      {
+        "command": "agents.closeWithRecap",
+        "key": "ctrl+shift+w",
+        "mac": "cmd+shift+w",
+        "when": "terminalFocus && agents.activeIsAgent"
       }
     ]
   },

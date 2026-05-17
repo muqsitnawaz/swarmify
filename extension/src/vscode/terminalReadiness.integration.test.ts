@@ -17,6 +17,7 @@ import { describe, test, expect } from 'bun:test';
 import { spawn } from 'child_process';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { detectAgentKeyFromArgs, extractSessionIdFromArgs } from '../core/terminalReadiness';
 
 const execAsync = promisify(exec);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -97,5 +98,57 @@ describe('agentReady probe — real process state', () => {
     const observation = await probeChildState(999999);
     expect(observation.childPid).toBeNull();
     expect(observation.state).toBeNull();
+  });
+});
+
+describe('shell adoption — detectAgentKeyFromArgs', () => {
+  test('direct invocation by binary name', () => {
+    expect(detectAgentKeyFromArgs('claude --foo')).toBe('claude');
+    expect(detectAgentKeyFromArgs('/usr/local/bin/codex')).toBe('codex');
+    expect(detectAgentKeyFromArgs('cursor-agent chat')).toBe('cursor');
+    expect(detectAgentKeyFromArgs('opencode')).toBe('opencode');
+    expect(detectAgentKeyFromArgs('gemini --model pro')).toBe('gemini');
+  });
+
+  test('node-wrapped script path', () => {
+    expect(detectAgentKeyFromArgs('node /Users/me/.agents/versions/claude/2.1.140/home/.claude/local/claude.js'))
+      .toBe('claude');
+  });
+
+  test('agents-cli run wrapper', () => {
+    expect(detectAgentKeyFromArgs('agents run claude --interactive --session-id abc')).toBe('claude');
+    expect(detectAgentKeyFromArgs('/opt/homebrew/bin/agents run codex')).toBe('codex');
+    expect(detectAgentKeyFromArgs('agents run gemini --model pro')).toBe('gemini');
+  });
+
+  test('unknown commands return null', () => {
+    expect(detectAgentKeyFromArgs('vim file.ts')).toBeNull();
+    expect(detectAgentKeyFromArgs('git status')).toBeNull();
+    expect(detectAgentKeyFromArgs('')).toBeNull();
+  });
+});
+
+describe('shell adoption — extractSessionIdFromArgs', () => {
+  const uuid = '7b1cf038-8761-4e46-af43-5336e7e5a776';
+
+  test('--session-id space-separated', () => {
+    expect(extractSessionIdFromArgs(`claude --session-id ${uuid}`)).toBe(uuid);
+  });
+
+  test('--session-id equals-separated', () => {
+    expect(extractSessionIdFromArgs(`claude --session-id=${uuid}`)).toBe(uuid);
+  });
+
+  test('--session (alternate flag) space-separated', () => {
+    expect(extractSessionIdFromArgs(`gemini --session ${uuid}`)).toBe(uuid);
+  });
+
+  test('returns undefined when no session flag present', () => {
+    expect(extractSessionIdFromArgs('claude --foo bar')).toBeUndefined();
+    expect(extractSessionIdFromArgs('')).toBeUndefined();
+  });
+
+  test('ignores non-UUID values', () => {
+    expect(extractSessionIdFromArgs('claude --session-id not-a-uuid')).toBeUndefined();
   });
 });
