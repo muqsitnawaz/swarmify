@@ -608,6 +608,12 @@ export async function activate(context: vscode.ExtensionContext) {
   // fires on open/close.
   initForemanRegistry(context);
 
+  // Activity-bar sidebar that always reflects the currently focused agent
+  // terminal: title, version, label, cwd, PLAN.md, and any teams running in
+  // this directory. Lazy-resolves when the user clicks the activity-bar icon.
+  const { registerAgentPanel } = require('./agentPanel.vscode') as typeof import('./agentPanel.vscode');
+  registerAgentPanel(context);
+
   // Create status bar item for showing active terminal status bar label
   agentStatusBarItem = vscode.window.createStatusBarItem(
     vscode.StatusBarAlignment.Left,
@@ -3062,9 +3068,18 @@ async function tryFetchLabelOnFocus(
   // Update status bar
   updateStatusBarForTerminal(terminal, context.extensionPath);
 
-  // Update terminal tab title if showLabelsInTitles is enabled
+  // Update terminal tab title if showLabelsInTitles is enabled.
+  // Bail when the user has navigated away during the async LLM fetch — the
+  // rename has to briefly activate this terminal, which switches the visible
+  // editor tab. The label is already stored on the entry, so the next time
+  // this terminal gets focus the title picks it up.
   const display = getDisplayPrefs(context);
-  if (display.showLabelsInTitles && display.autoLabelInTabTitles && entry.agentConfig) {
+  if (
+    display.showLabelsInTitles &&
+    display.autoLabelInTabTitles &&
+    entry.agentConfig &&
+    vscode.window.activeTerminal === terminal
+  ) {
     const newTitle = buildTerminalTitle(
       entry.agentConfig.title,
       autoLabel,

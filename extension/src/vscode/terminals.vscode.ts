@@ -508,13 +508,28 @@ export function flushQueue(terminal: vscode.Terminal): string[] {
   return [];
 }
 
-// Rename a terminal tab title (must be active)
+// Rename a terminal tab title.
+//
+// `workbench.action.terminal.renameWithArg` only operates on the active
+// terminal, so we have to briefly make `terminal` active. That forcibly
+// switches the visible editor tab — if we don't restore the previously
+// active terminal afterwards, every async rename (auto-label LLM finishing,
+// session-change handler, etc.) yanks focus to a random tab.
 export async function renameTerminal(terminal: vscode.Terminal, newName: string): Promise<void> {
+  const previouslyActiveTerminal = vscode.window.activeTerminal;
   try {
     terminal.show(false);
     await vscode.commands.executeCommand('workbench.action.terminal.renameWithArg', { name: newName });
   } catch (err) {
     console.error('[TERMINALS] Failed to rename terminal', err);
+  } finally {
+    if (
+      previouslyActiveTerminal &&
+      previouslyActiveTerminal !== terminal &&
+      previouslyActiveTerminal.exitStatus === undefined
+    ) {
+      previouslyActiveTerminal.show(false);
+    }
   }
 }
 
