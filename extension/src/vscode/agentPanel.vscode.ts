@@ -62,6 +62,10 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
   private pollTimer: NodeJS.Timeout | undefined;
   private planWatcher: vscode.FileSystemWatcher | undefined;
   private lastWatchedDir: string | undefined;
+  // The webview script signals 'ready' once its message listener is attached.
+  // Until then, postMessage calls race the iframe load and get dropped — so we
+  // queue a single "send current snapshot when ready" flag.
+  private webviewReady = false;
 
   constructor(private readonly extensionUri: vscode.Uri) {}
 
@@ -71,6 +75,9 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
     _token: vscode.CancellationToken
   ): void | Thenable<void> {
     this.view = webviewView;
+    // Each fresh resolve gets a fresh iframe — its listener has not attached
+    // yet, so any cached "ready" state from a previous mount is invalid.
+    this.webviewReady = false;
 
     webviewView.webview.options = {
       enableScripts: true,
@@ -80,7 +87,13 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
     webviewView.webview.html = this.renderShell(webviewView.webview);
 
     webviewView.webview.onDidReceiveMessage((msg) => {
-      if (msg?.type === 'openPath' && typeof msg.path === 'string') {
+      if (msg?.type === 'ready') {
+        this.webviewReady = true;
+        // Push whatever we have right now; refresh() will run in the background
+        // and push the fresh snapshot when it lands.
+        this.view?.webview.postMessage({ type: 'snapshot', data: this.snapshot });
+        void this.refresh();
+      } else if (msg?.type === 'openPath' && typeof msg.path === 'string') {
         vscode.commands.executeCommand('vscode.open', vscode.Uri.file(msg.path));
       } else if (msg?.type === 'revealCwd' && typeof msg.path === 'string') {
         vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(msg.path));
@@ -114,7 +127,10 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
     if (!this.view) return;
     this.snapshot = await this.buildSnapshot();
     this.syncPlanWatcher(this.snapshot.cwd);
-    this.view.webview.postMessage({ type: 'snapshot', data: this.snapshot });
+    if (this.webviewReady) {
+      this.view.webview.postMessage({ type: 'snapshot', data: this.snapshot });
+    }
+    // If not ready, snapshot stays cached; the 'ready' handler will push it.
   }
 
   private startPolling(): void {
@@ -560,6 +576,10 @@ window.addEventListener('message', (e) => {
   const msg = e.data;
   if (msg && msg.type === 'snapshot') render(msg.data);
 });
+
+// Signal readiness AFTER the listener is attached so the extension host
+// doesn't race us with the first snapshot.
+vscode.postMessage({ type: 'ready' });
 </script>
 </body>
 </html>`;
