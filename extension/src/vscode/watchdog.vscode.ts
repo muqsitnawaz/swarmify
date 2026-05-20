@@ -1,11 +1,13 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs/promises';
+import * as fsSync from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { spawn, exec } from 'child_process';
 import { promisify } from 'util';
 import {
   classifyTerminal,
+  composePromptWithPlaybook,
   renderWatchdogPrompt,
   parseWatchdogResponse,
   isLikelyTrulyBlocked,
@@ -24,6 +26,76 @@ import { detectWaitingForInput } from '../core/session.activity';
 
 const WATCHDOG_LOG_PATH = path.join(os.homedir(), '.agents', 'watchdog.log');
 const LOG_MAX_LINES = 500;
+
+// User-editable playbook appended to the watchdog's built-in prompt each tick.
+// Stored at ~/.agents/playbooks/watchdog.md so it persists across extension
+// reinstalls and is shareable as a plain file.
+//
+// Why playbook and not skill: a skill in agents-cli is invocable expertise
+// (description-triggered, allowed-tools, optionally user-invocable). This file
+// is none of that — it's a static text extension to ONE fixed process's prompt.
+// Pushing it into ~/.agents/skills/ would put a non-skill in `agents skills
+// list` and require fake frontmatter. Foreman/Factory house-rules would follow
+// the same playbook shape.
+export const WATCHDOG_PLAYBOOK_PATH = path.join(
+  os.homedir(),
+  '.agents',
+  'playbooks',
+  'watchdog.md'
+);
+
+const WATCHDOG_PLAYBOOK_TEMPLATE = `# Watchdog Playbook
+
+House rules appended to the Watchdog's built-in prompt on every tick.
+Add patterns you've observed. One rule per bullet. Be specific.
+
+## Nudge recipes
+
+- When the agent says "I'll write/create/run X" with no matching tool call
+  in the next 30 seconds, nudge: "Do it now."
+
+## Skip rules
+
+- Skip if the last assistant message ends with a question mark — user input expected.
+
+## Project-specific
+
+- (Add rules tied to your repos here.)
+`;
+
+export function readWatchdogPlaybook(): string {
+  try {
+    return fsSync.readFileSync(WATCHDOG_PLAYBOOK_PATH, 'utf8');
+  } catch {
+    return '';
+  }
+}
+
+export function ensureWatchdogPlaybookScaffold(): void {
+  if (fsSync.existsSync(WATCHDOG_PLAYBOOK_PATH)) return;
+  fsSync.mkdirSync(path.dirname(WATCHDOG_PLAYBOOK_PATH), { recursive: true });
+  fsSync.writeFileSync(WATCHDOG_PLAYBOOK_PATH, WATCHDOG_PLAYBOOK_TEMPLATE, 'utf8');
+}
+
+export interface WatchdogPlaybookStatus {
+  exists: boolean;
+  lines: number;
+  mtimeMs: number;
+}
+
+export function getWatchdogPlaybookStatus(): WatchdogPlaybookStatus {
+  try {
+    const stat = fsSync.statSync(WATCHDOG_PLAYBOOK_PATH);
+    const content = fsSync.readFileSync(WATCHDOG_PLAYBOOK_PATH, 'utf8');
+    return {
+      exists: true,
+      lines: content.split('\n').filter((l) => l.trim().length > 0).length,
+      mtimeMs: stat.mtimeMs,
+    };
+  } catch {
+    return { exists: false, lines: 0, mtimeMs: 0 };
+  }
+}
 
 async function appendToLog(ev: WatchdogEvent): Promise<void> {
   try {
@@ -186,7 +258,8 @@ const SMART_WATCHDOG_PROMPT = `You are the Watchdog. You've been invoked because
 async function runSmartWatchdogAgent(
   candidates: WatchdogCandidate[],
   mcpServerPath: string,
-  workspacePath: string
+  workspacePath: string,
+  playbook: string
 ): Promise<void> {
   const candidateList = candidates
     .map(
@@ -195,12 +268,17 @@ async function runSmartWatchdogAgent(
     )
     .join('\n');
 
-  const prompt = SMART_WATCHDOG_PROMPT + '\n' + candidateList + '\n\nInvestigate each session and decide whether to nudge or skip.';
+  const systemPrompt = composePromptWithPlaybook(SMART_WATCHDOG_PROMPT, playbook);
+  const prompt = systemPrompt + '\n' + candidateList + '\n\nInvestigate each session and decide whether to nudge or skip.';
 
+  // Spawn via `agents run claude` (not bare `claude`) so the watchdog inherits
+  // the user's synced skills/commands/plugins from ~/.agents/. `agents run`
+  // sets CLAUDE_CONFIG_DIR to the versioned home; bare `claude` would only see
+  // the system ~/.claude.
   return new Promise((resolve, reject) => {
     const child = spawn(
-      'claude',
-      ['-p', prompt, '--mcp', mcpServerPath, '--model', WATCHDOG_MODEL],
+      'agents',
+      ['run', 'claude', '-p', prompt, '--mcp', mcpServerPath, '--model', WATCHDOG_MODEL],
       {
         cwd: workspacePath,
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -395,11 +473,14 @@ async function tick(
       });
     }
 
+    // Load user playbook once per tick — appended to whichever prompt runs.
+    const playbook = readWatchdogPlaybook();
+
     // Use smart agent if configured and MCP server is available
     if (cfg.useSmartAgent && deps.mcpServerPath && workspacePath) {
       console.log(`[WATCHDOG] ${candidates.length} stalled candidate(s), invoking smart agent`);
       try {
-        await runSmartWatchdogAgent(candidates, deps.mcpServerPath, workspacePath);
+        await runSmartWatchdogAgent(candidates, deps.mcpServerPath, workspacePath, playbook);
         void appendToLog({
           ts: Date.now(),
           kind: 'decision',
@@ -421,7 +502,7 @@ async function tick(
 
     let decisions: Decision[] = [];
     try {
-      decisions = await runClaudeHeadless(renderWatchdogPrompt(candidates));
+      decisions = await runClaudeHeadless(renderWatchdogPrompt(candidates, playbook));
     } catch (err) {
       console.error('[WATCHDOG] headless run failed:', err);
       void appendToLog({

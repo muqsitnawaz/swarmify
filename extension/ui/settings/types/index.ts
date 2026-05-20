@@ -69,6 +69,14 @@ export interface SkillsStatus {
   commands: SkillCommandStatus[]
 }
 
+// Watchdog playbook (user-editable house rules appended to the built-in
+// watchdog prompt). Source file: ~/.agents/playbooks/watchdog.md.
+export interface WatchdogPlaybookStatus {
+  exists: boolean
+  lines: number
+  mtimeMs: number
+}
+
 // Prompt types
 export interface PromptEntry {
   id: string

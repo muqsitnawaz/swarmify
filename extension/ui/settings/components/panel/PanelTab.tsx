@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { RefreshCw, Cpu, Radio, Waypoints, KeyRound } from 'lucide-react'
+import { RefreshCw, Cpu, Radio, Waypoints, KeyRound, ShieldAlert, FileEdit } from 'lucide-react'
 import { Input } from '../ui/input'
 import { postMessage } from '../../hooks'
 import { AgentDial } from './AgentDial'
@@ -18,6 +18,7 @@ import type {
   RunningCounts,
   AgentInventory,
   AgentRunStrategy,
+  WatchdogPlaybookStatus,
 } from '../../types'
 import {
   ALL_SWARM_AGENTS,
@@ -71,6 +72,8 @@ export interface PanelTabProps {
   onConnectLinear: () => void
   onConnectGitHub: () => void
   onSetAgentRunStrategy: (agentKey: string, strategy: AgentRunStrategy) => void
+  watchdogPlaybookStatus: WatchdogPlaybookStatus | null
+  onOpenWatchdogPlaybook: () => void
 }
 
 export function Rocker({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
@@ -136,6 +139,8 @@ export function PanelTab({
   onConnectLinear,
   onConnectGitHub,
   onSetAgentRunStrategy,
+  watchdogPlaybookStatus,
+  onOpenWatchdogPlaybook,
 }: PanelTabProps) {
   const skillCommands = skillsStatus?.commands ?? []
   const display = settings.display
@@ -685,6 +690,16 @@ export function PanelTab({
         </section>
 
         <section className="sw-panel-section">
+          <div className="sw-panel-section-head">Watchdog</div>
+          <div className="sw-panel-command-pack">
+            <WatchdogPlaybookCard
+              status={watchdogPlaybookStatus}
+              onOpen={onOpenWatchdogPlaybook}
+            />
+          </div>
+        </section>
+
+        <section className="sw-panel-section">
           <div className="sw-panel-section-head">Cloud Dispatch</div>
           <div className="sw-panel-command-pack">
             <div className="sw-panel-command-card">
@@ -729,6 +744,49 @@ export function PanelTab({
         </section>
 
       </div>
+    </div>
+  )
+}
+
+function formatPlaybookMtime(mtimeMs: number): string {
+  if (!mtimeMs) return ''
+  const ageSec = Math.max(0, Math.round((Date.now() - mtimeMs) / 1000))
+  if (ageSec < 60) return 'edited just now'
+  if (ageSec < 3600) return `edited ${Math.round(ageSec / 60)} min ago`
+  if (ageSec < 86400) return `edited ${Math.round(ageSec / 3600)} hr ago`
+  return `edited ${Math.round(ageSec / 86400)} days ago`
+}
+
+function WatchdogPlaybookCard({
+  status,
+  onOpen,
+}: {
+  status: WatchdogPlaybookStatus | null
+  onOpen: () => void
+}) {
+  const exists = !!status?.exists
+  const lines = status?.lines ?? 0
+  const mtimeLabel = exists ? formatPlaybookMtime(status?.mtimeMs ?? 0) : 'not created yet'
+  const linesLabel = exists ? `${lines} ${lines === 1 ? 'line' : 'lines'}` : 'empty'
+  return (
+    <div className="sw-panel-command-card">
+      <div className="sw-panel-command-line">
+        <ShieldAlert size={14} />
+        <span>Playbook for the auto-unblock watchdog</span>
+      </div>
+      <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 6 }}>
+        House rules appended to the built-in Watchdog prompt every tick. Stored
+        at <code>~/.agents/playbooks/watchdog.md</code>. Empty playbook leaves
+        the built-in prompt untouched.
+      </div>
+      <div className="sw-panel-command-metrics">
+        <div className="sw-readout glow">{linesLabel}</div>
+        <div className="sw-readout">{mtimeLabel}</div>
+      </div>
+      <button type="button" className="sw-btn primary" onClick={onOpen}>
+        <FileEdit size={12} />
+        {exists ? 'Edit Playbook' : 'Create Playbook'}
+      </button>
     </div>
   )
 }
