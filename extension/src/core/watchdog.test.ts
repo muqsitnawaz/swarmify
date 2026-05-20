@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'bun:test';
 import {
   classifyTerminal,
+  composePromptWithPlaybook,
   renderWatchdogPrompt,
   parseWatchdogResponse,
   isLikelyTrulyBlocked,
+  WATCHDOG_SYSTEM_PROMPT,
 } from './watchdog';
 
 describe('classifyTerminal', () => {
@@ -74,7 +76,49 @@ describe('classifyTerminal', () => {
   });
 });
 
+describe('composePromptWithPlaybook', () => {
+  it('returns the base prompt unchanged when playbook is empty', () => {
+    expect(composePromptWithPlaybook(WATCHDOG_SYSTEM_PROMPT, '')).toBe(WATCHDOG_SYSTEM_PROMPT);
+  });
+
+  it('returns the base prompt unchanged when playbook is only whitespace', () => {
+    expect(composePromptWithPlaybook(WATCHDOG_SYSTEM_PROMPT, '   \n\n   ')).toBe(WATCHDOG_SYSTEM_PROMPT);
+  });
+
+  it('appends a House Rules section with the trimmed playbook content', () => {
+    const playbook = '\n\n- Nudge with TEST_MARKER when lint hangs.\n- Skip in plan mode.\n\n';
+    const out = composePromptWithPlaybook(WATCHDOG_SYSTEM_PROMPT, playbook);
+    expect(out.startsWith(WATCHDOG_SYSTEM_PROMPT + '\n\n## House Rules')).toBe(true);
+    expect(out).toContain('TEST_MARKER');
+    expect(out).toContain('Skip in plan mode');
+    // trailing whitespace stripped
+    expect(out.endsWith('\n')).toBe(false);
+  });
+});
+
 describe('renderWatchdogPrompt', () => {
+  it('matches base prompt when no playbook is passed (zero regression)', () => {
+    const out = renderWatchdogPrompt([
+      { terminalId: 'CC-1', agentType: 'claude', tailLines: ['{}'], stalledForMs: 60_000 },
+    ]);
+    expect(out).toContain(WATCHDOG_SYSTEM_PROMPT);
+    expect(out).not.toContain('## House Rules');
+  });
+
+  it('appends House Rules block when a non-empty playbook is passed', () => {
+    const out = renderWatchdogPrompt(
+      [{ terminalId: 'CC-1', agentType: 'claude', tailLines: ['{}'], stalledForMs: 60_000 }],
+      '- Nudge with TEST_MARKER when stuck on lint.'
+    );
+    expect(out).toContain('## House Rules');
+    expect(out).toContain('TEST_MARKER');
+    // House Rules must be ABOVE the stalled-terminals payload, not after it.
+    const houseIdx = out.indexOf('## House Rules');
+    const stalledIdx = out.indexOf('STALLED TERMINALS:');
+    expect(houseIdx).toBeGreaterThan(-1);
+    expect(stalledIdx).toBeGreaterThan(houseIdx);
+  });
+
   it('embeds terminal id, agent type, stall duration, and JSONL tail', () => {
     const out = renderWatchdogPrompt([
       {
