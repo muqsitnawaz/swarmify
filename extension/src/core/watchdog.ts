@@ -93,7 +93,7 @@ export function classifyTerminal(input: ClassifyInput): StallStatus {
   return { kind: 'stalled', stalledForMs: age };
 }
 
-const WATCHDOG_SYSTEM_PROMPT = `You are a watchdog monitoring AI coding agents that run in terminals.
+export const WATCHDOG_SYSTEM_PROMPT = `You are a watchdog monitoring AI coding agents that run in terminals.
 For each stalled terminal below, decide: NUDGE (send a short message to unstick it) or SKIP.
 
 Nudge when:
@@ -113,8 +113,18 @@ Nudge text must be:
 Respond with ONLY a JSON array (no prose, no code fence):
 [{"terminalId":"<id>","action":"nudge"|"skip","text":"<message or empty>","reason":"<brief>"}]`;
 
-export function renderWatchdogPrompt(candidates: WatchdogCandidate[]): string {
-  const parts: string[] = [WATCHDOG_SYSTEM_PROMPT, '', 'STALLED TERMINALS:', ''];
+// User-editable playbook appended below the built-in prompt. The user maintains
+// the source at ~/.agents/playbooks/watchdog.md (read by watchdog.vscode.ts);
+// this function is pure so it can be tested without filesystem access.
+export function composePromptWithPlaybook(basePrompt: string, playbook: string): string {
+  const trimmed = playbook.trim();
+  if (!trimmed) return basePrompt;
+  return `${basePrompt}\n\n## House Rules (user playbook)\n\n${trimmed}`;
+}
+
+export function renderWatchdogPrompt(candidates: WatchdogCandidate[], playbook = ''): string {
+  const systemPrompt = composePromptWithPlaybook(WATCHDOG_SYSTEM_PROMPT, playbook);
+  const parts: string[] = [systemPrompt, '', 'STALLED TERMINALS:', ''];
   for (const c of candidates) {
     const seconds = Math.round(c.stalledForMs / 1000);
     parts.push(`--- terminal ${c.terminalId} (${c.agentType}, idle ${seconds}s) ---`);

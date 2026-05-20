@@ -20,6 +20,7 @@ import {
   WorkspaceConfig,
   SwarmAgentType,
   AgentInventory,
+  WatchdogPlaybookStatus,
 } from './types'
 import {
   ALL_SWARM_AGENTS,
@@ -147,6 +148,7 @@ export default function App() {
   // Watchdog state
   const [watchdogEnabled, setWatchdogEnabled] = useState(false)
   const [watchdogEvents, setWatchdogEvents] = useState<import('./components/mission-control/UnifiedAgentsPane').WatchdogEventUI[]>([])
+  const [watchdogPlaybookStatus, setWatchdogPlaybookStatus] = useState<WatchdogPlaybookStatus | null>(null)
 
   // Workspace config state
   const [workspaceConfig, setWorkspaceConfig] = useState<WorkspaceConfig | null>(null)
@@ -298,6 +300,9 @@ export default function App() {
         case 'watchdogLogData':
           setWatchdogEvents(message.events || [])
           break
+        case 'watchdogPlaybookStatus':
+          if (message.status) setWatchdogPlaybookStatus(message.status)
+          break
         case 'workspaceConfigData':
           setWorkspaceConfig(message.config)
           setWorkspaceConfigExists(message.exists)
@@ -332,6 +337,7 @@ export default function App() {
     vscode.postMessage({ type: 'getDefaultAgent' })
     vscode.postMessage({ type: 'getSecondaryAgent' })
     vscode.postMessage({ type: 'getWatchdogStatus' })
+    vscode.postMessage({ type: 'getWatchdogPlaybookStatus' })
     vscode.postMessage({ type: 'getPrewarmStatus' })
     vscode.postMessage({ type: 'getWorkspaceConfig' })
     vscode.postMessage({ type: 'fetchAllTerminals' })
@@ -827,6 +833,8 @@ export default function App() {
           onUpdateTaskSources={handleUpdateTaskSources}
           onConnectLinear={handleConnectLinear}
           onConnectGitHub={handleConnectGitHub}
+          watchdogPlaybookStatus={watchdogPlaybookStatus}
+          onOpenWatchdogPlaybook={() => vscode.postMessage({ type: 'openWatchdogPlaybook' })}
           onSetAgentRunStrategy={(agentKey, strategy) => {
             vscode.postMessage({
               type: 'setAgentRunStrategy',
