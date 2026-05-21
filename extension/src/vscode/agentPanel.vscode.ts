@@ -25,12 +25,20 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as terminals from './terminals.vscode';
 import { listTeamsForCwd, TeamWithMates, TeammateLite } from './foreman.sources';
+import { getSessionPathBySessionId, getSessionPreviewInfo, SessionPreviewInfo } from './sessions.vscode';
 
 export const AGENT_PANEL_VIEW_ID = 'agentsPanel.terminal';
 
 interface PlanFileInfo {
   path: string;
   mtimeMs: number;
+}
+
+interface ConversationSummary {
+  topic?: string;            // first user prompt — what this session is about
+  lastMessage?: string;      // most recent user message
+  messageCount: number;
+  lastActivityMs?: number;
 }
 
 interface PanelSnapshot {
@@ -48,6 +56,8 @@ interface PanelSnapshot {
   cwd?: string;
   worktreePath?: string;     // when distinguishable from workspace root
   workspaceRoot?: string;
+  // Conversation
+  conversation?: ConversationSummary;
   // Plan files
   plan?: PlanFileInfo;
   // Teams
@@ -213,6 +223,25 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
       teams: [],
     };
 
+    // Conversation summary — first/last user message + message count, sourced
+    // straight from the agent's session JSONL via the cached preview helper.
+    if (sessionId && entry.agentType) {
+      try {
+        const filePath = await getSessionPathBySessionId(sessionId, entry.agentType);
+        if (filePath) {
+          const preview: SessionPreviewInfo = await getSessionPreviewInfo(filePath);
+          snapshot.conversation = {
+            topic: preview.firstUserMessage,
+            lastMessage: preview.lastUserMessage,
+            messageCount: preview.messageCount,
+            lastActivityMs: preview.lastActivityMs,
+          };
+        }
+      } catch {
+        // Session preview is best-effort; never block the panel on it.
+      }
+    }
+
     try {
       snapshot.teams = await listTeamsForCwd(cwd);
     } catch (err) {
@@ -328,6 +357,19 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
     padding: 4px 0;
   }
   .plan-meta {
+    color: var(--vscode-descriptionForeground);
+    font-size: 11px;
+  }
+  .conv-topic {
+    color: var(--vscode-foreground);
+    line-height: 1.4;
+    /* Cap at four lines so very long topics don't push the rest of the panel
+       below the fold. The full topic still renders in title attribute? no —
+       just truncated server-side via truncate(). */
+    word-break: break-word;
+  }
+  .conv-meta {
+    margin-top: 6px;
     color: var(--vscode-descriptionForeground);
     font-size: 11px;
   }
@@ -453,6 +495,28 @@ function renderTerminalCard(s) {
   );
 }
 
+function renderConversationCard(s) {
+  if (!s.conversation) return '';
+  const c = s.conversation;
+  const topic = (c.topic || '').replace(/\\s+/g, ' ').trim();
+  if (!topic && !c.messageCount) return '';
+  const meta = [];
+  if (c.messageCount) meta.push(c.messageCount + ' message' + (c.messageCount === 1 ? '' : 's'));
+  if (c.lastActivityMs) meta.push(relTime(c.lastActivityMs));
+  return (
+    '<h2>Conversation</h2>' +
+    '<div class="card">' +
+      (topic ? '<div class="conv-topic">' + esc(truncate(topic, 220)) + '</div>' : '') +
+      (meta.length ? '<div class="conv-meta">' + esc(meta.join(' · ')) + '</div>' : '') +
+    '</div>'
+  );
+}
+
+function truncate(s, n) {
+  if (!s) return '';
+  return s.length > n ? s.slice(0, n - 1) + '…' : s;
+}
+
 function renderCwdCard(s) {
   if (!s.cwd) return '';
   const rows = [];
@@ -557,6 +621,7 @@ function render(snap) {
   }
   root.innerHTML = (
     renderTerminalCard(snap) +
+    renderConversationCard(snap) +
     renderCwdCard(snap) +
     renderPlanCard(snap) +
     renderTeamsCard(snap) +
