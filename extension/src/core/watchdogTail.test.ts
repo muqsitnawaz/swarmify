@@ -69,6 +69,16 @@ describe('summarizeWatchdogTail (resilience)', () => {
     expect(summarizeWatchdogTail(tail, 'claude').lastUserMessage).toBe('still found');
   });
 
+  it('skips synthetic <local-command-stdout> and <system-reminder> wrappers', () => {
+    const tail = [
+      JSON.stringify({ type: 'user', message: { content: [{ type: 'text', text: 'real human prompt' }] } }),
+      JSON.stringify({ type: 'user', message: { content: [{ type: 'text', text: '<local-command-stdout>blah</local-command-stdout>' }] } }),
+      JSON.stringify({ type: 'user', message: { content: [{ type: 'text', text: '<system-reminder>noise</system-reminder>' }] } }),
+    ];
+    // Walks from the end; the synthetic ones should be skipped so the human prompt surfaces.
+    expect(summarizeWatchdogTail(tail, 'claude').lastUserMessage).toBe('real human prompt');
+  });
+
   it('returns empty summary for unknown agent', () => {
     const tail = [JSON.stringify({ type: 'user', message: { content: 'x' } })];
     expect(summarizeWatchdogTail(tail, 'unknown')).toEqual({});

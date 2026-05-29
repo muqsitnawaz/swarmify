@@ -32,7 +32,7 @@ import { getSessionPathBySessionId, getSessionPreviewInfo, SessionPreviewInfo, r
 import { extractLinearTicketId } from '../core/utils';
 import { readPrompts } from './settings.vscode';
 import { BUILT_IN_AGENTS } from '../core/agents';
-import { extractCurrentActivity, formatActivity } from '../core/session.activity';
+import { parseLineForActivity, formatActivity } from '../core/session.activity';
 
 export const AGENT_PANEL_VIEW_ID = 'agentsPanel.terminal';
 
@@ -1155,11 +1155,9 @@ function collectRecentActivity(tailLines: string[], agentType: string, max: numb
   // Walk backward so we end up with the most recent items first.
   const seen = new Set<string>();
   for (let i = tailLines.length - 1; i >= 0 && out.length < max; i--) {
-    const line = tailLines[i];
-    const activity = extractCurrentActivity(line, agentType as 'claude' | 'codex' | 'gemini');
+    const activity = parseLineForActivity(tailLines[i], agentType as 'claude' | 'codex' | 'gemini');
     if (!activity) continue;
     const formatted = formatActivity(activity);
-    if (!formatted) continue;
     const dedupeKey = `${activity.type}|${activity.summary}`;
     if (seen.has(dedupeKey)) continue;
     seen.add(dedupeKey);

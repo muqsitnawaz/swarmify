@@ -1838,11 +1838,18 @@ async function readSelectionForContinue(): Promise<string> {
   if (editor && !editor.selection.isEmpty) {
     return editor.document.getText(editor.selection).trim();
   }
+  // No public API exposes terminal selection text — the only path is to copy
+  // it to the system clipboard, read, and restore. The two readText calls
+  // bracketing copySelection can race on macOS in practice (clipboard write
+  // is normally awaited but is not strictly ordered with the next read), so
+  // treat any non-empty change as the selection and otherwise restore.
   if (vscode.window.activeTerminal) {
     const original = await vscode.env.clipboard.readText();
     await vscode.commands.executeCommand('workbench.action.terminal.copySelection');
     const fromTerminal = (await vscode.env.clipboard.readText()).trim();
     if (fromTerminal && fromTerminal !== original.trim()) {
+      // Restore the user's prior clipboard — they didn't ask to lose it.
+      await vscode.env.clipboard.writeText(original);
       return fromTerminal;
     }
     await vscode.env.clipboard.writeText(original);
@@ -1858,8 +1865,6 @@ async function continueFromSelection(context: vscode.ExtensionContext) {
     );
     return;
   }
-
-  await vscode.env.clipboard.writeText(selection);
 
   const agentConfig = getBuiltInByTitle(context.extensionPath, defaultAgentTitle);
   if (!agentConfig) {

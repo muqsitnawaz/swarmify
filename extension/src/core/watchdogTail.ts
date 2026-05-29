@@ -70,6 +70,11 @@ function readCodex(raw: Record<string, unknown>): Claim | null {
   return { role, text };
 }
 
+// Gemini stores chats as a single pretty-printed JSON document — readTailLines
+// returns partial fragments that JSON.parse rejects. So in practice this
+// branch only fires for the JSONL-style events that some Gemini wrappers emit
+// during a live session. Acceptable: the result is an empty summary, which
+// the UI handles gracefully.
 function readGemini(raw: Record<string, unknown>): Claim | null {
   const t = raw.type;
   if (t === 'user_message') {
@@ -90,17 +95,47 @@ function readGemini(raw: Record<string, unknown>): Claim | null {
 }
 
 function pickContentText(content: unknown): string | null {
-  if (typeof content === 'string') return content;
+  if (typeof content === 'string') return isSyntheticTagged(content) ? null : content;
   if (!Array.isArray(content)) return null;
   const parts: string[] = [];
   for (const part of content) {
     if (!part || typeof part !== 'object') continue;
     const p = part as Record<string, unknown>;
     if ((p.type === 'text' || p.type === 'input_text' || p.type === 'output_text') && typeof p.text === 'string') {
+      if (isSyntheticTagged(p.text)) continue;
       parts.push(p.text);
     }
   }
   return parts.length ? parts.join('\n') : null;
+}
+
+// Mirrors the synthetic-tag filter in sessions.vscode.ts (~line 102) so a
+// "User: …" surfaced in the watchdog UI never shows a <local-command-stdout>,
+// <system-reminder>, or similar harness chunk that Claude wraps tool output in.
+const SYNTHETIC_TAG_PREFIXES = [
+  '<local-command-caveat',
+  '<local-command-stdout',
+  '<local-command-stderr',
+  '<command-name',
+  '<command-message',
+  '<command-args',
+  '<bash-input',
+  '<bash-stdout',
+  '<bash-stderr',
+  '<system-reminder',
+  '<user-prompt-submit-hook',
+  '<task-notification',
+  '<persisted-output',
+];
+
+function isSyntheticTagged(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return true;
+  const lower = trimmed.toLowerCase();
+  for (const prefix of SYNTHETIC_TAG_PREFIXES) {
+    if (lower.startsWith(prefix)) return true;
+  }
+  return false;
 }
 
 function clip(text: string | undefined): string | undefined {

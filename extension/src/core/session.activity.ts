@@ -113,7 +113,7 @@ export function extractCurrentActivity(
 /**
  * Parse a single JSONL line and extract activity if present.
  */
-function parseLineForActivity(line: string, agentType: AgentType): CurrentActivity | null {
+export function parseLineForActivity(line: string, agentType: AgentType): CurrentActivity | null {
   try {
     const raw = JSON.parse(line);
     switch (agentType) {
