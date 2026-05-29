@@ -41,6 +41,9 @@ export interface WatchdogEventUI {
   reason?: string
   tailLines?: string[]
   stalledForMs?: number
+  lastUserMessage?: string
+  lastAssistantMessage?: string
+  nudgeText?: string
 }
 
 interface UnifiedAgent {
@@ -1867,6 +1870,29 @@ function WatchdogDetail({ events }: { events: WatchdogEventUI[] }) {
                     </span>
                   </div>
 
+                  {(tick.lastUserMessage || tick.lastAssistantMessage ||
+                    decision?.lastUserMessage || decision?.lastAssistantMessage ||
+                    nudge?.lastUserMessage || nudge?.lastAssistantMessage) && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 8 }}>
+                      {(tick.lastUserMessage || decision?.lastUserMessage || nudge?.lastUserMessage) && (
+                        <div style={{ fontSize: 11, lineHeight: 1.4 }}>
+                          <span style={{ color: 'var(--ds-text-dim)' }}>User: </span>
+                          <span style={{ color: 'var(--ds-text-muted)' }}>
+                            {tick.lastUserMessage || decision?.lastUserMessage || nudge?.lastUserMessage}
+                          </span>
+                        </div>
+                      )}
+                      {(tick.lastAssistantMessage || decision?.lastAssistantMessage || nudge?.lastAssistantMessage) && (
+                        <div style={{ fontSize: 11, lineHeight: 1.4 }}>
+                          <span style={{ color: 'var(--ds-text-dim)' }}>Agent: </span>
+                          <span style={{ color: 'var(--ds-text-muted)' }}>
+                            {tick.lastAssistantMessage || decision?.lastAssistantMessage || nudge?.lastAssistantMessage}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {tick.tailLines && tick.tailLines.length > 0 && (
                     <div style={{ marginBottom: 8 }}>
                       <button
@@ -1913,6 +1939,12 @@ function WatchdogDetail({ events }: { events: WatchdogEventUI[] }) {
                             {decision.reason}
                           </span>
                         )}
+                        <span style={{ flex: 1 }} />
+                        {nudge && (
+                          <span className="mono" style={{ fontSize: 10, color: 'var(--ds-text-dim)' }}>
+                            sent {formatTime(nudge.ts)}
+                          </span>
+                        )}
                       </div>
                       {nudge && (
                         <div
@@ -1924,7 +1956,7 @@ function WatchdogDetail({ events }: { events: WatchdogEventUI[] }) {
                             borderLeft: '2px solid var(--brand)',
                           }}
                         >
-                          "{nudge.message}"
+                          "{nudge.nudgeText || nudge.message}"
                         </div>
                       )}
                     </div>
