@@ -15,6 +15,14 @@ export interface WatchdogEvent {
   tailLines?: string[];
   // For 'tick' and 'decision' events: how long the terminal had been stalled.
   stalledForMs?: number;
+  // Carried on tick/decision/nudge so the UI can show what the agent was
+  // stuck on without re-parsing the raw tail.
+  lastUserMessage?: string;
+  lastAssistantMessage?: string;
+  // For 'decision' events that result in a nudge: the exact text the watchdog
+  // chose to inject. Stored here too so a decision row carries the same
+  // context as its paired nudge event.
+  nudgeText?: string;
 }
 
 export function formatEvent(ev: WatchdogEvent): string {
@@ -41,6 +49,13 @@ export function parseEvents(text: string): WatchdogEvent[] {
         terminalId: typeof parsed.terminalId === 'string' ? parsed.terminalId : undefined,
         agentType: typeof parsed.agentType === 'string' ? parsed.agentType : undefined,
         reason: typeof parsed.reason === 'string' ? parsed.reason : undefined,
+        tailLines: Array.isArray(parsed.tailLines)
+          ? (parsed.tailLines as unknown[]).filter((l): l is string => typeof l === 'string')
+          : undefined,
+        stalledForMs: typeof parsed.stalledForMs === 'number' ? parsed.stalledForMs : undefined,
+        lastUserMessage: typeof parsed.lastUserMessage === 'string' ? parsed.lastUserMessage : undefined,
+        lastAssistantMessage: typeof parsed.lastAssistantMessage === 'string' ? parsed.lastAssistantMessage : undefined,
+        nudgeText: typeof parsed.nudgeText === 'string' ? parsed.nudgeText : undefined,
       });
     } catch {
       // Skip malformed lines.

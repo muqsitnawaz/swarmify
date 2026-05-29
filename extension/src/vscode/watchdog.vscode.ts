@@ -23,6 +23,7 @@ import { getAllTerminals, getById, EditorTerminal } from './terminals.vscode';
 import { getSessionPathBySessionId, readTailLines } from './sessions.vscode';
 import { formatEvent, trimToLast, WatchdogEvent } from '../core/watchdogLog';
 import { detectWaitingForInput } from '../core/session.activity';
+import { summarizeWatchdogTail, TailSummary } from '../core/watchdogTail';
 
 const WATCHDOG_LOG_PATH = path.join(os.homedir(), '.agents', 'watchdog.log');
 const LOG_MAX_LINES = 500;
@@ -461,7 +462,13 @@ async function tick(
 
     if (candidates.length === 0) return;
 
+    const summaries = new Map<string, TailSummary>();
     for (const c of candidates) {
+      summaries.set(c.terminalId, summarizeWatchdogTail(c.tailLines, c.agentType));
+    }
+
+    for (const c of candidates) {
+      const s = summaries.get(c.terminalId) ?? {};
       void appendToLog({
         ts: now,
         kind: 'tick',
@@ -470,6 +477,8 @@ async function tick(
         message: `stalled ${Math.round(c.stalledForMs / 1000)}s`,
         tailLines: c.tailLines,
         stalledForMs: c.stalledForMs,
+        lastUserMessage: s.lastUserMessage,
+        lastAssistantMessage: s.lastAssistantMessage,
       });
     }
 
@@ -514,12 +523,16 @@ async function tick(
     }
 
     for (const d of decisions) {
+      const s = summaries.get(d.terminalId) ?? {};
       void appendToLog({
         ts: Date.now(),
         kind: 'decision',
         terminalId: d.terminalId,
         message: d.action,
         reason: d.reason,
+        nudgeText: d.action === 'nudge' ? d.text.trim() || undefined : undefined,
+        lastUserMessage: s.lastUserMessage,
+        lastAssistantMessage: s.lastAssistantMessage,
       });
 
       if (d.action !== 'nudge') continue;
@@ -545,6 +558,9 @@ async function tick(
           agentType: entry.agentType ?? undefined,
           message: text,
           reason: d.reason,
+          nudgeText: text,
+          lastUserMessage: s.lastUserMessage,
+          lastAssistantMessage: s.lastAssistantMessage,
         });
       } catch (err) {
         console.error(`[WATCHDOG] failed to inject into ${d.terminalId}:`, err);
