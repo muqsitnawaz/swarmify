@@ -205,6 +205,10 @@
         "title": "Agents: Clear"
       },
       {
+        "command": "agents.continueFromSelection",
+        "title": "Agents: Continue From Selection"
+      },
+      {
         "command": "agents.autogit",
         "title": "Agents: Autogit",
         "icon": {
@@ -544,9 +548,14 @@
         "mac": "cmd+shift+l"
       },
       {
-        "command": "agents.clear",
+        "command": "agents.continueFromSelection",
         "key": "ctrl+shift+c",
         "mac": "cmd+shift+c"
+      },
+      {
+        "command": "agents.clear",
+        "key": "ctrl+shift+x",
+        "mac": "cmd+shift+x"
       },
       {
         "command": "agents.newTask",
@@ -587,11 +596,6 @@
         "command": "agents.prompts",
         "key": "ctrl+shift+'",
         "mac": "cmd+shift+'"
-      },
-      {
-        "command": "agents.newCodex",
-        "key": "ctrl+shift+x",
-        "mac": "cmd+shift+x"
       },
       {
         "command": "agents.newGemini",
