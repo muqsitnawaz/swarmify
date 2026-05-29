@@ -56,7 +56,7 @@ export function ApiKeyDialog({ provider, onAuthComplete, onClose }: ApiKeyDialog
         {provider === 'linear' ? (
           <div className="space-y-3">
             <p className="text-sm text-[var(--muted-foreground)]">
-              Paste your Linear API key. You can create one at linear.app/settings/api.
+              Paste your Linear API key after running linear setup once. You can create one at linear.app/settings/api.
             </p>
             <input
               type="password"

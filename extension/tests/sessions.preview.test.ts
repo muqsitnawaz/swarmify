@@ -370,4 +370,16 @@ describe('Session Preview - Critical Contract for Prompt Display', () => {
       });
     });
   });
+
+  describe('Injected context filtering', () => {
+    test('uses the first real user prompt instead of injected AGENTS context', async () => {
+      const sessionPath = path.join(__dirname, 'testdata', 'codex-injected-first-message.jsonl');
+      const preview = await getSessionPreviewInfo(sessionPath);
+
+      expect(preview.firstUserMessage).toContain('Fix Bench tasks');
+      expect(preview.firstUserMessage).not.toContain('AGENTS.md instructions');
+      expect(preview.firstUserMessage).not.toContain('turn_aborted');
+      expect(preview.messageCount).toBe(3);
+    });
+  });
 });

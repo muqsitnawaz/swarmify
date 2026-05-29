@@ -55,6 +55,7 @@ interface PanelSnapshot {
   // Filesystem
   cwd?: string;
   worktreePath?: string;     // when distinguishable from workspace root
+  worktreeName?: string;     // basename shown compactly in the terminal card
   workspaceRoot?: string;
   // Conversation
   conversation?: ConversationSummary;
@@ -190,16 +191,19 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
     }
 
     const opts = active.creationOptions as vscode.TerminalOptions;
+    const env = opts?.env as Record<string, string | undefined> | undefined;
+    const envWorkspaceDir = env?.AGENT_WORKSPACE_DIR?.trim() || undefined;
     const cwdRaw = opts?.cwd;
     const cwd =
       typeof cwdRaw === 'string'
         ? cwdRaw
         : cwdRaw && 'fsPath' in cwdRaw
           ? (cwdRaw as vscode.Uri).fsPath
-          : undefined;
+          : envWorkspaceDir;
 
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    const worktreePath = cwd && workspaceRoot && cwd !== workspaceRoot ? cwd : undefined;
+    const worktreePath = cwd && workspaceRoot && path.resolve(cwd) !== path.resolve(workspaceRoot) ? cwd : undefined;
+    const worktreeName = cwd ? path.basename(cwd) : undefined;
 
     const plan = cwd ? readPlanFile(cwd) : undefined;
 
@@ -218,6 +222,7 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
       account: entry.statusAccount || entry.account,
       cwd,
       worktreePath,
+      worktreeName,
       workspaceRoot,
       plan,
       teams: [],
@@ -321,11 +326,20 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
     color: var(--vscode-descriptionForeground);
     font-style: italic;
   }
-  .account-row {
-    margin-top: 3px;
-    color: var(--vscode-descriptionForeground);
-    font-size: 11px;
-  }
+	  .account-row {
+	    margin-top: 3px;
+	    color: var(--vscode-descriptionForeground);
+	    font-size: 11px;
+	  }
+	  .worktree-row {
+	    margin-top: 3px;
+	    color: var(--vscode-descriptionForeground);
+	    font-size: 11px;
+	    font-family: var(--vscode-editor-font-family, monospace);
+	    overflow: hidden;
+	    text-overflow: ellipsis;
+	    white-space: nowrap;
+	  }
   .row-grid {
     display: grid;
     grid-template-columns: auto 1fr;
@@ -360,14 +374,35 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
     color: var(--vscode-descriptionForeground);
     font-size: 11px;
   }
-  .conv-topic {
-    color: var(--vscode-foreground);
-    line-height: 1.4;
+	  .conv-topic {
+	    color: var(--vscode-foreground);
+	    line-height: 1.4;
     /* Cap at four lines so very long topics don't push the rest of the panel
        below the fold. The full topic still renders in title attribute? no —
        just truncated server-side via truncate(). */
-    word-break: break-word;
-  }
+	    word-break: break-word;
+	  }
+	  .conv-topic p {
+	    margin: 0 0 6px;
+	  }
+	  .conv-topic p:last-child {
+	    margin-bottom: 0;
+	  }
+	  .conv-topic .md-heading {
+	    font-weight: 600;
+	    margin: 0 0 5px;
+	  }
+	  .conv-topic code {
+	    font-family: var(--vscode-editor-font-family, monospace);
+	    font-size: 0.94em;
+	    background: var(--vscode-textCodeBlock-background, rgba(127,127,127,0.16));
+	    border-radius: 3px;
+	    padding: 0 3px;
+	  }
+	  .conv-topic .md-bullet {
+	    padding-left: 10px;
+	    text-indent: -8px;
+	  }
   .conv-meta {
     margin-top: 6px;
     color: var(--vscode-descriptionForeground);
@@ -485,32 +520,78 @@ function renderTerminalCard(s) {
   } else if (s.autoLabel) {
     label = '<div class="label-row label-auto">' + esc(s.autoLabel) + '</div>';
   }
-  const account = s.account ? '<div class="account-row">' + esc(s.account) + '</div>' : '';
-  return (
-    '<div class="card">' +
-      '<div class="title-row">' + titleBits + '</div>' +
-      label +
-      account +
-    '</div>'
-  );
-}
+	  const account = s.account ? '<div class="account-row">' + esc(s.account) + '</div>' : '';
+	  const worktree = s.worktreeName
+	    ? '<div class="worktree-row">' + esc((s.worktreePath ? 'worktree ' : 'cwd ') + s.worktreeName) + '</div>'
+	    : '';
+	  return (
+	    '<div class="card">' +
+	      '<div class="title-row">' + titleBits + '</div>' +
+	      label +
+	      worktree +
+	      account +
+	    '</div>'
+	  );
+	}
+	
+	function renderConversationCard(s) {
+	  if (!s.conversation) return '';
+	  const c = s.conversation;
+	  const topic = (c.topic || '').trim();
+	  if (!topic && !c.messageCount) return '';
+	  const meta = [];
+	  if (c.messageCount) meta.push(c.messageCount + ' message' + (c.messageCount === 1 ? '' : 's'));
+	  if (c.lastActivityMs) meta.push(relTime(c.lastActivityMs));
+	  return (
+	    '<h2>Conversation</h2>' +
+	    '<div class="card">' +
+	      (topic ? '<div class="conv-topic">' + renderMarkdownPreview(truncate(topic, 420)) + '</div>' : '') +
+	      (meta.length ? '<div class="conv-meta">' + esc(meta.join(' · ')) + '</div>' : '') +
+	    '</div>'
+	  );
+	}
 
-function renderConversationCard(s) {
-  if (!s.conversation) return '';
-  const c = s.conversation;
-  const topic = (c.topic || '').replace(/\\s+/g, ' ').trim();
-  if (!topic && !c.messageCount) return '';
-  const meta = [];
-  if (c.messageCount) meta.push(c.messageCount + ' message' + (c.messageCount === 1 ? '' : 's'));
-  if (c.lastActivityMs) meta.push(relTime(c.lastActivityMs));
-  return (
-    '<h2>Conversation</h2>' +
-    '<div class="card">' +
-      (topic ? '<div class="conv-topic">' + esc(truncate(topic, 220)) + '</div>' : '') +
-      (meta.length ? '<div class="conv-meta">' + esc(meta.join(' · ')) + '</div>' : '') +
-    '</div>'
-  );
-}
+	function renderInlineMarkdown(s) {
+	  let out = esc(s);
+	  out = out.replace(/\\[([^\\]]+)\\]\\([^\\)]+\\)/g, '$1');
+	  out = out.replace(/\`([^\`]+)\`/g, '<code>$1</code>');
+	  out = out.replace(/\\*\\*([^*]+)\\*\\*/g, '<strong>$1</strong>');
+	  out = out.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+	  return out;
+	}
+
+	function renderMarkdownPreview(s) {
+	  const lines = String(s || '').split(/\\r?\\n/);
+	  const blocks = [];
+	  let paragraph = [];
+	  const flushParagraph = () => {
+	    if (!paragraph.length) return;
+	    blocks.push('<p>' + renderInlineMarkdown(paragraph.join(' ')) + '</p>');
+	    paragraph = [];
+	  };
+	  for (const raw of lines) {
+	    const line = raw.trim();
+	    if (!line) {
+	      flushParagraph();
+	      continue;
+	    }
+	    const heading = line.match(/^#{1,6}\\s+(.+)$/);
+	    if (heading) {
+	      flushParagraph();
+	      blocks.push('<div class="md-heading">' + renderInlineMarkdown(heading[1]) + '</div>');
+	      continue;
+	    }
+	    const bullet = line.match(/^[-*]\\s+(.+)$/);
+	    if (bullet) {
+	      flushParagraph();
+	      blocks.push('<div class="md-bullet">- ' + renderInlineMarkdown(bullet[1]) + '</div>');
+	      continue;
+	    }
+	    paragraph.push(line);
+	  }
+	  flushParagraph();
+	  return blocks.join('');
+	}
 
 function truncate(s, n) {
   if (!s) return '';
