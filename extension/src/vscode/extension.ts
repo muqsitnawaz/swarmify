@@ -1049,6 +1049,10 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
+    vscode.commands.registerCommand('agents.continueFromSelection', () => continueFromSelection(context))
+  );
+
+  context.subscriptions.push(
     vscode.commands.registerCommand('agents.sessionTrace', () => copySessionTrace(context))
   );
 
@@ -1827,6 +1831,44 @@ async function continueInNewSession(context: vscode.ExtensionContext) {
   const prompt = handoff.formatContinuePrompt(continueCtx);
 
   await openSingleAgentWithQueue(context, terminalEntry.agentConfig, [prompt]);
+}
+
+async function readSelectionForContinue(): Promise<string> {
+  const editor = vscode.window.activeTextEditor;
+  if (editor && !editor.selection.isEmpty) {
+    return editor.document.getText(editor.selection).trim();
+  }
+  if (vscode.window.activeTerminal) {
+    const original = await vscode.env.clipboard.readText();
+    await vscode.commands.executeCommand('workbench.action.terminal.copySelection');
+    const fromTerminal = (await vscode.env.clipboard.readText()).trim();
+    if (fromTerminal && fromTerminal !== original.trim()) {
+      return fromTerminal;
+    }
+    await vscode.env.clipboard.writeText(original);
+  }
+  return (await vscode.env.clipboard.readText()).trim();
+}
+
+async function continueFromSelection(context: vscode.ExtensionContext) {
+  const selection = await readSelectionForContinue();
+  if (!selection) {
+    vscode.window.showInformationMessage(
+      'Select a session ID (in editor or terminal) or copy it first, then press Cmd+Shift+C.'
+    );
+    return;
+  }
+
+  await vscode.env.clipboard.writeText(selection);
+
+  const agentConfig = getBuiltInByTitle(context.extensionPath, defaultAgentTitle);
+  if (!agentConfig) {
+    vscode.window.showErrorMessage(`No agent config for default "${defaultAgentTitle}"`);
+    return;
+  }
+
+  vscode.window.setStatusBarMessage(`Continuing session ${selection.slice(0, 8)}…`, 3000);
+  await openSingleAgentWithQueue(context, agentConfig, [`/continue ${selection}`]);
 }
 
 interface CliSessionItem {
