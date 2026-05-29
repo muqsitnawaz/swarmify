@@ -180,7 +180,7 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
         void this.refresh();
         return;
       case 'runQuickAction':
-        await this.runQuickAction(msg.action, msg.terminalId, msg.cwd);
+        await this.runQuickAction(msg.action, msg.terminalId, msg.workspaceRoot);
         return;
       case 'sendQuickPrompt':
         await this.sendQuickPrompt(msg.promptId, msg.terminalId);
@@ -191,27 +191,40 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
   private async runQuickAction(
     action: string,
     terminalId: string | undefined,
-    cwd: string | undefined,
+    workspaceRoot: string | undefined,
   ): Promise<void> {
-    const terminal = terminalId ? terminals.getById(terminalId)?.terminal : vscode.window.activeTerminal;
+    const entry = terminalId ? terminals.getById(terminalId) : undefined;
+    const terminal = entry?.terminal ?? vscode.window.activeTerminal;
     switch (action) {
       case 'commit':
         await vscode.commands.executeCommand('agents.autogit');
         return;
-      case 'cleanup':
-        if (!cwd) {
-          vscode.window.showInformationMessage('No worktree path detected for cleanup.');
+      case 'cleanup': {
+        // `agents worktree prune` scans .history/worktrees/ *under a repo root*,
+        // not inside an individual worktree — so always pass the workspace root,
+        // never the active terminal's worktree path.
+        const root = workspaceRoot ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!root) {
+          vscode.window.showInformationMessage('No workspace root for cleanup.');
           return;
         }
-        await runInShellTerminal(`agents worktree prune --workspace ${shellQuote(cwd)}`);
+        await runInShellTerminal(`agents worktree prune --root ${shellQuote(root)}`);
         return;
+      }
       case 'wrap':
         if (!terminal) {
           vscode.window.showInformationMessage('No active agent terminal to wrap up.');
           return;
         }
         terminal.show(true);
-        terminal.sendText('/done', false);
+        // Same gotcha the watchdog handles: Claude's Ink TUI submits on `\r`
+        // while Codex/Gemini submit on the `\n` that `sendText(_, true)` adds.
+        if (entry?.agentType === 'claude') {
+          terminal.sendText('/done', false);
+          terminal.sendText('\r', false);
+        } else {
+          terminal.sendText('/done', true);
+        }
         return;
     }
   }
@@ -1073,7 +1086,7 @@ function render(snap) {
         type: 'runQuickAction',
         action: el.getAttribute('data-action'),
         terminalId: lastSnapshot && lastSnapshot.terminalId,
-        cwd: lastSnapshot && (lastSnapshot.worktreePath || lastSnapshot.cwd),
+        workspaceRoot: lastSnapshot && lastSnapshot.workspaceRoot,
       });
     });
   }
