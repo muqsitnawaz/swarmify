@@ -2,30 +2,37 @@
 // currently focused agent terminal.
 //
 // Shows:
-//   - Title / agent / version / session chunk / label (manual or auto) / account
-//   - Working directory (and worktree path when worktree-per-terminal is on)
-//   - PLAN.md presence + last-modified timestamp (click to open)
-//   - Teams whose workspace_dir is related to the terminal's cwd, with
-//     teammate status (running / completed / pending / failed)
+//   - Agent logo + name + version + session chunk + label (manual or auto)
+//   - Worktree path with branch + dirty count and Commit / Cleanup / Wrap buttons
+//   - Conversation topic + recent tool calls (read/edit/run)
+//   - Linear ticket + PR URL extracted from the session, when present
+//   - Quick prompts (favorites first) — click to send into the focused terminal
+//   - Teams whose workspace_dir is related to the terminal's cwd
 //
 // Detection model:
 //   active terminal -> terminals.getByTerminal(t) -> EditorTerminal struct
 //   cwd            -> terminal.creationOptions.cwd
 //   teams          -> agents teams list --json + agents teams status <t> --json
 //                     filtered by pathsRelated(workspace_dir, cwd)
+//   git info       -> vscode.git extension repository state
+//   linear/PR      -> regex scan over the session preview + tail
 //
 // Refresh signals:
 //   onDidChangeActiveTerminal               -> re-render immediately
 //   onDidCloseTerminal / onDidOpenTerminal  -> re-render
 //   fs.watch on PLAN.md                     -> re-render
-//   4s poll while visible                   -> teams data freshness
+//   4s poll while visible                   -> teams + git freshness
 
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as terminals from './terminals.vscode';
-import { listTeamsForCwd, TeamWithMates, TeammateLite } from './foreman.sources';
-import { getSessionPathBySessionId, getSessionPreviewInfo, SessionPreviewInfo } from './sessions.vscode';
+import { listTeamsForCwd, TeamWithMates } from './foreman.sources';
+import { getSessionPathBySessionId, getSessionPreviewInfo, SessionPreviewInfo, readTailLines } from './sessions.vscode';
+import { extractLinearTicketId } from '../core/utils';
+import { readPrompts } from './settings.vscode';
+import { BUILT_IN_AGENTS } from '../core/agents';
+import { extractCurrentActivity, formatActivity } from '../core/session.activity';
 
 export const AGENT_PANEL_VIEW_ID = 'agentsPanel.terminal';
 
@@ -41,11 +48,31 @@ interface ConversationSummary {
   lastActivityMs?: number;
 }
 
+interface ActivityItem {
+  kind: string;   // 'reading' | 'editing' | 'running' | 'thinking' | 'completed' | ...
+  summary: string;
+  ts: number;
+}
+
+interface QuickPromptLite {
+  id: string;
+  title: string;
+  preview: string;
+  favorite: boolean;
+}
+
+interface GitInfo {
+  branch?: string;
+  dirtyCount?: number;
+}
+
 interface PanelSnapshot {
   hasTerminal: boolean;
   // Terminal facts
+  terminalId?: string;       // internal id for action commands
   agentName?: string;        // "Claude"
   agentPrefix?: string;      // "CC"
+  agentIconUri?: string;     // webview URI to PNG logo
   sessionChunk?: string;     // first 8 of session UUID
   fullSessionId?: string;
   version?: string;
@@ -57,19 +84,27 @@ interface PanelSnapshot {
   worktreePath?: string;     // when distinguishable from workspace root
   worktreeName?: string;     // basename shown compactly in the terminal card
   workspaceRoot?: string;
+  // Git
+  git?: GitInfo;
   // Conversation
   conversation?: ConversationSummary;
+  recentActivity?: ActivityItem[];
+  // Linked artifacts
+  linearIssue?: string;
+  prUrl?: string;
   // Plan files
   plan?: PlanFileInfo;
   // Teams
   teams: TeamWithMates[];
+  // Quick prompts (top N favorites + recent)
+  quickPrompts: QuickPromptLite[];
   // Errors / diagnostics
   teamsError?: string;
 }
 
 class AgentPanelProvider implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | undefined;
-  private snapshot: PanelSnapshot = { hasTerminal: false, teams: [] };
+  private snapshot: PanelSnapshot = { hasTerminal: false, teams: [], quickPrompts: [] };
   private pollTimer: NodeJS.Timeout | undefined;
   private planWatcher: vscode.FileSystemWatcher | undefined;
   private lastWatchedDir: string | undefined;
@@ -97,21 +132,7 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
 
     webviewView.webview.html = this.renderShell(webviewView.webview);
 
-    webviewView.webview.onDidReceiveMessage((msg) => {
-      if (msg?.type === 'ready') {
-        this.webviewReady = true;
-        // Push whatever we have right now; refresh() will run in the background
-        // and push the fresh snapshot when it lands.
-        this.view?.webview.postMessage({ type: 'snapshot', data: this.snapshot });
-        void this.refresh();
-      } else if (msg?.type === 'openPath' && typeof msg.path === 'string') {
-        vscode.commands.executeCommand('vscode.open', vscode.Uri.file(msg.path));
-      } else if (msg?.type === 'revealCwd' && typeof msg.path === 'string') {
-        vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(msg.path));
-      } else if (msg?.type === 'refresh') {
-        void this.refresh();
-      }
-    });
+    webviewView.webview.onDidReceiveMessage((msg) => this.handleMessage(msg));
 
     webviewView.onDidChangeVisibility(() => {
       if (webviewView.visible) {
@@ -130,6 +151,90 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
 
     void this.refresh();
     if (webviewView.visible) this.startPolling();
+  }
+
+  private async handleMessage(msg: any): Promise<void> {
+    if (!msg || typeof msg !== 'object') return;
+    switch (msg.type) {
+      case 'ready':
+        this.webviewReady = true;
+        this.view?.webview.postMessage({ type: 'snapshot', data: this.snapshot });
+        void this.refresh();
+        return;
+      case 'openPath':
+        if (typeof msg.path === 'string') {
+          vscode.commands.executeCommand('vscode.open', vscode.Uri.file(msg.path));
+        }
+        return;
+      case 'revealCwd':
+        if (typeof msg.path === 'string') {
+          vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(msg.path));
+        }
+        return;
+      case 'openUrl':
+        if (typeof msg.url === 'string') {
+          vscode.env.openExternal(vscode.Uri.parse(msg.url));
+        }
+        return;
+      case 'refresh':
+        void this.refresh();
+        return;
+      case 'runQuickAction':
+        await this.runQuickAction(msg.action, msg.terminalId, msg.cwd);
+        return;
+      case 'sendQuickPrompt':
+        await this.sendQuickPrompt(msg.promptId, msg.terminalId);
+        return;
+    }
+  }
+
+  private async runQuickAction(
+    action: string,
+    terminalId: string | undefined,
+    cwd: string | undefined,
+  ): Promise<void> {
+    const terminal = terminalId ? terminals.getById(terminalId)?.terminal : vscode.window.activeTerminal;
+    switch (action) {
+      case 'commit':
+        await vscode.commands.executeCommand('agents.autogit');
+        return;
+      case 'cleanup':
+        if (!cwd) {
+          vscode.window.showInformationMessage('No worktree path detected for cleanup.');
+          return;
+        }
+        await runInShellTerminal(`agents worktree prune --workspace ${shellQuote(cwd)}`);
+        return;
+      case 'wrap':
+        if (!terminal) {
+          vscode.window.showInformationMessage('No active agent terminal to wrap up.');
+          return;
+        }
+        terminal.show(true);
+        terminal.sendText('/done', false);
+        return;
+    }
+  }
+
+  private async sendQuickPrompt(
+    promptId: string | undefined,
+    terminalId: string | undefined,
+  ): Promise<void> {
+    if (!promptId) return;
+    const all = readPrompts();
+    const entry = all.find((p) => p.id === promptId);
+    if (!entry) {
+      vscode.window.showWarningMessage(`Prompt "${promptId}" no longer exists.`);
+      return;
+    }
+    const terminal = terminalId ? terminals.getById(terminalId)?.terminal : vscode.window.activeTerminal;
+    if (!terminal) {
+      vscode.window.showInformationMessage('No agent terminal to send the prompt to.');
+      return;
+    }
+    terminal.show(true);
+    // Insert without submitting so the user can edit before pressing Enter.
+    terminal.sendText(entry.content, false);
   }
 
   // Public so the extension can poke a refresh on terminal lifecycle events
@@ -183,11 +288,11 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
   private async buildSnapshot(): Promise<PanelSnapshot> {
     const active = vscode.window.activeTerminal;
     if (!active) {
-      return { hasTerminal: false, teams: [] };
+      return { hasTerminal: false, teams: [], quickPrompts: [] };
     }
     const entry = terminals.getByTerminal(active);
     if (!entry || !entry.agentConfig) {
-      return { hasTerminal: false, teams: [] };
+      return { hasTerminal: false, teams: [], quickPrompts: [] };
     }
 
     const opts = active.creationOptions as vscode.TerminalOptions;
@@ -212,8 +317,10 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
 
     const snapshot: PanelSnapshot = {
       hasTerminal: true,
+      terminalId: entry.id,
       agentName: entry.agentConfig.title,
       agentPrefix: entry.agentConfig.prefix,
+      agentIconUri: this.iconUriFor(entry.agentConfig.prefix),
       sessionChunk,
       fullSessionId: sessionId,
       version: entry.statusVersion || entry.version,
@@ -226,10 +333,11 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
       workspaceRoot,
       plan,
       teams: [],
+      quickPrompts: pickQuickPrompts(),
     };
 
-    // Conversation summary — first/last user message + message count, sourced
-    // straight from the agent's session JSONL via the cached preview helper.
+    // Conversation summary + recent activity + linked artifacts come from
+    // the session JSONL. All best-effort; never block the panel on them.
     if (sessionId && entry.agentType) {
       try {
         const filePath = await getSessionPathBySessionId(sessionId, entry.agentType);
@@ -241,11 +349,25 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
             messageCount: preview.messageCount,
             lastActivityMs: preview.lastActivityMs,
           };
+          const linear =
+            extractLinearTicketId(preview.firstUserMessage) ||
+            extractLinearTicketId(preview.lastUserMessage);
+          if (linear) snapshot.linearIssue = linear;
+
+          const tailLines = await readTailLines(filePath, 80);
+          snapshot.recentActivity = collectRecentActivity(tailLines, entry.agentType, 5);
+          const pr = extractPrUrl(tailLines.concat(
+            preview.firstUserMessage ?? '',
+            preview.lastUserMessage ?? '',
+          ));
+          if (pr) snapshot.prUrl = pr;
         }
       } catch {
         // Session preview is best-effort; never block the panel on it.
       }
     }
+
+    snapshot.git = cwd ? await readGitInfo(cwd) : undefined;
 
     try {
       snapshot.teams = await listTeamsForCwd(cwd);
@@ -254,6 +376,16 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
     }
 
     return snapshot;
+  }
+
+  private iconUriFor(prefix: string | undefined): string | undefined {
+    if (!prefix || !this.view) return undefined;
+    const def = BUILT_IN_AGENTS.find(
+      (a) => a.prefix === prefix || a.prefix.toUpperCase() === (prefix ?? '').toUpperCase(),
+    );
+    if (!def) return undefined;
+    const onDisk = vscode.Uri.joinPath(this.extensionUri, 'assets', def.icon);
+    return this.view.webview.asWebviewUri(onDisk).toString();
   }
 
   private renderShell(webview: vscode.Webview): string {
@@ -296,6 +428,20 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
     background: var(--vscode-sideBar-background);
     margin-top: 4px;
   }
+  .agent-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .agent-logo {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    flex-shrink: 0;
+    object-fit: contain;
+    background: var(--vscode-input-background, transparent);
+  }
+  .agent-head-text { flex: 1; min-width: 0; }
   .title-row {
     display: flex;
     align-items: baseline;
@@ -326,20 +472,39 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
     color: var(--vscode-descriptionForeground);
     font-style: italic;
   }
-	  .account-row {
-	    margin-top: 3px;
-	    color: var(--vscode-descriptionForeground);
-	    font-size: 11px;
-	  }
-	  .worktree-row {
-	    margin-top: 3px;
-	    color: var(--vscode-descriptionForeground);
-	    font-size: 11px;
-	    font-family: var(--vscode-editor-font-family, monospace);
-	    overflow: hidden;
-	    text-overflow: ellipsis;
-	    white-space: nowrap;
-	  }
+  .account-row {
+    margin-top: 3px;
+    color: var(--vscode-descriptionForeground);
+    font-size: 11px;
+  }
+  .worktree-row {
+    margin-top: 3px;
+    color: var(--vscode-descriptionForeground);
+    font-size: 11px;
+    font-family: var(--vscode-editor-font-family, monospace);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .branch-row {
+    margin-top: 3px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+  }
+  .branch-name {
+    font-family: var(--vscode-editor-font-family, monospace);
+    color: var(--vscode-foreground);
+  }
+  .dirty-pill {
+    background: var(--vscode-gitDecoration-modifiedResourceForeground, var(--vscode-badge-background));
+    color: var(--vscode-badge-foreground);
+    padding: 0 5px;
+    border-radius: 8px;
+    font-size: 10px;
+  }
   .row-grid {
     display: grid;
     grid-template-columns: auto 1fr;
@@ -374,39 +539,139 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
     color: var(--vscode-descriptionForeground);
     font-size: 11px;
   }
-	  .conv-topic {
-	    color: var(--vscode-foreground);
-	    line-height: 1.4;
-    /* Cap at four lines so very long topics don't push the rest of the panel
-       below the fold. The full topic still renders in title attribute? no —
-       just truncated server-side via truncate(). */
-	    word-break: break-word;
-	  }
-	  .conv-topic p {
-	    margin: 0 0 6px;
-	  }
-	  .conv-topic p:last-child {
-	    margin-bottom: 0;
-	  }
-	  .conv-topic .md-heading {
-	    font-weight: 600;
-	    margin: 0 0 5px;
-	  }
-	  .conv-topic code {
-	    font-family: var(--vscode-editor-font-family, monospace);
-	    font-size: 0.94em;
-	    background: var(--vscode-textCodeBlock-background, rgba(127,127,127,0.16));
-	    border-radius: 3px;
-	    padding: 0 3px;
-	  }
-	  .conv-topic .md-bullet {
-	    padding-left: 10px;
-	    text-indent: -8px;
-	  }
+  .conv-topic {
+    color: var(--vscode-foreground);
+    line-height: 1.4;
+    word-break: break-word;
+  }
+  .conv-topic p { margin: 0 0 6px; }
+  .conv-topic p:last-child { margin-bottom: 0; }
+  .conv-topic .md-heading {
+    font-weight: 600;
+    margin: 0 0 5px;
+  }
+  .conv-topic code {
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 0.94em;
+    background: var(--vscode-textCodeBlock-background, rgba(127,127,127,0.16));
+    border-radius: 3px;
+    padding: 0 3px;
+  }
+  .conv-topic .md-bullet {
+    padding-left: 10px;
+    text-indent: -8px;
+  }
   .conv-meta {
     margin-top: 6px;
     color: var(--vscode-descriptionForeground);
     font-size: 11px;
+  }
+  .activity {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 2px 0;
+    font-size: 11.5px;
+    line-height: 1.4;
+  }
+  .activity-kind {
+    width: 56px;
+    flex-shrink: 0;
+    color: var(--vscode-descriptionForeground);
+    text-transform: lowercase;
+    font-size: 10.5px;
+  }
+  .activity-summary {
+    color: var(--vscode-foreground);
+    word-break: break-word;
+  }
+  .actions-row {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .action-btn {
+    flex: 1 1 auto;
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    border: 1px solid var(--vscode-widget-border, transparent);
+    border-radius: 4px;
+    padding: 6px 8px;
+    font: inherit;
+    font-size: 11.5px;
+    cursor: pointer;
+    text-align: center;
+  }
+  .action-btn:hover {
+    background: var(--vscode-button-secondaryHoverBackground, var(--vscode-button-secondaryBackground));
+  }
+  .action-btn.primary {
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+  }
+  .action-btn.primary:hover {
+    background: var(--vscode-button-hoverBackground, var(--vscode-button-background));
+  }
+  .prompt-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .prompt-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: transparent;
+    color: var(--vscode-foreground);
+    border: 1px solid var(--vscode-widget-border, transparent);
+    border-radius: 4px;
+    padding: 6px 8px;
+    font: inherit;
+    font-size: 11.5px;
+    cursor: pointer;
+    text-align: left;
+    overflow: hidden;
+  }
+  .prompt-btn:hover {
+    background: var(--vscode-list-hoverBackground);
+  }
+  .prompt-title {
+    font-weight: 500;
+    flex: 0 0 auto;
+  }
+  .prompt-preview {
+    color: var(--vscode-descriptionForeground);
+    font-size: 10.5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+  }
+  .prompt-star {
+    color: var(--vscode-charts-yellow, #d4a72c);
+    font-size: 10px;
+    margin-right: 2px;
+  }
+  .links-list { display: flex; flex-direction: column; gap: 4px; }
+  .link-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+  }
+  .link-row a {
+    color: var(--vscode-textLink-foreground);
+    cursor: pointer;
+    text-decoration: none;
+    font-family: var(--vscode-editor-font-family, monospace);
+  }
+  .link-row a:hover { text-decoration: underline; }
+  .link-tag {
+    color: var(--vscode-descriptionForeground);
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
   }
   .team {
     margin-top: 6px;
@@ -502,13 +767,15 @@ function relTime(ms) {
   return d + ' day' + (d === 1 ? '' : 's') + ' ago';
 }
 
-function homeTilde(p) {
-  if (!p) return '';
-  // The webview can't read process.env.HOME; show full path. The CSS clips it.
-  return p;
+function truncate(s, n) {
+  if (!s) return '';
+  return s.length > n ? s.slice(0, n - 1) + '…' : s;
 }
 
 function renderTerminalCard(s) {
+  const logo = s.agentIconUri
+    ? '<img class="agent-logo" src="' + esc(s.agentIconUri) + '" alt="" />'
+    : '';
   const titleBits = [
     '<span class="agent-name">' + esc(s.agentName || s.agentPrefix || 'Agent') + '</span>',
     s.sessionChunk ? '<span class="session-chunk">' + esc(s.sessionChunk) + '</span>' : '',
@@ -520,93 +787,167 @@ function renderTerminalCard(s) {
   } else if (s.autoLabel) {
     label = '<div class="label-row label-auto">' + esc(s.autoLabel) + '</div>';
   }
-	  const account = s.account ? '<div class="account-row">' + esc(s.account) + '</div>' : '';
-	  const worktree = s.worktreeName
-	    ? '<div class="worktree-row">' + esc((s.worktreePath ? 'worktree ' : 'cwd ') + s.worktreeName) + '</div>'
-	    : '';
-	  return (
-	    '<div class="card">' +
-	      '<div class="title-row">' + titleBits + '</div>' +
-	      label +
-	      worktree +
-	      account +
-	    '</div>'
-	  );
-	}
-	
-	function renderConversationCard(s) {
-	  if (!s.conversation) return '';
-	  const c = s.conversation;
-	  const topic = (c.topic || '').trim();
-	  if (!topic && !c.messageCount) return '';
-	  const meta = [];
-	  if (c.messageCount) meta.push(c.messageCount + ' message' + (c.messageCount === 1 ? '' : 's'));
-	  if (c.lastActivityMs) meta.push(relTime(c.lastActivityMs));
-	  return (
-	    '<h2>Conversation</h2>' +
-	    '<div class="card">' +
-	      (topic ? '<div class="conv-topic">' + renderMarkdownPreview(truncate(topic, 420)) + '</div>' : '') +
-	      (meta.length ? '<div class="conv-meta">' + esc(meta.join(' · ')) + '</div>' : '') +
-	    '</div>'
-	  );
-	}
+  const account = s.account ? '<div class="account-row">' + esc(s.account) + '</div>' : '';
+  const worktree = s.worktreeName
+    ? '<div class="worktree-row">' + esc((s.worktreePath ? 'worktree ' : 'cwd ') + s.worktreeName) + '</div>'
+    : '';
+  let branch = '';
+  if (s.git && s.git.branch) {
+    const dirty = s.git.dirtyCount && s.git.dirtyCount > 0
+      ? '<span class="dirty-pill">' + s.git.dirtyCount + ' changed</span>'
+      : '';
+    branch = '<div class="branch-row"><span>branch</span><span class="branch-name">' + esc(s.git.branch) + '</span>' + dirty + '</div>';
+  }
+  return (
+    '<div class="card">' +
+      '<div class="agent-head">' +
+        logo +
+        '<div class="agent-head-text">' +
+          '<div class="title-row">' + titleBits + '</div>' +
+          label +
+          worktree +
+          branch +
+          account +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  );
+}
 
-	function renderInlineMarkdown(s) {
-	  let out = esc(s);
-	  out = out.replace(/\\[([^\\]]+)\\]\\([^\\)]+\\)/g, '$1');
-	  out = out.replace(/\`([^\`]+)\`/g, '<code>$1</code>');
-	  out = out.replace(/\\*\\*([^*]+)\\*\\*/g, '<strong>$1</strong>');
-	  out = out.replace(/__([^_]+)__/g, '<strong>$1</strong>');
-	  return out;
-	}
+function renderActionsCard(s) {
+  if (!s.cwd) return '';
+  const commit = '<button class="action-btn primary" data-action="commit">Commit</button>';
+  const cleanup = s.worktreePath
+    ? '<button class="action-btn" data-action="cleanup">Cleanup worktree</button>'
+    : '';
+  const wrap = '<button class="action-btn" data-action="wrap">Wrap up</button>';
+  return (
+    '<h2>Quick actions</h2>' +
+    '<div class="card"><div class="actions-row">' + commit + cleanup + wrap + '</div></div>'
+  );
+}
 
-	function renderMarkdownPreview(s) {
-	  const lines = String(s || '').split(/\\r?\\n/);
-	  const blocks = [];
-	  let paragraph = [];
-	  const flushParagraph = () => {
-	    if (!paragraph.length) return;
-	    blocks.push('<p>' + renderInlineMarkdown(paragraph.join(' ')) + '</p>');
-	    paragraph = [];
-	  };
-	  for (const raw of lines) {
-	    const line = raw.trim();
-	    if (!line) {
-	      flushParagraph();
-	      continue;
-	    }
-	    const heading = line.match(/^#{1,6}\\s+(.+)$/);
-	    if (heading) {
-	      flushParagraph();
-	      blocks.push('<div class="md-heading">' + renderInlineMarkdown(heading[1]) + '</div>');
-	      continue;
-	    }
-	    const bullet = line.match(/^[-*]\\s+(.+)$/);
-	    if (bullet) {
-	      flushParagraph();
-	      blocks.push('<div class="md-bullet">- ' + renderInlineMarkdown(bullet[1]) + '</div>');
-	      continue;
-	    }
-	    paragraph.push(line);
-	  }
-	  flushParagraph();
-	  return blocks.join('');
-	}
+function renderLinksCard(s) {
+  if (!s.linearIssue && !s.prUrl) return '';
+  const rows = [];
+  if (s.linearIssue) {
+    const url = 'https://linear.app/issue/' + encodeURIComponent(s.linearIssue);
+    rows.push(
+      '<div class="link-row"><span class="link-tag">linear</span>' +
+      '<a data-url="' + esc(url) + '">' + esc(s.linearIssue) + '</a></div>'
+    );
+  }
+  if (s.prUrl) {
+    rows.push(
+      '<div class="link-row"><span class="link-tag">pr</span>' +
+      '<a data-url="' + esc(s.prUrl) + '">' + esc(s.prUrl.replace(/^https?:\\/\\//, '')) + '</a></div>'
+    );
+  }
+  return (
+    '<h2>Links</h2>' +
+    '<div class="card"><div class="links-list">' + rows.join('') + '</div></div>'
+  );
+}
 
-function truncate(s, n) {
-  if (!s) return '';
-  return s.length > n ? s.slice(0, n - 1) + '…' : s;
+function renderConversationCard(s) {
+  if (!s.conversation) return '';
+  const c = s.conversation;
+  const topic = (c.topic || '').trim();
+  if (!topic && !c.messageCount) return '';
+  const meta = [];
+  if (c.messageCount) meta.push(c.messageCount + ' message' + (c.messageCount === 1 ? '' : 's'));
+  if (c.lastActivityMs) meta.push(relTime(c.lastActivityMs));
+  return (
+    '<h2>Conversation</h2>' +
+    '<div class="card">' +
+      (topic ? '<div class="conv-topic">' + renderMarkdownPreview(truncate(topic, 420)) + '</div>' : '') +
+      (meta.length ? '<div class="conv-meta">' + esc(meta.join(' · ')) + '</div>' : '') +
+    '</div>'
+  );
+}
+
+function renderActivityCard(s) {
+  const items = s.recentActivity || [];
+  if (!items.length) return '';
+  const rows = items.map((it) => (
+    '<div class="activity">' +
+      '<span class="activity-kind">' + esc(it.kind) + '</span>' +
+      '<span class="activity-summary">' + esc(truncate(it.summary, 80)) + '</span>' +
+    '</div>'
+  )).join('');
+  return (
+    '<h2>Recent activity</h2>' +
+    '<div class="card">' + rows + '</div>'
+  );
+}
+
+function renderPromptsCard(s) {
+  const prompts = s.quickPrompts || [];
+  if (!prompts.length) return '';
+  const rows = prompts.map((p) => (
+    '<button class="prompt-btn" data-prompt-id="' + esc(p.id) + '" title="' + esc(p.preview) + '">' +
+      (p.favorite ? '<span class="prompt-star">★</span>' : '') +
+      '<span class="prompt-title">' + esc(p.title) + '</span>' +
+      '<span class="prompt-preview">' + esc(p.preview) + '</span>' +
+    '</button>'
+  )).join('');
+  return (
+    '<h2>Quick prompts</h2>' +
+    '<div class="card"><div class="prompt-grid">' + rows + '</div></div>'
+  );
+}
+
+function renderInlineMarkdown(s) {
+  let out = esc(s);
+  out = out.replace(/\\[([^\\]]+)\\]\\([^\\)]+\\)/g, '$1');
+  out = out.replace(/\`([^\`]+)\`/g, '<code>$1</code>');
+  out = out.replace(/\\*\\*([^*]+)\\*\\*/g, '<strong>$1</strong>');
+  out = out.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+  return out;
+}
+
+function renderMarkdownPreview(s) {
+  const lines = String(s || '').split(/\\r?\\n/);
+  const blocks = [];
+  let paragraph = [];
+  const flushParagraph = () => {
+    if (!paragraph.length) return;
+    blocks.push('<p>' + renderInlineMarkdown(paragraph.join(' ')) + '</p>');
+    paragraph = [];
+  };
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) {
+      flushParagraph();
+      continue;
+    }
+    const heading = line.match(/^#{1,6}\\s+(.+)$/);
+    if (heading) {
+      flushParagraph();
+      blocks.push('<div class="md-heading">' + renderInlineMarkdown(heading[1]) + '</div>');
+      continue;
+    }
+    const bullet = line.match(/^[-*]\\s+(.+)$/);
+    if (bullet) {
+      flushParagraph();
+      blocks.push('<div class="md-bullet">- ' + renderInlineMarkdown(bullet[1]) + '</div>');
+      continue;
+    }
+    paragraph.push(line);
+  }
+  flushParagraph();
+  return blocks.join('');
 }
 
 function renderCwdCard(s) {
   if (!s.cwd) return '';
   const rows = [];
   rows.push(
-    '<dt>cwd</dt><dd><a class="path-link" data-path="' + esc(s.cwd) + '">' + esc(homeTilde(s.cwd)) + '</a></dd>'
+    '<dt>cwd</dt><dd><a class="path-link" data-path="' + esc(s.cwd) + '">' + esc(s.cwd) + '</a></dd>'
   );
   if (s.worktreePath && s.workspaceRoot && s.worktreePath !== s.workspaceRoot) {
     rows.push(
-      '<dt>worktree</dt><dd><a class="path-link" data-path="' + esc(s.worktreePath) + '">' + esc(homeTilde(s.worktreePath)) + '</a></dd>'
+      '<dt>worktree</dt><dd><a class="path-link" data-path="' + esc(s.worktreePath) + '">' + esc(s.worktreePath) + '</a></dd>'
     );
   }
   return (
@@ -677,14 +1018,13 @@ function renderTeam(t) {
 function renderTeamsCard(s) {
   const teams = s.teams || [];
   if (!teams.length) {
-    return (
-      '<h2>Teams in this directory</h2>' +
-      '<div class="card"><div class="plan-meta">' +
-        (s.teamsError
-          ? esc(s.teamsError)
-          : 'No teams active here. Start one with <span style="font-family: var(--vscode-editor-font-family, monospace);">agents teams create</span>.') +
-      '</div></div>'
-    );
+    if (s.teamsError) {
+      return (
+        '<h2>Teams in this directory</h2>' +
+        '<div class="card"><div class="plan-meta">' + esc(s.teamsError) + '</div></div>'
+      );
+    }
+    return '';
   }
   return (
     '<h2>Teams in this directory</h2>' +
@@ -692,7 +1032,10 @@ function renderTeamsCard(s) {
   );
 }
 
+let lastSnapshot = null;
+
 function render(snap) {
+  lastSnapshot = snap;
   if (!snap || !snap.hasTerminal) {
     root.innerHTML = (
       '<div class="empty">No agent terminal focused.<br><br>' +
@@ -702,7 +1045,11 @@ function render(snap) {
   }
   root.innerHTML = (
     renderTerminalCard(snap) +
+    renderActionsCard(snap) +
+    renderLinksCard(snap) +
     renderConversationCard(snap) +
+    renderActivityCard(snap) +
+    renderPromptsCard(snap) +
     renderCwdCard(snap) +
     renderPlanCard(snap) +
     renderTeamsCard(snap) +
@@ -712,6 +1059,31 @@ function render(snap) {
     el.addEventListener('click', (e) => {
       e.preventDefault();
       vscode.postMessage({ type: 'openPath', path: el.getAttribute('data-path') });
+    });
+  }
+  for (const el of root.querySelectorAll('[data-url]')) {
+    el.addEventListener('click', (e) => {
+      e.preventDefault();
+      vscode.postMessage({ type: 'openUrl', url: el.getAttribute('data-url') });
+    });
+  }
+  for (const el of root.querySelectorAll('[data-action]')) {
+    el.addEventListener('click', () => {
+      vscode.postMessage({
+        type: 'runQuickAction',
+        action: el.getAttribute('data-action'),
+        terminalId: lastSnapshot && lastSnapshot.terminalId,
+        cwd: lastSnapshot && (lastSnapshot.worktreePath || lastSnapshot.cwd),
+      });
+    });
+  }
+  for (const el of root.querySelectorAll('[data-prompt-id]')) {
+    el.addEventListener('click', () => {
+      vscode.postMessage({
+        type: 'sendQuickPrompt',
+        promptId: el.getAttribute('data-prompt-id'),
+        terminalId: lastSnapshot && lastSnapshot.terminalId,
+      });
     });
   }
   const btn = root.querySelector('#refresh-btn');
@@ -741,6 +1113,91 @@ function readPlanFile(cwd: string): PlanFileInfo | undefined {
   } catch {
     return undefined;
   }
+}
+
+async function readGitInfo(cwd: string): Promise<GitInfo | undefined> {
+  try {
+    const ext = vscode.extensions.getExtension('vscode.git');
+    if (!ext) return undefined;
+    const api = (await ext.activate()).getAPI(1);
+    const target = path.resolve(cwd);
+    const repo = api.repositories.find((r: any) => {
+      const root = String(r.rootUri?.fsPath || '');
+      return root && (target === root || target.startsWith(root + path.sep));
+    });
+    if (!repo) return undefined;
+    const branch = repo.state?.HEAD?.name as string | undefined;
+    const dirtyCount =
+      (repo.state?.workingTreeChanges?.length ?? 0) +
+      (repo.state?.indexChanges?.length ?? 0) +
+      (repo.state?.mergeChanges?.length ?? 0);
+    return { branch, dirtyCount };
+  } catch {
+    return undefined;
+  }
+}
+
+function collectRecentActivity(tailLines: string[], agentType: string, max: number): ActivityItem[] {
+  const out: ActivityItem[] = [];
+  // Walk backward so we end up with the most recent items first.
+  const seen = new Set<string>();
+  for (let i = tailLines.length - 1; i >= 0 && out.length < max; i--) {
+    const line = tailLines[i];
+    const activity = extractCurrentActivity(line, agentType as 'claude' | 'codex' | 'gemini');
+    if (!activity) continue;
+    const formatted = formatActivity(activity);
+    if (!formatted) continue;
+    const dedupeKey = `${activity.type}|${activity.summary}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    out.push({
+      kind: activity.type,
+      summary: activity.summary || formatted,
+      ts: activity.timestamp.getTime(),
+    });
+  }
+  return out;
+}
+
+const PR_URL_RE = /https?:\/\/(?:www\.)?github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/pull\/\d+/;
+
+function extractPrUrl(lines: string[]): string | undefined {
+  for (const line of lines) {
+    if (!line) continue;
+    const match = PR_URL_RE.exec(line);
+    if (match) return match[0];
+  }
+  return undefined;
+}
+
+function pickQuickPrompts(): QuickPromptLite[] {
+  try {
+    const all = readPrompts();
+    const sorted = [...all].sort((a, b) => {
+      if (a.isFavorite !== b.isFavorite) return a.isFavorite ? -1 : 1;
+      return (b.accessedAt || 0) - (a.accessedAt || 0);
+    });
+    return sorted.slice(0, 6).map((p) => ({
+      id: p.id,
+      title: p.title,
+      preview: p.content.replace(/\s+/g, ' ').trim().slice(0, 120),
+      favorite: !!p.isFavorite,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+async function runInShellTerminal(command: string): Promise<void> {
+  const existing = vscode.window.terminals.find((t) => t.name === 'agents: shell');
+  const terminal = existing ?? vscode.window.createTerminal({ name: 'agents: shell' });
+  terminal.show(true);
+  terminal.sendText(command);
+}
+
+function shellQuote(arg: string): string {
+  if (/^[A-Za-z0-9_./-]+$/.test(arg)) return arg;
+  return "'" + arg.replace(/'/g, "'\\''") + "'";
 }
 
 function randomNonce(): string {
