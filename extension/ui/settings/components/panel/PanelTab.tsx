@@ -848,7 +848,7 @@ function LinearApiKeyCard({
       </div>
       <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 6 }}>
         Paste a personal API key from <code>linear.app/settings/api</code>. Stored locally in{' '}
-        <code>~/.agents/linear.json</code>.
+        <code>~/.linear-cli/config.json</code>.
       </div>
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         <Input

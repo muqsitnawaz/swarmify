@@ -11,7 +11,7 @@ const execAsync = promisify(exec);
 
 const LINEAR_CONFIG = path.join(
   process.env.HOME || '',
-  '.agents/linear.json'
+  '.linear-cli/config.json'
 );
 
 let cachedLinearPath: string | null = null;
@@ -32,7 +32,7 @@ export async function isLinearAvailable(_context: vscode.ExtensionContext): Prom
   try {
     const linearPath = await findLinearCli();
     if (!linearPath) return false;
-    await fs.promises.access(LINEAR_CONFIG, fs.constants.R_OK);
+    await execFileAsync(linearPath, ['--version'], { timeout: 5000 });
     return true;
   } catch {
     return false;

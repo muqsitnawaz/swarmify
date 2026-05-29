@@ -125,6 +125,10 @@ function isSyntheticCommandText(text: string): boolean {
   const stripped = trimmed.replace(/<[^>]*>/g, '').trim();
   if (!stripped) return true;
   if (lower.startsWith('caveat: the messages below')) return true;
+  if (lower.startsWith('# agents.md instructions for ') && lower.includes('<instructions>')) return true;
+  if (lower.startsWith('<environment_context>')) return true;
+  if (lower.startsWith('<turn_aborted>')) return true;
+  if (lower.startsWith('<image ')) return true;
   return false;
 }
 

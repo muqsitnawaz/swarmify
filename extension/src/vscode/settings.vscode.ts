@@ -301,8 +301,7 @@ async function dispatchForForeman(
 }
 
 // Headless ticket creation used by Foreman's create_ticket tool. Shells out
-// to the same `linear` script that fetchLinearTasks() uses (~/.agents/skills/
-// linear/scripts/linear). Defaults are intentionally bare — current cycle,
+// to the same `linear` CLI that fetchLinearTasks() uses. Defaults are intentionally bare — current cycle,
 // Todo status, medium priority — so the voice flow is one command: "create
 // a ticket called X". The CLI parses the resulting first line:
 //   "Created RUSH-585: <title>  [<project> | <assignee>]"
