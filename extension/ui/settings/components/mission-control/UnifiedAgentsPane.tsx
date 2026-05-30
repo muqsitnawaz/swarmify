@@ -399,6 +399,7 @@ interface UnifiedAgentsPaneProps {
   unifiedTasksLoading: boolean
   onDispatch: () => void
   onNavigate?: (tab: 'floor' | 'bench' | 'panel') => void
+  onOpenInBench?: (taskId: string) => void
   openDispatchTrigger?: number
   openDetailTaskId?: string | null
   onDetailTaskConsumed?: () => void
@@ -408,7 +409,7 @@ interface UnifiedAgentsPaneProps {
   watchdogEvents?: WatchdogEventUI[]
 }
 
-export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks, unifiedTasksLoading, onDispatch, onNavigate, openDispatchTrigger, openDetailTaskId, onDetailTaskConsumed, onThroughputChange, githubRepo, watchdogEnabled = false, watchdogEvents = [] }: UnifiedAgentsPaneProps) {
+export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks, unifiedTasksLoading, onDispatch, onNavigate, onOpenInBench, openDispatchTrigger, openDetailTaskId, onDetailTaskConsumed, onThroughputChange, githubRepo, watchdogEnabled = false, watchdogEvents = [] }: UnifiedAgentsPaneProps) {
   const panelVisible = usePanelVisibility()
   const [newMenuOpen, setNewMenuOpen] = useState(false)
   const [statPopover, setStatPopover] = useState<'shipped' | 'open' | 'running' | 'nextup' | 'files' | null>(null)
@@ -942,7 +943,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
           {queueTasks.length > 0 ? (
             <div className="sw-queue-cards">
               {queueTasks.map((task) => (
-                <DispatchCard key={task.id} task={task} onOpen={setDetailTask} />
+                <DispatchCard key={task.id} task={task} onOpen={setDetailTask} onOpenInBench={onOpenInBench} />
               ))}
             </div>
           ) : (
@@ -2597,31 +2598,37 @@ function AgentDetailView({ agent, swarm, onRetry, onKill }: { agent: AgentDetail
 }
 
 // Format a Linear dueDate (YYYY-MM-DD) into short human text for the card.
-// Returns null when no date. Uses local-day comparison so "Due today" lines up
-// with the user's calendar rather than UTC midnight.
+// Picks the largest unit that's still informative: minutes if <1h away,
+// hours if <24h, days if <14d, else absolute date. "Due in 45m / 3h / 2d".
+// The reference point is end-of-day local-tz because Linear dueDate has no
+// time component and a task due "today" isn't late until the day is over.
 function formatDueDate(iso: string | undefined): { label: string; tone: 'overdue' | 'soon' | 'normal' } | null {
   if (!iso) return null
   const parts = iso.split('T')[0].split('-')
   if (parts.length < 3) return null
   const y = Number(parts[0]), m = Number(parts[1]), d = Number(parts[2])
   if (!y || !m || !d) return null
-  const due = new Date(y, m - 1, d)
-  const now = new Date()
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const diffDays = Math.round((due.getTime() - today.getTime()) / 86400000)
-  if (diffDays < 0) {
-    const n = Math.abs(diffDays)
-    return { label: n === 1 ? 'Overdue 1d' : `Overdue ${n}d`, tone: 'overdue' }
+  const due = new Date(y, m - 1, d, 23, 59, 59, 999)
+  const diffMs = due.getTime() - Date.now()
+  const absMs = Math.abs(diffMs)
+  const mins = Math.max(1, Math.round(absMs / 60000))
+  const hours = Math.round(absMs / 3600000)
+  const days = Math.round(absMs / 86400000)
+  if (diffMs < 0) {
+    if (absMs < 3600000) return { label: `Overdue ${mins}m`, tone: 'overdue' }
+    if (absMs < 86400000) return { label: `Overdue ${hours}h`, tone: 'overdue' }
+    return { label: `Overdue ${days}d`, tone: 'overdue' }
   }
-  if (diffDays === 0) return { label: 'Due today', tone: 'soon' }
-  if (diffDays === 1) return { label: 'Due tomorrow', tone: 'soon' }
+  if (diffMs < 3600000) return { label: `Due in ${mins}m`, tone: 'soon' }
+  if (diffMs < 86400000) return { label: `Due in ${hours}h`, tone: 'soon' }
+  if (days <= 3) return { label: `Due in ${days}d`, tone: 'soon' }
+  if (days <= 14) return { label: `Due in ${days}d`, tone: 'normal' }
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-  const label = `Due ${MONTHS[m - 1]} ${d}`
-  return { label, tone: diffDays <= 3 ? 'soon' : 'normal' }
+  return { label: `Due ${MONTHS[m - 1]} ${d}`, tone: 'normal' }
 }
 
 // Dispatch card with agent picker
-function DispatchCard({ task, onOpen }: { task: UnifiedTask; onOpen: (task: UnifiedTask) => void }) {
+function DispatchCard({ task, onOpen, onOpenInBench }: { task: UnifiedTask; onOpen: (task: UnifiedTask) => void; onOpenInBench?: (taskId: string) => void }) {
   const priorityCls = task.priority === 'urgent' ? 'urgent' : task.priority === 'high' ? 'high' : 'medium'
   const repo = task.metadata.repo
   const due = formatDueDate(task.metadata.dueDate)
@@ -2663,6 +2670,19 @@ function DispatchCard({ task, onOpen }: { task: UnifiedTask; onOpen: (task: Unif
         ) : repo ? (
           <span className="sw-queue-repo-chip mono" style={{ marginLeft: 'auto' }}>{repo}</span>
         ) : null}
+        {onOpenInBench && (
+          <button
+            type="button"
+            className="sw-queue-bench-btn"
+            title="Open in Bench"
+            aria-label="Open in Bench"
+            onClick={(e) => { e.stopPropagation(); onOpenInBench(task.id) }}
+            onMouseDown={stopOpen}
+            style={!repo ? { marginLeft: 'auto' } : undefined}
+          >
+            <Icon name="external" size={11} />
+          </button>
+        )}
       </div>
       <div className="sw-queue-title">{task.title}</div>
       {due && (
