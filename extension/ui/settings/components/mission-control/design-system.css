@@ -1953,6 +1953,25 @@
   color: var(--brand);
 }
 
+.sw-queue-bench-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--ds-text-dim);
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s;
+}
+.sw-queue-bench-btn:hover {
+  color: var(--brand);
+  background: var(--ds-bg-recessed);
+}
+
 .sw-queue-due {
   font-size: 10px;
   font-weight: 500;
