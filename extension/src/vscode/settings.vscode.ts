@@ -353,7 +353,7 @@ const DEFAULT_FACTORY_CONFIG = {
   supervisor_interval_seconds: 8,
 };
 const VALID_PROVIDERS = new Set(['rush', 'codex', 'factory', 'local']);
-const VALID_AGENTS = new Set(['claude', 'codex', 'gemini', 'cursor', 'opencode']);
+const VALID_AGENTS = new Set(['claude', 'codex', 'gemini', 'cursor', 'opencode', 'copilot']);
 
 function factoryConfigFilePath(): string {
   return path.join(homedir(), '.agents', 'factory', 'config.json');

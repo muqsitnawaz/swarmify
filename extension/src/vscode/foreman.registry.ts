@@ -209,6 +209,7 @@ function kindFromTerminalId(terminalId: string): string {
     case 'GX': return 'gemini';
     case 'OC': return 'opencode';
     case 'CR': return 'cursor';
+    case 'CP': return 'copilot';
     case 'SH': return 'shell';
     default: return prefix.toLowerCase() || 'unknown';
   }
@@ -221,6 +222,7 @@ function kindFromName(name: string): string {
   if (['gemini', 'gx'].includes(head)) return 'gemini';
   if (['opencode', 'oc'].includes(head)) return 'opencode';
   if (['cursor', 'cr'].includes(head)) return 'cursor';
+  if (['copilot', 'cp'].includes(head)) return 'copilot';
   return head || 'unknown';
 }
 

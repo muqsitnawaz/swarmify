@@ -86,11 +86,12 @@ describe('buildRecapArgv', () => {
 });
 
 describe('isRecapSupported', () => {
-  test('accepts the four supported agents', () => {
+  test('accepts the five supported agents', () => {
     expect(isRecapSupported('claude')).toBe(true);
     expect(isRecapSupported('codex')).toBe(true);
     expect(isRecapSupported('gemini')).toBe(true);
     expect(isRecapSupported('cursor')).toBe(true);
+    expect(isRecapSupported('copilot')).toBe(true);
   });
 
   test('rejects unsupported agent types', () => {
