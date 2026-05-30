@@ -77,6 +77,28 @@ describe('parseEvents', () => {
     expect(ev.agentType).toBeUndefined();
     expect(ev.reason).toBeUndefined();
   });
+
+  it('round-trips tailLines, stalledForMs, lastUserMessage, lastAssistantMessage, nudgeText', () => {
+    const original: WatchdogEvent = {
+      ts: 4000,
+      kind: 'decision',
+      message: 'nudge',
+      terminalId: 'CC-2',
+      agentType: 'claude',
+      reason: 'stalled 90s',
+      tailLines: ['{"type":"user"}', '{"type":"assistant"}'],
+      stalledForMs: 90000,
+      lastUserMessage: 'fix the bug',
+      lastAssistantMessage: 'looking at auth.ts',
+      nudgeText: 'continue',
+    };
+    const [parsed] = parseEvents(formatEvent(original));
+    expect(parsed.tailLines).toEqual(original.tailLines);
+    expect(parsed.stalledForMs).toBe(90000);
+    expect(parsed.lastUserMessage).toBe('fix the bug');
+    expect(parsed.lastAssistantMessage).toBe('looking at auth.ts');
+    expect(parsed.nudgeText).toBe('continue');
+  });
 });
 
 describe('trimToLast', () => {
