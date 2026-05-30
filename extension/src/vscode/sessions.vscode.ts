@@ -476,7 +476,7 @@ export async function getClaudeProjectRoots(homeDir: string = homedir()): Promis
 
 export async function getSessionPathBySessionId(
   sessionId: string,
-  agentType: 'claude' | 'codex' | 'gemini' | 'opencode' | 'cursor',
+  agentType: 'claude' | 'codex' | 'gemini' | 'opencode' | 'cursor' | 'copilot',
   workspacePath?: string,
   homeDir: string = homedir(),
 ): Promise<string | undefined> {
@@ -547,6 +547,15 @@ export async function getSessionPathBySessionId(
         const chatPath = path.join(chatsRoot, wsHash.name, sessionId, 'store.db');
         if (await safeStat(chatPath)) return chatPath;
       }
+      return undefined;
+    }
+    case 'copilot': {
+      // GitHub Copilot CLI v1.0.56+ stores per-session NDJSON event streams at
+      // ~/.copilot/session-state/<sessionId>/events.jsonl. Verified against a
+      // live run and `copilot help environment` (COPILOT_HOME defaults to
+      // $HOME/.copilot).
+      const eventsPath = path.join(homedir(), '.copilot', 'session-state', sessionId, 'events.jsonl');
+      if (await safeStat(eventsPath)) return eventsPath;
       return undefined;
     }
     default:
