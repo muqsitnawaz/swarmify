@@ -801,6 +801,12 @@ function LinearApiKeyCard({
   const [apiKey, setApiKey] = useState('')
   const [status, setStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle')
   const [errorMessage, setErrorMessage] = useState('')
+  // When already connected (linear CLI has a key in ~/.linear-cli/config.json),
+  // hide the input row behind a "replace key" disclosure so the card reads as
+  // a status display instead of a nag-for-credentials. New users (not yet
+  // connected) always see the input inline.
+  const [expanded, setExpanded] = useState(false)
+  const showInput = !connected || expanded
 
   useEffect(() => {
     const handler = (event: MessageEvent) => {
@@ -809,6 +815,7 @@ function LinearApiKeyCard({
       if (m.connected) {
         setStatus('success')
         setApiKey('')
+        setExpanded(false)
         onSaved?.()
       } else if (m.error) {
         setStatus('error')
@@ -846,32 +853,61 @@ function LinearApiKeyCard({
           </span>
         )}
       </div>
-      <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 6 }}>
-        Paste a personal API key from <code>linear.app/settings/api</code>. Stored locally in{' '}
-        <code>~/.linear-cli/config.json</code>.
+      <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+        {connected ? (
+          <>
+            <span>
+              Reading from <code>~/.linear-cli/config.json</code> via the Linear CLI.
+            </span>
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              style={{
+                marginLeft: 'auto',
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--ds-text-link, #58a6ff)',
+                cursor: 'pointer',
+                fontSize: 11,
+                padding: 0,
+                textDecoration: 'underline',
+              }}
+            >
+              {expanded ? 'cancel' : 'replace key'}
+            </button>
+          </>
+        ) : (
+          <span>
+            Paste a personal API key from <code>linear.app/settings/api</code>. Stored locally in{' '}
+            <code>~/.linear-cli/config.json</code>.
+          </span>
+        )}
       </div>
-      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-        <Input
-          type="password"
-          placeholder={connected ? 'Replace key (lin_api_...)' : 'lin_api_...'}
-          value={apiKey}
-          onChange={(e) => {
-            setApiKey(e.currentTarget.value)
-            if (status !== 'idle') setStatus('idle')
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') handleSave()
-          }}
-          style={{ flex: 1 }}
-        />
-        <button
-          className="sw-btn secondary sm"
-          onClick={handleSave}
-          disabled={!apiKey.trim() || status === 'saving'}
-        >
-          {status === 'saving' ? 'Saving…' : connected ? 'Replace' : 'Save'}
-        </button>
-      </div>
+      {showInput && (
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <Input
+            type="password"
+            placeholder={connected ? 'Replace key (lin_api_...)' : 'lin_api_...'}
+            value={apiKey}
+            onChange={(e) => {
+              setApiKey(e.currentTarget.value)
+              if (status !== 'idle') setStatus('idle')
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleSave()
+            }}
+            style={{ flex: 1 }}
+            autoFocus={connected && expanded}
+          />
+          <button
+            className="sw-btn secondary sm"
+            onClick={handleSave}
+            disabled={!apiKey.trim() || status === 'saving'}
+          >
+            {status === 'saving' ? 'Saving…' : connected ? 'Replace' : 'Save'}
+          </button>
+        </div>
+      )}
       {status === 'success' && (
         <div style={{ fontSize: 11, color: '#238636', marginTop: 6 }}>Saved.</div>
       )}
