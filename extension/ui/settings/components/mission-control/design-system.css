@@ -1,22 +1,22 @@
-/* Swarmify design system - Industrial Factory Panel
- * Tactile control surfaces, LED indicators, embossed panels.
- * Coral #F26D5B brand, gunmetal neutrals, Geist + Geist Mono.
+/* Agents design system - Terminal Console
+ * Black canvas, neon-green accents — matches the agents-cli landing palette.
+ * Brand: lime-400 #a3e635. Geist + Geist Mono.
  * Light/dark themes via .theme-light/.theme-dark on root.
  */
 
 :root {
-  --brand: #F26D5B;
-  --brand-600: #E85B48;
-  --brand-700: #D04835;
-  --brand-50: #FEF1EE;
-  --brand-100: #FDE0DA;
-  --brand-ring: rgba(242,109,91,0.25);
-  --claude: #F26D5B;
+  --brand: #a3e635;
+  --brand-600: #84cc16;
+  --brand-700: #65a30d;
+  --brand-50: #f7fee7;
+  --brand-100: #ecfccb;
+  --brand-ring: rgba(163,230,53,0.25);
+  --claude: #a3e635;
   --codex: #1a1a1a;
   --gemini: #4A7DFF;
   --opencode: #0a0a0a;
   --cursor: #0a0a0a;
-  --shell: #E85B48;
+  --shell: #84cc16;
   --status-pending: #D4A72C;
   --status-pending-bg: #FCF3DC;
   --status-running: #22C55E;
@@ -68,13 +68,13 @@
 }
 
 .theme-dark {
-  --ds-bg: #0C0B0A;
-  --ds-bg-panel: #141210;
-  --ds-bg-sunken: #080706;
+  --ds-bg: #0a0a0a;
+  --ds-bg-panel: #141414;
+  --ds-bg-sunken: #050505;
   --ds-bg-hover: rgba(255,255,255,0.04);
   --ds-bg-active: rgba(255,255,255,0.07);
-  --ds-bg-inset: #1A1816;
-  --ds-bg-recessed: #0A0908;
+  --ds-bg-inset: #1a1a1a;
+  --ds-bg-recessed: #0f0f0f;
   --ds-border: rgba(255,255,255,0.08);
   --ds-border-strong: rgba(255,255,255,0.15);
   --ds-border-subtle: rgba(255,255,255,0.04);
