@@ -11,6 +11,15 @@ interface TranscriptLine {
   final: boolean
 }
 
+interface DebugEvent {
+  id: string
+  eventType: string
+  summary: string
+  at: number
+}
+
+const DEBUG_EVENT_CAP = 30
+
 interface ForemanOrbProps {
   vscode: {
     postMessage: (msg: any) => void
@@ -34,6 +43,8 @@ export function ForemanOrb({ vscode }: ForemanOrbProps) {
   const [transcript, setTranscript] = useState<TranscriptLine[]>([])
   const [idleCountdown, setIdleCountdown] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [debugEvents, setDebugEvents] = useState<DebugEvent[]>([])
+  const [debugOpen, setDebugOpen] = useState(true)
 
   const lastActivityAt = useRef<number>(Date.now())
   const activityTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -59,6 +70,16 @@ export function ForemanOrb({ vscode }: ForemanOrbProps) {
         if (m.role === 'user' && m.final && typeof m.text === 'string' && ABORT_PATTERN.test(m.text)) {
           window.postMessage({ type: 'foreman.abort' }, '*')
         }
+      } else if (m?.type === 'foreman.event') {
+        setDebugEvents((prev) => {
+          const next = [...prev, {
+            id: `${m.at}-${Math.random()}`,
+            eventType: String(m.eventType ?? ''),
+            summary: String(m.summary ?? ''),
+            at: Number(m.at) || Date.now(),
+          }]
+          return next.length > DEBUG_EVENT_CAP ? next.slice(-DEBUG_EVENT_CAP) : next
+        })
       }
     }
     window.addEventListener('message', onMessage)
@@ -96,6 +117,7 @@ export function ForemanOrb({ vscode }: ForemanOrbProps) {
   const handleStart = () => {
     setError(null)
     setTranscript([])
+    setDebugEvents([])
     setConn('connecting')
     lastActivityAt.current = Date.now()
     vscode.postMessage({ type: 'foreman.startSession' })
@@ -173,6 +195,14 @@ export function ForemanOrb({ vscode }: ForemanOrbProps) {
         <div className="foreman-orb-error">{error}</div>
       )}
 
+      {conn !== 'idle' && debugEvents.length > 0 && (
+        <DebugLogPanel
+          events={debugEvents}
+          open={debugOpen}
+          onToggle={() => setDebugOpen((o) => !o)}
+        />
+      )}
+
       <button
         className={`foreman-orb foreman-orb-${visualState}`}
         onClick={handleOrbClick}
@@ -183,6 +213,70 @@ export function ForemanOrb({ vscode }: ForemanOrbProps) {
       </button>
     </div>
   )
+}
+
+function DebugLogPanel({ events, open, onToggle }: { events: DebugEvent[]; open: boolean; onToggle: () => void }) {
+  const recent = events.slice(-12)
+  const baseTime = events[0]?.at ?? Date.now()
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    const text = events
+      .map((ev) => `+${((ev.at - baseTime) / 1000).toFixed(1)}s  ${ev.eventType.padEnd(48)} ${ev.summary}`)
+      .join('\n')
+    navigator.clipboard?.writeText(text).catch(() => { /* noop */ })
+  }
+  return (
+    <div
+      style={{
+        pointerEvents: 'auto',
+        background: 'rgba(0,0,0,0.78)',
+        color: '#d4f7d4',
+        padding: '6px 8px',
+        borderRadius: 6,
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+        fontSize: 10,
+        lineHeight: 1.35,
+        maxWidth: 380,
+        boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+        border: '1px solid rgba(255,255,255,0.08)',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: open ? 4 : 0 }}>
+        <strong style={{ color: '#9be39b', fontSize: 9, letterSpacing: 0.6 }}>FOREMAN EVENTS ({events.length})</strong>
+        <span style={{ flex: 1 }} />
+        <button onClick={handleCopy} style={debugBtnStyle} title="Copy all events">copy</button>
+        <button onClick={onToggle} style={debugBtnStyle}>{open ? 'hide' : 'show'}</button>
+      </div>
+      {open && recent.map((ev) => (
+        <div key={ev.id} style={{ display: 'flex', gap: 6, opacity: ev.eventType.startsWith('error') || ev.eventType === 'ws.error' ? 1 : 0.92 }}>
+          <span style={{ color: '#5fa55f', minWidth: 38 }}>+{((ev.at - baseTime) / 1000).toFixed(1)}s</span>
+          <span style={{ color: eventColor(ev.eventType), minWidth: 0, whiteSpace: 'nowrap' }}>{ev.eventType}</span>
+          {ev.summary && <span style={{ color: '#a6c8a6', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.summary}</span>}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+const debugBtnStyle: React.CSSProperties = {
+  background: 'transparent',
+  color: '#9be39b',
+  border: '1px solid rgba(155,227,155,0.3)',
+  borderRadius: 3,
+  padding: '1px 6px',
+  cursor: 'pointer',
+  fontSize: 9,
+  fontFamily: 'inherit',
+}
+
+function eventColor(t: string): string {
+  if (t === 'error' || t.endsWith('.failed') || t === 'ws.error') return '#ff7878'
+  if (t === 'session.created' || t === 'session.updated' || t === 'ws.open') return '#9be39b'
+  if (t.includes('transcription')) return '#ffd479'
+  if (t.includes('audio_transcript')) return '#79d4ff'
+  if (t === 'response.done') return '#c79bff'
+  if (t.startsWith('mic.')) return '#888'
+  return '#cfe6cf'
 }
 
 function appendTranscript(
