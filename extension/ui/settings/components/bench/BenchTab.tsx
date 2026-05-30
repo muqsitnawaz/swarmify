@@ -51,6 +51,9 @@ interface BenchTabProps {
   onDismissTask: (taskId: string) => void
   onConnectLinear: () => void
   onConnectGitHub: () => void
+  /** When set, BenchTab selects that task and clears it via onOpenBenchTaskConsumed. */
+  openBenchTaskId?: string | null
+  onOpenBenchTaskConsumed?: () => void
 }
 
 const SOURCE_FILTERS: Array<{ key: TaskSource; label: string; cls: string }> = [
@@ -72,6 +75,8 @@ export function BenchTab(props: BenchTabProps) {
     onRefreshTasks,
     onSpawnAgentForTask,
     onDismissTask,
+    openBenchTaskId,
+    onOpenBenchTaskConsumed,
   } = props
 
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
@@ -177,6 +182,25 @@ export function BenchTab(props: BenchTabProps) {
     if (selectedTaskId && filteredTasks.some(t => t.id === selectedTaskId)) return
     setSelectedTaskId(filteredTasks[0].id)
   }, [filteredTasks, selectedTaskId])
+
+  // Honor floor-jump requests: when the floor sends a task id, select it
+  // (clearing any active source/repo filters that would hide it) and ack.
+  useEffect(() => {
+    if (!openBenchTaskId) return
+    const task = flatTasks.find(t => t.id === openBenchTaskId)
+    if (!task) {
+      onOpenBenchTaskConsumed?.()
+      return
+    }
+    if (!activeFilters.has(task.source)) {
+      setActiveFilters(prev => new Set(prev).add(task.source))
+    }
+    if (repoFilter !== 'all' && task.metadata.repo !== repoFilter) {
+      setRepoFilter('all')
+    }
+    setSelectedTaskId(openBenchTaskId)
+    onOpenBenchTaskConsumed?.()
+  }, [openBenchTaskId, flatTasks, activeFilters, repoFilter, onOpenBenchTaskConsumed])
 
   const handleDispatch = (task: FlatTask) => {
     const source = unifiedTasks.find(t => t.id === task.id)
