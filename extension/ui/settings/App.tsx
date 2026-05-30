@@ -94,6 +94,7 @@ export default function App() {
   const [showGuide, setShowGuide] = useState(false)
   const [openDispatchTrigger, setOpenDispatchTrigger] = useState(0)
   const [openDetailTaskId, setOpenDetailTaskId] = useState<string | null>(null)
+  const [openBenchTaskId, setOpenBenchTaskId] = useState<string | null>(null)
   const [floorThroughput, setFloorThroughput] = useState(0)
   const [tasks, setTasks] = useState<TaskSummary[]>([])
   const [tasksLoading, setTasksLoading] = useState(false)
@@ -531,6 +532,11 @@ export default function App() {
     setOpenDetailTaskId(task.id)
   }
 
+  const handleOpenInBench = (taskId: string) => {
+    setOpenBenchTaskId(taskId)
+    setActiveTab('bench')
+  }
+
   const handleOpenSession = (session: AgentSession) => {
     vscode.postMessage({ type: 'openSession', session })
   }
@@ -747,6 +753,7 @@ export default function App() {
           unifiedTasksLoading={unifiedTasksLoading}
           onDispatch={handleDispatchSwarm}
           onNavigate={setActiveTab}
+          onOpenInBench={handleOpenInBench}
           openDispatchTrigger={openDispatchTrigger}
           openDetailTaskId={openDetailTaskId}
           onDetailTaskConsumed={() => setOpenDetailTaskId(null)}
@@ -790,6 +797,8 @@ export default function App() {
           onDismissTask={handleDismissTask}
           onConnectLinear={handleConnectLinear}
           onConnectGitHub={handleConnectGitHub}
+          openBenchTaskId={openBenchTaskId}
+          onOpenBenchTaskConsumed={() => setOpenBenchTaskId(null)}
         />
       )}
 

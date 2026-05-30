@@ -29,135 +29,23 @@ import {
   TeamLite,
 } from './foreman.sources';
 import { readLiveTerminals, LiveTerminal } from './foreman.registry';
+import {
+  FOREMAN_MODEL,
+  FOREMAN_VOICE,
+  FOREMAN_SYSTEM_PROMPT,
+  FOREMAN_TOOLS,
+  ForemanTool,
+} from '../core/foreman.config';
 
-export const FOREMAN_MODEL = 'gpt-realtime';
-export const FOREMAN_VOICE = 'cedar';
-
-export const FOREMAN_SYSTEM_PROMPT = `You are Foreman, the voice coordinator of a factory of AI coding agents across
-local IDE sessions, background teams, and cloud dispatches.
-
-Persona: dry, brief. Clipped sentences. No filler. No adjectives without facts.
-Banned words: "grinding", "humming", "going well", "on track", "all good".
-If you have no specifics, say so: "nothing concrete yet".
-
-Tool usage and routing (pick the RIGHT tool, do not default to briefing):
-- briefing: live floor state - which agents are running, on what, for how long.
-  Use for "what's running", "who's working on what", "sitrep", "floor status".
-- focus(who): deep detail on ONE agent - current file, current tool, last bash.
-  Use when the user names a specific agent, project, label, or session prefix.
-- cycle: Linear sprint status - cycle name, days left, todo/in_progress/done counts,
-  top pending tickets (RUSH-xxx etc).
-  Use for "how many tasks left", "what's next up", "this cycle/sprint",
-  "which tickets", "RUSH-<number>", "Linear", "backlog", "priorities".
-- task_details(id): full title, description, priority, status, assignee, labels,
-  and resolved repo for ONE ticket.
-  Use when the user asks "what is RUSH-xxx", "tell me about RUSH-xxx",
-  "read me the description", "what does that ticket say".
-- dispatch(id, agent?, target?, repo?): send a ticket to a coding agent.
-  Defaults: agent="claude", target="cloud". Only pass repo if the user
-  explicitly names one (e.g. "dispatch RUSH-557 to agents-cli"); otherwise
-  leave it out and let the ticket's repo: label resolve it.
-  Use for "dispatch", "send to cloud", "run this", "kick off", "start work on".
-- create_ticket(title, description?, priority?, labels?, assign?): file a new
-  Linear ticket. Defaults: cycle=active, status=Todo, priority=medium.
-  Use for "create a ticket", "file a bug", "new ticket", "add to the sprint",
-  "log this as RUSH". Confirm the title back to the user before calling if
-  it was paraphrased; quote the exact title you'll file.
-Briefing has NO ticket data. Do not call briefing for cycle/ticket questions.
-Do not call focus speculatively; wait for a specific question.
-Confirm before dispatching if the user was vague (e.g. "the top one") -
-read back the ticket id and title, then dispatch on assent.
-
-Answering rules:
-- Lead with the SPECIFIC: the task (topic), the file, the tool, the elapsed time.
-- Good: "Claude is 12 minutes into auth refactor on agents repo, last edited jwt.ts."
-- Bad: "Claude's been grinding 12 minutes, humming along."
-- Prefer labels when present ("Philip Music"), fall back to kind ("claude, codex").
-- If an agent is open in the IDE vs. just a local session, call it out only if
-  relevant ("the one you have open" vs "the background Codex").
-- Cloud dispatches run remotely; say "on Rush Cloud" or "on Codex Cloud" when
-  referencing them so the user knows they're not on the laptop.
-- Teams are DAG-coordinated runs; say "team <name>, 2 running, 1 pending".
-- Never narrate the UI or offer to click things - that's the user's hands.
-
-Length: 1-2 sentences default. Expand only if asked.`.trim();
-
-export interface ForemanTool {
-  type: 'function';
-  name: string;
-  description: string;
-  parameters: { type: 'object'; properties: Record<string, unknown>; required?: string[] };
-}
-
-export const FOREMAN_TOOLS: ForemanTool[] = [
-  {
-    type: 'function',
-    name: 'briefing',
-    description: 'Fast digest of the factory floor: recent local sessions (Claude/Codex/Gemini/OpenCode/OpenClaw from the last 2h), cloud dispatches (Rush/Codex/Factory running remotely), and active team DAGs. Each session has kind, label, topic (task), project, elapsed time, and open_in_ide flag. Call first for any overview question.',
-    parameters: { type: 'object', properties: {}, required: [] },
-  },
-  {
-    type: 'function',
-    name: 'focus',
-    description: 'Deep detail on one agent. Reads the session event tail to return current file being edited, current tool, last bash command, recent files, recent tools, since_last_activity, git_branch, token_count. Use when the user asks about a specific agent/task/project.',
-    parameters: {
-      type: 'object',
-      properties: {
-        who: { type: 'string', description: 'Agent label ("Philip Music"), topic keyword, kind (claude/codex/gemini/opencode/openclaw), or 8-char session id prefix.' },
-      },
-      required: ['who'],
-    },
-  },
-  {
-    type: 'function',
-    name: 'cycle',
-    description: 'Linear sprint/cycle status: cycle name, days left, counts of todo/in_progress/done tickets, urgent/high counts, and the top 5 pending tickets (id, title, priority, status). Use for "how many tasks left this cycle", "what\'s next up", "which tickets", or any question about RUSH-xxx / Linear / sprint / backlog.',
-    parameters: { type: 'object', properties: {}, required: [] },
-  },
-  {
-    type: 'function',
-    name: 'task_details',
-    description: 'Full detail on ONE ticket: title, description, priority, status, assignee, labels, resolved repo. Use when the user asks "what is RUSH-xxx", "read me RUSH-xxx", "tell me about that ticket", or before dispatching to confirm the target.',
-    parameters: {
-      type: 'object',
-      properties: {
-        id: { type: 'string', description: 'Ticket identifier, e.g. "RUSH-557". Case-insensitive.' },
-      },
-      required: ['id'],
-    },
-  },
-  {
-    type: 'function',
-    name: 'dispatch',
-    description: 'Send a ticket to a coding agent. Defaults: agent="claude", target="cloud". Resolves target repo from the ticket\'s repo:<name> label unless the caller overrides with repo. Returns ok+message describing what was dispatched or why it could not be.',
-    parameters: {
-      type: 'object',
-      properties: {
-        id: { type: 'string', description: 'Ticket identifier, e.g. "RUSH-557".' },
-        agent: { type: 'string', description: 'claude | codex | gemini | cursor (default: claude).' },
-        target: { type: 'string', description: '"cloud" or "local" (default: cloud).' },
-        repo: { type: 'string', description: 'Optional repo override, e.g. "agents-cli". Only set when the user explicitly names a repo; otherwise let the ticket\'s repo: label resolve it.' },
-      },
-      required: ['id'],
-    },
-  },
-  {
-    type: 'function',
-    name: 'create_ticket',
-    description: 'File a new Linear ticket. Defaults: current (active) cycle, Todo status, medium priority. Returns ok+identifier+title on success, or ok=false with a speakable message on failure.',
-    parameters: {
-      type: 'object',
-      properties: {
-        title: { type: 'string', description: 'Ticket title. Required.' },
-        description: { type: 'string', description: 'Optional longer-form description / body.' },
-        priority: { type: 'string', description: 'urgent | high | medium | low | none (default: medium).' },
-        labels: { type: 'array', items: { type: 'string' }, description: 'Optional Linear labels, e.g. ["repo:agents-cli", "Bug"]. Each entry is one --label flag.' },
-        assign: { type: 'string', description: 'Optional assignee email, or "none" to leave unassigned. Default: API key owner.' },
-      },
-      required: ['title'],
-    },
-  },
-];
+// Re-export so existing importers (settings.vscode.ts) keep working without
+// caring that the canonical home is now core/foreman.config.
+export {
+  FOREMAN_MODEL,
+  FOREMAN_VOICE,
+  FOREMAN_SYSTEM_PROMPT,
+  FOREMAN_TOOLS,
+  ForemanTool,
+};
 
 // POST to OpenAI to mint a short-lived client token for the Realtime API.
 // The returned client_secret is scoped to a single session and expires in ~1 min;
