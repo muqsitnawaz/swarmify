@@ -13,10 +13,43 @@
 
 import { spawn, ChildProcess } from 'child_process';
 import WebSocket from 'ws';
-import { FOREMAN_MODEL, FOREMAN_VOICE, FOREMAN_SYSTEM_PROMPT, FOREMAN_TOOLS } from './foreman.vscode';
+import { FOREMAN_MODEL, FOREMAN_VOICE, FOREMAN_SYSTEM_PROMPT, FOREMAN_TOOLS } from '../core/foreman.config';
 
-const REALTIME_WS = `wss://api.openai.com/v1/realtime?model=${encodeURIComponent(FOREMAN_MODEL)}`;
-const SAMPLE_RATE = 24000;
+export const REALTIME_WS = `wss://api.openai.com/v1/realtime?model=${encodeURIComponent(FOREMAN_MODEL)}`;
+export const SAMPLE_RATE = 24000;
+
+// GA Realtime session.update payload. Exported so the e2e WS handshake test
+// can exercise the exact same shape production sends — schema drift caught
+// at test time, not at "tap the orb" time.
+export function buildForemanSessionUpdate() {
+  return {
+    type: 'session.update',
+    session: {
+      type: 'realtime',
+      model: FOREMAN_MODEL,
+      output_modalities: ['audio'],
+      instructions: FOREMAN_SYSTEM_PROMPT,
+      audio: {
+        input: {
+          format: { type: 'audio/pcm', rate: SAMPLE_RATE },
+          transcription: { model: 'whisper-1' },
+          turn_detection: {
+            type: 'server_vad',
+            threshold: 0.5,
+            prefix_padding_ms: 300,
+            silence_duration_ms: 500,
+          },
+        },
+        output: {
+          format: { type: 'audio/pcm', rate: SAMPLE_RATE },
+          voice: FOREMAN_VOICE,
+        },
+      },
+      tools: FOREMAN_TOOLS,
+      tool_choice: 'auto',
+    },
+  } as const;
+}
 
 export interface ForemanAudioEvents {
   onStatus?: (status: 'connecting' | 'connected' | 'closed' | 'error', detail?: string) => void;
@@ -35,10 +68,12 @@ export async function startForemanAudio(
 ): Promise<ForemanAudioSession> {
   events.onStatus?.('connecting');
 
+  // GA Realtime API (post-2026-05-07): no OpenAI-Beta header.
+  // The beta header would route to the removed beta interface and OpenAI
+  // returns "Realtime Beta API is no longer supported".
   const ws = new WebSocket(REALTIME_WS, {
     headers: {
       Authorization: `Bearer ${apiKey}`,
-      'OpenAI-Beta': 'realtime=v1',
     },
   });
 
@@ -123,21 +158,7 @@ export async function startForemanAudio(
     open = true;
     events.onStatus?.('connected');
 
-    ws.send(JSON.stringify({
-      type: 'session.update',
-      session: {
-        modalities: ['audio', 'text'],
-        voice: FOREMAN_VOICE,
-        instructions: FOREMAN_SYSTEM_PROMPT,
-        input_audio_format: 'pcm16',
-        output_audio_format: 'pcm16',
-        input_audio_transcription: { model: 'whisper-1' },
-        turn_detection: { type: 'server_vad', threshold: 0.5, prefix_padding_ms: 300, silence_duration_ms: 500 },
-        tools: FOREMAN_TOOLS,
-        tool_choice: 'auto',
-        temperature: 0.7,
-      },
-    }));
+    ws.send(JSON.stringify(buildForemanSessionUpdate()));
 
     // Start streaming mic bytes to OpenAI as base64 PCM16 chunks. Skip the
     // upload while the assistant is speaking so its own playback doesn't
@@ -192,7 +213,7 @@ let audioChunksLogged = 0;
 function route(msg: any, speaker: ChildProcess, events: ForemanAudioEvents, noteAssistantAudio: () => void) {
   const type: string = msg?.type ?? '';
 
-  if (type === 'response.audio.delta' && typeof msg.delta === 'string') {
+  if (type === 'response.output_audio.delta' && typeof msg.delta === 'string') {
     noteAssistantAudio();
     const pcm = Buffer.from(msg.delta, 'base64');
     audioBytesReceived += pcm.length;
@@ -209,7 +230,7 @@ function route(msg: any, speaker: ChildProcess, events: ForemanAudioEvents, note
     return;
   }
 
-  if (type === 'response.audio.done') {
+  if (type === 'response.output_audio.done') {
     noteAssistantAudio();
     console.log(`[foreman] audio response done. total bytes: ${audioBytesReceived}`);
     audioBytesReceived = 0;
@@ -222,11 +243,11 @@ function route(msg: any, speaker: ChildProcess, events: ForemanAudioEvents, note
     return;
   }
 
-  if (type === 'response.audio_transcript.delta') {
+  if (type === 'response.output_audio_transcript.delta') {
     events.onTranscript?.('assistant', msg.delta ?? '', false);
     return;
   }
-  if (type === 'response.audio_transcript.done') {
+  if (type === 'response.output_audio_transcript.done') {
     events.onTranscript?.('assistant', msg.transcript ?? '', true);
     return;
   }
