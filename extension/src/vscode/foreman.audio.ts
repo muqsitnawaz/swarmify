@@ -55,6 +55,12 @@ export interface ForemanAudioEvents {
   onStatus?: (status: 'connecting' | 'connected' | 'closed' | 'error', detail?: string) => void;
   onTranscript?: (role: 'user' | 'assistant', text: string, final: boolean) => void;
   onToolCall?: (callId: string, name: string, args: unknown) => void;
+  /**
+   * Debug callback fired on EVERY inbound WS event from OpenAI plus synthetic
+   * events for mic/speaker errors. Used to diagnose orb-listens-but-no-reply
+   * type bugs where the missing event is invisible to the user.
+   */
+  onEvent?: (type: string, summary: string) => void;
 }
 
 export interface ForemanAudioSession {
@@ -154,9 +160,21 @@ export async function startForemanAudio(
     }
   });
 
+  // Mic byte accounting so the debug overlay can show "still sending audio"
+  // vs "mic went silent" without bombing the log with every 24kHz chunk.
+  let micBytesSent = 0;
+  let lastMicEventAt = 0;
+  const reportMicProgress = () => {
+    const now = Date.now();
+    if (now - lastMicEventAt < 2000) return;
+    lastMicEventAt = now;
+    events.onEvent?.('mic.progress', `${(micBytesSent / 1024).toFixed(1)} KiB sent`);
+  };
+
   ws.on('open', () => {
     open = true;
     events.onStatus?.('connected');
+    events.onEvent?.('ws.open', REALTIME_WS);
 
     ws.send(JSON.stringify(buildForemanSessionUpdate()));
 
@@ -165,7 +183,12 @@ export async function startForemanAudio(
     // loop back through the mic.
     mic.stdout?.on('data', (buf: Buffer) => {
       if (ws.readyState !== WebSocket.OPEN) return;
-      if (micMuted()) return;
+      if (micMuted()) {
+        events.onEvent?.('mic.muted', 'gated by assistant tail');
+        return;
+      }
+      micBytesSent += buf.length;
+      reportMicProgress();
       ws.send(JSON.stringify({
         type: 'input_audio_buffer.append',
         audio: buf.toString('base64'),
@@ -179,14 +202,16 @@ export async function startForemanAudio(
     route(msg, speaker, events, noteAssistantAudio);
   });
 
-  ws.on('close', () => {
+  ws.on('close', (code, reason) => {
     open = false;
     events.onStatus?.('closed');
+    events.onEvent?.('ws.close', `code=${code} reason=${reason?.toString() || ''}`);
     cleanup();
   });
 
   ws.on('error', (err) => {
     if (!closed) events.onStatus?.('error', err.message);
+    events.onEvent?.('ws.error', err.message);
     cleanup();
   });
 
@@ -212,6 +237,7 @@ let audioChunksLogged = 0;
 
 function route(msg: any, speaker: ChildProcess, events: ForemanAudioEvents, noteAssistantAudio: () => void) {
   const type: string = msg?.type ?? '';
+  events.onEvent?.(type, summarizeEvent(type, msg));
 
   if (type === 'response.output_audio.delta' && typeof msg.delta === 'string') {
     noteAssistantAudio();
@@ -263,5 +289,38 @@ function route(msg: any, speaker: ChildProcess, events: ForemanAudioEvents, note
 
   if (type === 'error') {
     events.onStatus?.('error', msg.error?.message ?? 'realtime error');
+  }
+}
+
+// Compact one-line summary per event type for the debug overlay. Keep these
+// VERY short — they have to fit in a narrow panel and the user is scanning
+// for "did transcript event arrive? did response.done arrive?".
+function summarizeEvent(type: string, msg: any): string {
+  switch (type) {
+    case 'session.created': return `id=${(msg.session?.id ?? '').slice(0, 8)}`;
+    case 'session.updated': return 'ok';
+    case 'input_audio_buffer.speech_started': return '';
+    case 'input_audio_buffer.speech_stopped': return '';
+    case 'input_audio_buffer.committed': return `item=${(msg.item_id ?? '').slice(0, 8)}`;
+    case 'conversation.item.created': return `${msg.item?.role ?? msg.item?.type ?? ''}`;
+    case 'conversation.item.input_audio_transcription.completed':
+      return JSON.stringify(msg.transcript ?? '').slice(0, 80);
+    case 'conversation.item.input_audio_transcription.failed':
+      return `FAIL: ${msg.error?.message ?? '?'}`.slice(0, 100);
+    case 'response.created': return '';
+    case 'response.done':
+      return `status=${msg.response?.status ?? '?'}${msg.response?.status_details ? ` ${JSON.stringify(msg.response.status_details).slice(0, 60)}` : ''}`;
+    case 'response.output_item.added': return msg.item?.type ?? '';
+    case 'response.output_audio.delta': return `${msg.delta?.length ?? 0}c`;
+    case 'response.output_audio.done': return '';
+    case 'response.output_audio_transcript.delta':
+      return JSON.stringify(msg.delta ?? '').slice(0, 60);
+    case 'response.output_audio_transcript.done':
+      return JSON.stringify(msg.transcript ?? '').slice(0, 80);
+    case 'response.function_call_arguments.done':
+      return `${msg.name ?? '?'}(${(msg.arguments ?? '').slice(0, 50)})`;
+    case 'rate_limits.updated': return '';
+    case 'error': return JSON.stringify(msg.error?.message ?? msg.error ?? msg).slice(0, 120);
+    default: return '';
   }
 }

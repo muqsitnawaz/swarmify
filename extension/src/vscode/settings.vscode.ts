@@ -688,6 +688,9 @@ export function getSettings(context: vscode.ExtensionContext): AgentSettings {
     if (!stored.taskSources) {
       stored.taskSources = { ...DEFAULT_TASK_SOURCE_SETTINGS };
       context.globalState.update('agentSettings', stored);
+    } else if (stored.taskSources.githubAssignedOnly === undefined) {
+      stored.taskSources.githubAssignedOnly = DEFAULT_TASK_SOURCE_SETTINGS.githubAssignedOnly;
+      context.globalState.update('agentSettings', stored);
     }
     // Migrate: add custom agents if missing
     if (!stored.custom) {
@@ -1705,6 +1708,9 @@ export function openPanel(context: vscode.ExtensionContext): void {
             },
             onTranscript: (role, text, final) => {
               settingsPanel?.webview.postMessage({ type: 'foreman.transcript', role, text, final });
+            },
+            onEvent: (eventType, summary) => {
+              settingsPanel?.webview.postMessage({ type: 'foreman.event', eventType, summary, at: Date.now() });
             },
             onToolCall: async (callId, name, args) => {
               try {
