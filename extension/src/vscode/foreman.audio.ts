@@ -85,12 +85,24 @@ export async function startForemanAudio(
 
   // ffmpeg reads from the default macOS audio input (avfoundation ":0")
   // and emits raw PCM16 little-endian at 24kHz mono on stdout.
+  //
+  // `-sample_rate` and `-channels` are INPUT options (before -i) so we ask
+  // avfoundation to negotiate at 24kHz/mono natively. Without them, USB and
+  // headphone mics often negotiate at 16kHz and ffmpeg's output -ar resample
+  // can either silently produce wrong-rate audio or drop to passthrough —
+  // either way the server-side VAD never recognizes speech because what we
+  // told the API is 24kHz PCM is actually 16kHz. `-async 1` keeps the output
+  // PTS aligned so even on a slow first frame we don't ship garbage.
   const mic: ChildProcess = spawn(
     'ffmpeg',
     [
       '-hide_banner', '-loglevel', 'error',
-      '-f', 'avfoundation', '-i', ':0',
+      '-f', 'avfoundation',
+      '-sample_rate', String(SAMPLE_RATE),
+      '-channels', '1',
+      '-i', ':0',
       '-ac', '1', '-ar', String(SAMPLE_RATE),
+      '-async', '1',
       '-f', 's16le', 'pipe:1',
     ],
     { stdio: ['ignore', 'pipe', 'pipe'] }
@@ -162,13 +174,29 @@ export async function startForemanAudio(
 
   // Mic byte accounting so the debug overlay can show "still sending audio"
   // vs "mic went silent" without bombing the log with every 24kHz chunk.
+  // We also track the peak PCM16 amplitude in each 2-second window so the
+  // overlay reveals silent-mic bugs (peak=0.00 = "ffmpeg sending zeros").
   let micBytesSent = 0;
   let lastMicEventAt = 0;
+  let windowPeak = 0;
   const reportMicProgress = () => {
     const now = Date.now();
     if (now - lastMicEventAt < 2000) return;
     lastMicEventAt = now;
-    events.onEvent?.('mic.progress', `${(micBytesSent / 1024).toFixed(1)} KiB sent`);
+    events.onEvent?.(
+      'mic.progress',
+      `${(micBytesSent / 1024).toFixed(1)} KiB sent  peak=${windowPeak.toFixed(2)}`
+    );
+    windowPeak = 0;
+  };
+  const updatePeak = (buf: Buffer) => {
+    // PCM16 LE: read as signed 16-bit samples; peak amplitude normalized to [0, 1].
+    const len = buf.length & ~1;
+    for (let i = 0; i < len; i += 2) {
+      const sample = buf.readInt16LE(i);
+      const abs = sample < 0 ? -sample : sample;
+      if (abs > windowPeak * 32768) windowPeak = abs / 32768;
+    }
   };
 
   ws.on('open', () => {
@@ -188,6 +216,7 @@ export async function startForemanAudio(
         return;
       }
       micBytesSent += buf.length;
+      updatePeak(buf);
       reportMicProgress();
       ws.send(JSON.stringify({
         type: 'input_audio_buffer.append',
