@@ -102,11 +102,13 @@ export type TaskSource = 'linear' | 'github';
 export interface TaskSourceSettings {
   linear: boolean;    // default: false (auto-enable if Linear MCP detected)
   github: boolean;    // default: false (auto-enable if GitHub MCP detected)
+  githubAssignedOnly: boolean; // default: false (show all open issues, not just @me)
 }
 
 export const DEFAULT_TASK_SOURCE_SETTINGS: TaskSourceSettings = {
   linear: true,
-  github: true
+  github: true,
+  githubAssignedOnly: false
 };
 
 export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
