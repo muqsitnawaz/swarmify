@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.9.229] - 2026-05-30
+
+### Added
+- Bench task cards now surface staleness at a glance: a left-edge ribbon tints amber / orange / red as a task ages past one cycle (7d / 14d / 30d).
+- Overdue tasks show a red "Overdue Nd" chip beside the labels; upcoming tasks show "Due in Nd" or "Due Mon D".
+- Task age timestamp inherits the same tier color so the card reads consistently top-to-bottom.
+- Calendar timeline visualises the full work window — created day glows neon green, the cells from created → due fade up in green intensity toward the due date, the due cell gets a bright ring, and when overdue the burn-down from due → today fills with a deepening red ramping to a glowing red square on today.
+- Calendar legend gains a Due / Overdue swatch alongside Created / Cycle / Today.
+
+### Changed
+- `UnifiedTask.metadata` now forwards `dueDate` from Linear into the webview (data was already fetched, just not piped through).
+
 ## [0.5.2] - 2026-02-20
 
 ### Fixed
