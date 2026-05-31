@@ -4,9 +4,9 @@ import { spawn } from 'child_process';
 import { getSessionPathBySessionId } from './sessions.vscode';
 import { resolveAgentsBin, bootstrapPath } from '../core/agentsBin';
 
-export type RecapAgentType = 'claude' | 'codex' | 'gemini' | 'cursor';
+export type RecapAgentType = 'claude' | 'codex' | 'gemini' | 'cursor' | 'copilot';
 
-const SUPPORTED: ReadonlySet<RecapAgentType> = new Set(['claude', 'codex', 'gemini', 'cursor']);
+const SUPPORTED: ReadonlySet<RecapAgentType> = new Set(['claude', 'codex', 'gemini', 'cursor', 'copilot']);
 
 export function isRecapSupported(agentType: string | undefined): agentType is RecapAgentType {
   return !!agentType && SUPPORTED.has(agentType as RecapAgentType);
