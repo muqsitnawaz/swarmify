@@ -224,3 +224,23 @@ echo
 echo "Released $EXT_FQN@$VERSION"
 echo "  VS Code Marketplace: https://marketplace.visualstudio.com/items?itemName=$EXT_FQN"
 [ -n "$PUBLISHED_OVSX" ] && echo "  Open VSX:            https://open-vsx.org/extension/$PUBLISHER_ID/$EXT_NAME"
+
+# Install the just-published vsix into any local editor CLIs (code, codium,
+# cursor). Marketplace propagation can take minutes; we install from the local
+# artifact directly so the active IDE picks up the new version immediately.
+# Build is already done — re-using $VSIX.
+echo
+echo "Installing $VSIX locally..."
+INSTALLED=0
+for CLI in cursor code codium; do
+    if command -v "$CLI" >/dev/null 2>&1; then
+        echo "  -> $CLI"
+        "$CLI" --install-extension "$VSIX" --force
+        INSTALLED=$((INSTALLED + 1))
+    fi
+done
+if [ "$INSTALLED" -eq 0 ]; then
+    echo "Warning: no editor CLI found (tried cursor, code, codium). Skipping local install." >&2
+else
+    echo "Installed to $INSTALLED editor(s). Reload the Factory webview to pick up the new version."
+fi
