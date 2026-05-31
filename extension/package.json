@@ -1,9 +1,9 @@
 {
   "name": "swarm-ext",
-  "displayName": "Agents",
+  "displayName": "Swarmify — Multi-Agent IDE",
   "publisher": "swarmify",
   "description": "Run Claude, Codex, Gemini, Cursor, and other coding agents from one IDE workspace.",
-  "version": "0.9.230",
+  "version": "0.9.231",
   "license": "MIT",
   "author": "Muqsit Nawaz <dev@muqsitnawaz.com>",
   "icon": "assets/agents.png",
@@ -21,7 +21,27 @@
     "vscode": "^1.85.0"
   },
   "categories": [
-    "Other"
+    "AI",
+    "Machine Learning",
+    "Programming Languages"
+  ],
+  "keywords": [
+    "ai",
+    "agent",
+    "claude",
+    "codex",
+    "gemini",
+    "cursor",
+    "copilot",
+    "swarm",
+    "orchestration",
+    "mcp",
+    "multi-agent",
+    "coding-agent",
+    "ai-coding",
+    "llm",
+    "iae",
+    "agents-cli"
   ],
   "activationEvents": [
     "onStartupFinished",
