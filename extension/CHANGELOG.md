@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.9.229] - 2026-05-31
+## [0.9.230] - 2026-05-31
 
 ### Added
 - Bench task cards now surface staleness at a glance: a left-edge ribbon tints amber / orange / red as a task ages past one cycle (7d / 14d / 30d).
