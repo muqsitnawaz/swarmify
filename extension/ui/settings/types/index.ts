@@ -94,6 +94,7 @@ export type TaskSource = 'linear' | 'github'
 export interface TaskSourceSettings {
   linear: boolean
   github: boolean
+  githubAssignedOnly: boolean
 }
 
 export interface UnifiedTask {
@@ -112,6 +113,7 @@ export interface UnifiedTask {
     assignee?: string
     state?: string
     createdAt?: string
+    dueDate?: string
     comments?: TaskComment[]
   }
 }

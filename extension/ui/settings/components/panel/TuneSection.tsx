@@ -134,6 +134,16 @@ export function SourcesSection({
           </button>
         )}
       </div>
+
+      {availableSources.github && settings.taskSources?.github && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0 6px 34px' }}>
+          <span style={{ flex: 1, fontSize: '11px', opacity: 0.75 }}>Only show issues assigned to me</span>
+          <Rocker
+            on={settings.taskSources?.githubAssignedOnly ?? false}
+            onChange={(v) => onUpdateTaskSources({ githubAssignedOnly: v })}
+          />
+        </div>
+      )}
     </div>
   )
 }

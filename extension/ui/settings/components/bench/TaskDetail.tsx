@@ -126,6 +126,7 @@ export function TaskDetail({ task, cycleInfo, onDispatch, onDismiss, onOpenExter
             <div style={{ flex: 1, minWidth: 0 }}>
               <TaskCalendar
                 createdAt={task.metadata.createdAt}
+                dueDate={task.metadata.dueDate}
                 cycleInfo={task.source === 'linear' ? cycleInfo : null}
               />
             </div>
