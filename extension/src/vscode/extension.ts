@@ -62,6 +62,7 @@ import {
   SessionAgentType
 } from '../core/utils';
 import { generateLabelWithLLM } from '../core/labelgen';
+import { readClaudeSessionName } from '../core/sessionName';
 import { resolveTerminalCwd, tryReleaseWorktreeForTerminal } from '../core/worktree';
 import * as path from 'path';
 import {
@@ -3001,13 +3002,27 @@ async function fetchAndSetAutoLabel(
     if (!previewInfo) return undefined;
     if (!previewInfo.firstUserMessage) return undefined;
 
+    const ticket = extractLinearTicketId(previewInfo.firstUserMessage);
+
+    // Prefer Claude's own persisted session name (the title shown by /status)
+    // — it's already a clean human summary and avoids a redundant LLM call.
+    // Codex/Gemini/Opencode don't persist this yet, so they fall through to
+    // the LLM path.
+    if (entry.agentType === 'claude') {
+      const persistedName = await readClaudeSessionName(entry.sessionId);
+      if (persistedName) {
+        const claudeLabel = ticket ? `${ticket} ${persistedName}` : persistedName;
+        terminals.setAutoLabel(terminal, claudeLabel);
+        return claudeLabel;
+      }
+    }
+
     const sourceText = opts.useFullConversation && previewInfo.lastUserMessage
       ? `Initial task:\n${previewInfo.firstUserMessage}\n\nLatest activity:\n${previewInfo.lastUserMessage}`
       : previewInfo.firstUserMessage;
 
     const llmTitle = await generateLabelWithLLM(sourceText);
     const fallback = extractFirstNWords(previewInfo.firstUserMessage, 5);
-    const ticket = extractLinearTicketId(previewInfo.firstUserMessage);
     const base = llmTitle ?? fallback;
     const autoLabel = ticket && base ? `${ticket} ${base}` : (ticket ?? base);
 
