@@ -569,20 +569,62 @@
   color: var(--ds-text);
 }
 
+/* Calendar timeline — variant D.
+ * Created = solid neon green, work window ramps up green toward due,
+ * due cell has a bright green ring (red ring when overdue),
+ * overdue burn-down ramps red from due → today, today cell glows red.
+ * Specificity note: in-span / in-overdue rules come after in-cycle so
+ * the gradient wins over the cycle band when both apply. */
+
+/* In-span / in-overdue tints. Use a CSS custom property --t (0..1) set inline. */
+.sw-calendar-day.in-span {
+  background: rgba(163,230,53, calc(0.06 + 0.22 * var(--t, 0.5)));
+  color: var(--ds-text);
+}
+.sw-calendar-day.in-span.other-month {
+  background: rgba(163,230,53, calc(0.04 + 0.10 * var(--t, 0.5)));
+}
+.sw-calendar-day.in-overdue {
+  background: rgba(239,68,68, calc(0.12 + 0.42 * var(--t, 0.5)));
+  color: #fff;
+}
+.sw-calendar-day.in-overdue.other-month {
+  background: rgba(239,68,68, calc(0.06 + 0.20 * var(--t, 0.5)));
+}
+
+/* Created endpoint — solid neon green, dark text, glow. */
 .sw-calendar-day.created {
-  background: var(--brand-100);
-  color: var(--brand-700);
+  background: var(--brand);
+  color: #0a0a0a;
+  font-weight: 800;
+  box-shadow: 0 0 8px rgba(163,230,53,0.45);
+}
+
+/* Due endpoint (upcoming). Light green fill, bright green ring. */
+.sw-calendar-day.due {
+  background: rgba(163,230,53, 0.12);
+  color: var(--brand);
   font-weight: 700;
-  box-shadow: 0 0 0 1px var(--brand);
+  box-shadow: 0 0 0 2px var(--brand), 0 0 10px rgba(163,230,53,0.45);
+}
+
+/* Due endpoint (overdue) — flip the ring to red. */
+.sw-calendar-day.due.overdue {
+  background: rgba(239,68,68, 0.18);
+  color: var(--stale-rotten);
+  box-shadow: 0 0 0 2px var(--stale-rotten), 0 0 10px var(--stale-rotten-glow);
+}
+
+/* Today + overdue — saturated red square with glow. Wins over in-overdue tint. */
+.sw-calendar-day.today.overdue {
+  background: rgba(239,68,68, 0.55);
+  color: #fff;
+  outline-color: var(--stale-rotten);
+  box-shadow: 0 0 0 1.5px var(--stale-rotten), 0 0 12px var(--stale-rotten-glow);
 }
 
 .theme-dark .sw-calendar-day.in-cycle {
-  background: rgba(34,197,94,0.08);
-}
-
-.theme-dark .sw-calendar-day.created {
-  background: rgba(242,109,91,0.15);
-  color: var(--brand);
+  background: rgba(34,197,94,0.06);
 }
 
 .sw-calendar-legend {
@@ -625,4 +667,82 @@
   height: 8px;
   border-radius: 2px;
   outline: 1.5px solid var(--ds-text-dim);
+}
+
+.sw-calendar-legend-item.due::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: rgba(163,230,53, 0.12);
+  box-shadow: 0 0 0 1.5px var(--brand);
+}
+.sw-calendar-legend-item.due.overdue {
+  color: var(--stale-rotten, #EF4444);
+  font-weight: 700;
+}
+.sw-calendar-legend-item.due.overdue::before {
+  background: rgba(239,68,68, 0.18);
+  box-shadow: 0 0 0 1.5px var(--stale-rotten, #EF4444), 0 0 4px var(--stale-rotten-glow, rgba(239,68,68,0.35));
+}
+
+/* Staleness — surfaces task age + due-date delay on cards.
+ * Tiers: fresh <7d · aging 7-14d · stale 14-30d · rotten 30d+ (cycle = 14d). */
+:root {
+  --stale-aging: #C9A24A;
+  --stale-stale: #E08749;
+  --stale-rotten: #EF4444;
+  --stale-rotten-glow: rgba(239,68,68,0.35);
+}
+
+.sw-task-card.ribbon-aging  { border-left: 3px solid var(--stale-aging); }
+.sw-task-card.ribbon-stale  { border-left: 3px solid var(--stale-stale); }
+.sw-task-card.ribbon-rotten {
+  border-left: 3px solid var(--stale-rotten);
+  box-shadow: var(--shadow-emboss), inset 3px 0 12px -3px var(--stale-rotten-glow);
+}
+
+.sw-task-age.tier-aging  { color: var(--stale-aging); }
+.sw-task-age.tier-stale  { color: var(--stale-stale); font-weight: 600; }
+.sw-task-age.tier-rotten {
+  color: var(--stale-rotten);
+  font-weight: 700;
+  text-shadow: 0 0 6px var(--stale-rotten-glow);
+}
+
+.sw-due-chip {
+  font-family: "Geist Mono", monospace;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--ds-border);
+  background: var(--ds-bg-recessed);
+  color: var(--ds-text-dim);
+  box-shadow: var(--shadow-inset);
+  letter-spacing: 0.02em;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.sw-due-chip::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ds-text-faint);
+}
+.sw-due-chip.soon {
+  color: var(--stale-aging);
+  border-color: rgba(201,162,74,0.4);
+}
+.sw-due-chip.soon::before { background: var(--stale-aging); }
+.sw-due-chip.late {
+  color: var(--stale-rotten);
+  border-color: rgba(239,68,68,0.45);
+  background: rgba(239,68,68,0.08);
+}
+.sw-due-chip.late::before {
+  background: var(--stale-rotten);
+  box-shadow: 0 0 4px var(--stale-rotten-glow);
 }
