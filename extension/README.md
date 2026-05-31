@@ -1,12 +1,8 @@
 # Agents
 
-Meet the future of IDEs: the Integrated Agents Environment.
+Orchestrate Claude, Codex, Gemini, and Cursor in parallel — from one IDE. Open source. Free.
 
 Turn your editor into a command center for orchestrating Claude, Codex, Gemini, and Cursor in parallel. Each agent runs as a full-screen editor tab. Each agent can spawn sub-agents. You orchestrate — approving plans, monitoring execution, shipping faster.
-
-Homepage: https://swarmify.co/#agents-ext
-Marketplace: https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext
-MCP Server: [@swarmify/agents-mcp](https://www.npmjs.com/package/@swarmify/agents-mcp) - enables sub-agent spawning
 
 ## Why an IAE?
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.231] - 2026-05-31
+
+### Changed
+- Marketplace listing: cleaned up redundant link clutter at the top of the description.
+- Marketplace metadata: categories are now `AI` / `Machine Learning` / `Programming Languages` (was `Other`), with explicit keywords for discoverability.
+- Display name is now `Swarmify — Multi-Agent IDE` so the brand and the keyword both rank.
+
 ## [0.9.230] - 2026-05-31
 
 ### Added
