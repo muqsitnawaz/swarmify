@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.9.229] - 2026-05-30
+## [0.9.229] - 2026-05-31
 
 ### Added
 - Bench task cards now surface staleness at a glance: a left-edge ribbon tints amber / orange / red as a task ages past one cycle (7d / 14d / 30d).
@@ -8,6 +8,7 @@
 - Task age timestamp inherits the same tier color so the card reads consistently top-to-bottom.
 - Calendar timeline visualises the full work window — created day glows neon green, the cells from created → due fade up in green intensity toward the due date, the due cell gets a bright ring, and when overdue the burn-down from due → today fills with a deepening red ramping to a glowing red square on today.
 - Calendar legend gains a Due / Overdue swatch alongside Created / Cycle / Today.
+- GitHub Copilot CLI is now a first-class agent: the foreman registry recognises the `CP` terminal-ID prefix and the names `copilot` / `cp`, recap reads `prompts/copilot/commands/recap.md`, sessions resolve from `~/.copilot/session-state/<id>/events.jsonl`, and the settings filter accepts `copilot` configurations.
 
 ### Changed
 - `UnifiedTask.metadata` now forwards `dueDate` from Linear into the webview (data was already fetched, just not piped through).
