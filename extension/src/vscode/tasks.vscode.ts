@@ -53,7 +53,7 @@ export async function fetchAllTasks(
 
   if (enabledSources.github && githubOk) {
     fetchPromises.push(
-      fetchGitHubTasks(context).then(ghTasks => {
+      fetchGitHubTasks(context, { assignedOnly: enabledSources.githubAssignedOnly }).then(ghTasks => {
         tasks.push(...ghTasks);
       }).catch(err => {
         console.error('[TASKS] Error fetching GitHub tasks:', err);

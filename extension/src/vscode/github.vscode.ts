@@ -29,7 +29,14 @@ async function detectRepo(): Promise<string | null> {
   }
 }
 
-export async function fetchGitHubTasks(context: vscode.ExtensionContext): Promise<UnifiedTask[]> {
+export interface FetchGitHubTasksOptions {
+  assignedOnly?: boolean; // when true, restrict to issues assigned to the current user
+}
+
+export async function fetchGitHubTasks(
+  context: vscode.ExtensionContext,
+  options: FetchGitHubTasksOptions = {}
+): Promise<UnifiedTask[]> {
   if (!(await isGitHubAvailable(context))) return [];
 
   const repo = await detectRepo();
@@ -39,11 +46,13 @@ export async function fetchGitHubTasks(context: vscode.ExtensionContext): Promis
     const args = [
       'issue', 'list',
       '--repo', repo,
-      '--assignee', '@me',
       '--state', 'open',
       '--limit', '50',
       '--json', 'number,title,state,labels,assignees,url,body,createdAt',
     ];
+    if (options.assignedOnly) {
+      args.push('--assignee', '@me');
+    }
 
     const { stdout } = await execFileAsync('gh', args, { timeout: 15000 });
     const issues: any[] = JSON.parse(stdout);
