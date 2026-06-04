@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { RefreshCw, Cpu, Radio, Waypoints, KeyRound, ShieldAlert, FileEdit } from 'lucide-react'
+import { RefreshCw, Waypoints, KeyRound, ShieldAlert, FileEdit } from 'lucide-react'
 import { Input } from '../ui/input'
 import { postMessage } from '../../hooks'
 import { AgentDial } from './AgentDial'
@@ -47,7 +47,6 @@ export interface PanelTabProps {
   icons: IconConfig
   isLightTheme: boolean
   swarmInstalling: boolean
-  commandPackInstalling: boolean
   isAddingAlias: boolean
   newAliasName: string
   newAliasAgent: string
@@ -55,7 +54,6 @@ export interface PanelTabProps {
   aliasError: string
   onSaveSettings: (settings: AgentSettings) => void
   onInstallSwarmAgent: (agent: SwarmAgentType) => void
-  onInstallCommandPack: () => void
   onSetDefaultAgent: (agentTitle: string) => void
   onSetSecondaryAgent: (agentTitle: string) => void
   onAddAliasClick: () => void
@@ -114,7 +112,6 @@ export function PanelTab({
   icons,
   isLightTheme,
   swarmInstalling,
-  commandPackInstalling,
   isAddingAlias,
   newAliasName,
   newAliasAgent,
@@ -122,7 +119,6 @@ export function PanelTab({
   aliasError,
   onSaveSettings,
   onInstallSwarmAgent,
-  onInstallCommandPack,
   onSetDefaultAgent,
   onSetSecondaryAgent,
   onAddAliasClick,
@@ -284,20 +280,6 @@ export function PanelTab({
       value: swarmStatus.agentsCliAvailable ? (swarmStatus.agentsCliVersion ?? 'online') : 'offline',
       level: statusLevel(Boolean(swarmStatus.agentsCliAvailable)),
       gauge: swarmStatus.agentsCliAvailable ? 100 : 10,
-    },
-    {
-      key: 'mcp',
-      label: 'Swarm MCP',
-      value: swarmStatus.mcpEnabled ? 'linked' : 'offline',
-      level: statusLevel(Boolean(swarmStatus.mcpEnabled)),
-      gauge: swarmStatus.mcpEnabled ? 100 : 10,
-    },
-    {
-      key: 'command-pack',
-      label: 'Command Pack',
-      value: swarmStatus.commandInstalled ? `${skillCommands.length + 1} cmds` : 'missing',
-      level: swarmStatus.commandInstalled ? 'running' : 'pending',
-      gauge: swarmStatus.commandInstalled ? 100 : 48,
     },
   ]
 
@@ -632,59 +614,6 @@ export function PanelTab({
       </div>
 
       <div className="sw-panel-grid sw-panel-grid-bottom">
-        <section className="sw-panel-section">
-          <div className="sw-panel-section-head">Command Pack</div>
-          <div className="sw-panel-command-pack">
-            <div className="sw-panel-command-card">
-              <div className="sw-panel-command-line">
-                <Cpu size={14} />
-                <span>Swarm + skills installed in agent CLIs</span>
-              </div>
-              <div className="sw-panel-command-metrics">
-                <div className="sw-readout glow">{skillCommands.length + 1} command paths</div>
-                <div className="sw-readout">{swarmStatus.commandInstalled ? 'active' : 'setup required'}</div>
-              </div>
-              <button
-                type="button"
-                className="sw-btn primary"
-                onClick={onInstallCommandPack}
-                disabled={commandPackInstalling}
-              >
-                {commandPackInstalling ? <RefreshCw size={12} className="animate-spin" /> : <Radio size={12} />}
-                {swarmStatus.commandInstalled ? 'Reinstall Pack' : 'Install Pack'}
-              </button>
-            </div>
-            <div className="sw-panel-skill-grid">
-              {skillCommands.map(skill => (
-                <div key={skill.name} className="sw-panel-skill-cell">
-                  <span className="sw-section-label">{skill.name}</span>
-                  <div className="sw-panel-skill-agents">
-                    {(['claude', 'codex', 'gemini', 'cursor'] as PromptPackAgentType[]).map(agent => (
-                      <span
-                        key={agent}
-                        className={`sw-dot ${
-                          skill.agents[agent]?.installed
-                            ? 'running'
-                            : skill.agents[agent]?.supported
-                              ? 'pending'
-                              : 'idle'
-                        }`}
-                        title={`${agent}: ${
-                          skill.agents[agent]?.installed
-                            ? 'installed'
-                            : skill.agents[agent]?.supported
-                              ? 'available'
-                              : 'unsupported'
-                        }`}
-                      />
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
         <section className="sw-panel-section sw-panel-section-factory">
           <FactorySection />
         </section>
