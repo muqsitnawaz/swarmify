@@ -454,25 +454,18 @@ export default function Home() {
         <section id="install" className="border-y border-[var(--border)] bg-[var(--surface)] -mx-6 px-6 py-20 text-center">
           <p className="mb-4 font-mono text-xs uppercase tracking-widest text-[var(--accent)]">Get Started</p>
           <h2 className="mb-4 text-3xl font-bold sm:text-4xl" style={{ letterSpacing: "-0.02em" }}>
-            Two steps. Five minutes.
+            One step. Two minutes.
           </h2>
           <p className="mx-auto mb-10 text-base text-[var(--muted)]" style={{ maxWidth: "56ch" }}>
-            Install the extension, add the MCP server. Run your first swarm.
+            Install the extension. Run your first swarm.
           </p>
 
-          <div className="mx-auto grid max-w-3xl gap-6 text-left sm:grid-cols-2">
+          <div className="mx-auto max-w-md text-left">
             <div className="rounded-lg border border-[var(--border)] bg-[var(--background)] p-5">
-              <p className="mb-3 font-mono text-xs uppercase tracking-wide text-[var(--faint)]">1. Extension</p>
+              <p className="mb-3 font-mono text-xs uppercase tracking-wide text-[var(--faint)]">Extension</p>
               <p className="font-mono text-xs leading-relaxed">
                 Install <span className="text-[var(--accent)]">Agents</span> from the<br />
                 VS Code / Cursor Marketplace
-              </p>
-            </div>
-            <div className="rounded-lg border border-[var(--border)] bg-[var(--background)] p-5">
-              <p className="mb-3 font-mono text-xs uppercase tracking-wide text-[var(--faint)]">2. MCP Server</p>
-              <p className="font-mono text-xs leading-relaxed">
-                <span className="text-[var(--accent)]">$</span> claude mcp add Swarm -- \<br />
-                {"  "}npx -y @swarmify/agents-mcp
               </p>
             </div>
           </div>
