@@ -26,6 +26,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import { execFile } from 'child_process';
 import * as terminals from './terminals.vscode';
 import { listTeamsForCwd, TeamWithMates } from './foreman.sources';
 import { getSessionPathBySessionId, getSessionPreviewInfo, SessionPreviewInfo, readTailLines } from './sessions.vscode';
@@ -33,6 +34,13 @@ import { extractLinearTicketId } from '../core/utils';
 import { readPrompts } from './settings.vscode';
 import { BUILT_IN_AGENTS } from '../core/agents';
 import { parseLineForActivity, formatActivity } from '../core/session.activity';
+import { getSessionToolStatsViaAgentsCli } from '../core/handoff';
+import {
+  extractPrUrls as extractPrUrlsHelper,
+  parseWorktreeListPorcelain,
+  type PullRequestRef as SharedPullRequestRef,
+  type WorktreeRef as SharedWorktreeRef,
+} from '../core/panel.helpers';
 
 export const AGENT_PANEL_VIEW_ID = 'agentsPanel.terminal';
 
@@ -66,12 +74,23 @@ interface GitInfo {
   dirtyCount?: number;
 }
 
+// Re-export shared types so the rest of this file doesn't need to switch on
+// `SharedFoo` everywhere. Keeps the snapshot interface readable.
+type PullRequestRef = SharedPullRequestRef;
+type WorktreeRef = SharedWorktreeRef;
+
+interface RecentFile {
+  path: string;            // absolute file path
+  mtimeMs?: number;        // filesystem mtime, when readable
+}
+
 interface PanelSnapshot {
   hasTerminal: boolean;
   // Terminal facts
   terminalId?: string;       // internal id for action commands
   agentName?: string;        // "Claude"
   agentPrefix?: string;      // "CC"
+  agentType?: string;        // "claude" | "codex" | ... — used for usage lookup
   agentIconUri?: string;     // webview URI to PNG logo
   sessionChunk?: string;     // first 8 of session UUID
   fullSessionId?: string;
@@ -89,9 +108,15 @@ interface PanelSnapshot {
   // Conversation
   conversation?: ConversationSummary;
   recentActivity?: ActivityItem[];
-  // Linked artifacts
+  // Linked artifacts — multi-PR (the agent may have opened several in one session)
   linearIssue?: string;
-  prUrl?: string;
+  pullRequests?: PullRequestRef[];
+  // Recent file edits — surfaces what the agent has been touching
+  recentFiles?: RecentFile[];
+  // All worktrees attached to the workspace, including the main checkout
+  worktrees?: WorktreeRef[];
+  // Account usage state — surfaces "out of credits" / "rate limited"
+  usageStatus?: 'available' | 'rate_limited' | 'out_of_credits' | null;
   // Plan files
   plan?: PlanFileInfo;
   // Teams
@@ -333,6 +358,7 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
       terminalId: entry.id,
       agentName: entry.agentConfig.title,
       agentPrefix: entry.agentConfig.prefix,
+      agentType: entry.agentType,
       agentIconUri: this.iconUriFor(entry.agentConfig.prefix),
       sessionChunk,
       fullSessionId: sessionId,
@@ -369,18 +395,56 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
 
           const tailLines = await readTailLines(filePath, 80);
           snapshot.recentActivity = collectRecentActivity(tailLines, entry.agentType, 5);
-          const pr = extractPrUrl(tailLines.concat(
+          // Scan the full transcript-by-tail PLUS first/last user messages so a
+          // PR mentioned in a wrap-up message isn't dropped. extractPrUrls
+          // returns every match deduped, not just the first.
+          snapshot.pullRequests = extractPrUrls(tailLines.concat(
             preview.firstUserMessage ?? '',
             preview.lastUserMessage ?? '',
           ));
-          if (pr) snapshot.prUrl = pr;
         }
       } catch {
         // Session preview is best-effort; never block the panel on it.
       }
     }
 
+    // Recent file edits — surfaces what the agent actually touched, beyond
+    // the "5 changed" chip. Best-effort: handoff helper shells out to
+    // `agents sessions <id> --json --include tools`. Never block on this.
+    if (sessionId && cwd) {
+      try {
+        const stats = await getSessionToolStatsViaAgentsCli(sessionId, cwd);
+        // recentFiles from the helper is chronological; the last entry is the
+        // newest edit. Reverse so the panel shows newest-first, then enrich
+        // with mtime where the file still exists.
+        const files = stats.recentFiles.slice().reverse().slice(0, 10);
+        snapshot.recentFiles = files.map((p) => {
+          let mtimeMs: number | undefined;
+          try { mtimeMs = fs.statSync(p).mtimeMs; } catch { /* file gone or unreadable */ }
+          return { path: p, mtimeMs };
+        });
+      } catch { /* best-effort */ }
+    }
+
     snapshot.git = cwd ? await readGitInfo(cwd) : undefined;
+
+    // Worktrees attached to this workspace — `git worktree list --porcelain`
+    // emits the main checkout + every additional worktree. Lets the user see
+    // sibling agents working on parallel branches.
+    if (workspaceRoot) {
+      try {
+        snapshot.worktrees = await listWorktrees(workspaceRoot, cwd);
+      } catch { /* best-effort */ }
+    }
+
+    // Usage status (rate-limited / out of credits) for the bound agent
+    // version. The signal is the same one `agents view --json` exposes per
+    // version. Cached by the agents-cli for ~2 min so the shellout is cheap.
+    if (entry.agentType) {
+      try {
+        snapshot.usageStatus = await readUsageStatus(entry.agentType, entry.statusVersion || entry.version);
+      } catch { /* best-effort */ }
+    }
 
     try {
       snapshot.teams = await listTeamsForCwd(cwd);
@@ -686,6 +750,94 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
     text-transform: uppercase;
     letter-spacing: 0.05em;
   }
+  .usage-badge {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  .usage-badge.usage-out {
+    background: var(--vscode-inputValidation-errorBackground, rgba(228, 86, 86, 0.18));
+    color: var(--vscode-inputValidation-errorForeground, #e45656);
+    border: 1px solid var(--vscode-inputValidation-errorBorder, transparent);
+  }
+  .usage-badge.usage-rate {
+    background: var(--vscode-inputValidation-warningBackground, rgba(212, 153, 0, 0.18));
+    color: var(--vscode-inputValidation-warningForeground, #d49900);
+    border: 1px solid var(--vscode-inputValidation-warningBorder, transparent);
+  }
+  .recent-file {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 2px 0;
+    font-size: 11.5px;
+  }
+  .recent-file .path-link {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--vscode-editor-font-family, monospace);
+    color: var(--vscode-textLink-foreground);
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .recent-file .path-link:hover { text-decoration: underline; }
+  .recent-file-time {
+    color: var(--vscode-descriptionForeground);
+    font-size: 10.5px;
+    flex-shrink: 0;
+  }
+  .worktree {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 0;
+    font-size: 11.5px;
+  }
+  .wt-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--vscode-descriptionForeground);
+    opacity: 0.5;
+    flex-shrink: 0;
+  }
+  .wt-dot.active {
+    background: var(--vscode-charts-green, #6bc167);
+    opacity: 1;
+  }
+  .wt-name {
+    color: var(--vscode-textLink-foreground);
+    cursor: pointer;
+    text-decoration: none;
+    font-family: var(--vscode-editor-font-family, monospace);
+  }
+  .wt-name:hover { text-decoration: underline; }
+  .wt-name.active { font-weight: 600; }
+  .wt-tag {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--vscode-descriptionForeground);
+    background: var(--vscode-badge-background, transparent);
+    padding: 0 5px;
+    border-radius: 6px;
+  }
+  .wt-branch {
+    color: var(--vscode-descriptionForeground);
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 10.5px;
+    margin-left: auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .team {
     margin-top: 6px;
     border: 1px solid var(--vscode-widget-border, transparent);
@@ -800,7 +952,15 @@ function renderTerminalCard(s) {
   } else if (s.autoLabel) {
     label = '<div class="label-row label-auto">' + esc(s.autoLabel) + '</div>';
   }
-  const account = s.account ? '<div class="account-row">' + esc(s.account) + '</div>' : '';
+  let usageBadge = '';
+  if (s.usageStatus === 'out_of_credits') {
+    usageBadge = '<span class="usage-badge usage-out">⚠ out of credits</span>';
+  } else if (s.usageStatus === 'rate_limited') {
+    usageBadge = '<span class="usage-badge usage-rate">⚠ rate-limited</span>';
+  }
+  const account = (s.account || usageBadge)
+    ? '<div class="account-row">' + (s.account ? esc(s.account) : '') + usageBadge + '</div>'
+    : '';
   const worktree = s.worktreeName
     ? '<div class="worktree-row">' + esc((s.worktreePath ? 'worktree ' : 'cwd ') + s.worktreeName) + '</div>'
     : '';
@@ -841,25 +1001,36 @@ function renderActionsCard(s) {
 }
 
 function renderLinksCard(s) {
-  if (!s.linearIssue && !s.prUrl) return '';
-  const rows = [];
-  if (s.linearIssue) {
-    const url = 'https://linear.app/issue/' + encodeURIComponent(s.linearIssue);
-    rows.push(
-      '<div class="link-row"><span class="link-tag">linear</span>' +
-      '<a data-url="' + esc(url) + '">' + esc(s.linearIssue) + '</a></div>'
-    );
+  // Linear ticket gets its own compact row above the multi-PR card so the
+  // "Pull Requests" header can stay focused on PRs (which can be many).
+  const prs = (s.pullRequests || []);
+  if (!s.linearIssue && prs.length === 0) return '';
+
+  const linearRow = s.linearIssue
+    ? '<div class="link-row"><span class="link-tag">linear</span>' +
+        '<a data-url="' + esc('https://linear.app/issue/' + encodeURIComponent(s.linearIssue)) + '">' +
+          esc(s.linearIssue) +
+        '</a></div>'
+    : '';
+
+  const prRows = prs.map((pr) => (
+    '<div class="link-row"><span class="link-tag">pr</span>' +
+      '<a data-url="' + esc(pr.url) + '">' +
+        esc(pr.ownerRepo) + ' #' + pr.number +
+      '</a></div>'
+  )).join('');
+
+  let html = '';
+  if (linearRow) {
+    html += '<h2>Linear</h2>' +
+      '<div class="card"><div class="links-list">' + linearRow + '</div></div>';
   }
-  if (s.prUrl) {
-    rows.push(
-      '<div class="link-row"><span class="link-tag">pr</span>' +
-      '<a data-url="' + esc(s.prUrl) + '">' + esc(s.prUrl.replace(/^https?:\\/\\//, '')) + '</a></div>'
-    );
+  if (prRows) {
+    const heading = prs.length === 1 ? 'Pull request' : 'Pull requests (' + prs.length + ')';
+    html += '<h2>' + heading + '</h2>' +
+      '<div class="card"><div class="links-list">' + prRows + '</div></div>';
   }
-  return (
-    '<h2>Links</h2>' +
-    '<div class="card"><div class="links-list">' + rows.join('') + '</div></div>'
-  );
+  return html;
 }
 
 function renderConversationCard(s) {
@@ -950,6 +1121,56 @@ function renderMarkdownPreview(s) {
   }
   flushParagraph();
   return blocks.join('');
+}
+
+function renderRecentFilesCard(s) {
+  const files = s.recentFiles || [];
+  if (!files.length) return '';
+  // Show basename in the row and the full path in the title attr — the panel
+  // is narrow and absolute paths line-wrap into unreadable ribbon.
+  const rows = files.map((f) => {
+    const rel = s.cwd && f.path.startsWith(s.cwd) ? f.path.slice(s.cwd.length).replace(/^[/\\]/, '') : f.path;
+    const ts = f.mtimeMs ? '<span class="recent-file-time">' + esc(relTime(f.mtimeMs)) + '</span>' : '';
+    return (
+      '<div class="recent-file">' +
+        '<a class="path-link" data-path="' + esc(f.path) + '" title="' + esc(f.path) + '">' +
+          esc(rel) +
+        '</a>' + ts +
+      '</div>'
+    );
+  }).join('');
+  return (
+    '<h2>Recently edited (' + files.length + ')</h2>' +
+    '<div class="card">' + rows + '</div>'
+  );
+}
+
+function renderWorktreesCard(s) {
+  const wts = s.worktrees || [];
+  // Suppress the card when there's only the main checkout — no useful list
+  // to show. Once any extra worktree exists it's worth surfacing all of them.
+  if (wts.length < 2) return '';
+  const rows = wts.map((w) => {
+    const marker = w.isActive
+      ? '<span class="wt-dot active" title="active terminal"></span>'
+      : '<span class="wt-dot"></span>';
+    const nameClass = w.isActive ? 'wt-name active' : 'wt-name';
+    const tag = w.isMain ? '<span class="wt-tag main">main</span>' : '';
+    const branch = w.branch ? '<span class="wt-branch">' + esc(w.branch) + '</span>' : '';
+    return (
+      '<div class="worktree">' +
+        marker +
+        '<a class="' + nameClass + ' path-link" data-path="' + esc(w.path) + '" title="' + esc(w.path) + '">' +
+          esc(w.name) +
+        '</a>' +
+        tag + branch +
+      '</div>'
+    );
+  }).join('');
+  return (
+    '<h2>Worktrees (' + wts.length + ')</h2>' +
+    '<div class="card">' + rows + '</div>'
+  );
 }
 
 function renderCwdCard(s) {
@@ -1062,6 +1283,8 @@ function render(snap) {
     renderLinksCard(snap) +
     renderConversationCard(snap) +
     renderActivityCard(snap) +
+    renderRecentFilesCard(snap) +
+    renderWorktreesCard(snap) +
     renderPromptsCard(snap) +
     renderCwdCard(snap) +
     renderPlanCard(snap) +
@@ -1170,15 +1393,62 @@ function collectRecentActivity(tailLines: string[], agentType: string, max: numb
   return out;
 }
 
-const PR_URL_RE = /https?:\/\/(?:www\.)?github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/pull\/\d+/;
+/**
+ * Wrapper around the shared {@link extractPrUrlsHelper} kept here so existing
+ * call sites in `buildSnapshot` stay readable. Tests live next to the helper.
+ */
+function extractPrUrls(lines: string[]): PullRequestRef[] {
+  return extractPrUrlsHelper(lines);
+}
 
-function extractPrUrl(lines: string[]): string | undefined {
-  for (const line of lines) {
-    if (!line) continue;
-    const match = PR_URL_RE.exec(line);
-    if (match) return match[0];
+/**
+ * Enumerate every worktree attached to `workspaceRoot` via
+ * `git worktree list --porcelain`. Resolves the active terminal's cwd against
+ * each entry so the matching one is flagged `isActive`. Returns [] when the
+ * directory isn't a git repo or git isn't available.
+ */
+async function listWorktrees(workspaceRoot: string, activeCwd: string | undefined): Promise<WorktreeRef[]> {
+  const stdout: string = await new Promise((resolve, reject) => {
+    execFile('git', ['-C', workspaceRoot, 'worktree', 'list', '--porcelain'], { maxBuffer: 1024 * 1024 }, (err, out) => {
+      if (err) reject(err); else resolve(out);
+    });
+  });
+  return parseWorktreeListPorcelain(
+    stdout,
+    activeCwd ? path.resolve(activeCwd) : undefined,
+    path.resolve(workspaceRoot),
+    path.basename,
+    path.resolve,
+  );
+}
+
+/**
+ * Read the throttle state for `agentType@version` from `agents view --json`.
+ * Returns null when the binary isn't on PATH, when the JSON doesn't include a
+ * matching version row, or when the field is missing — never throws.
+ */
+async function readUsageStatus(
+  agentType: string,
+  version: string | undefined,
+): Promise<'available' | 'rate_limited' | 'out_of_credits' | null> {
+  try {
+    const stdout: string = await new Promise((resolve, reject) => {
+      execFile('agents', ['view', agentType, '--json'], { maxBuffer: 4 * 1024 * 1024 }, (err, out) => {
+        if (err) reject(err); else resolve(out);
+      });
+    });
+    const data = JSON.parse(stdout) as {
+      versions?: Array<{ version?: string; isDefault?: boolean; usageStatus?: 'available' | 'rate_limited' | 'out_of_credits' | null }>;
+    };
+    const rows = data.versions || [];
+    // Prefer the exact version match; fall back to the default row.
+    const match = (version && rows.find((r) => r.version === version))
+      || rows.find((r) => r.isDefault)
+      || rows[0];
+    return match?.usageStatus ?? null;
+  } catch {
+    return null;
   }
-  return undefined;
 }
 
 function pickQuickPrompts(): QuickPromptLite[] {
