@@ -74,6 +74,18 @@ interface GitInfo {
   dirtyCount?: number;
 }
 
+// Derived from session mtime + git + PRs. Drives which Quick Actions render.
+// Deterministic — no LLM call. See computeAgentState().
+type AgentState =
+  | 'streaming'         // session JSONL touched recently — agent is producing output
+  | 'pr_open'           // a PR URL was extracted from the session
+  | 'idle_dirty'        // idle, working tree has changes
+  | 'idle_clean_wt'     // idle, clean tree, terminal is in a worktree
+  | 'idle_clean';       // idle, clean tree, no worktree
+
+// "Streaming" window: panel polls every 4s, so this is ~2 polls.
+const STREAMING_MS = 10_000;
+
 // Re-export shared types so the rest of this file doesn't need to switch on
 // `SharedFoo` everywhere. Keeps the snapshot interface readable.
 type PullRequestRef = SharedPullRequestRef;
@@ -123,8 +135,23 @@ interface PanelSnapshot {
   teams: TeamWithMates[];
   // Quick prompts (top N favorites + recent)
   quickPrompts: QuickPromptLite[];
+  // Derived state — drives state-driven Quick Actions
+  agentState?: AgentState;
   // Errors / diagnostics
   teamsError?: string;
+}
+
+function computeAgentState(snap: PanelSnapshot): AgentState {
+  // Streaming wins over everything: while the session file is actively being
+  // written, the agent owns the input — show "Working", hide actions.
+  const lastMs = snap.conversation?.lastActivityMs;
+  if (lastMs && Date.now() - lastMs < STREAMING_MS) return 'streaming';
+  // PR open: once a PR is in flight, the primary action is to surface it.
+  if (snap.pullRequests && snap.pullRequests.length > 0) return 'pr_open';
+  const dirty = snap.git?.dirtyCount ?? 0;
+  if (dirty > 0) return 'idle_dirty';
+  if (snap.worktreePath) return 'idle_clean_wt';
+  return 'idle_clean';
 }
 
 class AgentPanelProvider implements vscode.WebviewViewProvider {
@@ -211,11 +238,14 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
           vscode.env.openExternal(vscode.Uri.parse(msg.url));
         }
         return;
+      case 'openSourceControl':
+        vscode.commands.executeCommand('workbench.view.scm');
+        return;
       case 'refresh':
         void this.refresh();
         return;
       case 'runQuickAction':
-        await this.runQuickAction(msg.action, msg.terminalId, msg.workspaceRoot);
+        await this.runQuickAction(msg.action, msg.terminalId, msg.workspaceRoot, msg.url);
         return;
       case 'sendQuickPrompt':
         await this.sendQuickPrompt(msg.promptId, msg.terminalId);
@@ -227,9 +257,24 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
     action: string,
     terminalId: string | undefined,
     workspaceRoot: string | undefined,
+    url: string | undefined,
   ): Promise<void> {
     const entry = terminalId ? terminals.getById(terminalId) : undefined;
     const terminal = entry?.terminal ?? vscode.window.activeTerminal;
+    // Claude's Ink TUI submits on \r; Codex/Gemini submit on the \n that
+    // sendText(_, true) appends. Centralized here so action handlers below
+    // don't duplicate the gotcha.
+    const sendSlash = (slash: string) => {
+      if (!terminal) return false;
+      terminal.show(true);
+      if (entry?.agentType === 'claude') {
+        terminal.sendText(slash, false);
+        terminal.sendText('\r', false);
+      } else {
+        terminal.sendText(slash, true);
+      }
+      return true;
+    };
     switch (action) {
       case 'commit':
         await vscode.commands.executeCommand('agents.autogit');
@@ -247,19 +292,24 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
         return;
       }
       case 'wrap':
-        if (!terminal) {
+        if (!sendSlash('/done')) {
           vscode.window.showInformationMessage('No active agent terminal to wrap up.');
-          return;
         }
-        terminal.show(true);
-        // Same gotcha the watchdog handles: Claude's Ink TUI submits on `\r`
-        // while Codex/Gemini submit on the `\n` that `sendText(_, true)` adds.
-        if (entry?.agentType === 'claude') {
-          terminal.sendText('/done', false);
-          terminal.sendText('\r', false);
-        } else {
-          terminal.sendText('/done', true);
+        return;
+      case 'next':
+        // /next is a globally available slash command on the user's stack —
+        // "stop stopping, recall the goal, take the next action."
+        if (!sendSlash('/next')) {
+          vscode.window.showInformationMessage('No active agent terminal.');
         }
+        return;
+      case 'openPr':
+        if (typeof url === 'string') {
+          vscode.env.openExternal(vscode.Uri.parse(url));
+        }
+        return;
+      case 'diff':
+        vscode.commands.executeCommand('workbench.view.scm');
         return;
     }
   }
@@ -462,6 +512,7 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
       snapshot.teamsError = err instanceof Error ? err.message : String(err);
     }
 
+    snapshot.agentState = computeAgentState(snapshot);
     return snapshot;
   }
 
@@ -584,13 +635,43 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
   .branch-name {
     font-family: var(--vscode-editor-font-family, monospace);
     color: var(--vscode-foreground);
+    background: transparent;
+    border: none;
+    padding: 0;
+    font-size: inherit;
+    cursor: pointer;
   }
+  .branch-name:hover { text-decoration: underline; }
   .dirty-pill {
     background: var(--vscode-gitDecoration-modifiedResourceForeground, var(--vscode-badge-background));
     color: var(--vscode-badge-foreground);
     padding: 0 5px;
     border-radius: 8px;
     font-size: 10px;
+    border: none;
+    cursor: pointer;
+    font: inherit;
+    font-size: 10px;
+  }
+  .dirty-pill:hover { filter: brightness(1.15); }
+  .working-pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--vscode-descriptionForeground);
+    font-size: 11.5px;
+    padding: 4px 2px;
+  }
+  .pulse-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--vscode-charts-green, #6abe6a);
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 0.35; }
+    50% { opacity: 1; }
   }
   .row-grid {
     display: grid;
@@ -977,9 +1058,11 @@ function renderTerminalCard(s) {
   let branch = '';
   if (s.git && s.git.branch) {
     const dirty = s.git.dirtyCount && s.git.dirtyCount > 0
-      ? '<span class="dirty-pill">' + s.git.dirtyCount + ' changed</span>'
+      ? '<button type="button" class="dirty-pill" data-scm="1" title="Open Source Control">' + s.git.dirtyCount + ' changed</button>'
       : '';
-    branch = '<div class="branch-row"><span>branch</span><span class="branch-name">' + esc(s.git.branch) + '</span>' + dirty + '</div>';
+    branch = '<div class="branch-row"><span>branch</span>' +
+      '<button type="button" class="branch-name" data-scm="1" title="Open Source Control">' + esc(s.git.branch) + '</button>' +
+      dirty + '</div>';
   }
   return (
     '<div class="card">' +
@@ -999,14 +1082,59 @@ function renderTerminalCard(s) {
 
 function renderActionsCard(s) {
   if (!s.cwd) return '';
-  const commit = '<button class="action-btn primary" data-action="commit">Commit</button>';
-  const cleanup = s.worktreePath
-    ? '<button class="action-btn" data-action="cleanup">Cleanup worktree</button>'
-    : '';
-  const wrap = '<button class="action-btn" data-action="wrap">Wrap up</button>';
+  const state = s.agentState || 'idle_clean';
+
+  // Streaming: agent is actively producing output. Showing nudge buttons here
+  // would dump text into a mid-stream prompt and corrupt context. Render a
+  // passive "Working..." pill instead so the slot doesn't collapse.
+  if (state === 'streaming') {
+    return (
+      '<h2>Quick actions</h2>' +
+      '<div class="card"><div class="working-pill"><span class="pulse-dot"></span>Working...</div></div>'
+    );
+  }
+
+  const dirty = (s.git && s.git.dirtyCount) || 0;
+  const btn = (cls, action, label, extra) =>
+    '<button class="action-btn ' + cls + '" data-action="' + action + '"' + (extra || '') + '>' + label + '</button>';
+
+  let primary = '';
+  let secondary = '';
+
+  switch (state) {
+    case 'pr_open': {
+      // Surface the freshest PR. Newest is at the end of pullRequests (the
+      // helper appends as it scans the tail forward).
+      const prs = s.pullRequests || [];
+      const pr = prs[prs.length - 1];
+      const label = pr ? 'Open PR #' + pr.number : 'Open PR';
+      const dataUrl = pr ? ' data-url="' + esc(pr.url) + '"' : '';
+      primary = btn('primary', 'openPr', label, dataUrl);
+      secondary = dirty > 0
+        ? btn('', 'commit', 'Commit (' + dirty + ')')
+        : btn('', 'wrap', 'Wrap up');
+      break;
+    }
+    case 'idle_dirty':
+      primary = btn('primary', 'commit', 'Commit (' + dirty + ')');
+      secondary = btn('', 'diff', 'Diff');
+      break;
+    case 'idle_clean_wt':
+      primary = btn('primary', 'wrap', 'Wrap up');
+      secondary = s.worktreePath
+        ? btn('', 'cleanup', 'Cleanup worktree')
+        : btn('', 'next', 'Next');
+      break;
+    case 'idle_clean':
+    default:
+      primary = btn('primary', 'next', 'Next');
+      secondary = btn('', 'wrap', 'Wrap up');
+      break;
+  }
+
   return (
     '<h2>Quick actions</h2>' +
-    '<div class="card"><div class="actions-row">' + commit + cleanup + wrap + '</div></div>'
+    '<div class="card"><div class="actions-row">' + primary + secondary + '</div></div>'
   );
 }
 
@@ -1319,10 +1447,16 @@ function render(snap) {
       vscode.postMessage({ type: 'openWorktree', path: el.getAttribute('data-worktree-path') });
     });
   }
-  for (const el of root.querySelectorAll('[data-url]')) {
+  for (const el of root.querySelectorAll('[data-url]:not([data-action])')) {
     el.addEventListener('click', (e) => {
       e.preventDefault();
       vscode.postMessage({ type: 'openUrl', url: el.getAttribute('data-url') });
+    });
+  }
+  for (const el of root.querySelectorAll('[data-scm]')) {
+    el.addEventListener('click', (e) => {
+      e.preventDefault();
+      vscode.postMessage({ type: 'openSourceControl' });
     });
   }
   for (const el of root.querySelectorAll('[data-action]')) {
@@ -1332,6 +1466,7 @@ function render(snap) {
         action: el.getAttribute('data-action'),
         terminalId: lastSnapshot && lastSnapshot.terminalId,
         workspaceRoot: lastSnapshot && lastSnapshot.workspaceRoot,
+        url: el.getAttribute('data-url') || undefined,
       });
     });
   }
