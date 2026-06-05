@@ -22,6 +22,8 @@ import * as vscode from 'vscode';
 
 const execAsync = promisify(exec);
 const TIMEOUT_MS = 3_000;
+const TEAM_LIST_CACHE_TTL_MS = 15_000;
+const TEAM_STATUS_CACHE_TTL_MS = 5_000;
 
 // VS Code extensions launched from Dock/Finder inherit a minimal PATH that
 // usually doesn't include ~/.agents/shims or nvm. We resolve the absolute path
@@ -145,6 +147,28 @@ export interface TeamLite {
   modified_at?: string;
 }
 
+type CacheEntry<T> = {
+  expiresAt: number;
+  value?: T;
+  pending?: Promise<T>;
+};
+
+let allTeamsCache: CacheEntry<TeamLite[]> | undefined;
+const teamStatusCache = new Map<string, CacheEntry<TeammateLite[]>>();
+
+export function clearForemanSourcesCache(): void {
+  allTeamsCache = undefined;
+  teamStatusCache.clear();
+}
+
+export function getForemanSourcesCacheStats(): { teamsListCached: boolean; teamStatusCached: number } {
+  const now = Date.now();
+  return {
+    teamsListCached: !!allTeamsCache && allTeamsCache.expiresAt > now && !!allTeamsCache.value,
+    teamStatusCached: Array.from(teamStatusCache.values()).filter((entry) => entry.expiresAt > now && !!entry.value).length,
+  };
+}
+
 export interface SessionEvent {
   type: string;           // message | tool_use | tool_result | thinking | usage | ...
   timestamp?: string;
@@ -184,17 +208,30 @@ export async function listCloudTasks(): Promise<CloudTaskLite[]> {
 }
 
 export async function listTeams(): Promise<TeamLite[]> {
-  const raw = await runJson<any>(['teams', 'list', '--json'], { teams: [] });
-  const teams = Array.isArray(raw) ? raw : Array.isArray(raw?.teams) ? raw.teams : [];
+  const teams = await listAllTeams();
   return teams.filter((t: any) => (t.running ?? 0) + (t.pending ?? 0) > 0);
 }
 
 // All teams (including completed/stopped) — used by the agent panel so the
 // "Teams in this directory" list can show recently-finished work too.
 export async function listAllTeams(): Promise<TeamLite[]> {
-  const raw = await runJson<any>(['teams', 'list', '--json'], { teams: [] });
-  const teams = Array.isArray(raw) ? raw : Array.isArray(raw?.teams) ? raw.teams : [];
-  return teams as TeamLite[];
+  const now = Date.now();
+  if (allTeamsCache?.value && allTeamsCache.expiresAt > now) {
+    return allTeamsCache.value;
+  }
+  if (allTeamsCache?.pending) {
+    return allTeamsCache.pending;
+  }
+
+  const pending = (async () => {
+    const raw = await runJson<any>(['teams', 'list', '--json'], { teams: [] });
+    const teams = (Array.isArray(raw) ? raw : Array.isArray(raw?.teams) ? raw.teams : []) as TeamLite[];
+    allTeamsCache = { value: teams, expiresAt: Date.now() + TEAM_LIST_CACHE_TTL_MS };
+    return teams;
+  })();
+
+  allTeamsCache = { pending, expiresAt: now + TEAM_LIST_CACHE_TTL_MS };
+  return pending;
 }
 
 export interface TeammateLite {
@@ -209,18 +246,34 @@ export interface TeammateLite {
 }
 
 export async function getTeamStatus(team: string): Promise<TeammateLite[]> {
-  const raw = await runJson<any>(['teams', 'status', team, '--json'], { agents: [] });
-  const agents = Array.isArray(raw?.agents) ? raw.agents : [];
-  return agents.map((a: any) => ({
-    agent_id: String(a.agent_id ?? ''),
-    name: String(a.name ?? ''),
-    agent_type: String(a.agent_type ?? ''),
-    status: String(a.status ?? ''),
-    started_at: a.started_at ? String(a.started_at) : undefined,
-    completed_at: a.completed_at ? String(a.completed_at) : undefined,
-    duration: a.duration ? String(a.duration) : undefined,
-    cwd: a.cwd ? String(a.cwd) : undefined,
-  }));
+  const now = Date.now();
+  const cached = teamStatusCache.get(team);
+  if (cached?.value && cached.expiresAt > now) {
+    return cached.value;
+  }
+  if (cached?.pending) {
+    return cached.pending;
+  }
+
+  const pending = (async () => {
+    const raw = await runJson<any>(['teams', 'status', team, '--json'], { agents: [] });
+    const agents = Array.isArray(raw?.agents) ? raw.agents : [];
+    const teammates = agents.map((a: any) => ({
+      agent_id: String(a.agent_id ?? ''),
+      name: String(a.name ?? ''),
+      agent_type: String(a.agent_type ?? ''),
+      status: String(a.status ?? ''),
+      started_at: a.started_at ? String(a.started_at) : undefined,
+      completed_at: a.completed_at ? String(a.completed_at) : undefined,
+      duration: a.duration ? String(a.duration) : undefined,
+      cwd: a.cwd ? String(a.cwd) : undefined,
+    }));
+    teamStatusCache.set(team, { value: teammates, expiresAt: Date.now() + TEAM_STATUS_CACHE_TTL_MS });
+    return teammates;
+  })();
+
+  teamStatusCache.set(team, { pending, expiresAt: now + TEAM_STATUS_CACHE_TTL_MS });
+  return pending;
 }
 
 // Two paths "belong together" if one is a path-prefix of the other (with a
