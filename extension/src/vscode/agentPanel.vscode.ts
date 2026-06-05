@@ -191,6 +191,16 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
           vscode.commands.executeCommand('vscode.open', vscode.Uri.file(msg.path));
         }
         return;
+      case 'openWorktree':
+        // Worktree paths are DIRECTORIES — `vscode.open` shows an error toast
+        // for directories. Open as a folder in a new window instead so the
+        // user lands inside the parallel agent's checkout.
+        if (typeof msg.path === 'string') {
+          vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(msg.path), {
+            forceNewWindow: true,
+          });
+        }
+        return;
       case 'revealCwd':
         if (typeof msg.path === 'string') {
           vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(msg.path));
@@ -1157,10 +1167,13 @@ function renderWorktreesCard(s) {
     const nameClass = w.isActive ? 'wt-name active' : 'wt-name';
     const tag = w.isMain ? '<span class="wt-tag main">main</span>' : '';
     const branch = w.branch ? '<span class="wt-branch">' + esc(w.branch) + '</span>' : '';
+    // wt-link (not path-link) so the click dispatches openWorktree, which
+    // opens the directory as a folder in a new window. vscode.open on a
+    // directory shows an error toast.
     return (
       '<div class="worktree">' +
         marker +
-        '<a class="' + nameClass + ' path-link" data-path="' + esc(w.path) + '" title="' + esc(w.path) + '">' +
+        '<a class="' + nameClass + ' wt-link" data-worktree-path="' + esc(w.path) + '" title="' + esc(w.path) + '">' +
           esc(w.name) +
         '</a>' +
         tag + branch +
@@ -1295,6 +1308,15 @@ function render(snap) {
     el.addEventListener('click', (e) => {
       e.preventDefault();
       vscode.postMessage({ type: 'openPath', path: el.getAttribute('data-path') });
+    });
+  }
+  // Worktree paths are DIRECTORIES — they need vscode.openFolder, not the
+  // file-only vscode.open that openPath uses. Distinct selector + message
+  // type so the extension can branch on intent without sniffing the path.
+  for (const el of root.querySelectorAll('.wt-link')) {
+    el.addEventListener('click', (e) => {
+      e.preventDefault();
+      vscode.postMessage({ type: 'openWorktree', path: el.getAttribute('data-worktree-path') });
     });
   }
   for (const el of root.querySelectorAll('[data-url]')) {

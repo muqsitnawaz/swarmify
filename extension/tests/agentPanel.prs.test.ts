@@ -66,4 +66,16 @@ describe('parseWorktreeListPorcelain', () => {
   test('returns empty when stdout is empty', () => {
     expect(parseWorktreeListPorcelain('', undefined, '/', path.basename, path.resolve)).toEqual([]);
   });
+
+  test('tolerates CRLF line endings (Windows git output)', () => {
+    const crlf = sample.replace(/\n/g, '\r\n');
+    const main = '/Users/me/proj';
+    const out = parseWorktreeListPorcelain(crlf, undefined, main, path.basename, path.resolve);
+    // Without the \r-tolerant splitter, every record would be coalesced and
+    // we'd parse 1 worktree (or 0); the fix gives us all 3 cleanly.
+    expect(out.length).toBe(3);
+    expect(out[0].name).toBe('proj');
+    expect(out[1].name).toBe('fix-foo');
+    expect(out[2].branch).toBeUndefined();
+  });
 });

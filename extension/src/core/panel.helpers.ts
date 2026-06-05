@@ -66,8 +66,12 @@ export function parseWorktreeListPorcelain(
   resolve: (p: string) => string,
 ): WorktreeRef[] {
   const out: WorktreeRef[] = [];
-  for (const block of stdout.split(/\n\n/)) {
-    const lines = block.split('\n').filter(Boolean);
+  // Tolerate CRLF line endings — git on Windows uses `\r\n\r\n` between
+  // porcelain records and the LF-only split would coalesce every record
+  // into one block, losing all but the first worktree.
+  for (const block of stdout.split(/\r?\n\r?\n/)) {
+    // Same tolerance within a block: strip trailing \r before filtering.
+    const lines = block.split('\n').map((l) => l.replace(/\r$/, '')).filter(Boolean);
     if (!lines.length) continue;
     let wtPath: string | undefined;
     let branch: string | undefined;
