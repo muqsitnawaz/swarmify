@@ -12,11 +12,6 @@ Meet the future of IDEs. Swarmify turns your editor into an IAE — orchestrate 
          +------------------------+------------------------+
                                   |
                     +-------------+-------------+
-                    |     Swarmify MCP Server   |
-                    |   (Agent Orchestration)   |
-                    +-------------+-------------+
-                                  |
-                    +-------------+-------------+
                     |    VS Code / Cursor IDE   |
                     |  (Extension: Editor Tabs) |
                     +---------------------------+
@@ -26,7 +21,6 @@ Meet the future of IDEs. Swarmify turns your editor into an IAE — orchestrate 
 
 | Directory | Package | Purpose |
 |-----------|---------|---------|
-| `agents-mcp/` | @swarmify/agents-mcp | MCP server for spawning agents |
 | `extension/` | swarm-ext | VS Code/Cursor extension |
 | `prompts/` | - | Slash commands for all agents |
 
@@ -43,17 +37,16 @@ Meet the future of IDEs. Swarmify turns your editor into an IAE — orchestrate 
 
 ### Agent Modes
 
-| Mode | File Access | Auto-loops? | Use Case |
-|------|-------------|-------------|----------|
-| `plan` | Read-only | No | Research, exploration, code review |
-| `edit` | Read + Write | No | Implementation, refactoring, fixes |
-| `ralph` | Full yolo | Yes | DEPRECATED in agents-mcp 0.3.0, removed in 0.4.0 |
+| Mode | File Access | Use Case |
+|------|-------------|----------|
+| `plan` | Read-only | Research, exploration, code review |
+| `edit` | Read + Write | Implementation, refactoring, fixes |
 
 Default is `plan` for safety.
 
 ### Agent Orchestration
 
-Agents can spawn other agents via MCP tools:
+Agents can spawn other agents via the agents-cli (`agents teams`):
 - Claude can spawn Codex for a quick fix while continuing analysis
 - Orchestrator assigns tasks, prevents conflicts by splitting work by file
 - Subagents run asynchronously - orchestrator polls for progress
@@ -107,15 +100,13 @@ Never use toast notifications in UI. Operations must either work silently (one-c
 
 - Frontend: Node v24, Next.js, Bun, React, Tailwind, zustand, lucide-react
 - Backend: Python 3.12, FastAPI, uv, pydantic, loguru, Supabase/Postgres
-- MCP: @modelcontextprotocol/sdk
 
 ## Architecture Patterns
 
-### Agent Spawning (Swarm MCP)
-Use Swarm MCP tools: `spawn`, `status`, `stop`, `tasks`
+### Agent Spawning (agents-cli teams)
+Use `agents teams` to spawn parallel agents.
 - Spawn agents FIRST before other work (parallelism)
 - Agents execute, you architect - delegate with specific context
-- Do NOT use built-in Claude Code Task tool when Swarm agents are requested
 
 ### Session Activity Parsing
 Live activity extraction from agent session files to show what agents are doing in Dashboard.
@@ -171,13 +162,6 @@ Extracts both env vars from VS Code terminals at startup:
 
 ## Package-Specific Notes
 
-### agents-mcp (@swarmify/agents-mcp)
-- MCP server for spawning agents (Spawn, Status, Stop, Tasks tools)
-- Auto-discovers which agent CLIs are installed at startup
-- Agents run as detached background processes (survive IDE restarts)
-- Storage: `~/.agents/teams/`
-- Config: `~/.agents/teams/config.json`
-
 ### extension (swarm-ext)
 - VS Code extension for managing agent terminals
 - 166 tests, no mocks
@@ -214,46 +198,11 @@ After implementing major features (new modules, architectural changes, new data 
 ## Subagent Spawning Rules
 
 When spawning agents:
-1. Use Swarm MCP tools, not built-in Task agent
-2. Spawn agents FIRST before other work (they run in background)
-3. Provide specific file paths WITH line numbers from your exploration
-4. Include code patterns inline - don't say "look at X for patterns"
-5. Include concrete examples of expected output/structure
-6. Agents execute, you architect - never delegate exploration
-
-## Ralph Mode (DEPRECATED)
-
-**Deprecated in agents-mcp 0.3.0, removed in 0.4.0.** Spawns still work but emit a stderr warning. Prefer a normal spawn with a task-list prompt, or use agents-cli's `oracle` / `supervisor` primitives.
-
-Ralph mode spawns ONE agent with full permissions and instructions to autonomously work through all tasks in a `RALPH.md` file.
-
-**RALPH.md format:**
-
-```markdown
-## [ ] Task title
-
-Task description
-
-### Updates
-
----
-
-## [x] Completed task
-
-Task description
-
-### Updates
-- Progress note 1
-- Progress note 2
-```
-
-**How it works:**
-1. Create a `RALPH.md` file in your project directory with tasks
-2. Call `Spawn(mode='ralph', cwd='./my-project', prompt='Build the system')`
-3. MCP spawns ONE agent with full permissions
-4. Agent reads RALPH.md, understands the system, picks tasks logically
-5. For each task: completes work, marks checkbox `## [x]`, adds update
-6. Continues until all tasks checked (or you stop it with Stop tool)
+1. Spawn agents FIRST before other work (they run in background)
+2. Provide specific file paths WITH line numbers from your exploration
+3. Include code patterns inline - don't say "look at X for patterns"
+4. Include concrete examples of expected output/structure
+5. Agents execute, you architect - never delegate exploration
 
 ## Terminal Titles
 

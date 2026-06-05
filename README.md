@@ -1,13 +1,12 @@
 # Swarmify
 
 [![Extension](https://img.shields.io/visual-studio-marketplace/v/swarmify.swarm-ext?label=Extension&color=blue)](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext)
-[![MCP Server](https://img.shields.io/npm/v/@swarmify/agents-mcp?label=MCP%20Server&color=green)](https://www.npmjs.com/package/@swarmify/agents-mcp)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue)](https://www.typescriptlang.org/)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](./LICENSE)
 
 Meet the future of IDEs: the Integrated Agents Environment.
 
-[Homepage](https://swarmify.co) | [Agents Extension](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext) | [Agents MCP](https://www.npmjs.com/package/@swarmify/agents-mcp)
+[Homepage](https://swarmify.co) | [Agents Extension](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext)
 
 Text editors became IDEs. Now IDEs become IAEs. Swarmify turns your editor into a command center for orchestrating Claude, Codex, Gemini, and Cursor in parallel — with full visibility into every agent's work.
 
@@ -15,18 +14,7 @@ Text editors became IDEs. Now IDEs become IAEs. Swarmify turns your editor into 
 
 ## Get Swarmify
 
-Install the [Agents Extension](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext) from VS Code/Cursor marketplace, then add [Agents MCP](https://www.npmjs.com/package/@swarmify/agents-mcp):
-
-```bash
-# Claude Code
-claude mcp add --scope user Swarm -- npx -y @swarmify/agents-mcp
-
-# Codex
-codex mcp add swarm -- npx -y @swarmify/agents-mcp@latest
-
-# Gemini CLI
-gemini mcp add Swarm -- npx -y @swarmify/agents-mcp
-```
+Install the [Agents Extension](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext) from the VS Code / Cursor marketplace.
 
 **Run your first swarm:**
 
@@ -63,7 +51,6 @@ The [Agents Extension](https://marketplace.visualstudio.com/items?itemName=swarm
 
 - **Full-screen terminals** - Agents run as editor tabs, not buried panels
 - **Session persistence** - Close VS Code, reopen, your agent tabs come back
-- **Sub-agent spawning** - Any agent can delegate to other agents via [Agents MCP](https://www.npmjs.com/package/@swarmify/agents-mcp)
 - **Approval gates** - You approve plans before agents execute
 - **Keyboard-first** - 12+ shortcuts for spawning, switching, labeling agents
 
@@ -82,20 +69,6 @@ Your IDE becomes an IAE. Each agent runs as a full-screen editor tab. Each agent
 | `Cmd+Shift+D` | Open Dashboard |
 | `Cmd+Shift+G` | Generate git commit |
 | `Cmd+Shift+H/V` | Split horizontal/vertical |
-
-## Agents MCP
-
-MCP server that enables sub-agent spawning. Any agent can spawn any other agent — Claude can spawn Codex, Gemini can spawn Claude.
-
-[Get it on npm](https://www.npmjs.com/package/@swarmify/agents-mcp)
-
-**4 tools:** `Spawn`, `Status`, `Stop`, `Tasks`
-
-| Mode | File Access | Use Case |
-| --- | --- | --- |
-| `plan` | Read-only | Research, code review |
-| `edit` | Read + Write | Implementation, refactoring |
-| `ralph` | Full + auto-loop | Autonomous via RALPH.md |
 
 ## Developer Experience
 
