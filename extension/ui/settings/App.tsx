@@ -101,7 +101,6 @@ export default function App() {
   const [tasksLoaded, setTasksLoaded] = useState(false)
   const [tasksDisplayCount, setTasksDisplayCount] = useState(10)
   const [swarmInstalling, setSwarmInstalling] = useState(false)
-  const [commandPackInstalling, setCommandPackInstalling] = useState(false)
 
   // Session tasks state
   const [sessionTasks, setSessionTasks] = useState<Record<string, TaskSummary[]>>({})
@@ -283,12 +282,6 @@ export default function App() {
           break
         case 'swarmInstallDone':
           setSwarmInstalling(false)
-          break
-        case 'commandPackInstallStart':
-          setCommandPackInstalling(true)
-          break
-        case 'commandPackInstallDone':
-          setCommandPackInstalling(false)
           break
         case 'prewarmStatus':
           setPrewarmEnabled(message.enabled)
@@ -549,11 +542,6 @@ export default function App() {
   const handleInstallSwarmAgent = (agent: SwarmAgentType) => {
     setSwarmInstalling(true)
     vscode.postMessage({ type: 'installSwarmAgent', agent })
-  }
-
-  const handleInstallCommandPack = () => {
-    setCommandPackInstalling(true)
-    vscode.postMessage({ type: 'installCommandPack' })
   }
 
   const handleSetDefaultAgent = (agentTitle: string) => {
@@ -818,7 +806,6 @@ export default function App() {
           icons={icons}
           isLightTheme={isLightTheme}
           swarmInstalling={swarmInstalling}
-          commandPackInstalling={commandPackInstalling}
           isAddingAlias={isAddingAlias}
           newAliasName={newAliasName}
           newAliasAgent={newAliasAgent}
@@ -826,7 +813,6 @@ export default function App() {
           aliasError={aliasError}
           onSaveSettings={saveSettings}
           onInstallSwarmAgent={handleInstallSwarmAgent}
-          onInstallCommandPack={handleInstallCommandPack}
           onSetDefaultAgent={handleSetDefaultAgent}
           onSetSecondaryAgent={handleSetSecondaryAgent}
           onAddAliasClick={handleAddAliasClick}
