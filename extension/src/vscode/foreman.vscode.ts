@@ -387,6 +387,7 @@ export interface ForemanToolDeps {
   fetchCycleTasks?: () => Promise<{ tasks: UnifiedTask[]; cycleInfo: CycleInfo | null }>;
   fetchTaskDetails?: (id: string) => Promise<ForemanTaskDetails | null>;
   dispatchTask?: (opts: ForemanDispatchOpts) => Promise<ForemanDispatchResult>;
+  spawnAgent?: (opts: { prompt: string; agent?: string; target?: string }) => Promise<{ ok: boolean; message: string }>;
   createTicket?: (opts: ForemanCreateTicketOpts) => Promise<ForemanCreateTicketResult>;
 }
 
@@ -437,6 +438,17 @@ export async function runForemanTool(
       const target = a.target === 'local' ? 'local' : a.target === 'cloud' ? 'cloud' : undefined;
       const repo = typeof a.repo === 'string' && a.repo.trim() ? a.repo.trim() : undefined;
       return deps.dispatchTask({ id, agent, target, repo });
+    }
+    case 'spawn_agent': {
+      if (!deps?.spawnAgent) {
+        return { ok: false, message: 'spawn_agent tool unavailable' };
+      }
+      const a = (args && typeof args === 'object') ? args as Record<string, unknown> : {};
+      const prompt = String(a.prompt ?? '').trim();
+      if (!prompt) return { ok: false, message: 'no prompt given' };
+      const agent = typeof a.agent === 'string' && a.agent.trim() ? a.agent.trim() : undefined;
+      const target = typeof a.target === 'string' && a.target.trim() ? a.target.trim() : undefined;
+      return deps.spawnAgent({ prompt, agent, target });
     }
     case 'create_ticket': {
       if (!deps?.createTicket) {

@@ -300,6 +300,40 @@ async function dispatchForForeman(
   };
 }
 
+// Headless free-form agent spawn used by Foreman's spawn_agent tool and the
+// webview quickSpawn message. Unlike dispatchForForeman, this takes a raw
+// prompt string instead of a ticket ID so the user can say "start a new Claude
+// to fix X" without needing a Linear ticket.
+async function spawnAgentForForeman(
+  context: vscode.ExtensionContext,
+  opts: { prompt: string; agent?: string; target?: string },
+): Promise<{ ok: boolean; message: string }> {
+  const agentKey = opts.agent?.trim() || 'claude';
+  const target = opts.target === 'cloud' ? 'cloud' : 'local';
+
+  if (target === 'local') {
+    const def = getBuiltInByKey(agentKey);
+    if (!def) return { ok: false, message: `Unknown agent: ${agentKey}.` };
+    const agentConfig = configFromDef(context.extensionPath, def);
+    await openSingleAgentWithQueue(context, agentConfig, [opts.prompt]);
+    return { ok: true, message: `Started ${agentKey} locally.` };
+  }
+
+  const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  const settings = getSettings(context);
+  const owner = await resolveGithubOwner(workspacePath, settings);
+  const workspaceRepo = workspacePath ? await getGitHubRepo(workspacePath) : null;
+  if (!workspaceRepo) {
+    return { ok: false, message: 'No workspace repo detected. Open a git repo first.' };
+  }
+  const safePrompt = opts.prompt.replace(/'/g, `'\\''`);
+  const term = await getOrCreateRushCloudTerminal(context, workspacePath || process.cwd());
+  const repoFlag = owner && workspaceRepo ? `--repo ${workspaceRepo}` : '';
+  term.sendText(`rush cloud run ${agentKey} ${repoFlag} -p '${safePrompt}'`.trimEnd());
+  term.show(true);
+  return { ok: true, message: `Dispatched to ${agentKey} on Rush Cloud (${workspaceRepo}).` };
+}
+
 // Headless ticket creation used by Foreman's create_ticket tool. Shells out
 // to the same `linear` CLI that fetchLinearTasks() uses. Defaults are intentionally bare — current cycle,
 // Todo status, medium priority — so the voice flow is one command: "create
@@ -1669,6 +1703,15 @@ export function openPanel(context: vscode.ExtensionContext): void {
           vscode.env.openExternal(vscode.Uri.parse(message.url));
         }
         break;
+      case 'quickSpawn': {
+        const prompt = typeof message.prompt === 'string' ? message.prompt.trim() : '';
+        if (prompt) {
+          const agent = typeof message.agent === 'string' ? message.agent : undefined;
+          const target = typeof message.target === 'string' ? message.target : undefined;
+          await spawnAgentForForeman(context, { prompt, agent, target });
+        }
+        break;
+      }
       case 'factoryAnswer':
         // Forward an intake answer to the oldest input_required teammate in
         // the given team via `agents factory answer <team> <text>`. Run in a
@@ -1721,6 +1764,7 @@ export function openPanel(context: vscode.ExtensionContext): void {
                   },
                   fetchTaskDetails: (id) => findTaskDetailsForForeman(context, id),
                   dispatchTask: (opts) => dispatchForForeman(context, opts),
+                  spawnAgent: (opts) => spawnAgentForForeman(context, opts),
                   createTicket: (opts) => createTicketForForeman(opts),
                 };
                 const result = await foreman.runForemanTool(name, args, wsFolder, deps);
