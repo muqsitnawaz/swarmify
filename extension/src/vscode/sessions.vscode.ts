@@ -110,6 +110,7 @@ const SYNTHETIC_TAG_PREFIXES = [
   '<bash-stdout',
   '<bash-stderr',
   '<system-reminder',
+  '<permissions instructions',
   '<user-prompt-submit-hook',
   '<task-notification',
   '<persisted-output',
