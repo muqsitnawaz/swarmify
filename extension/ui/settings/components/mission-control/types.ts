@@ -1,6 +1,6 @@
 import type { AgentDetail, TaskSummary, TerminalDetail } from '../../types'
 
-// A "Swarm" in Mission Control is a TaskSummary from agents-mcp.
+// A "Swarm" in Mission Control is a TaskSummary from agents-cli teams.
 export type Swarm = TaskSummary
 export type SwarmAgent = AgentDetail
 export type Terminal = TerminalDetail

@@ -12,7 +12,6 @@ This extension turns your IDE into an IAE:
 
 - **Full-screen terminals** - Agents run as editor tabs, not buried panels. See your code and agent side-by-side.
 - **Session persistence** - Close VS Code, reopen it, your agent tabs come back exactly where you left off.
-- **Sub-agent spawning** - With Swarm MCP enabled, each agent can delegate to other agents. Claude researches while Codex implements while Cursor debugs — in parallel.
 - **Approval gates** - You approve plans before agents execute. Control without bottleneck.
 - **Keyboard-first** - 12+ shortcuts for spawning, switching, labeling, and reviewing agents. No mouse needed.
 
@@ -26,7 +25,7 @@ This extension turns your IDE into an IAE:
 
 1. Install the extension from VS Code Marketplace
 2. Press `Cmd+Shift+A` to spawn your first agent
-3. Open Dashboard (`Cmd+Shift+D`) to configure auto-start and Swarm
+3. Open Dashboard (`Cmd+Shift+D`) to configure auto-start
 
 ## Navigation
 
@@ -50,10 +49,6 @@ Spawn any agent as a full-screen editor tab. Built-in support for Claude Code, C
 
 Every open agent terminal is fully restorable. Session ID, icon, and custom labels are saved to disk in real-time. VS Code crashes? Restart? All your agent tabs come back exactly as they were.
 
-### Sub-Agent Spawning
-
-With [@swarmify/agents-mcp](https://www.npmjs.com/package/@swarmify/agents-mcp) installed, any agent can spawn sub-agents for parallel work. The orchestrator enforces approval gates. Sub-agents run in the background and survive IDE restarts.
-
 ### Task Management
 
 - **Labels** - Tag agents by task (`Cmd+Shift+L`). Status bar shows active agent and label.
@@ -63,14 +58,6 @@ With [@swarmify/agents-mcp](https://www.npmjs.com/package/@swarmify/agents-mcp) 
 ### AI Git Commits
 
 Generate commit messages from staged changes with `Cmd+Shift+G`. Learns from your commit style, then stages, commits, and pushes in one action.
-
-### Agent Safety Modes
-
-When spawning sub-agents via Swarm:
-
-- **plan** - Read-only. Agents can explore but not modify files.
-- **edit** - Agents can write files after your approval.
-- **ralph** - Autonomous mode. Agent works through RALPH.md tasks until done.
 
 ### Additional Features
 
@@ -94,7 +81,6 @@ When spawning sub-agents via Swarm:
 
 ## Related Packages
 
-- [@swarmify/agents-mcp](https://www.npmjs.com/package/@swarmify/agents-mcp) - MCP server for sub-agent spawning
 - [@swarmify/agents-cli](https://www.npmjs.com/package/@swarmify/agents-cli) - Moved to its own repository
 
 ## License

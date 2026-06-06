@@ -27,12 +27,10 @@ export type { PromptPackAgent } from '../core/swarm.detect';
 const execAsync = promisify(exec);
 
 // Agent data directories
-// agents-mcp writes to ~/.agents/swarm/agents/
 // agents-cli teams writes to ~/.agents/teams/agents/
+// Legacy ~/.agents/swarm/agents/ kept as a read source for older installs.
 const AGENT_SWARM_DIR = path.join(os.homedir(), '.agents', 'swarm', 'agents');
 const AGENT_TEAMS_DIR = path.join(os.homedir(), '.agents', 'teams', 'agents');
-
-const SWARM_PACKAGE = '@swarmify/agents-mcp';
 
 
 export interface AgentInstallStatus {
