@@ -2848,6 +2848,7 @@ export async function openSingleAgentWithQueue(
 
   const pid = await terminal.processId;
   terminals.register(terminal, terminalId, agentConfig, pid, context);
+  readiness.registerTerminal(terminal);
 
   // Track session ID and agent type
   if (agentKey && supportsPrewarming(agentKey)) {
@@ -2873,21 +2874,36 @@ export async function openSingleAgentWithQueue(
     terminal.sendText(command);
   }
 
+  // Arm agentReady detection so the session-file fast path can fire.
+  readiness.armAgentReady(terminal, agentKey && sessionId
+    ? { agentKey, sessionId, cwd }
+    : {});
+
   if (agentKey === 'opencode' && opencodeSessionsBefore !== null) {
     detectOpencodeSessionId(terminal, terminalId, cwd, opencodeSessionsBefore, context);
   }
 
-  // After delay, send queued messages (5s to ensure agent process fully loaded).
+  // Flush queued messages once the agent is ready to accept input.
   // Ink TUIs (Claude) watch for `\r` as Enter; `sendText(text, true)` appends
   // `\n` which types into the input but does NOT submit. See the resume flow
   // around line 2086 for the same workaround.
-  setTimeout(() => {
+  // 45s hard-timeout fallback: if agentReady never fires (agent exits early,
+  // slow machine), we still attempt delivery so the user sees the prompt.
+  const AGENT_READY_FALLBACK_MS = 45_000;
+  const flushQueued = () => {
     const queued = terminals.flushQueue(terminal);
     for (const msg of queued) {
       terminal.sendText(msg, false);
       terminal.sendText('\r', false);
     }
-  }, 5000);
+  };
+  const fallbackHandle = setTimeout(flushQueued, AGENT_READY_FALLBACK_MS);
+  readiness.waitFor(terminal, 'agentReady').then(() => {
+    clearTimeout(fallbackHandle);
+    flushQueued();
+  }).catch(() => {
+    // waitFor rejects on timeout — fallback handle already scheduled
+  });
 }
 
 async function openAgentTerminals(context: vscode.ExtensionContext) {
