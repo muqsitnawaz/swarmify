@@ -854,6 +854,22 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     postMessage({ type: 'killSwarm', taskName })
   }
 
+  const handleQuickSpawn = useCallback((prompt: string, agent: string, target: 'local' | 'cloud') => {
+    postMessage({ type: 'quickSpawn', prompt, agent, target })
+    const now = Date.now()
+    const truncated = prompt.length > 60 ? prompt.slice(0, 60) + '…' : prompt
+    const pending: PendingDispatch = {
+      id: `pending-quick-${now}`,
+      agentType: agent,
+      target,
+      taskId: `quick-${now}`,
+      taskIdentifier: '',
+      title: truncated,
+      createdAt: now,
+    }
+    setPendingDispatches((prev) => [...prev, pending])
+  }, [])
+
   const handleDispatchTask = (
     task: UnifiedTask,
     agentType: string,
@@ -900,6 +916,8 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
 
   return (
     <div className="sw-floor-dashboard">
+      <QuickDispatch onSpawn={handleQuickSpawn} />
+
       {/* Intake Q&A -- teammates waiting on a human answer */}
       {intakeTeams.length > 0 && (
         <div className="sw-intake-section">
@@ -1666,6 +1684,75 @@ function DispatchModal({ tasks, loading, onClose, onDispatch, onDispatchBatch, o
 }
 
 // Agent horizontal strip
+/**
+function QuickDispatch({ onSpawn }: { onSpawn: (prompt: string, agent: string, target: 'local' | 'cloud') => void }) {
+  const [prompt, setPrompt] = useState('')
+  const [agent, setAgent] = useState<'claude' | 'codex' | 'gemini'>('claude')
+  const [target, setTarget] = useState<'local' | 'cloud'>('local')
+  const [focused, setFocused] = useState(false)
+
+  const submit = () => {
+    const text = prompt.trim()
+    if (!text) return
+    onSpawn(text, agent, target)
+    setPrompt('')
+  }
+
+  return (
+    <div className="sw-quick-dispatch">
+      <textarea
+        className="sw-quick-dispatch-input"
+        value={prompt}
+        onChange={(e) => setPrompt(e.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault()
+            submit()
+          }
+        }}
+        placeholder="Start a new agent… describe the task"
+        rows={focused ? 3 : 1}
+      />
+      <div className="sw-quick-dispatch-controls">
+        <div className="sw-active-filter">
+          {(['claude', 'codex', 'gemini'] as const).map((a) => (
+            <button
+              key={a}
+              type="button"
+              className={`sw-active-filter-btn ${agent === a ? 'active' : ''}`}
+              onClick={() => setAgent(a)}
+            >
+              {a === 'claude' ? 'Claude' : a === 'codex' ? 'Codex' : 'Gemini'}
+            </button>
+          ))}
+        </div>
+        <div className="sw-active-filter">
+          {(['local', 'cloud'] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              className={`sw-active-filter-btn ${target === t ? 'active' : ''}`}
+              onClick={() => setTarget(t)}
+            >
+              {t === 'local' ? 'Local' : 'Cloud'}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          className="sw-btn primary sm"
+          onClick={submit}
+          disabled={!prompt.trim()}
+        >
+          Start
+        </button>
+      </div>
+    </div>
+  )
+}
+
 /**
  * Inline banner for teammates waiting on human input.
  *
