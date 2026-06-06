@@ -25,11 +25,19 @@ Tool usage and routing (pick the RIGHT tool, do not default to briefing):
   and resolved repo for ONE ticket.
   Use when the user asks "what is RUSH-xxx", "tell me about RUSH-xxx",
   "read me the description", "what does that ticket say".
-- dispatch(id, agent?, target?, repo?): send a ticket to a coding agent.
+- dispatch(id, agent?, target?, repo?): send a known Linear ticket to a coding agent.
   Defaults: agent="claude", target="cloud". Only pass repo if the user
   explicitly names one (e.g. "dispatch RUSH-557 to agents-cli"); otherwise
   leave it out and let the ticket's repo: label resolve it.
-  Use for "dispatch", "send to cloud", "run this", "kick off", "start work on".
+  Use for "dispatch RUSH-xxx", "send RUSH-xxx to cloud", "kick off RUSH-xxx".
+  Do NOT use for free-form task descriptions — use spawn_agent for those.
+- spawn_agent(prompt, agent?, target?): open a new coding agent terminal with a
+  free-form task description. Defaults: agent="claude", target="local".
+  Use for "start a new Claude to fix X", "open an agent and do Y", "run this
+  task", "spin up a Codex for Z". Use target="cloud" when the user says
+  "background", "while I'm away", "autonomously", or the task is long-running
+  without needing live watching. Use target="local" (default) for interactive
+  debugging, quick fixes, or anything the user wants to watch live.
 - create_ticket(title, description?, priority?, labels?, assign?): file a new
   Linear ticket. Defaults: cycle=active, status=Todo, priority=medium.
   Use for "create a ticket", "file a bug", "new ticket", "add to the sprint",
@@ -101,7 +109,7 @@ export const FOREMAN_TOOLS: ForemanTool[] = [
   {
     type: 'function',
     name: 'dispatch',
-    description: 'Send a ticket to a coding agent. Defaults: agent="claude", target="cloud". Resolves target repo from the ticket\'s repo:<name> label unless the caller overrides with repo. Returns ok+message describing what was dispatched or why it could not be.',
+    description: 'Send a known Linear ticket to a coding agent. Defaults: agent="claude", target="cloud". Resolves target repo from the ticket\'s repo:<name> label unless the caller overrides with repo. Returns ok+message describing what was dispatched or why it could not be.',
     parameters: {
       type: 'object',
       properties: {
@@ -111,6 +119,20 @@ export const FOREMAN_TOOLS: ForemanTool[] = [
         repo: { type: 'string', description: 'Optional repo override, e.g. "agents-cli". Only set when the user explicitly names a repo; otherwise let the ticket\'s repo: label resolve it.' },
       },
       required: ['id'],
+    },
+  },
+  {
+    type: 'function',
+    name: 'spawn_agent',
+    description: 'Open a new coding agent terminal with a free-form task prompt. Use when the user gives a task description rather than a ticket ID. Defaults: agent="claude", target="local". Use target="cloud" when the user says "background", "while I\'m away", "autonomously", or the task is long-running without needing live watching.',
+    parameters: {
+      type: 'object',
+      properties: {
+        prompt: { type: 'string', description: 'Task description for the agent.' },
+        agent: { type: 'string', description: 'claude | codex | gemini (default: claude).' },
+        target: { type: 'string', description: '"local" or "cloud" (default: local).' },
+      },
+      required: ['prompt'],
     },
   },
   {

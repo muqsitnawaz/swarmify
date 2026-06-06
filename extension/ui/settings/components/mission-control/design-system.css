@@ -2956,3 +2956,40 @@
   background: var(--brand);
   color: white;
 }
+
+.sw-quick-dispatch {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--ds-border);
+}
+
+.sw-quick-dispatch-input {
+  width: 100%;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 7px 10px;
+  border-radius: 5px;
+  background: var(--ds-bg-recessed, #2a2825);
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  resize: none;
+  transition: border-color 0.15s, rows 0.15s;
+  box-sizing: border-box;
+}
+
+.sw-quick-dispatch-input:focus {
+  outline: none;
+  border-color: var(--brand, #e85d1e);
+}
+
+.sw-quick-dispatch-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sw-quick-dispatch-controls .sw-active-filter {
+  margin-left: 0;
+}
