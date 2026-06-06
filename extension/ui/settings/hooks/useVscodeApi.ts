@@ -57,3 +57,4 @@ export type VsCodeMessageType =
   | 'spawnAgentForTask'
   | 'installSwarmAgent'
   | 'installCommandPack'
+  | 'quickSpawn'
