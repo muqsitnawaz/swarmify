@@ -1649,7 +1649,7 @@ export function openPanel(context: vscode.ExtensionContext): void {
           message.type === 'retrySwarm'
             ? 'Retry swarm is coming soon. Dispatch a new one via /swarm for now.'
             : message.type === 'killSwarm'
-              ? 'Killing swarms from the dashboard is coming soon. Use the agents-mcp Stop tool.'
+              ? 'Killing swarms from the dashboard is coming soon.'
               : 'Clearing completed swarms will prune ~/.agents/swarm/agents — coming soon.'
         );
         break;
