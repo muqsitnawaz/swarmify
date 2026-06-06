@@ -379,7 +379,8 @@ describe('Session Preview - Critical Contract for Prompt Display', () => {
       expect(preview.firstUserMessage).toContain('Fix Bench tasks');
       expect(preview.firstUserMessage).not.toContain('AGENTS.md instructions');
       expect(preview.firstUserMessage).not.toContain('turn_aborted');
-      expect(preview.messageCount).toBe(3);
+      expect(preview.firstUserMessage).not.toContain('Filesystem sandboxing');
+      expect(preview.messageCount).toBe(4);
     });
   });
 });
