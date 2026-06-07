@@ -1403,6 +1403,22 @@ export async function activate(context: vscode.ExtensionContext) {
   }
 }
 
+async function sendCommandWhenReady(
+  terminal: vscode.Terminal,
+  command: string,
+): Promise<void> {
+  try {
+    await readiness.waitFor(terminal, 'promptReady');
+  } catch (err) {
+    console.warn(`[READINESS] promptReady wait failed: ${err}. Sending command anyway.`);
+  }
+  if (terminal.shellIntegration) {
+    terminal.shellIntegration.executeCommand(command);
+  } else {
+    terminal.sendText(command);
+  }
+}
+
 async function openSingleAgent(
   context: vscode.ExtensionContext,
   agentConfig: Omit<AgentConfig, 'count'>,
@@ -1547,16 +1563,7 @@ async function openSingleAgent(
   }
 
   if (command) {
-    try {
-      await readiness.waitFor(terminal, 'promptReady');
-    } catch (err) {
-      console.warn(`[READINESS] promptReady wait failed: ${err}. Sending command anyway.`);
-    }
-    if (terminal.shellIntegration) {
-      terminal.shellIntegration.executeCommand(command);
-    } else {
-      terminal.sendText(command);
-    }
+    await sendCommandWhenReady(terminal, command);
     readiness.armAgentReady(terminal, agentKey && sessionId
       ? { agentKey, sessionId, cwd }
       : {});
@@ -2869,9 +2876,8 @@ export async function openSingleAgentWithQueue(
     terminals.queueMessage(terminal, msg);
   }
 
-  // Send agent command
   if (command) {
-    terminal.sendText(command);
+    await sendCommandWhenReady(terminal, command);
   }
 
   // Arm agentReady detection so the session-file fast path can fire.
