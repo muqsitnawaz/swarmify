@@ -2876,9 +2876,8 @@ export async function openSingleAgentWithQueue(
     terminals.queueMessage(terminal, msg);
   }
 
-  // Send agent command
   if (command) {
-    terminal.sendText(command);
+    await sendCommandWhenReady(terminal, command);
   }
 
   // Arm agentReady detection so the session-file fast path can fire.
