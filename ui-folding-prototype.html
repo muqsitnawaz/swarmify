@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Swarmify Tool Output Folding Prototype</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        .truncate-fade {
+            position: relative;
+        }
+        .truncate-fade::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 3rem;
+            background: linear-gradient(to bottom, transparent, #030712); /* Tailwind gray-950 */
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 p-8 font-sans antialiased flex justify-center">
+
+<div class="w-full max-w-3xl space-y-8">
+    <div class="flex justify-between items-center border-b border-gray-800 pb-4">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-100">Tool Output Folding Prototypes</h1>
+            <p class="text-sm text-gray-400">Demonstrating how Swarmify can hide massive MCP tool outputs from the UI history.</p>
+        </div>
+        <div class="bg-blue-600 px-3 py-1 rounded text-xs font-bold tracking-wider uppercase">Prototype</div>
+    </div>
+
+    <!-- Style 1: Accordion / Collapsible -->
+    <div class="space-y-4">
+        <h2 class="text-lg font-medium text-gray-300 flex items-center gap-2">
+            <span class="bg-blue-500 w-2 h-2 rounded-full"></span>
+            Style 1: Accordion
+        </h2>
+        <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden shadow-sm">
+            <div class="p-4 flex items-center gap-3">
+                <div class="bg-blue-900/50 p-2 rounded-md">
+                    <i data-lucide="terminal" class="w-5 h-5 text-blue-400"></i>
+                </div>
+                <div>
+                    <div class="text-sm font-medium text-gray-200">read_file</div>
+                    <div class="text-xs text-gray-400">src/components/App.tsx</div>
+                </div>
+            </div>
+            
+            <!-- Accordion Header -->
+            <button onclick="toggleAccordion()" class="w-full bg-gray-950 px-4 py-2 border-y border-gray-700 flex justify-between items-center hover:bg-gray-900 transition-colors focus:outline-none group">
+                <span class="text-xs font-mono text-gray-400 flex items-center gap-2">
+                    <i data-lucide="file-json" class="w-4 h-4"></i>
+                    Output (245 lines) <span class="text-gray-600 italic">hidden</span>
+                </span>
+                <i data-lucide="chevron-down" id="accordion-icon" class="w-4 h-4 text-gray-500 transition-transform group-hover:text-blue-400"></i>
+            </button>
+            
+            <!-- Accordion Content -->
+            <div id="accordion-content" class="hidden">
+                <div class="p-4 bg-gray-950 font-mono text-xs text-gray-300 whitespace-pre overflow-x-auto h-48 overflow-y-auto">
+// Example large file output
+import React from 'react';
+import { useStore } from '../store';
+
+export function App() {
+  const state = useStore();
+  
+  // ... 200 more lines ...
+  return (
+    &lt;div&gt;
+      &lt;h1&gt;Hello World&lt;/h1&gt;
+    &lt;/div&gt;
+  );
+}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Style 2: Inline Truncation -->
+    <div class="space-y-4">
+        <h2 class="text-lg font-medium text-gray-300 flex items-center gap-2">
+            <span class="bg-purple-500 w-2 h-2 rounded-full"></span>
+            Style 2: Inline Truncation with Fade
+        </h2>
+        <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden shadow-sm">
+            <div class="p-4 flex items-center gap-3">
+                <div class="bg-purple-900/50 p-2 rounded-md">
+                    <i data-lucide="terminal" class="w-5 h-5 text-purple-400"></i>
+                </div>
+                <div>
+                    <div class="text-sm font-medium text-gray-200">execute_query</div>
+                    <div class="text-xs text-gray-400">SELECT * FROM users LIMIT 1000</div>
+                </div>
+            </div>
+            
+            <!-- Truncated Content Container -->
+            <div id="inline-container" class="relative bg-gray-950 border-t border-gray-700">
+                <div id="inline-content" class="p-4 font-mono text-xs text-gray-300 whitespace-pre overflow-hidden h-24 truncate-fade">
+[
+  { "id": 1, "name": "Alice", "role": "admin" },
+  { "id": 2, "name": "Bob", "role": "user" },
+  { "id": 3, "name": "Charlie", "role": "user" },
+  { "id": 4, "name": "Diana", "role": "editor" },
+  { "id": 5, "name": "Eve", "role": "user" },
+  { "id": 6, "name": "Frank", "role": "user" },
+  { "id": 7, "name": "Grace", "role": "admin" },
+  { "id": 8, "name": "Heidi", "role": "user" },
+  // ... many more rows ...
+]
+                </div>
+                <!-- Show More Button -->
+                <div class="absolute bottom-2 left-0 right-0 flex justify-center z-10">
+                    <button onclick="toggleInline()" id="inline-btn" class="bg-gray-800 hover:bg-gray-700 text-xs font-medium px-4 py-1.5 rounded-full border border-gray-600 shadow-sm flex items-center gap-1 transition-colors focus:outline-none">
+                        Show More
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="p-4 bg-gray-800/50 rounded-lg border border-gray-700 text-sm text-gray-400 italic">
+        Recommendation: Use <strong>Style 1</strong> for massive files (100+ lines) to keep the history compact, and <strong>Style 2</strong> for medium results (20-50 lines) to give context at a glance.
+    </div>
+
+</div>
+
+<script>
+    // Initialize Lucide icons
+    lucide.createIcons();
+
+    // Toggle logic for Style 1
+    function toggleAccordion() {
+        const content = document.getElementById('accordion-content');
+        const icon = document.getElementById('accordion-icon');
+        
+        if (content.classList.contains('hidden')) {
+            content.classList.remove('hidden');
+            icon.classList.add('rotate-180');
+        } else {
+            content.classList.add('hidden');
+            icon.classList.remove('rotate-180');
+        }
+    }
+
+    // Toggle logic for Style 2
+    function toggleInline() {
+        const content = document.getElementById('inline-content');
+        const btn = document.getElementById('inline-btn');
+        
+        if (content.classList.contains('h-24')) {
+            // Expand
+            content.classList.remove('h-24', 'truncate-fade');
+            content.classList.add('h-48', 'overflow-y-auto');
+            btn.innerHTML = 'Show Less';
+        } else {
+            // Collapse
+            content.classList.add('h-24', 'truncate-fade');
+            content.classList.remove('h-48', 'overflow-y-auto');
+            btn.innerHTML = 'Show More';
+        }
+    }
+</script>
+</body>
+</html>
