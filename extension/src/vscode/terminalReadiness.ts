@@ -539,8 +539,6 @@ function startPromptReadyFallbackProbe(r: Registered): void {
   if (pid === null) return;
   if (hasFired(r.entry, 'promptReady')) return;
 
-  // Small delay so shell integration (if enabled) has first shot at marking
-  // promptReady. If it fires, we detect hasFired and skip further polls.
   let consecutiveIdle = 0;
 
   const tick = async () => {
@@ -573,9 +571,7 @@ function startPromptReadyFallbackProbe(r: Registered): void {
     r.timers.push(t);
   };
 
-  // Start the first poll after an initial delay so the fast path has room.
-  const first = setTimeout(tick, IDLE_POLL_MS);
-  r.timers.push(first);
+  tick();
 }
 
 function startAgentReadyProbe(r: Registered): void {
@@ -632,8 +628,7 @@ function startAgentReadyProbe(r: Registered): void {
     r.timers.push(t);
   };
 
-  const first = setTimeout(tick, IDLE_POLL_MS);
-  r.timers.push(first);
+  tick();
 }
 
 // Watch the agent's session file roots. As soon as a file named
