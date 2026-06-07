@@ -1407,16 +1407,17 @@ async function sendCommandWhenReady(
   terminal: vscode.Terminal,
   command: string,
 ): Promise<void> {
+  const t0 = Date.now();
+  const elapsed = () => `t+${Date.now() - t0}ms`;
+  console.log(`[SEND-CMD] ${elapsed()} waiting for promptReady`);
   try {
     await readiness.waitFor(terminal, 'promptReady');
+    console.log(`[SEND-CMD] ${elapsed()} promptReady fired, sending`);
   } catch (err) {
-    console.warn(`[READINESS] promptReady wait failed: ${err}. Sending command anyway.`);
+    console.warn(`[SEND-CMD] ${elapsed()} promptReady wait failed: ${err}. Sending anyway.`);
   }
-  if (terminal.shellIntegration) {
-    terminal.shellIntegration.executeCommand(command);
-  } else {
-    terminal.sendText(command);
-  }
+  terminal.sendText(command);
+  console.log(`[SEND-CMD] ${elapsed()} sendText returned`);
 }
 
 async function openSingleAgent(
