@@ -1403,6 +1403,22 @@ export async function activate(context: vscode.ExtensionContext) {
   }
 }
 
+async function sendCommandWhenReady(
+  terminal: vscode.Terminal,
+  command: string,
+): Promise<void> {
+  try {
+    await readiness.waitFor(terminal, 'promptReady');
+  } catch (err) {
+    console.warn(`[READINESS] promptReady wait failed: ${err}. Sending command anyway.`);
+  }
+  if (terminal.shellIntegration) {
+    terminal.shellIntegration.executeCommand(command);
+  } else {
+    terminal.sendText(command);
+  }
+}
+
 async function openSingleAgent(
   context: vscode.ExtensionContext,
   agentConfig: Omit<AgentConfig, 'count'>,
