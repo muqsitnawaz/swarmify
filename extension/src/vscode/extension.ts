@@ -1563,16 +1563,7 @@ async function openSingleAgent(
   }
 
   if (command) {
-    try {
-      await readiness.waitFor(terminal, 'promptReady');
-    } catch (err) {
-      console.warn(`[READINESS] promptReady wait failed: ${err}. Sending command anyway.`);
-    }
-    if (terminal.shellIntegration) {
-      terminal.shellIntegration.executeCommand(command);
-    } else {
-      terminal.sendText(command);
-    }
+    await sendCommandWhenReady(terminal, command);
     readiness.armAgentReady(terminal, agentKey && sessionId
       ? { agentKey, sessionId, cwd }
       : {});
