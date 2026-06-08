@@ -168,11 +168,14 @@ describe('buildAgentTerminalEnv', () => {
     }
   });
 
-  test('does not scrub LLM provider keys that agent CLIs need for auth', () => {
-    // Regression guard: scrubbing ANTHROPIC_API_KEY / OPENAI_API_KEY / etc.
-    // would break the claude/codex/gemini CLIs for users who authenticate via
-    // env var instead of keychain.
-    const protectedKeys = [
+  test('LLM provider API keys are scrubbed (subscription auth + secrets bundles are the opt-in path)', () => {
+    // Project policy: credentials live in Keychain via `agents secrets`, not
+    // shell env. Subscription auth (Claude Pro/Max, ChatGPT Plus, Gemini
+    // Advanced) keeps working because agent CLIs read their tokens from
+    // ~/.claude/, ~/.codex/, ~/.gemini/ config dirs — env vars aren't needed.
+    // Users who genuinely need an API key for a run opt in via
+    // `agents run <agent> --secrets <bundle>`.
+    const llmKeys = [
       'ANTHROPIC_API_KEY',
       'OPENAI_API_KEY',
       'GOOGLE_API_KEY',
@@ -184,20 +187,17 @@ describe('buildAgentTerminalEnv', () => {
       'PERPLEXITY_API_KEY',
     ];
 
-    // Inject them into process.env to ensure the dynamic scrubber sees them
-    for (const key of protectedKeys) {
+    for (const key of llmKeys) {
       process.env[key] = 'dummy-key';
     }
 
     try {
       const env = buildAgentTerminalEnv('CC-123', 'session-abc');
-      for (const key of protectedKeys) {
-        expect(env[key]).toBeUndefined();
+      for (const key of llmKeys) {
+        expect(env[key]).toBeNull();
       }
-      expect(SENSITIVE_ENV_KEYS).not.toContain('ANTHROPIC_API_KEY');
-      expect(SENSITIVE_ENV_KEYS).not.toContain('OPENAI_API_KEY');
     } finally {
-      for (const key of protectedKeys) {
+      for (const key of llmKeys) {
         delete process.env[key];
       }
     }

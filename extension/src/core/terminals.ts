@@ -113,28 +113,16 @@ const SENSITIVE_PATTERNS = [
   /_AUTH$/,
 ];
 
-// LLM provider keys that agent CLIs need for authentication. These are
-// deliberately NOT scrubbed, as scrubbing them breaks agent functionality.
-// Per project policy, the right home for these is Keychain via `agents secrets`,
-// but we preserve them here for users who still use env vars for auth.
-const PROTECTED_LLM_KEYS = new Set([
-  'ANTHROPIC_API_KEY',
-  'OPENAI_API_KEY',
-  'GOOGLE_API_KEY',
-  'GEMINI_API_KEY',
-  'XAI_API_KEY',
-  'MISTRAL_API_KEY',
-  'GROQ_API_KEY',
-  'DEEPSEEK_API_KEY',
-  'PERPLEXITY_API_KEY',
-]);
-
-/**
- * Check if an environment variable key should be scrubbed from agent terminals.
- */
+// LLM provider keys are scrubbed too. Subscription auth (Claude Pro/Max,
+// ChatGPT Plus, Gemini Advanced) keeps working because the agent CLIs read
+// their tokens from ~/.claude/, ~/.codex/, ~/.gemini/ config dirs — not env
+// vars. Users who genuinely need an API key for a particular run opt in
+// explicitly via `agents run <agent> --secrets <bundle>`, which agents-cli
+// injects from Keychain. That keeps credential storage centralized in
+// `agents secrets` (macOS Keychain, biometry-gated) as project policy
+// requires.
 export function isSensitiveEnvKey(key: string): boolean {
-  if (PROTECTED_LLM_KEYS.has(key)) return false;
-  if (key === 'PWD') return false; // Standard POSIX env var, should not be scrubbed
+  if (key === 'PWD') return false; // Standard POSIX env var
   if (key.startsWith('AGENT_')) return false; // Our own internal tracking vars
 
   if (SENSITIVE_ENV_KEYS.includes(key as any)) return true;
