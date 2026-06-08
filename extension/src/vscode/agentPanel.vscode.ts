@@ -250,6 +250,15 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
       case 'sendQuickPrompt':
         await this.sendQuickPrompt(msg.promptId, msg.terminalId);
         return;
+      case 'insertPathInTerminal':
+        if (typeof msg.path === 'string' && msg.path) {
+          const t = msg.terminalId ? terminals.getById(msg.terminalId)?.terminal : vscode.window.activeTerminal;
+          if (t) {
+            t.show(true);
+            t.sendText(msg.path, false);
+          }
+        }
+        return;
     }
   }
 
@@ -1486,6 +1495,34 @@ function render(snap) {
 window.addEventListener('message', (e) => {
   const msg = e.data;
   if (msg && msg.type === 'snapshot') render(msg.data);
+});
+
+// Drag a file from the explorer/editor onto the panel -> paste its absolute
+// path into the focused agent terminal instead of letting VS Code's editor
+// host catch the drop and open the file.
+document.body.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+});
+document.body.addEventListener('drop', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  if (!e.dataTransfer) return;
+  const uriList = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain');
+  if (!uriList) return;
+  // RFC 2483: newline-delimited; '#' lines are comments. Take the first uri.
+  const firstUri = uriList.split(/\\r?\\n/).find((line) => line && !line.startsWith('#'));
+  if (!firstUri) return;
+  let p = firstUri.trim();
+  if (p.startsWith('file://')) {
+    try { p = decodeURIComponent(p.slice('file://'.length)); } catch { /* leave as-is */ }
+  }
+  vscode.postMessage({
+    type: 'insertPathInTerminal',
+    path: p,
+    terminalId: lastSnapshot && lastSnapshot.terminalId,
+  });
 });
 
 // Signal readiness AFTER the listener is attached so the extension host
