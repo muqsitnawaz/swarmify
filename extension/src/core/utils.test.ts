@@ -14,11 +14,6 @@ import {
   getPrefixFromTerminalId,
   mergeMcpConfig,
   createSwarmServerConfig,
-  generateTmuxSessionName,
-  buildTmuxInitCommand,
-  buildTmuxSplitCommand,
-  buildTmuxKillCommand,
-  isValidTmuxSessionName,
   sortPrompts,
   isBuiltInPromptId,
   truncateText,
@@ -398,79 +393,6 @@ describe('createSwarmServerConfig', () => {
       command: 'node',
       args: ['/path/to/cli-ts/dist/index.js'],
       env: {}
-    });
-  });
-});
-
-describe('tmux utilities', () => {
-  describe('generateTmuxSessionName', () => {
-    test('generates unique session names with prefix', () => {
-      const originalNow = Date.now;
-      let callCount = 0;
-      Date.now = () => 1700000000000 + callCount++;
-      try {
-        const name1 = generateTmuxSessionName('cc');
-        const name2 = generateTmuxSessionName('cc');
-
-        expect(name1).toMatch(/^agents-cc-\d+$/);
-        expect(name2).toMatch(/^agents-cc-\d+$/);
-        expect(name1).not.toBe(name2);
-      } finally {
-        Date.now = originalNow;
-      }
-    });
-
-    test('handles different prefixes', () => {
-      const claude = generateTmuxSessionName('cc');
-      const codex = generateTmuxSessionName('cx');
-
-      expect(claude).toContain('-cc-');
-      expect(codex).toContain('-cx-');
-    });
-  });
-
-  describe('buildTmuxInitCommand', () => {
-    test('builds init command with session name and pane label', () => {
-      const cmd = buildTmuxInitCommand('agents-cc-123', 'Claude');
-
-      expect(cmd).toContain('tmux new-session -s agents-cc-123');
-      expect(cmd).toContain('set-option -t agents-cc-123 mouse on');
-      expect(cmd).toContain('set-option -t agents-cc-123 pane-border-status top');
-      expect(cmd).toContain('Claude');
-    });
-  });
-
-  describe('buildTmuxSplitCommand', () => {
-    test('horizontal split uses -v flag', () => {
-      const cmd = buildTmuxSplitCommand('horizontal');
-      expect(cmd).toBe('tmux split-window -v');
-    });
-
-    test('vertical split uses -h flag', () => {
-      const cmd = buildTmuxSplitCommand('vertical');
-      expect(cmd).toBe('tmux split-window -h');
-    });
-  });
-
-  describe('buildTmuxKillCommand', () => {
-    test('builds kill command with session name', () => {
-      const cmd = buildTmuxKillCommand('agents-cc-123');
-      expect(cmd).toBe('tmux kill-session -t agents-cc-123');
-    });
-  });
-
-  describe('isValidTmuxSessionName', () => {
-    test('accepts valid names', () => {
-      expect(isValidTmuxSessionName('agents-cc-123')).toBe(true);
-      expect(isValidTmuxSessionName('my_session')).toBe(true);
-      expect(isValidTmuxSessionName('ABC123')).toBe(true);
-    });
-
-    test('rejects invalid names', () => {
-      expect(isValidTmuxSessionName('has space')).toBe(false);
-      expect(isValidTmuxSessionName('has:colon')).toBe(false);
-      expect(isValidTmuxSessionName('has.dot')).toBe(false);
-      expect(isValidTmuxSessionName('')).toBe(false);
     });
   });
 });
