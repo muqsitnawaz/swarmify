@@ -1,0 +1,8 @@
+# Swarmify project rules — composed on top of user + system layers.
+# The default preset names the project-only subrules; user/system subrules
+# auto-append in precedence order.
+
+presets:
+  default:
+    subrules:
+      - swarmify-sentinel
