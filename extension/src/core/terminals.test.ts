@@ -4,7 +4,8 @@ import {
   generateTerminalId,
   buildAgentTerminalEnv,
   resolveRestoredVersion,
-  RunningCounts
+  RunningCounts,
+  SENSITIVE_ENV_KEYS
 } from './terminals';
 import { CLAUDE_TITLE, CODEX_TITLE, GEMINI_TITLE, OPENCODE_TITLE, CURSOR_TITLE, SHELL_TITLE } from './utils';
 
@@ -140,6 +141,106 @@ describe('buildAgentTerminalEnv', () => {
   test('omitted AGENT_VERSION defaults to empty string', () => {
     const env = buildAgentTerminalEnv('CC-123', 'session-abc');
     expect(env.AGENT_VERSION).toBe('');
+  });
+
+  test('every SENSITIVE_ENV_KEY is set to null so VS Code deletes it', () => {
+    const env = buildAgentTerminalEnv('CC-123', 'session-abc');
+    for (const key of SENSITIVE_ENV_KEYS) {
+      expect(env[key]).toBeNull();
+    }
+  });
+
+  test('dynamically scrubs keys from process.env that match sensitive patterns', () => {
+    // Temporarily inject keys into process.env for the test
+    process.env.MY_CUSTOM_SECRET = 'super-secret';
+    process.env.DB_PASSWORD = 'password123';
+    process.env.TEAM_AUTH_TOKEN = 'token-xyz';
+
+    try {
+      const env = buildAgentTerminalEnv('CC-123', 'session-abc');
+      expect(env.MY_CUSTOM_SECRET).toBeNull();
+      expect(env.DB_PASSWORD).toBeNull();
+      expect(env.TEAM_AUTH_TOKEN).toBeNull();
+    } finally {
+      delete process.env.MY_CUSTOM_SECRET;
+      delete process.env.DB_PASSWORD;
+      delete process.env.TEAM_AUTH_TOKEN;
+    }
+  });
+
+  test('LLM provider API keys are scrubbed (subscription auth + secrets bundles are the opt-in path)', () => {
+    // Project policy: credentials live in Keychain via `agents secrets`, not
+    // shell env. Subscription auth (Claude Pro/Max, ChatGPT Plus, Gemini
+    // Advanced) keeps working because agent CLIs read their tokens from
+    // ~/.claude/, ~/.codex/, ~/.gemini/ config dirs — env vars aren't needed.
+    // Users who genuinely need an API key for a run opt in via
+    // `agents run <agent> --secrets <bundle>`.
+    const llmKeys = [
+      'ANTHROPIC_API_KEY',
+      'OPENAI_API_KEY',
+      'GOOGLE_API_KEY',
+      'GEMINI_API_KEY',
+      'XAI_API_KEY',
+      'MISTRAL_API_KEY',
+      'GROQ_API_KEY',
+      'DEEPSEEK_API_KEY',
+      'PERPLEXITY_API_KEY',
+    ];
+
+    for (const key of llmKeys) {
+      process.env[key] = 'dummy-key';
+    }
+
+    try {
+      const env = buildAgentTerminalEnv('CC-123', 'session-abc');
+      for (const key of llmKeys) {
+        expect(env[key]).toBeNull();
+      }
+    } finally {
+      for (const key of llmKeys) {
+        delete process.env[key];
+      }
+    }
+  });
+
+  test('does not scrub standard PWD or internal AGENT_ variables', () => {
+    process.env.PWD = '/some/path';
+    process.env.AGENT_CUSTOM_VAR = 'value';
+
+    try {
+      const env = buildAgentTerminalEnv('CC-123', 'session-abc');
+      expect(env.PWD).toBeUndefined();
+      expect(env.AGENT_CUSTOM_VAR).toBeUndefined();
+    } finally {
+      delete process.env.PWD;
+      delete process.env.AGENT_CUSTOM_VAR;
+    }
+  });
+
+  test('does not scrub SQL schema keys (FOREIGN_KEY, PRIMARY_KEY, etc.)', () => {
+    // Regression guard: the /_KEY$/ pattern would over-match relational schema
+    // env conventions used by some ORMs. Treat these as non-credentials.
+    process.env.FOREIGN_KEY = 'user_id';
+    process.env.PRIMARY_KEY = 'id';
+    process.env.PARTITION_KEY = 'tenant_id';
+    try {
+      const env = buildAgentTerminalEnv('CC-123', 'session-abc');
+      expect(env.FOREIGN_KEY).toBeUndefined();
+      expect(env.PRIMARY_KEY).toBeUndefined();
+      expect(env.PARTITION_KEY).toBeUndefined();
+    } finally {
+      delete process.env.FOREIGN_KEY;
+      delete process.env.PRIMARY_KEY;
+      delete process.env.PARTITION_KEY;
+    }
+  });
+
+  test('scrubs AWS_SECRET_ACCESS_KEY specifically', () => {
+    // Anchor the most common offender so a careless dedup of the list still
+    // keeps AWS coverage.
+    const env = buildAgentTerminalEnv('CC-123', 'session-abc');
+    expect(env.AWS_SECRET_ACCESS_KEY).toBeNull();
+    expect(env.AWS_ACCESS_KEY_ID).toBeNull();
   });
 });
 

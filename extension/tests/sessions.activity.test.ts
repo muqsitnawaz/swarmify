@@ -283,6 +283,64 @@ describe('session activity parsing - real data', () => {
     expect(formatActivity({ type: 'waiting', summary: '', timestamp: new Date() }))
       .toBe('Waiting for approval');
   });
+
+  test('scrubSensitiveCommand masks sensitive environment variables', () => {
+    // Claude/Bash style
+    const claudeEvent = JSON.stringify({
+      type: 'assistant',
+      message: {
+        content: [
+          {
+            type: 'tool_use',
+            name: 'Bash',
+            input: { command: 'AWS_ACCESS_KEY_ID=AKIA123456789 AWS_SECRET_ACCESS_KEY=secret123 npm start' },
+          },
+        ],
+      },
+    });
+
+    const activity = extractCurrentActivity(claudeEvent, 'claude');
+    expect(activity?.type).toBe('running');
+    expect(activity?.summary).toBe('AWS_ACCESS_KEY_ID=*** AWS_SECRET_ACCESS_KEY=***...');
+  });
+
+  test('scrubSensitiveCommand preserves non-sensitive environment variables', () => {
+    const claudeEvent = JSON.stringify({
+      type: 'assistant',
+      message: {
+        content: [
+          {
+            type: 'tool_use',
+            name: 'Bash',
+            input: { command: 'NODE_ENV=production PORT=3000 npm start' },
+          },
+        ],
+      },
+    });
+
+    const activity = extractCurrentActivity(claudeEvent, 'claude');
+    expect(activity?.type).toBe('running');
+    expect(activity?.summary).toBe('NODE_ENV=production PORT=3000 npm start');
+  });
+
+  test('scrubSensitiveCommand handles quoted values', () => {
+    const claudeEvent = JSON.stringify({
+      type: 'assistant',
+      message: {
+        content: [
+          {
+            type: 'tool_use',
+            name: 'Bash',
+            input: { command: 'GITHUB_TOKEN="ghp_v3ry_s3cr3t" npm run release' },
+          },
+        ],
+      },
+    });
+
+    const activity = extractCurrentActivity(claudeEvent, 'claude');
+    expect(activity?.type).toBe('running');
+    expect(activity?.summary).toBe('GITHUB_TOKEN=*** npm run release');
+  });
 });
 
 describe('session activity parsing - synthetic data', () => {

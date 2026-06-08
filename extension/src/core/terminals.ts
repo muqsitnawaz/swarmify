@@ -71,6 +71,75 @@ export function generateTerminalId(prefix: string, counter: number): string {
   return `${prefix}-${Date.now()}-${counter}`;
 }
 
+// Infrastructure credentials that get deleted from the spawned agent terminal's
+// environment. A prompt-injected agent could otherwise shell out and read them.
+// Setting a key to null in VS Code's TerminalOptions.env removes it.
+export const SENSITIVE_ENV_KEYS = [
+  'AWS_ACCESS_KEY_ID',
+  'AWS_SECRET_ACCESS_KEY',
+  'AWS_SESSION_TOKEN',
+  'AWS_SECURITY_TOKEN',
+  'GITHUB_TOKEN',
+  'GH_TOKEN',
+  'NPM_TOKEN',
+  'NPM_AUTH_TOKEN',
+  'DATABASE_URL',
+  'DATABASE_PASSWORD',
+  'PG_PASSWORD',
+  'PGPASSWORD',
+  'MYSQL_PWD',
+  'STRIPE_SECRET_KEY',
+  'STRIPE_API_KEY',
+  'SLACK_BOT_TOKEN',
+  'SLACK_USER_TOKEN',
+  'SLACK_APP_TOKEN',
+  'CLOUDFLARE_API_TOKEN',
+  'CLOUDFLARE_API_KEY',
+  'SUPABASE_SERVICE_ROLE_KEY',
+  'SUPABASE_SERVICE_KEY',
+  'VERCEL_TOKEN',
+  'GOOGLE_APPLICATION_CREDENTIALS',
+  'AZURE_CLIENT_SECRET',
+] as const;
+
+// Patterns that identify potentially sensitive environment variables.
+const SENSITIVE_PATTERNS = [
+  /_KEY$/,
+  /_TOKEN$/,
+  /_SECRET$/,
+  /_PASSWORD$/,
+  /PASSWORD$/,
+  /_PWD$/,
+  /_AUTH$/,
+];
+
+// LLM provider keys are scrubbed too. Subscription auth (Claude Pro/Max,
+// ChatGPT Plus, Gemini Advanced) keeps working because the agent CLIs read
+// their tokens from ~/.claude/, ~/.codex/, ~/.gemini/ config dirs — not env
+// vars. Users who genuinely need an API key for a particular run opt in
+// explicitly via `agents run <agent> --secrets <bundle>`, which agents-cli
+// injects from Keychain. That keeps credential storage centralized in
+// `agents secrets` (macOS Keychain, biometry-gated) as project policy
+// requires.
+// SQL/relational schema env names end in _KEY but are not credentials.
+// Without this exemption the dynamic /_KEY$/ pattern would scrub them.
+const PATTERN_FALSE_POSITIVES = new Set([
+  'FOREIGN_KEY',
+  'PRIMARY_KEY',
+  'PARTITION_KEY',
+  'SORT_KEY',
+  'HASH_KEY',
+]);
+
+export function isSensitiveEnvKey(key: string): boolean {
+  if (key === 'PWD') return false; // Standard POSIX env var
+  if (key.startsWith('AGENT_')) return false; // Our own internal tracking vars
+  if (PATTERN_FALSE_POSITIVES.has(key)) return false;
+
+  if (SENSITIVE_ENV_KEYS.includes(key as any)) return true;
+  return SENSITIVE_PATTERNS.some(p => p.test(key));
+}
+
 /**
  * Build environment variables for agent terminals.
  *
@@ -85,8 +154,8 @@ export function buildAgentTerminalEnv(
   sessionId: string | null | undefined,
   workspacePath: string | null | undefined = undefined,
   version: string | null | undefined = undefined
-): Record<string, string> {
-  return {
+): Record<string, string | null> {
+  const env: Record<string, string | null> = {
     AGENT_TERMINAL_ID: terminalId,
     AGENT_SESSION_ID: sessionId ?? '',
     AGENT_WORKSPACE_DIR: workspacePath ?? '',
@@ -94,6 +163,20 @@ export function buildAgentTerminalEnv(
     DISABLE_AUTO_TITLE: 'true',
     PROMPT_COMMAND: ''
   };
+
+  // 1. Scrub known static keys
+  for (const key of SENSITIVE_ENV_KEYS) {
+    env[key] = null;
+  }
+
+  // 2. Dynamically scrub anything in process.env that looks sensitive
+  for (const key of Object.keys(process.env)) {
+    if (isSensitiveEnvKey(key)) {
+      env[key] = null;
+    }
+  }
+
+  return env;
 }
 
 /**
