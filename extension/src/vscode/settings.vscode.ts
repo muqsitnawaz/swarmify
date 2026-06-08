@@ -1718,7 +1718,10 @@ export function openPanel(context: vscode.ExtensionContext): void {
         // terminal so output is visible and failures are obvious — matches
         // the UX of other CLI dispatches from the dashboard.
         if (typeof message.teamId === 'string' && typeof message.text === 'string' && message.text.trim()) {
-          const term = vscode.window.createTerminal({ name: `Factory answer - ${message.teamId}` });
+          const term = vscode.window.createTerminal({
+            name: `Factory answer - ${message.teamId}`,
+            env: buildAgentTerminalEnv(terminals.nextId('SH'), null),
+          });
           const escaped = message.text.replace(/"/g, '\\"').replace(/\$/g, '\\$');
           term.sendText(`agents factory answer "${message.teamId}" "${escaped}"`, true);
           term.show();

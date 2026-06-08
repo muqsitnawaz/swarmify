@@ -28,6 +28,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { execFile } from 'child_process';
 import * as terminals from './terminals.vscode';
+import { buildAgentTerminalEnv } from '../core/terminals';
 import { listTeamsForCwd, TeamWithMates } from './foreman.sources';
 import { getSessionPathBySessionId, getSessionPreviewInfo, SessionPreviewInfo, readTailLines } from './sessions.vscode';
 import { extractLinearTicketId } from '../core/utils';
@@ -1665,7 +1666,10 @@ function pickQuickPrompts(): QuickPromptLite[] {
 
 async function runInShellTerminal(command: string): Promise<void> {
   const existing = vscode.window.terminals.find((t) => t.name === 'agents: shell');
-  const terminal = existing ?? vscode.window.createTerminal({ name: 'agents: shell' });
+  const terminal = existing ?? vscode.window.createTerminal({
+    name: 'agents: shell',
+    env: buildAgentTerminalEnv(terminals.nextId('SH'), null),
+  });
   terminal.show(true);
   terminal.sendText(command);
 }

@@ -217,6 +217,24 @@ describe('buildAgentTerminalEnv', () => {
     }
   });
 
+  test('does not scrub SQL schema keys (FOREIGN_KEY, PRIMARY_KEY, etc.)', () => {
+    // Regression guard: the /_KEY$/ pattern would over-match relational schema
+    // env conventions used by some ORMs. Treat these as non-credentials.
+    process.env.FOREIGN_KEY = 'user_id';
+    process.env.PRIMARY_KEY = 'id';
+    process.env.PARTITION_KEY = 'tenant_id';
+    try {
+      const env = buildAgentTerminalEnv('CC-123', 'session-abc');
+      expect(env.FOREIGN_KEY).toBeUndefined();
+      expect(env.PRIMARY_KEY).toBeUndefined();
+      expect(env.PARTITION_KEY).toBeUndefined();
+    } finally {
+      delete process.env.FOREIGN_KEY;
+      delete process.env.PRIMARY_KEY;
+      delete process.env.PARTITION_KEY;
+    }
+  });
+
   test('scrubs AWS_SECRET_ACCESS_KEY specifically', () => {
     // Anchor the most common offender so a careless dedup of the list still
     // keeps AWS coverage.

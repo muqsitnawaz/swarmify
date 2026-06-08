@@ -121,9 +121,20 @@ const SENSITIVE_PATTERNS = [
 // injects from Keychain. That keeps credential storage centralized in
 // `agents secrets` (macOS Keychain, biometry-gated) as project policy
 // requires.
+// SQL/relational schema env names end in _KEY but are not credentials.
+// Without this exemption the dynamic /_KEY$/ pattern would scrub them.
+const PATTERN_FALSE_POSITIVES = new Set([
+  'FOREIGN_KEY',
+  'PRIMARY_KEY',
+  'PARTITION_KEY',
+  'SORT_KEY',
+  'HASH_KEY',
+]);
+
 export function isSensitiveEnvKey(key: string): boolean {
   if (key === 'PWD') return false; // Standard POSIX env var
   if (key.startsWith('AGENT_')) return false; // Our own internal tracking vars
+  if (PATTERN_FALSE_POSITIVES.has(key)) return false;
 
   if (SENSITIVE_ENV_KEYS.includes(key as any)) return true;
   return SENSITIVE_PATTERNS.some(p => p.test(key));
