@@ -122,13 +122,18 @@ export function createTmuxTerminal(
   // inside one shell argument. The shell strips the backslash, tmux sees
   // `;` as its command separator. Mouse + pane-border styling, all on the
   // same -S socket so they target the session we just created.
-  parts.push(
-    [
-      `tmux -S ${shq(socket)} set-option -t ${shq(session)} mouse on`,
-      `set-option -t ${shq(session)} pane-border-status top`,
-      `set-option -t ${shq(session)} pane-border-format ${shq(` #{pane_index}: ${name} `)}`,
-    ].join(' \\; '),
-  );
+  //
+  // Wrapped in `{ ... || true; }` so a styling failure (e.g. bare `tmux` not
+  // on the terminal's shell PATH even though agents-cli found one at an
+  // absolute path) doesn't break the chain and prevent `attach` from running.
+  // Worst case: styling is missing, but the user is still attached to a live
+  // session — much better than a half-init terminal sitting at a shell prompt.
+  const styling = [
+    `tmux -S ${shq(socket)} set-option -t ${shq(session)} mouse on`,
+    `set-option -t ${shq(session)} pane-border-status top`,
+    `set-option -t ${shq(session)} pane-border-format ${shq(` #{pane_index}: ${name} `)}`,
+  ].join(' \\; ');
+  parts.push(`{ ${styling} || true; }`);
 
   parts.push(`agents tmux attach ${shq(session)}`);
 
