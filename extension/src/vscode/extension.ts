@@ -9,7 +9,7 @@ import {
 import * as claudemd from './claudemd.vscode';
 import { AgentsMarkdownEditorProvider, swarmCurrentDocument } from './customEditor';
 import * as git from './git.vscode';
-import { AgentSettings, hasLoginEnabled, PromptEntry } from '../core/settings';
+import { AgentSettings, hasLoginEnabled, PromptEntry, QUICK_LAUNCH_SLOT_KEYS, getQuickLaunchSlot, QuickLaunchSlot } from '../core/settings';
 import * as settings from './settings.vscode';
 import * as swarm from './swarm.vscode';
 import { startWatchdog } from './watchdog.vscode';
@@ -1248,18 +1248,18 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   }
 
-  // Register quick launch commands (Cmd+Shift+1/2/3)
-  const quickLaunch = customAgentSettings.quickLaunch;
-  const quickLaunchSlots = [
-    { command: 'agents.quickLaunch1', slot: quickLaunch?.slot1 },
-    { command: 'agents.quickLaunch2', slot: quickLaunch?.slot2 },
-    { command: 'agents.quickLaunch3', slot: quickLaunch?.slot3 },
-  ];
-
-  for (const { command, slot } of quickLaunchSlots) {
+  // Register quick launch commands (Cmd+Shift+0..9). Always register all ten so
+  // keybindings stay valid even before the user assigns a slot — unassigned
+  // shortcuts silently no-op.
+  for (const digit of QUICK_LAUNCH_SLOT_KEYS) {
+    const command = `agents.quickLaunch${digit}`;
     context.subscriptions.push(
       vscode.commands.registerCommand(command, async () => {
-        if (!slot) return; // Unconfigured = do nothing (silent)
+        // Re-read settings on every press so newly saved slots take effect
+        // without reloading the window.
+        const fresh = settings.getSettings(context);
+        const slot: QuickLaunchSlot | undefined = getQuickLaunchSlot(fresh.quickLaunch, digit);
+        if (!slot) return;
 
         const builtInDef = getBuiltInByKey(slot.agent);
         if (!builtInDef) return;
@@ -1271,8 +1271,14 @@ export async function activate(context: vscode.ExtensionContext) {
         if (!modelId && slot.modelAlias) {
           modelId = (await resolveAlias(slot.agent, slot.modelAlias)) ?? undefined;
         }
-        const flags = modelId ? `--model ${modelId}` : undefined;
-        openSingleAgent(context, agentConfig, flags);
+
+        const parts: string[] = [];
+        if (modelId) parts.push(`--model ${modelId}`);
+        if (slot.mode) parts.push(`--mode ${slot.mode}`);
+        if (slot.extraFlags && slot.extraFlags.trim()) parts.push(slot.extraFlags.trim());
+        const flags = parts.length ? parts.join(' ') : undefined;
+
+        openSingleAgent(context, agentConfig, flags, slot.version || undefined);
       })
     );
   }
