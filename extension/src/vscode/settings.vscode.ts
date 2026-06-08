@@ -7,7 +7,7 @@ import * as path from 'path';
 import { homedir } from 'os';
 import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
-import { AgentSettings, getDefaultSettings, CustomAgentConfig, SwarmAgentType, ALL_SWARM_AGENTS, PromptEntry, DEFAULT_DISPLAY_PREFERENCES, DEFAULT_NOTIFICATION_SETTINGS, DEFAULT_TASK_SOURCE_SETTINGS, DEFAULT_QUICK_LAUNCH, QuickLaunchSlot, migrateStaleClaudeQuickLaunch } from '../core/settings';
+import { AgentSettings, getDefaultSettings, CustomAgentConfig, SwarmAgentType, ALL_SWARM_AGENTS, PromptEntry, DEFAULT_DISPLAY_PREFERENCES, DEFAULT_NOTIFICATION_SETTINGS, DEFAULT_TASK_SOURCE_SETTINGS, DEFAULT_QUICK_LAUNCH, QuickLaunchSlot, migrateStaleClaudeQuickLaunch, migrateLegacyQuickLaunchSlots } from '../core/settings';
 import { readPromptsFromPath, writePromptsToPath, DEFAULT_PROMPTS } from '../core/prompts';
 import * as terminals from './terminals.vscode';
 import * as swarm from './swarm.vscode';
@@ -735,8 +735,12 @@ export function getSettings(context: vscode.ExtensionContext): AgentSettings {
     if (!stored.quickLaunch) {
       stored.quickLaunch = { ...DEFAULT_QUICK_LAUNCH };
       context.globalState.update('agentSettings', stored);
-    } else if (migrateStaleClaudeQuickLaunch(stored.quickLaunch)) {
-      context.globalState.update('agentSettings', stored);
+    } else {
+      const staleChanged = migrateStaleClaudeQuickLaunch(stored.quickLaunch);
+      const legacyChanged = migrateLegacyQuickLaunchSlots(stored.quickLaunch);
+      if (staleChanged || legacyChanged) {
+        context.globalState.update('agentSettings', stored);
+      }
     }
     return stored;
   }
