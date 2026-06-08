@@ -293,6 +293,14 @@
         "title": "Agents: Open"
       },
       {
+        "command": "agents.cycleNextTerminal",
+        "title": "Agents: Cycle Next Terminal"
+      },
+      {
+        "command": "agents.cyclePrevTerminal",
+        "title": "Agents: Cycle Previous Terminal"
+      },
+      {
         "command": "agents.enableView",
         "title": "Agents: Enable View"
       },
@@ -681,6 +689,16 @@
         "key": "ctrl+shift+w",
         "mac": "cmd+shift+w",
         "when": "terminalFocus && agents.activeIsAgent"
+      },
+      {
+        "command": "agents.cycleNextTerminal",
+        "key": "ctrl+r",
+        "mac": "cmd+r"
+      },
+      {
+        "command": "agents.cyclePrevTerminal",
+        "key": "ctrl+e",
+        "mac": "cmd+e"
       }
     ]
   },

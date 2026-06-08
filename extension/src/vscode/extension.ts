@@ -824,6 +824,14 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
+    vscode.commands.registerCommand('agents.cycleNextTerminal', () => cycleAgentTerminal(1))
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('agents.cyclePrevTerminal', () => cycleAgentTerminal(-1))
+  );
+
+  context.subscriptions.push(
     vscode.commands.registerCommand('agents.reopenLastSession', () => reopenLastClosedSession(context))
   );
 
@@ -2719,6 +2727,18 @@ async function getSessionPreviewForEntry(
     return await getCursorSessionPreviewInfo(sessionPath);
   }
   return await getSessionPreviewInfo(sessionPath);
+}
+
+function cycleAgentTerminal(direction: 1 | -1) {
+  const agentEntries = terminals.getAllTerminals().filter(e => e.agentConfig);
+  if (agentEntries.length === 0) return;
+
+  const active = vscode.window.activeTerminal;
+  const currentIdx = active ? agentEntries.findIndex(e => e.terminal === active) : -1;
+  const startIdx = currentIdx === -1 ? (direction === 1 ? -1 : 0) : currentIdx;
+  const nextIdx = (startIdx + direction + agentEntries.length) % agentEntries.length;
+
+  agentEntries[nextIdx].terminal.show();
 }
 
 async function goToTerminal(context: vscode.ExtensionContext) {
