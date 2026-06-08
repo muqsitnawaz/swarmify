@@ -763,6 +763,136 @@
   margin-left: -4px;
 }
 
+/* Launch Matrix — 10-slot quick-launch keypad (Cmd+Shift+0..9). */
+.sw-panel-launch-matrix {
+  display: grid;
+  gap: 6px;
+}
+
+.sw-launch-slot {
+  border-radius: var(--r-sm);
+  border: 1px solid var(--ds-border);
+  background: var(--ds-bg-inset);
+  box-shadow: var(--shadow-inset);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.sw-launch-slot.armed {
+  border-color: var(--ds-border-strong);
+}
+
+.sw-launch-slot.empty {
+  opacity: 0.78;
+}
+
+.sw-launch-slot.open {
+  border-color: var(--brand);
+  box-shadow: var(--shadow-inset), 0 0 0 1px var(--brand-ring);
+}
+
+.sw-launch-slot-row {
+  display: grid;
+  grid-template-columns: 8px 64px minmax(0, 1fr) minmax(0, 130px) 26px;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+}
+
+.sw-launch-kbd {
+  text-align: center;
+  font-family: "Geist Mono", monospace;
+  font-size: 11px;
+}
+
+.sw-launch-agent {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sw-launch-agent-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ds-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sw-launch-agent-sub {
+  font-size: 10.5px;
+  color: var(--ds-text-dim);
+  font-family: "Geist Mono", monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sw-launch-flags-badge {
+  font-size: 10px;
+  font-family: "Geist Mono", monospace;
+  color: var(--ds-text-dim);
+  background: var(--ds-bg-recessed);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--r-sm);
+  padding: 2px 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  justify-self: end;
+}
+
+.sw-launch-assign {
+  grid-column: 3 / span 1;
+  height: 28px;
+}
+
+.sw-launch-editor {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+  padding: 12px 12px 14px 12px;
+  border-top: 1px dashed var(--ds-border);
+  background: var(--ds-bg-panel);
+}
+
+.sw-launch-editor input[type="text"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 30px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--ds-border-strong);
+  background: var(--ds-bg-recessed);
+  color: var(--ds-text);
+  padding: 0 9px;
+  font-size: 12px;
+  font-family: "Geist Mono", monospace;
+  box-shadow: var(--shadow-inset);
+}
+
+.sw-launch-editor input[type="text"]:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: var(--shadow-inset), 0 0 0 2px var(--brand-ring);
+}
+
+.sw-launch-editor-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.sw-launch-matrix-hint {
+  margin-top: 8px;
+  font-size: 10.5px;
+  color: var(--ds-text-dim);
+  font-family: "Geist Mono", monospace;
+  font-style: italic;
+}
+
 @media (max-width: 640px) {
   .sw-panel-grid-top,
   .sw-panel-grid-main {
