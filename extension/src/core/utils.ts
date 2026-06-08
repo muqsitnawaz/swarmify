@@ -451,51 +451,6 @@ export function createSwarmServerConfig(cliTsIndexPath: string): McpServerConfig
   };
 }
 
-// === TMUX UTILITIES ===
-
-/**
- * Generate a unique tmux session name
- */
-export function generateTmuxSessionName(prefix: string): string {
-  return `agents-${prefix}-${Date.now()}`;
-}
-
-/**
- * Build tmux initialization command with mouse support and pane labels
- */
-export function buildTmuxInitCommand(sessionName: string, paneLabel: string): string {
-  return [
-    `tmux new-session -s ${sessionName} -n main`,
-    `tmux set-option -t ${sessionName} mouse on`,
-    `tmux set-option -t ${sessionName} pane-border-status top`,
-    `tmux set-option -t ${sessionName} pane-border-format " #{pane_index}: ${paneLabel} "`,
-  ].join(' \\; ');
-}
-
-/**
- * Build tmux split command
- * Note: tmux -v = horizontal split (new pane below), -h = vertical split (new pane to right)
- */
-export function buildTmuxSplitCommand(direction: 'horizontal' | 'vertical'): string {
-  // tmux uses opposite terminology: -v splits horizontally, -h splits vertically
-  const flag = direction === 'horizontal' ? '-v' : '-h';
-  return `tmux split-window ${flag}`;
-}
-
-/**
- * Build tmux kill session command
- */
-export function buildTmuxKillCommand(sessionName: string): string {
-  return `tmux kill-session -t ${sessionName}`;
-}
-
-/**
- * Check if a session name is a valid tmux session name (alphanumeric, dash, underscore)
- */
-export function isValidTmuxSessionName(name: string): boolean {
-  return /^[a-zA-Z0-9_-]+$/.test(name);
-}
-
 // === PROMPT UTILITIES ===
 
 export interface PromptEntryLike {
