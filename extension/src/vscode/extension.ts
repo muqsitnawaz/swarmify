@@ -615,6 +615,10 @@ export async function activate(context: vscode.ExtensionContext) {
   const { registerAgentPanel } = require('./agentPanel.vscode') as typeof import('./agentPanel.vscode');
   registerAgentPanel(context);
 
+  // Issues view: GitHub + Linear issues scoped to the current repository.
+  const { registerIssuesPanel } = require('./issuesPanel.vscode') as typeof import('./issuesPanel.vscode');
+  registerIssuesPanel(context);
+
   // Create status bar item for showing active terminal status bar label
   agentStatusBarItem = vscode.window.createStatusBarItem(
     vscode.StatusBarAlignment.Left,
