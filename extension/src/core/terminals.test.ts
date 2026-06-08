@@ -4,7 +4,8 @@ import {
   generateTerminalId,
   buildAgentTerminalEnv,
   resolveRestoredVersion,
-  RunningCounts
+  RunningCounts,
+  SENSITIVE_ENV_KEYS
 } from './terminals';
 import { CLAUDE_TITLE, CODEX_TITLE, GEMINI_TITLE, OPENCODE_TITLE, CURSOR_TITLE, SHELL_TITLE } from './utils';
 
@@ -140,6 +141,88 @@ describe('buildAgentTerminalEnv', () => {
   test('omitted AGENT_VERSION defaults to empty string', () => {
     const env = buildAgentTerminalEnv('CC-123', 'session-abc');
     expect(env.AGENT_VERSION).toBe('');
+  });
+
+  test('every SENSITIVE_ENV_KEY is set to null so VS Code deletes it', () => {
+    const env = buildAgentTerminalEnv('CC-123', 'session-abc');
+    for (const key of SENSITIVE_ENV_KEYS) {
+      expect(env[key]).toBeNull();
+    }
+  });
+
+  test('dynamically scrubs keys from process.env that match sensitive patterns', () => {
+    // Temporarily inject keys into process.env for the test
+    process.env.MY_CUSTOM_SECRET = 'super-secret';
+    process.env.DB_PASSWORD = 'password123';
+    process.env.TEAM_AUTH_TOKEN = 'token-xyz';
+
+    try {
+      const env = buildAgentTerminalEnv('CC-123', 'session-abc');
+      expect(env.MY_CUSTOM_SECRET).toBeNull();
+      expect(env.DB_PASSWORD).toBeNull();
+      expect(env.TEAM_AUTH_TOKEN).toBeNull();
+    } finally {
+      delete process.env.MY_CUSTOM_SECRET;
+      delete process.env.DB_PASSWORD;
+      delete process.env.TEAM_AUTH_TOKEN;
+    }
+  });
+
+  test('does not scrub LLM provider keys that agent CLIs need for auth', () => {
+    // Regression guard: scrubbing ANTHROPIC_API_KEY / OPENAI_API_KEY / etc.
+    // would break the claude/codex/gemini CLIs for users who authenticate via
+    // env var instead of keychain.
+    const protectedKeys = [
+      'ANTHROPIC_API_KEY',
+      'OPENAI_API_KEY',
+      'GOOGLE_API_KEY',
+      'GEMINI_API_KEY',
+      'XAI_API_KEY',
+      'MISTRAL_API_KEY',
+      'GROQ_API_KEY',
+      'DEEPSEEK_API_KEY',
+      'PERPLEXITY_API_KEY',
+    ];
+
+    // Inject them into process.env to ensure the dynamic scrubber sees them
+    for (const key of protectedKeys) {
+      process.env[key] = 'dummy-key';
+    }
+
+    try {
+      const env = buildAgentTerminalEnv('CC-123', 'session-abc');
+      for (const key of protectedKeys) {
+        expect(env[key]).toBeUndefined();
+      }
+      expect(SENSITIVE_ENV_KEYS).not.toContain('ANTHROPIC_API_KEY');
+      expect(SENSITIVE_ENV_KEYS).not.toContain('OPENAI_API_KEY');
+    } finally {
+      for (const key of protectedKeys) {
+        delete process.env[key];
+      }
+    }
+  });
+
+  test('does not scrub standard PWD or internal AGENT_ variables', () => {
+    process.env.PWD = '/some/path';
+    process.env.AGENT_CUSTOM_VAR = 'value';
+
+    try {
+      const env = buildAgentTerminalEnv('CC-123', 'session-abc');
+      expect(env.PWD).toBeUndefined();
+      expect(env.AGENT_CUSTOM_VAR).toBeUndefined();
+    } finally {
+      delete process.env.PWD;
+      delete process.env.AGENT_CUSTOM_VAR;
+    }
+  });
+
+  test('scrubs AWS_SECRET_ACCESS_KEY specifically', () => {
+    // Anchor the most common offender so a careless dedup of the list still
+    // keeps AWS coverage.
+    const env = buildAgentTerminalEnv('CC-123', 'session-abc');
+    expect(env.AWS_SECRET_ACCESS_KEY).toBeNull();
+    expect(env.AWS_ACCESS_KEY_ID).toBeNull();
   });
 });
 

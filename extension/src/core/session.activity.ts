@@ -1,3 +1,5 @@
+import { isSensitiveEnvKey } from './terminals';
+
 /**
  * Session Activity Extraction
  *
@@ -435,9 +437,26 @@ function truncatePath(path: string, maxLen: number = 40): string {
   return filename.slice(0, maxLen - 3) + '...';
 }
 
+/**
+ * Scrub sensitive environment variables from a command string.
+ * Replaces KEY=value with KEY=*** for sensitive keys.
+ */
+export function scrubSensitiveCommand(command: string): string {
+  if (!command) return command;
+  // Match environment variable assignments like KEY=value, KEY="value", or KEY='value'
+  const envVarRegex = /\b([A-Za-z_][A-Za-z0-9_]*)=('[^']*'|"[^"]*"|[^\s]+)/g;
+  return command.replace(envVarRegex, (match, key, value) => {
+    if (isSensitiveEnvKey(key)) {
+      return `${key}=***`;
+    }
+    return match;
+  });
+}
+
 function truncateCommand(command: string, maxLen: number = 50): string {
   if (!command) return '';
-  const trimmed = command.trim();
+  const scrubbed = scrubSensitiveCommand(command);
+  const trimmed = scrubbed.trim();
   if (trimmed.length <= maxLen) return trimmed;
   return trimmed.slice(0, maxLen - 3) + '...';
 }

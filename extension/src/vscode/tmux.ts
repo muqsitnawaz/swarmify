@@ -85,7 +85,7 @@ export function createTmuxTerminal(
   agentCommand: string,
   options: {
     iconPath?: vscode.Uri;
-    env?: Record<string, string>;
+    env?: Record<string, string | null>;
     viewColumn?: vscode.ViewColumn;
     cwd?: string;
   }
