@@ -6,12 +6,7 @@ import * as path from 'path';
 
 const execAsync = promisify(exec);
 
-// The polyglot SessionStart hook (agents-cli/packages/session-tracker/src/hook.sh)
-// writes per-agent state files here. Older swarmify builds pointed at
-// ~/.agents-system/state/sessions/ which never existed, so this code always
-// returned null — and the status bar kept showing the spawn-time AGENT_SESSION_ID
-// even after in-place agent restarts (RUSH-XXXX). The canonical path is now
-// ~/.agents/.cache/terminals/sessions/, matching @agents/session-tracker.
+// Written by the SessionStart hook in @agents/session-tracker.
 const STATE_DIR = path.join(os.homedir(), '.agents', '.cache', 'terminals', 'sessions');
 
 export interface SessionStateRecord {
@@ -21,25 +16,34 @@ export interface SessionStateRecord {
   ts: number;
 }
 
+// macOS `pgrep -P` silently misses children for some pids; `ps -eo` is reliable.
+async function buildChildIndex(): Promise<Map<number, number[]>> {
+  const index = new Map<number, number[]>();
+  const { stdout } = await execAsync('ps -eo pid,ppid', { timeout: 2000 });
+  for (const line of stdout.split('\n').slice(1)) {
+    const [pidStr, ppidStr] = line.trim().split(/\s+/);
+    const pid = Number(pidStr);
+    const ppid = Number(ppidStr);
+    if (!Number.isFinite(pid) || !Number.isFinite(ppid)) continue;
+    const kids = index.get(ppid);
+    if (kids) kids.push(pid);
+    else index.set(ppid, [pid]);
+  }
+  return index;
+}
+
 async function descendantPids(rootPid: number): Promise<number[]> {
-  const seen = new Set<number>();
+  const index = await buildChildIndex();
+  const seen = new Set<number>([rootPid]);
   const queue = [rootPid];
   const result: number[] = [];
   while (queue.length) {
     const pid = queue.shift()!;
-    if (seen.has(pid)) continue;
-    seen.add(pid);
-    try {
-      const { stdout } = await execAsync(`pgrep -P ${pid}`, { timeout: 1000 });
-      const children = stdout.trim().split('\n').filter(Boolean).map(Number).filter(Number.isFinite);
-      for (const c of children) {
-        if (!seen.has(c)) {
-          result.push(c);
-          queue.push(c);
-        }
-      }
-    } catch {
-      // pgrep returns non-zero when no children — not an error.
+    for (const c of index.get(pid) ?? []) {
+      if (seen.has(c)) continue;
+      seen.add(c);
+      result.push(c);
+      queue.push(c);
     }
   }
   return result;
