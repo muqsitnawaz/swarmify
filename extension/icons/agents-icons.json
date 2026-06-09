@@ -24,6 +24,12 @@
     },
     "_opencode": {
       "iconPath": "./opencode-icon.png"
+    },
+    "_antigravity": {
+      "iconPath": "./antigravity.png"
+    },
+    "_grok": {
+      "iconPath": "./grok.png"
     }
   },
   "fileNames": {
@@ -32,6 +38,8 @@
     "CODEX.md": "_codex",
     "AGENTS.md": "_agents",
     "CURSOR.md": "_cursor",
-    "OPENCODE.md": "_opencode"
+    "OPENCODE.md": "_opencode",
+    "ANTIGRAVITY.md": "_antigravity",
+    "GROK.md": "_grok"
   }
 }

@@ -4,7 +4,7 @@ import { AgentsConfig, ContextMapping, getDefaultConfig } from './swarmifyConfig
 
 // Legacy constants for backward compatibility
 export const AGENTS_FILENAME = 'AGENTS.md';
-export const AGENT_SYMLINK_TARGETS = ['CLAUDE.md', 'GEMINI.md'] as const;
+export const AGENT_SYMLINK_TARGETS = ['CLAUDE.md', 'GEMINI.md', 'ANTIGRAVITY.md', 'GROK.md'] as const;
 
 export type AgentSymlinkTarget = (typeof AGENT_SYMLINK_TARGETS)[number];
 
