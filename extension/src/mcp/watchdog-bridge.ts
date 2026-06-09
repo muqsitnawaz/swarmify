@@ -7,6 +7,7 @@ import { getAllTerminals } from '../vscode/terminals.vscode';
 
 const SOCKET_PATH = path.join(os.homedir(), '.agents', '.tmp', 'watchdog.sock');
 const WATCHDOG_LOG = path.join(os.homedir(), '.agents', 'watchdog.log');
+const PEER_MESSAGES_LOG = path.join(os.homedir(), '.agents', 'peer-messages.log');
 
 export interface WatchdogBridge {
   mcpServerPath: string;
@@ -24,6 +25,26 @@ interface SendNudgeResponse {
   error?: string;
   nudgedAt?: number;
   terminalId?: string;
+}
+
+interface SendToAgentRequest {
+  kind: 'peer';
+  senderSessionId: string;
+  targetSessionId: string;
+  text: string;
+}
+
+interface SendToAgentResponse {
+  success: boolean;
+  error?: string;
+  sentAt?: number;
+  recipientTerminalId?: string;
+}
+
+type ExtensionRequest = SendNudgeRequest | SendToAgentRequest;
+
+function isPeerRequest(req: ExtensionRequest): req is SendToAgentRequest {
+  return (req as SendToAgentRequest).kind === 'peer';
 }
 
 async function ensureSocketDir(): Promise<void> {
@@ -55,6 +76,101 @@ async function logNudge(entry: {
     await fs.appendFile(WATCHDOG_LOG, JSON.stringify(logEntry) + '\n');
   } catch (err) {
     console.warn('[WATCHDOG] Failed to log nudge:', err);
+  }
+}
+
+async function logPeerMessage(entry: {
+  senderSessionId: string;
+  targetSessionId: string;
+  recipientTerminalId: string;
+  recipientAgentType: string | undefined;
+  text: string;
+}): Promise<void> {
+  const logEntry = {
+    ts: Date.now(),
+    ...entry,
+  };
+  try {
+    await fs.mkdir(path.dirname(PEER_MESSAGES_LOG), { recursive: true });
+    await fs.appendFile(PEER_MESSAGES_LOG, JSON.stringify(logEntry) + '\n');
+  } catch (err) {
+    console.warn('[PEER-MSG] Failed to log message:', err);
+  }
+}
+
+async function handleSendToAgent(
+  request: SendToAgentRequest
+): Promise<SendToAgentResponse> {
+  const { senderSessionId, targetSessionId, text } = request;
+
+  const trimmedText = text.trim();
+  if (!trimmedText) {
+    return { success: false, error: 'Text cannot be empty' };
+  }
+  if (trimmedText.length > 2000) {
+    return { success: false, error: 'Text must be under 2000 characters' };
+  }
+
+  // Self-send guard. Only enforced when sender identified itself —
+  // smart-watchdog one-shots have no AGENT_SESSION_ID and that's fine.
+  if (senderSessionId && senderSessionId === targetSessionId) {
+    return { success: false, error: 'Cannot send a message to your own session' };
+  }
+
+  const terminals = getAllTerminals();
+  const exact = terminals.find((t) => t.sessionId === targetSessionId);
+  const recipient =
+    exact ||
+    terminals.find(
+      (t) =>
+        (t.sessionId && t.sessionId.startsWith(targetSessionId)) ||
+        (t.sessionId && targetSessionId.startsWith(t.sessionId))
+    );
+
+  if (!recipient) {
+    const active = terminals.map((t) => t.sessionId).filter(Boolean).join(', ');
+    return {
+      success: false,
+      error: `No terminal found for session ${targetSessionId}. Active sessions: ${active}`,
+    };
+  }
+
+  if (senderSessionId && recipient.sessionId === senderSessionId) {
+    return { success: false, error: 'Cannot send a message to your own session' };
+  }
+
+  try {
+    // Claude's Ink TUI needs an explicit carriage return; other agents take \n.
+    // Same convention as handleSendNudge.
+    if (recipient.agentType === 'claude') {
+      recipient.terminal.sendText(trimmedText, false);
+      recipient.terminal.sendText('\r', false);
+    } else {
+      recipient.terminal.sendText(trimmedText, true);
+    }
+
+    await logPeerMessage({
+      senderSessionId: senderSessionId || 'unknown',
+      targetSessionId,
+      recipientTerminalId: recipient.id,
+      recipientAgentType: recipient.agentType,
+      text: trimmedText,
+    });
+
+    console.log(
+      `[PEER-MSG] ${senderSessionId || 'unknown'} -> ${recipient.id} (${recipient.agentType}): "${trimmedText.slice(0, 80)}${trimmedText.length > 80 ? '…' : ''}"`
+    );
+
+    return {
+      success: true,
+      sentAt: Date.now(),
+      recipientTerminalId: recipient.id,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: `Failed to send text: ${err instanceof Error ? err.message : String(err)}`,
+    };
   }
 }
 
@@ -156,8 +272,10 @@ export function startWatchdogBridge(
 
       socket.on('end', async () => {
         try {
-          const request = JSON.parse(data) as SendNudgeRequest;
-          const result = await handleSendNudge(request);
+          const request = JSON.parse(data) as ExtensionRequest;
+          const result = isPeerRequest(request)
+            ? await handleSendToAgent(request)
+            : await handleSendNudge(request);
           socket.write(JSON.stringify(result));
         } catch (err) {
           socket.write(

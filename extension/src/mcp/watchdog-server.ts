@@ -47,14 +47,38 @@ Only nudge after you understand what the agent was doing and why it stalled.`,
         required: ['sessionId', 'text', 'reason'],
       },
     },
+    {
+      name: 'send_to_agent',
+      description: `Send a message to a peer agent terminal. The recipient sees your text typed directly into its prompt as if a human typed it.
+
+Use this to coordinate with another agent running in a swarmify terminal — for example, hand off work, ask a question, or pass a result.
+
+Find peer session IDs with \`agents sessions --active\`. Sending to your own session is rejected.`,
+      inputSchema: {
+        type: 'object',
+        properties: {
+          targetSessionId: {
+            type: 'string',
+            description: 'Recipient session ID from `agents sessions --active`',
+          },
+          text: {
+            type: 'string',
+            description: 'Message body (max 2000 chars). Will be typed into the recipient terminal verbatim.',
+          },
+        },
+        required: ['targetSessionId', 'text'],
+      },
+    },
   ],
 }));
 
-async function sendToExtension(msg: {
-  sessionId: string;
-  text: string;
-  reason: string;
-}): Promise<{ success: boolean; error?: string }> {
+type ExtensionRequest =
+  | { sessionId: string; text: string; reason: string }
+  | { kind: 'peer'; senderSessionId: string; targetSessionId: string; text: string };
+
+async function sendToExtension(
+  msg: ExtensionRequest
+): Promise<{ success: boolean; error?: string }> {
   return new Promise((resolve) => {
     const client = net.createConnection(SOCKET_PATH, () => {
       client.write(JSON.stringify(msg));
@@ -117,6 +141,58 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     const result = await sendToExtension({ sessionId, text, reason });
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(result, null, 2),
+        },
+      ],
+    };
+  }
+
+  if (name === 'send_to_agent') {
+    const { targetSessionId, text } = args as {
+      targetSessionId: string;
+      text: string;
+    };
+
+    if (!targetSessionId || !text) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              success: false,
+              error: 'Missing required parameters: targetSessionId, text',
+            }),
+          },
+        ],
+      };
+    }
+
+    if (text.length > 2000) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({ success: false, error: 'Text must be under 2000 characters' }),
+          },
+        ],
+      };
+    }
+
+    // Sender's sessionId is propagated through the env by swarmify
+    // (core/terminals.ts:159-160). MCP child inherits it from the agent CLI.
+    const senderSessionId = process.env.AGENT_SESSION_ID ?? '';
+
+    const result = await sendToExtension({
+      kind: 'peer',
+      senderSessionId,
+      targetSessionId,
+      text,
+    });
 
     return {
       content: [
