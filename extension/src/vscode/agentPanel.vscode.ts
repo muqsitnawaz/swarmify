@@ -286,9 +286,6 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
       return true;
     };
     switch (action) {
-      case 'commit':
-        await vscode.commands.executeCommand('agents.autogit');
-        return;
       case 'cleanup': {
         // `agents worktree prune` scans .history/worktrees/ *under a repo root*,
         // not inside an individual worktree — so always pass the workspace root,
@@ -301,18 +298,6 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
         await runInShellTerminal(`agents worktree prune --root ${shellQuote(root)}`);
         return;
       }
-      case 'wrap':
-        if (!sendSlash('/done')) {
-          vscode.window.showInformationMessage('No active agent terminal to wrap up.');
-        }
-        return;
-      case 'next':
-        // /next is a globally available slash command on the user's stack —
-        // "stop stopping, recall the goal, take the next action."
-        if (!sendSlash('/next')) {
-          vscode.window.showInformationMessage('No active agent terminal.');
-        }
-        return;
       case 'openPr':
         if (typeof url === 'string') {
           vscode.env.openExternal(vscode.Uri.parse(url));
@@ -320,6 +305,16 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
         return;
       case 'diff':
         vscode.commands.executeCommand('workbench.view.scm');
+        return;
+      case 'slash':
+        // url field carries the slash command text (e.g. "/commit", "/done").
+        // Reused over a new field so the existing webview->host message shape
+        // stays unchanged.
+        if (typeof url === 'string' && url.startsWith('/')) {
+          if (!sendSlash(url)) {
+            vscode.window.showInformationMessage('No active agent terminal.');
+          }
+        }
         return;
     }
   }
@@ -790,6 +785,26 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
   .action-btn.primary:hover {
     background: var(--vscode-button-hoverBackground, var(--vscode-button-background));
   }
+  .slash-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 5px;
+  }
+  .action-btn.slash {
+    flex: none;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 11.5px;
+    padding: 5px 8px;
+    text-align: left;
+  }
+  .actions-pr {
+    margin-bottom: 8px;
+  }
+  .actions-hint {
+    margin-top: 8px;
+    color: var(--vscode-descriptionForeground);
+    font-size: 10.5px;
+  }
   .prompt-grid {
     display: flex;
     flex-direction: column;
@@ -1094,9 +1109,9 @@ function renderActionsCard(s) {
   if (!s.cwd) return '';
   const state = s.agentState || 'idle_clean';
 
-  // Streaming: agent is actively producing output. Showing nudge buttons here
-  // would dump text into a mid-stream prompt and corrupt context. Render a
-  // passive "Working..." pill instead so the slot doesn't collapse.
+  // Streaming: agent is actively producing output. Sending a slash command
+  // mid-stream would corrupt the prompt. Render a passive "Working..." pill
+  // so the slot doesn't collapse.
   if (state === 'streaming') {
     return (
       '<h2>Quick actions</h2>' +
@@ -1105,46 +1120,50 @@ function renderActionsCard(s) {
   }
 
   const dirty = (s.git && s.git.dirtyCount) || 0;
-  const btn = (cls, action, label, extra) =>
-    '<button class="action-btn ' + cls + '" data-action="' + action + '"' + (extra || '') + '>' + label + '</button>';
 
-  let primary = '';
-  let secondary = '';
+  // Chips are the slash commands they actually send. Click injects the
+  // command into the focused terminal via the 'slash' action (handled in
+  // runQuickAction). One chip is marked primary based on the current
+  // agent state so the recommended next step stands out.
+  const SLASH_COMMANDS = ['/commit', '/done', '/next', '/finish', '/test', '/review'];
 
+  // Recommended chip by state:
+  //   dirty tree         -> /commit
+  //   in worktree, clean -> /done (wrap up)
+  //   plain idle         -> /next
+  let recommended;
   switch (state) {
-    case 'pr_open': {
-      // Surface the freshest PR. Newest is at the end of pullRequests (the
-      // helper appends as it scans the tail forward).
-      const prs = s.pullRequests || [];
-      const pr = prs[prs.length - 1];
-      const label = pr ? 'Open PR #' + pr.number : 'Open PR';
-      const dataUrl = pr ? ' data-url="' + esc(pr.url) + '"' : '';
-      primary = btn('primary', 'openPr', label, dataUrl);
-      secondary = dirty > 0
-        ? btn('', 'commit', 'Commit (' + dirty + ')')
-        : btn('', 'wrap', 'Wrap up');
-      break;
-    }
-    case 'idle_dirty':
-      primary = btn('primary', 'commit', 'Commit (' + dirty + ')');
-      secondary = btn('', 'diff', 'Diff');
-      break;
-    case 'idle_clean_wt':
-      primary = btn('primary', 'wrap', 'Wrap up');
-      secondary = s.worktreePath
-        ? btn('', 'cleanup', 'Cleanup worktree')
-        : btn('', 'next', 'Next');
-      break;
+    case 'idle_dirty': recommended = '/commit'; break;
+    case 'idle_clean_wt': recommended = '/done'; break;
+    case 'pr_open': recommended = '/done'; break;
     case 'idle_clean':
-    default:
-      primary = btn('primary', 'next', 'Next');
-      secondary = btn('', 'wrap', 'Wrap up');
-      break;
+    default: recommended = '/next'; break;
   }
+
+  const dirtyHint = dirty > 0
+    ? '<div class="actions-hint">' + dirty + ' uncommitted ' + (dirty === 1 ? 'change' : 'changes') + '</div>'
+    : '';
+
+  const chips = SLASH_COMMANDS.map((cmd) => {
+    const cls = cmd === recommended ? 'action-btn slash primary' : 'action-btn slash';
+    return '<button class="' + cls + '" data-action="slash" data-url="' + esc(cmd) + '">' + esc(cmd) + '</button>';
+  }).join('');
+
+  // Keep the PR shortcut visible when one exists — it's not a slash command
+  // but it's the most useful jump when a PR is open.
+  const prs = s.pullRequests || [];
+  const pr = state === 'pr_open' ? prs[prs.length - 1] : undefined;
+  const prRow = pr
+    ? '<div class="actions-pr"><button class="action-btn primary" data-action="openPr" data-url="' + esc(pr.url) + '">Open PR #' + pr.number + '</button></div>'
+    : '';
 
   return (
     '<h2>Quick actions</h2>' +
-    '<div class="card"><div class="actions-row">' + primary + secondary + '</div></div>'
+    '<div class="card">' +
+      prRow +
+      '<div class="slash-grid">' + chips + '</div>' +
+      dirtyHint +
+    '</div>'
   );
 }
 

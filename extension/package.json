@@ -3,7 +3,7 @@
   "displayName": "Agents",
   "publisher": "swarmify",
   "description": "Run Claude, Codex, Gemini, Cursor, and other coding agents from one IDE workspace.",
-  "version": "0.9.234",
+  "version": "0.9.235",
   "license": "MIT",
   "author": "Muqsit Nawaz <dev@muqsitnawaz.com>",
   "icon": "assets/agents.png",
@@ -88,6 +88,11 @@
           "type": "webview",
           "id": "agentsPanel.terminal",
           "name": "Active Terminal"
+        },
+        {
+          "type": "webview",
+          "id": "agentsPanel.issues",
+          "name": "Issues"
         }
       ]
     },

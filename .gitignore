@@ -17,6 +17,7 @@
 **/.tmp
 extension/undefined.tmp-*
 **/repomix-output.xml
+**/*.vsix
 **/.claude
 **/.ignore
 .agents/worktrees/
