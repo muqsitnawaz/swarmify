@@ -14,6 +14,7 @@ import * as settings from './settings.vscode';
 import * as swarm from './swarm.vscode';
 import { startWatchdog } from './watchdog.vscode';
 import { startWatchdogBridge } from '../mcp/watchdog-bridge';
+import { ensureWatchdogMcpInstalled } from '../mcp/watchdogInstall';
 import * as notifications from './notifications.vscode';
 import * as terminals from './terminals.vscode';
 import * as sessionTracker from './sessionTracker';
@@ -703,6 +704,13 @@ export async function activate(context: vscode.ExtensionContext) {
   // Start watchdog MCP bridge for smart agent mode
   const watchdogBridge = startWatchdogBridge(context);
   context.subscriptions.push(watchdogBridge);
+
+  // Register the watchdog MCP server in each supported agent's user-scope
+  // config so peer terminals can call `send_to_agent`. Fire-and-forget —
+  // failures are logged but never block activation.
+  ensureWatchdogMcpInstalled(watchdogBridge.mcpServerPath).catch((err) => {
+    console.warn('[WATCHDOG] ensureWatchdogMcpInstalled failed:', err);
+  });
 
   context.subscriptions.push(
     startWatchdog(context, {
@@ -2312,7 +2320,7 @@ async function copySessionId() {
   // The session id stored on terminalEntry is the spawn-time value. It goes
   // stale when the user exits and reruns the agent in the same terminal, or
   // after /clear. Prefer the live id captured by the SessionStart hook
-  // (~/.agents-system/state/sessions/<agent-pid>.json).
+  // (~/.agents/.cache/terminals/sessions/<agent-pid>.json).
   const shellPid = await activeTerminal.processId;
   const liveId = await liveSessionIdForShell(shellPid);
   const sessionId = liveId || terminalEntry.sessionId;
