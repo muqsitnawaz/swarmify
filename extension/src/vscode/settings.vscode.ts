@@ -890,16 +890,18 @@ export function openPanel(context: vscode.ExtensionContext): void {
     return;
   }
 
-  // Check for orphaned dashboard tab (extension restarted but tab survived)
+  // Close any orphaned dashboard tab (tab restored after a restart but its
+  // webview never revived, e.g. by a pre-serializer extension version). A
+  // fresh panel replaces it below.
   for (const group of vscode.window.tabGroups.all) {
     for (const tab of group.tabs) {
       if (tab.input instanceof vscode.TabInputWebview && tab.label === 'Factory') {
-        return;
+        void vscode.window.tabGroups.close(tab);
       }
     }
   }
 
-  settingsPanel = vscode.window.createWebviewPanel(
+  const panel = vscode.window.createWebviewPanel(
     'agentsSettings',
     'Factory',
     vscode.ViewColumn.One,
@@ -912,6 +914,31 @@ export function openPanel(context: vscode.ExtensionContext): void {
       ]
     }
   );
+  wirePanel(panel, context);
+}
+
+// VS Code restores webview tabs across window reloads but keeps them blank
+// until the owning extension reattaches through a serializer. Without this,
+// a restored Factory tab stayed white forever.
+export function registerPanelSerializer(context: vscode.ExtensionContext): void {
+  context.subscriptions.push(
+    vscode.window.registerWebviewPanelSerializer('agentsSettings', {
+      async deserializeWebviewPanel(webviewPanel: vscode.WebviewPanel) {
+        webviewPanel.webview.options = {
+          enableScripts: true,
+          localResourceRoots: [
+            vscode.Uri.joinPath(context.extensionUri, 'out', 'ui'),
+            vscode.Uri.joinPath(context.extensionUri, 'assets')
+          ]
+        };
+        wirePanel(webviewPanel, context);
+      }
+    })
+  );
+}
+
+function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext): void {
+  settingsPanel = panel;
 
   // Set the tab icon
   settingsPanel.iconPath = theme.buildIconPathFromUri(context.extensionUri, 'agents.png');

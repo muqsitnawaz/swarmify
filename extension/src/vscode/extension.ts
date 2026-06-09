@@ -582,6 +582,11 @@ export async function activate(context: vscode.ExtensionContext) {
   // Store context for deactivate
   extensionContext = context;
 
+  // Revive any Factory dashboard tab VS Code restored from the previous
+  // session. Must be registered before any await so the restored webview
+  // doesn't sit blank while activation runs.
+  settings.registerPanelSerializer(context);
+
   // Prompt to install agents-cli if missing. Don't block activation —
   // resolveAgentsBin runs in the background; if it throws AgentsBinNotFoundError
   // we surface a notification with a one-click installer.
