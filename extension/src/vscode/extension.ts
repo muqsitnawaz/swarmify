@@ -2306,7 +2306,7 @@ async function copySessionId() {
   // The session id stored on terminalEntry is the spawn-time value. It goes
   // stale when the user exits and reruns the agent in the same terminal, or
   // after /clear. Prefer the live id captured by the SessionStart hook
-  // (~/.agents-system/state/sessions/<agent-pid>.json).
+  // (~/.agents/.cache/terminals/sessions/<agent-pid>.json).
   const shellPid = await activeTerminal.processId;
   const liveId = await liveSessionIdForShell(shellPid);
   const sessionId = liveId || terminalEntry.sessionId;

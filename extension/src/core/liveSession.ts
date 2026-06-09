@@ -6,7 +6,13 @@ import * as path from 'path';
 
 const execAsync = promisify(exec);
 
-const STATE_DIR = path.join(os.homedir(), '.agents-system', 'state', 'sessions');
+// The polyglot SessionStart hook (agents-cli/packages/session-tracker/src/hook.sh)
+// writes per-agent state files here. Older swarmify builds pointed at
+// ~/.agents-system/state/sessions/ which never existed, so this code always
+// returned null — and the status bar kept showing the spawn-time AGENT_SESSION_ID
+// even after in-place agent restarts (RUSH-XXXX). The canonical path is now
+// ~/.agents/.cache/terminals/sessions/, matching @agents/session-tracker.
+const STATE_DIR = path.join(os.homedir(), '.agents', '.cache', 'terminals', 'sessions');
 
 export interface SessionStateRecord {
   session_id: string;
@@ -52,7 +58,7 @@ async function readState(pid: number): Promise<SessionStateRecord | null> {
 /**
  * Find the live session UUID for a running agent process under the given shell.
  * Reads state files written by the SessionStart hook
- * (~/.agents-system/state/sessions/<agent-pid>.json), keyed by agent process id.
+ * (~/.agents/.cache/terminals/sessions/<agent-pid>.json), keyed by agent process id.
  *
  * Returns null when no agent process is currently running under the shell — caller
  * decides whether to fall back to a spawn-time env var or report "no session".
@@ -75,7 +81,7 @@ export async function liveSessionIdForShell(shellPid: number | undefined): Promi
 
 /**
  * Delete state files whose PID is no longer alive. Run on extension activation
- * to bound the size of ~/.agents-system/state/sessions/. Cheap (~50 stat+kill
+ * to bound the size of ~/.agents/.cache/terminals/sessions/. Cheap (~50 stat+kill
  * calls per accumulation cycle).
  */
 export async function pruneStaleSessionState(): Promise<number> {
