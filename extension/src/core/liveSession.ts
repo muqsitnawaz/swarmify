@@ -6,7 +6,8 @@ import * as path from 'path';
 
 const execAsync = promisify(exec);
 
-const STATE_DIR = path.join(os.homedir(), '.agents-system', 'state', 'sessions');
+// Written by the SessionStart hook in @agents/session-tracker.
+const STATE_DIR = path.join(os.homedir(), '.agents', '.cache', 'terminals', 'sessions');
 
 export interface SessionStateRecord {
   session_id: string;
@@ -15,25 +16,34 @@ export interface SessionStateRecord {
   ts: number;
 }
 
+// macOS `pgrep -P` silently misses children for some pids; `ps -eo` is reliable.
+async function buildChildIndex(): Promise<Map<number, number[]>> {
+  const index = new Map<number, number[]>();
+  const { stdout } = await execAsync('ps -eo pid,ppid', { timeout: 2000 });
+  for (const line of stdout.split('\n').slice(1)) {
+    const [pidStr, ppidStr] = line.trim().split(/\s+/);
+    const pid = Number(pidStr);
+    const ppid = Number(ppidStr);
+    if (!Number.isFinite(pid) || !Number.isFinite(ppid)) continue;
+    const kids = index.get(ppid);
+    if (kids) kids.push(pid);
+    else index.set(ppid, [pid]);
+  }
+  return index;
+}
+
 async function descendantPids(rootPid: number): Promise<number[]> {
-  const seen = new Set<number>();
+  const index = await buildChildIndex();
+  const seen = new Set<number>([rootPid]);
   const queue = [rootPid];
   const result: number[] = [];
   while (queue.length) {
     const pid = queue.shift()!;
-    if (seen.has(pid)) continue;
-    seen.add(pid);
-    try {
-      const { stdout } = await execAsync(`pgrep -P ${pid}`, { timeout: 1000 });
-      const children = stdout.trim().split('\n').filter(Boolean).map(Number).filter(Number.isFinite);
-      for (const c of children) {
-        if (!seen.has(c)) {
-          result.push(c);
-          queue.push(c);
-        }
-      }
-    } catch {
-      // pgrep returns non-zero when no children — not an error.
+    for (const c of index.get(pid) ?? []) {
+      if (seen.has(c)) continue;
+      seen.add(c);
+      result.push(c);
+      queue.push(c);
     }
   }
   return result;
@@ -52,7 +62,7 @@ async function readState(pid: number): Promise<SessionStateRecord | null> {
 /**
  * Find the live session UUID for a running agent process under the given shell.
  * Reads state files written by the SessionStart hook
- * (~/.agents-system/state/sessions/<agent-pid>.json), keyed by agent process id.
+ * (~/.agents/.cache/terminals/sessions/<agent-pid>.json), keyed by agent process id.
  *
  * Returns null when no agent process is currently running under the shell — caller
  * decides whether to fall back to a spawn-time env var or report "no session".
@@ -75,7 +85,7 @@ export async function liveSessionIdForShell(shellPid: number | undefined): Promi
 
 /**
  * Delete state files whose PID is no longer alive. Run on extension activation
- * to bound the size of ~/.agents-system/state/sessions/. Cheap (~50 stat+kill
+ * to bound the size of ~/.agents/.cache/terminals/sessions/. Cheap (~50 stat+kill
  * calls per accumulation cycle).
  */
 export async function pruneStaleSessionState(): Promise<number> {
