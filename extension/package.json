@@ -3,7 +3,7 @@
   "displayName": "Agents",
   "publisher": "swarmify",
   "description": "Run Claude, Codex, Gemini, Cursor, and other coding agents from one IDE workspace.",
-  "version": "0.9.234",
+  "version": "0.9.235",
   "license": "MIT",
   "author": "Muqsit Nawaz <dev@muqsitnawaz.com>",
   "icon": "assets/agents.png",
@@ -145,6 +145,22 @@
         }
       },
       {
+        "command": "agents.newAntigravity",
+        "title": "Agents: New Antigravity (AG)",
+        "icon": {
+          "light": "assets/antigravity.png",
+          "dark": "assets/antigravity.png"
+        }
+      },
+      {
+        "command": "agents.newGrok",
+        "title": "Agents: New Grok (GK)",
+        "icon": {
+          "light": "assets/grok.png",
+          "dark": "assets/grok.png"
+        }
+      },
+      {
         "command": "agents.newOpenCode",
         "title": "Agents: New OpenCode (OC)",
         "icon": {
@@ -197,12 +213,32 @@
         }
       },
       {
+        "command": "agents.newAntigravityPickVersion",
+        "title": "Agents: New Antigravity (Pick Version)",
+        "icon": {
+          "light": "assets/antigravity.png",
+          "dark": "assets/antigravity.png"
+        }
+      },
+      {
+        "command": "agents.newGrokPickVersion",
+        "title": "Agents: New Grok (Pick Version)",
+        "icon": {
+          "light": "assets/grok.png",
+          "dark": "assets/grok.png"
+        }
+      },
+      {
         "command": "agents.newCursorPickVersion",
         "title": "Agents: New Cursor (Pick Version)",
         "icon": {
           "light": "assets/cursor-light.png",
           "dark": "assets/cursor.png"
         }
+      },
+      {
+        "command": "agents.quickLaunch0",
+        "title": "Agents: Quick Launch 0"
       },
       {
         "command": "agents.quickLaunch1",
@@ -215,6 +251,30 @@
       {
         "command": "agents.quickLaunch3",
         "title": "Agents: Quick Launch 3"
+      },
+      {
+        "command": "agents.quickLaunch4",
+        "title": "Agents: Quick Launch 4"
+      },
+      {
+        "command": "agents.quickLaunch5",
+        "title": "Agents: Quick Launch 5"
+      },
+      {
+        "command": "agents.quickLaunch6",
+        "title": "Agents: Quick Launch 6"
+      },
+      {
+        "command": "agents.quickLaunch7",
+        "title": "Agents: Quick Launch 7"
+      },
+      {
+        "command": "agents.quickLaunch8",
+        "title": "Agents: Quick Launch 8"
+      },
+      {
+        "command": "agents.quickLaunch9",
+        "title": "Agents: Quick Launch 9"
       },
       {
         "command": "agents.setTitle",
@@ -517,6 +577,16 @@
           "group": "navigation@2"
         },
         {
+          "command": "agents.newAntigravity",
+          "when": "true",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agents.newGrok",
+          "when": "true",
+          "group": "navigation@2"
+        },
+        {
           "command": "agents.enableTmux",
           "when": "!agents.tmuxEnabled",
           "group": "navigation@3"
@@ -650,6 +720,11 @@
         "mac": "cmd+shift+d"
       },
       {
+        "command": "agents.quickLaunch0",
+        "key": "ctrl+shift+0",
+        "mac": "cmd+shift+0"
+      },
+      {
         "command": "agents.quickLaunch1",
         "key": "ctrl+shift+1",
         "mac": "cmd+shift+1"
@@ -663,6 +738,36 @@
         "command": "agents.quickLaunch3",
         "key": "ctrl+shift+3",
         "mac": "cmd+shift+3"
+      },
+      {
+        "command": "agents.quickLaunch4",
+        "key": "ctrl+shift+4",
+        "mac": "cmd+shift+4"
+      },
+      {
+        "command": "agents.quickLaunch5",
+        "key": "ctrl+shift+5",
+        "mac": "cmd+shift+5"
+      },
+      {
+        "command": "agents.quickLaunch6",
+        "key": "ctrl+shift+6",
+        "mac": "cmd+shift+6"
+      },
+      {
+        "command": "agents.quickLaunch7",
+        "key": "ctrl+shift+7",
+        "mac": "cmd+shift+7"
+      },
+      {
+        "command": "agents.quickLaunch8",
+        "key": "ctrl+shift+8",
+        "mac": "cmd+shift+8"
+      },
+      {
+        "command": "agents.quickLaunch9",
+        "key": "ctrl+shift+9",
+        "mac": "cmd+shift+9"
       },
       {
         "command": "agents.reload",

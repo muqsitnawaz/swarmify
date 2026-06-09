@@ -23,19 +23,77 @@ export interface CommandAlias {
   flags: string;          // Additional CLI flags (e.g., "--model claude-haiku-4-5-20251001")
 }
 
-// Quick launch slot for keyboard shortcuts (Cmd+Shift+1/2/3)
+// Quick launch slot for keyboard shortcuts (Cmd+Shift+0..9)
 export interface QuickLaunchSlot {
   agent: string;          // Built-in agent key: "claude" | "codex" | "gemini" | etc.
+  version?: string;       // Pinned agents-cli version (e.g., "1.2.6"); empty = default
+  mode?: 'plan' | 'edit'; // CLI --mode; omit to use agent default
   model?: string;         // Concrete model id (e.g., "claude-opus-4-7-20260115")
   modelAlias?: string;    // Agents-cli alias (e.g., "opus", "haiku") — resolved to a concrete id on first launch
+  extraFlags?: string;    // Free-form CLI flags appended last (e.g., "--reasoning high")
   label?: string;         // Display label for dashboard
 }
 
-// Quick launch slots configuration
+// Quick launch slots configuration. New shape uses `slots` keyed by digit "0".."9".
+// `slot1/slot2/slot3` are legacy fields kept for backwards compat with persisted state.
 export interface QuickLaunchConfig {
+  slots?: Record<string, QuickLaunchSlot>;
   slot1?: QuickLaunchSlot;
   slot2?: QuickLaunchSlot;
   slot3?: QuickLaunchSlot;
+}
+
+export const QUICK_LAUNCH_SLOT_KEYS = ['0','1','2','3','4','5','6','7','8','9'] as const;
+export type QuickLaunchSlotKey = typeof QUICK_LAUNCH_SLOT_KEYS[number];
+
+export function getQuickLaunchSlot(config: QuickLaunchConfig | undefined, key: QuickLaunchSlotKey): QuickLaunchSlot | undefined {
+  if (!config) return undefined;
+  const direct = config.slots?.[key];
+  if (direct) return direct;
+  // Legacy fallback for slot1/slot2/slot3 only.
+  if (key === '1') return config.slot1;
+  if (key === '2') return config.slot2;
+  if (key === '3') return config.slot3;
+  return undefined;
+}
+
+export function setQuickLaunchSlot(
+  config: QuickLaunchConfig | undefined,
+  key: QuickLaunchSlotKey,
+  slot: QuickLaunchSlot | undefined,
+): QuickLaunchConfig {
+  const next: QuickLaunchConfig = {
+    ...(config || {}),
+    slots: { ...(config?.slots || {}) },
+  };
+  // Strip legacy mirror — slots map is the source of truth going forward.
+  delete next.slot1;
+  delete next.slot2;
+  delete next.slot3;
+  if (slot) {
+    next.slots![key] = slot;
+  } else {
+    delete next.slots![key];
+  }
+  return next;
+}
+
+// One-shot migration: fold legacy slot1/slot2/slot3 into the `slots` map.
+export function migrateLegacyQuickLaunchSlots(config: QuickLaunchConfig): boolean {
+  let changed = false;
+  if (!config.slots) {
+    config.slots = {};
+  }
+  if (config.slot1 && !config.slots['1']) { config.slots['1'] = config.slot1; changed = true; }
+  if (config.slot2 && !config.slots['2']) { config.slots['2'] = config.slot2; changed = true; }
+  if (config.slot3 && !config.slots['3']) { config.slots['3'] = config.slot3; changed = true; }
+  if (config.slot1 || config.slot2 || config.slot3) {
+    delete config.slot1;
+    delete config.slot2;
+    delete config.slot3;
+    changed = true;
+  }
+  return changed;
 }
 
 // Prompt entry for saving reusable prompts
@@ -136,9 +194,10 @@ export const AGENT_MODELS: Record<string, string[]> = {
 };
 
 export const DEFAULT_QUICK_LAUNCH: QuickLaunchConfig = {
-  slot1: { agent: 'claude', modelAlias: 'opus', label: 'Claude Opus' },
-  slot2: { agent: 'claude', modelAlias: 'haiku', label: 'Claude Haiku' },
-  // slot3 intentionally undefined
+  slots: {
+    '1': { agent: 'claude', modelAlias: 'opus', label: 'Claude Opus' },
+    '2': { agent: 'claude', modelAlias: 'haiku', label: 'Claude Haiku' },
+  },
 };
 
 // Model ids shipped as hardcoded defaults in earlier extension versions.
@@ -163,6 +222,11 @@ export function migrateStaleClaudeQuickLaunch(quickLaunch: QuickLaunchConfig): b
   if (migrateStaleSlot(quickLaunch.slot1)) changed = true;
   if (migrateStaleSlot(quickLaunch.slot2)) changed = true;
   if (migrateStaleSlot(quickLaunch.slot3)) changed = true;
+  if (quickLaunch.slots) {
+    for (const k of Object.keys(quickLaunch.slots)) {
+      if (migrateStaleSlot(quickLaunch.slots[k])) changed = true;
+    }
+  }
   return changed;
 }
 

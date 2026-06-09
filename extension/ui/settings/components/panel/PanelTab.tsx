@@ -3,6 +3,7 @@ import { RefreshCw, Waypoints, KeyRound, ShieldAlert, FileEdit } from 'lucide-re
 import { Input } from '../ui/input'
 import { postMessage } from '../../hooks'
 import { AgentDial } from './AgentDial'
+import { LaunchMatrix } from './LaunchMatrix'
 import { StatusBank } from './StatusBank'
 import type { StatusBankItem, StatusBankLevel } from './StatusBank'
 import type {
@@ -14,7 +15,6 @@ import type {
   SwarmAgentType,
   PromptPackAgentType,
   IconConfig,
-  QuickLaunchSlot,
   RunningCounts,
   AgentInventory,
   AgentRunStrategy,
@@ -245,16 +245,6 @@ export function PanelTab({
     onSaveSettings({
       ...settings,
       swarmEnabledAgents: next,
-    })
-  }
-
-  const setQuickLaunchSlot = (key: 'slot1' | 'slot2' | 'slot3', value?: QuickLaunchSlot) => {
-    onSaveSettings({
-      ...settings,
-      quickLaunch: {
-        ...settings.quickLaunch,
-        [key]: value,
-      },
     })
   }
 
@@ -491,53 +481,13 @@ export function PanelTab({
         <div className="sw-panel-column">
           <section className="sw-panel-section">
             <div className="sw-panel-section-head">Launch Matrix</div>
-            <div className="sw-panel-quicklaunch">
-              {([
-                { key: 'slot1', shortcut: 'Cmd+Shift+1' },
-                { key: 'slot2', shortcut: 'Cmd+Shift+2' },
-                { key: 'slot3', shortcut: 'Cmd+Shift+3' },
-              ] as const).map(({ key, shortcut }) => {
-                const slot = settings.quickLaunch?.[key]
-                const models = slot?.agent ? agentModels[slot.agent] || [] : []
-                return (
-                  <div key={key} className="sw-panel-launch-row">
-                    <div className="sw-readout">{shortcut}</div>
-                    <select
-                      value={slot?.agent || ''}
-                      onChange={(event) => {
-                        const agent = event.target.value
-                        setQuickLaunchSlot(key, agent ? { agent } : undefined)
-                      }}
-                    >
-                      <option value="">Off</option>
-                      {dialOptions.map(option => (
-                        <option key={option.key} value={option.key}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      value={slot?.model || ''}
-                      disabled={!slot?.agent}
-                      onChange={(event) => {
-                        if (!slot?.agent) return
-                        setQuickLaunchSlot(key, {
-                          ...slot,
-                          model: event.target.value || undefined,
-                        })
-                      }}
-                    >
-                      <option value="">Default model</option>
-                      {models.map(model => (
-                        <option key={model} value={model}>
-                          {model}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )
-              })}
-            </div>
+            <LaunchMatrix
+              settings={settings}
+              builtInAgents={builtInAgents}
+              agentModels={agentModels}
+              agentInventories={agentInventories}
+              onSaveSettings={onSaveSettings}
+            />
           </section>
 
           <section className="sw-panel-section">

@@ -18,18 +18,58 @@ export interface CommandAlias {
   flags: string
 }
 
-// Quick launch slot for keyboard shortcuts (Cmd+Shift+1/2/3)
+// Quick launch slot for keyboard shortcuts (Cmd+Shift+0..9)
 export interface QuickLaunchSlot {
   agent: string
+  version?: string
+  mode?: 'plan' | 'edit'
   model?: string
   modelAlias?: string
+  extraFlags?: string
   label?: string
 }
 
 export interface QuickLaunchConfig {
+  slots?: Record<string, QuickLaunchSlot>
   slot1?: QuickLaunchSlot
   slot2?: QuickLaunchSlot
   slot3?: QuickLaunchSlot
+}
+
+export const QUICK_LAUNCH_SLOT_KEYS = ['0','1','2','3','4','5','6','7','8','9'] as const
+export type QuickLaunchSlotKey = typeof QUICK_LAUNCH_SLOT_KEYS[number]
+
+export function getQuickLaunchSlot(
+  config: QuickLaunchConfig | undefined,
+  key: QuickLaunchSlotKey,
+): QuickLaunchSlot | undefined {
+  if (!config) return undefined
+  const direct = config.slots?.[key]
+  if (direct) return direct
+  if (key === '1') return config.slot1
+  if (key === '2') return config.slot2
+  if (key === '3') return config.slot3
+  return undefined
+}
+
+export function setQuickLaunchSlotInConfig(
+  config: QuickLaunchConfig | undefined,
+  key: QuickLaunchSlotKey,
+  slot: QuickLaunchSlot | undefined,
+): QuickLaunchConfig {
+  const next: QuickLaunchConfig = {
+    ...(config || {}),
+    slots: { ...(config?.slots || {}) },
+  }
+  delete next.slot1
+  delete next.slot2
+  delete next.slot3
+  if (slot) {
+    next.slots![key] = slot
+  } else {
+    delete next.slots![key]
+  }
+  return next
 }
 
 export type SwarmAgentType = 'claude' | 'codex' | 'gemini' | 'opencode'
