@@ -4,7 +4,7 @@ import { runAgents } from './agentsBin';
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const cache = new Map<string, { catalog: AgentCatalog | null; fetchedAt: number }>();
 
-export const MODEL_CATALOG_AGENTS = ['claude', 'codex', 'gemini', 'cursor', 'opencode'] as const;
+export const MODEL_CATALOG_AGENTS = ['claude', 'codex', 'gemini', 'cursor', 'opencode', 'antigravity', 'grok'] as const;
 export type ModelCatalogAgent = (typeof MODEL_CATALOG_AGENTS)[number];
 
 export interface AgentCatalogModel {
