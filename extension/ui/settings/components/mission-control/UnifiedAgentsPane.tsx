@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { TaskSummary, TerminalDetail as TerminalInfo, AgentDetail, UnifiedTask, RecentToolCall } from '../../types'
 import { AgentAvatar, agentShortChunk } from './AgentAvatar'
 import { Icon } from './icons'
@@ -1684,7 +1684,6 @@ function DispatchModal({ tasks, loading, onClose, onDispatch, onDispatchBatch, o
 }
 
 // Agent horizontal strip
-/**
 function QuickDispatch({ onSpawn }: { onSpawn: (prompt: string, agent: string, target: 'local' | 'cloud') => void }) {
   const [prompt, setPrompt] = useState('')
   const [agent, setAgent] = useState<'claude' | 'codex' | 'gemini'>('claude')
