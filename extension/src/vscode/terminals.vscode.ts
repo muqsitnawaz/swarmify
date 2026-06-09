@@ -951,7 +951,7 @@ export async function getTerminalsByAgentType(
   const sessionPromises: Array<{
     index: number;
     sessionPath: Promise<string | undefined>;
-    agentType: 'claude' | 'codex' | 'gemini' | 'opencode' | 'cursor';
+    agentType: 'claude' | 'codex' | 'gemini' | 'opencode' | 'cursor' | 'antigravity' | 'grok';
   }> = [];
   let index = 0;
 
