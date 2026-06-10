@@ -20,6 +20,7 @@ import {
   REALTIME_WS,
   MIC_FFMPEG_ARGS,
   SAMPLE_RATE,
+  advancePlaybackClock,
   buildForemanSessionUpdate,
 } from '../src/vscode/foreman.audio';
 
@@ -141,3 +142,24 @@ describe('foreman mic capture', () => {
     expect(result.bytes).toBeGreaterThanOrEqual(SAMPLE_RATE);
   }, 15000);
 });
+
+// The mic-gate playback clock. If this regresses to delta-arrival timing the
+// mic reopens mid-speech and the assistant answers its own playback in a
+// loop — the bug class is "burst-arriving audio must gate for its full
+// real-time play duration".
+describe('foreman playback clock', () => {
+  test('a burst of fast-arriving deltas gates for the full play duration', () => {
+    // 10s of audio (480000 bytes) arriving as 10 chunks within one millisecond.
+    const now = 1_000_000
+    let endsAt = 0
+    for (let i = 0; i < 10; i++) {
+      endsAt = advancePlaybackClock(now, endsAt, SAMPLE_RATE * 2) // 1s of PCM each
+    }
+    expect(endsAt).toBe(now + 10_000)
+  })
+
+  test('clock anchors to now after idle silence instead of accumulating stale time', () => {
+    const endsAt = advancePlaybackClock(1_000_000, 0, SAMPLE_RATE) // 0.5s chunk, queue long drained
+    expect(endsAt).toBe(1_000_500)
+  })
+})

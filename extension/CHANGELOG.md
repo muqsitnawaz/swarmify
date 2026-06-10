@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.9.244] - 2026-06-09
+
+### Fixed
+- Foreman answered itself in a loop on long replies: the anti-echo mic gate was keyed to audio delta arrival (OpenAI streams a 10s answer in ~2s), so the mic reopened mid-playback and the assistant's own voice came back as user input. The gate now runs on a playback clock that accounts for each queued chunk's real play duration.
+- Foreman narrated the same ground twice when one question triggered two tool calls: every tool result fired its own `response.create`. Responses are now serialized — one in flight, deferred creates coalesce into a single follow-up response.
+
 ## [0.9.243] - 2026-06-09
 
 ### Fixed
