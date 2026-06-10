@@ -12,6 +12,7 @@ interface MissionControlTabProps {
   onNavigate?: (tab: 'floor' | 'bench' | 'panel') => void
   onOpenInBench?: (taskId: string) => void
   openDispatchTrigger?: number
+  quickSpawnTrigger?: number
   openDetailTaskId?: string | null
   onDetailTaskConsumed?: () => void
   onThroughputChange?: (tokensPerSec: number) => void
@@ -20,7 +21,7 @@ interface MissionControlTabProps {
   watchdogEvents?: WatchdogEventUI[]
 }
 
-export function MissionControlTab({ tasks, tasksLoading, terminals, unifiedTasks, unifiedTasksLoading, onDispatch, onNavigate, onOpenInBench, openDispatchTrigger, openDetailTaskId, onDetailTaskConsumed, onThroughputChange, githubRepo, watchdogEnabled, watchdogEvents }: MissionControlTabProps) {
+export function MissionControlTab({ tasks, tasksLoading, terminals, unifiedTasks, unifiedTasksLoading, onDispatch, onNavigate, onOpenInBench, openDispatchTrigger, quickSpawnTrigger, openDetailTaskId, onDetailTaskConsumed, onThroughputChange, githubRepo, watchdogEnabled, watchdogEvents }: MissionControlTabProps) {
   return (
     <UnifiedAgentsPane
       terminals={terminals}
@@ -32,6 +33,7 @@ export function MissionControlTab({ tasks, tasksLoading, terminals, unifiedTasks
       onNavigate={onNavigate}
       onOpenInBench={onOpenInBench}
       openDispatchTrigger={openDispatchTrigger}
+      quickSpawnTrigger={quickSpawnTrigger}
       openDetailTaskId={openDetailTaskId}
       onDetailTaskConsumed={onDetailTaskConsumed}
       onThroughputChange={onThroughputChange}

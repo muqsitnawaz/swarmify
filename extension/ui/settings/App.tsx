@@ -93,6 +93,7 @@ export default function App() {
   const [cmdKOpen, setCmdKOpen] = useState(false)
   const [showGuide, setShowGuide] = useState(false)
   const [openDispatchTrigger, setOpenDispatchTrigger] = useState(0)
+  const [quickSpawnTrigger, setQuickSpawnTrigger] = useState(0)
   const [openDetailTaskId, setOpenDetailTaskId] = useState<string | null>(null)
   const [openBenchTaskId, setOpenBenchTaskId] = useState<string | null>(null)
   const [floorThroughput, setFloorThroughput] = useState(0)
@@ -189,6 +190,10 @@ export default function App() {
         case 'openDispatchModal':
           setActiveTab('floor')
           setOpenDispatchTrigger((n) => n + 1)
+          break
+        case 'focusQuickSpawn':
+          setActiveTab('floor')
+          setQuickSpawnTrigger((n) => n + 1)
           break
         case 'init':
           setSettings(message.settings)
@@ -395,17 +400,18 @@ export default function App() {
     return () => clearInterval(interval)
   }, [activeTab, watchdogEnabled, panelVisible])
 
-  // Global ⌘K / Ctrl+K opens the command palette. `stopPropagation` +
-  // `preventDefault` are intentional — VS Code's webview otherwise
-  // intercepts the chord for quick-open (files), which is exactly the
-  // behavior the old top-bar search button had and the reason users
-  // thought the palette wasn't wired up.
+  // Global ⌘K / Ctrl+K opens the new-agent composer. This listener only
+  // fires when focus is inside the webview; when VS Code's keybinding
+  // layer eats ⌘K as a chord prefix first, the contributed
+  // agents.focusQuickSpawn keybinding posts a 'focusQuickSpawn' message
+  // instead — both paths land on the same trigger.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
         e.preventDefault()
         e.stopPropagation()
-        setCmdKOpen((o) => !o)
+        setActiveTab('floor')
+        setQuickSpawnTrigger((n) => n + 1)
       }
     }
     window.addEventListener('keydown', onKey)
@@ -743,6 +749,7 @@ export default function App() {
           onNavigate={setActiveTab}
           onOpenInBench={handleOpenInBench}
           openDispatchTrigger={openDispatchTrigger}
+          quickSpawnTrigger={quickSpawnTrigger}
           openDetailTaskId={openDetailTaskId}
           onDetailTaskConsumed={() => setOpenDetailTaskId(null)}
           onThroughputChange={setFloorThroughput}

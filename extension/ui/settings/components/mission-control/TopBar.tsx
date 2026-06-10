@@ -74,10 +74,6 @@ export function TopBar({
           <Icon name="search" size={12} />
           <span>Search or run command…</span>
           <div className="spacer" />
-          <span className="kbd-group">
-            <span className="kbd">⌘</span>
-            <span className="kbd">K</span>
-          </span>
         </button>
       </div>
       <div className="sw-topbar-right">

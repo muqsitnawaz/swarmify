@@ -861,6 +861,10 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
+    vscode.commands.registerCommand('agents.focusQuickSpawn', () => settings.openPanelAndFocusQuickSpawn(context))
+  );
+
+  context.subscriptions.push(
     vscode.commands.registerCommand('agents.settings', () => {
       vscode.commands.executeCommand('workbench.action.openSettings', '@ext:agents');
     })
