@@ -1875,7 +1875,7 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
                 foremanSession?.sendToolResult(callId, { error: err?.message ?? String(err) });
               }
             },
-          });
+          }, { speakerMuted: message.speakerMuted === true });
           if (gen !== foremanSessionGen) {
             session.close();
             break;
@@ -1894,6 +1894,10 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
         foremanSessionGen++;
         foremanSession?.close();
         foremanSession = undefined;
+        break;
+      }
+      case 'foreman.setSpeakerMuted': {
+        foremanSession?.setSpeakerMuted(message.muted === true);
         break;
       }
     }

@@ -1,8 +1,18 @@
 # Changelog
 
-## [Unreleased]
+## [0.9.243] - 2026-06-09
+
+### Fixed
+- Foreman voice orb mic capture was dead: the ffmpeg avfoundation command used `-sample_rate`/`-channels` input options that ffmpeg 8 rejects, so the process exited before capturing a byte — and the stderr keyword filter swallowed the error. The orb now captures from the macOS default input (`:default`), which follows AirPods and other device switches automatically, and resamples to 24kHz on the output side.
+- Foreman audio failures are no longer silent: all ffmpeg/ffplay stderr, spawn, and exit events surface in the orb's event overlay and status line.
+- Start/stop race: a quick stop while the realtime session was still connecting could orphan the mic and WebSocket; sessions are now generation-guarded.
 
 ### Added
+- Press-and-hold push-to-talk on the Foreman orb: hold to talk for the duration of the press, release to end. Tap still toggles start/stop.
+- Silent mode toggle below the Foreman orb: replies arrive as text-only transcript with playback dropped; togglable mid-session.
+- Speaker-path diagnostics in the event overlay (`speaker.spawn`, `speaker.write`, `speaker.written`, `speaker.stderr`, `speaker.exit`).
+- E2E test that spawns the exact production ffmpeg capture command and requires real PCM on stdout, plus a live OpenAI Realtime GA handshake test.
+- Factory floor UX: Cmd+K composer with task attachment, draggable issue cards, bare repo chips, QuickDispatch restore.
 - Peer agent messaging via a new `send_to_agent` MCP tool on the watchdog server. Address by `sessionId`; recipient sees the text typed directly into its terminal prompt via `vscode.Terminal.sendText`. Self-send is rejected. 2000-char cap. Logged to `~/.agents/peer-messages.log`.
 - On activation the extension registers the watchdog MCP server in each supported agent's user-scope config (Claude + Gemini) so peer terminals can call `send_to_agent`. Idempotent — skips agents whose CLI is missing or that already have a `watchdog` entry.
 

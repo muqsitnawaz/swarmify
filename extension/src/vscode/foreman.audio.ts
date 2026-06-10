@@ -76,12 +76,19 @@ export interface ForemanAudioEvents {
 
 export interface ForemanAudioSession {
   sendToolResult(callId: string, result: unknown): void;
+  /**
+   * Silent mode: when muted, assistant PCM is dropped instead of written to
+   * ffplay — the transcript keeps streaming, so the orb answers in text only.
+   * Togglable mid-session with zero latency cost (playback is the last hop).
+   */
+  setSpeakerMuted(muted: boolean): void;
   close(): void;
 }
 
 export async function startForemanAudio(
   apiKey: string,
-  events: ForemanAudioEvents
+  events: ForemanAudioEvents,
+  opts?: { speakerMuted?: boolean }
 ): Promise<ForemanAudioSession> {
   events.onStatus?.('connecting');
 
@@ -162,10 +169,17 @@ export async function startForemanAudio(
       events.onStatus?.('error', `ffmpeg exited with code ${code} — mic capture dead`);
     }
   });
-  speaker.on('error', (err) => { if (!closed) events.onStatus?.('error', `ffplay: ${err.message}`); });
+  speaker.on('spawn', () => {
+    events.onEvent?.('speaker.spawn', `ffplay pid=${speaker.pid}`);
+  });
+  speaker.on('error', (err) => {
+    events.onEvent?.('speaker.error', err.message.slice(0, 120));
+    if (!closed) events.onStatus?.('error', `ffplay: ${err.message}`);
+  });
   speaker.on('exit', (code, signal) => {
     console.warn(`[foreman] ffplay exited code=${code} signal=${signal}`);
     if (closed) return;
+    events.onEvent?.('speaker.exit', `code=${code} signal=${signal ?? ''}`);
     if (code !== 0 && code !== null) {
       events.onStatus?.('error', `ffplay exited with code ${code}`);
     }
@@ -180,14 +194,17 @@ export async function startForemanAudio(
     events.onEvent?.('mic.stderr', line.slice(0, 120));
     events.onStatus?.('error', `ffmpeg: ${line.slice(0, 120)}`);
   });
+  // ffplay also runs at -loglevel error: any stderr is a real problem.
+  // Mirror every line into the event overlay — keyword filters hid the
+  // fatal mic failure once already; don't repeat that for the speaker.
   speaker.stderr?.on('data', (buf: Buffer) => {
     const text = buf.toString().trim();
     if (text) console.warn('[foreman ffplay]', text.slice(0, 400));
     if (closed) return;
     const firstLine = text.split('\n')[0];
-    if (firstLine && /error|invalid|cannot|no such|not found|failed/i.test(firstLine)) {
-      events.onStatus?.('error', `ffplay: ${firstLine.slice(0, 160)}`);
-    }
+    if (!firstLine) return;
+    events.onEvent?.('speaker.stderr', firstLine.slice(0, 120));
+    events.onStatus?.('error', `ffplay: ${firstLine.slice(0, 160)}`);
   });
 
   // Mic byte accounting so the debug overlay can show "still sending audio"
@@ -243,10 +260,84 @@ export async function startForemanAudio(
     });
   });
 
+  // Per-session speaker accounting (session-scoped on purpose: the old
+  // module-level counters bled across sessions and corrupted diagnostics).
+  let speakerMuted = opts?.speakerMuted ?? false;
+  let audioBytesReceived = 0;
+  let audioChunksLogged = 0;
+
+  const route = (msg: any) => {
+    const type: string = msg?.type ?? '';
+    events.onEvent?.(type, summarizeEvent(type, msg));
+
+    if (type === 'response.output_audio.delta' && typeof msg.delta === 'string') {
+      const pcm = Buffer.from(msg.delta, 'base64');
+      audioBytesReceived += pcm.length;
+      // Silent mode: drop playback, keep the transcript streaming. Skipping
+      // noteAssistantAudio too — nothing plays, so there is no echo to gate
+      // and the user can interrupt mid-response.
+      if (speakerMuted) return;
+      noteAssistantAudio();
+      if (audioChunksLogged < 3) {
+        events.onEvent?.(
+          'speaker.write',
+          `${pcm.length}B -> ffplay pid=${speaker.pid} writable=${speaker.stdin?.writable}`
+        );
+        audioChunksLogged++;
+      }
+      try {
+        const ok = speaker.stdin?.write(pcm);
+        if (ok === false && audioChunksLogged <= 3) events.onEvent?.('speaker.write', 'stdin backpressure');
+      } catch (err: any) {
+        events.onEvent?.('speaker.error', `stdin.write: ${err?.message ?? err}`.slice(0, 120));
+        console.warn('[foreman] speaker.stdin.write threw:', err);
+      }
+      return;
+    }
+
+    if (type === 'response.output_audio.done') {
+      if (!speakerMuted) noteAssistantAudio();
+      events.onEvent?.(
+        'speaker.written',
+        `${(audioBytesReceived / 1024).toFixed(1)} KiB total  muted=${speakerMuted}`
+      );
+      audioBytesReceived = 0;
+      audioChunksLogged = 0;
+      return;
+    }
+
+    if (type === 'conversation.item.input_audio_transcription.completed') {
+      events.onTranscript?.('user', msg.transcript ?? '', true);
+      return;
+    }
+
+    if (type === 'response.output_audio_transcript.delta') {
+      events.onTranscript?.('assistant', msg.delta ?? '', false);
+      return;
+    }
+    if (type === 'response.output_audio_transcript.done') {
+      events.onTranscript?.('assistant', msg.transcript ?? '', true);
+      return;
+    }
+
+    if (type === 'response.function_call_arguments.done') {
+      const callId: string = msg.call_id ?? msg.id ?? '';
+      const name: string = msg.name ?? '';
+      let args: unknown = {};
+      try { args = msg.arguments ? JSON.parse(msg.arguments) : {}; } catch { args = {}; }
+      events.onToolCall?.(callId, name, args);
+      return;
+    }
+
+    if (type === 'error') {
+      events.onStatus?.('error', msg.error?.message ?? 'realtime error');
+    }
+  };
+
   ws.on('message', (raw) => {
     let msg: any;
     try { msg = JSON.parse(raw.toString()); } catch { return; }
-    route(msg, speaker, events, noteAssistantAudio);
+    route(msg);
   });
 
   ws.on('close', (code, reason) => {
@@ -275,68 +366,12 @@ export async function startForemanAudio(
       }));
       ws.send(JSON.stringify({ type: 'response.create' }));
     },
+    setSpeakerMuted(muted) {
+      speakerMuted = muted;
+      events.onEvent?.('speaker.muted', String(muted));
+    },
     close: cleanup,
   };
-}
-
-let audioBytesReceived = 0;
-let audioChunksLogged = 0;
-
-function route(msg: any, speaker: ChildProcess, events: ForemanAudioEvents, noteAssistantAudio: () => void) {
-  const type: string = msg?.type ?? '';
-  events.onEvent?.(type, summarizeEvent(type, msg));
-
-  if (type === 'response.output_audio.delta' && typeof msg.delta === 'string') {
-    noteAssistantAudio();
-    const pcm = Buffer.from(msg.delta, 'base64');
-    audioBytesReceived += pcm.length;
-    if (audioChunksLogged < 3) {
-      console.log(`[foreman] audio delta #${audioChunksLogged + 1}: ${pcm.length} bytes, speaker.stdin.writable=${speaker.stdin?.writable}, killed=${speaker.killed}`);
-      audioChunksLogged++;
-    }
-    try {
-      const ok = speaker.stdin?.write(pcm);
-      if (ok === false && audioChunksLogged <= 3) console.log('[foreman] ffplay stdin backpressure');
-    } catch (err) {
-      console.warn('[foreman] speaker.stdin.write threw:', err);
-    }
-    return;
-  }
-
-  if (type === 'response.output_audio.done') {
-    noteAssistantAudio();
-    console.log(`[foreman] audio response done. total bytes: ${audioBytesReceived}`);
-    audioBytesReceived = 0;
-    audioChunksLogged = 0;
-    return;
-  }
-
-  if (type === 'conversation.item.input_audio_transcription.completed') {
-    events.onTranscript?.('user', msg.transcript ?? '', true);
-    return;
-  }
-
-  if (type === 'response.output_audio_transcript.delta') {
-    events.onTranscript?.('assistant', msg.delta ?? '', false);
-    return;
-  }
-  if (type === 'response.output_audio_transcript.done') {
-    events.onTranscript?.('assistant', msg.transcript ?? '', true);
-    return;
-  }
-
-  if (type === 'response.function_call_arguments.done') {
-    const callId: string = msg.call_id ?? msg.id ?? '';
-    const name: string = msg.name ?? '';
-    let args: unknown = {};
-    try { args = msg.arguments ? JSON.parse(msg.arguments) : {}; } catch { args = {}; }
-    events.onToolCall?.(callId, name, args);
-    return;
-  }
-
-  if (type === 'error') {
-    events.onStatus?.('error', msg.error?.message ?? 'realtime error');
-  }
 }
 
 // Compact one-line summary per event type for the debug overlay. Keep these
