@@ -874,9 +874,9 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     postMessage({ type: 'killSwarm', taskName })
   }
 
-  const handleQuickSpawn = useCallback((prompt: string, agent: string, target: 'local' | 'cloud') => {
+  const handleQuickSpawn = useCallback((prompt: string, agent: string, target: 'local' | 'cloud', repos: string[]) => {
     setQuickSpawnOpen(false)
-    postMessage({ type: 'quickSpawn', prompt, agent, target })
+    postMessage({ type: 'quickSpawn', prompt, agent, target, repos })
     const now = Date.now()
     const truncated = prompt.length > 60 ? prompt.slice(0, 60) + '…' : prompt
     const pending: PendingDispatch = {
@@ -1733,7 +1733,7 @@ function DispatchModal({ tasks, loading, onClose, onDispatch, onDispatchBatch, o
 // agents.focusQuickSpawn keybinding) or by dropping a Next Up card; mounts
 // fresh on every open so `prefill` seeding via useState is safe.
 function QuickDispatch({ onSpawn, onClose, prefill, tasks }: {
-  onSpawn: (prompt: string, agent: string, target: 'local' | 'cloud') => void
+  onSpawn: (prompt: string, agent: string, target: 'local' | 'cloud', repos: string[]) => void
   onClose: () => void
   prefill: string
   tasks: UnifiedTask[]
@@ -1765,7 +1765,8 @@ function QuickDispatch({ onSpawn, onClose, prefill, tasks }: {
     const lines = attached.map((t) =>
       t.metadata.identifier ? `${t.metadata.identifier}: ${t.title}` : t.title
     )
-    onSpawn([text, ...lines].filter(Boolean).join('\n\n'), agent, target)
+    const repos = [...new Set(attached.map((t) => t.metadata.repo).filter((r): r is string => !!r))]
+    onSpawn([text, ...lines].filter(Boolean).join('\n\n'), agent, target, repos)
     setPrompt('')
     setSelectedTaskIds(new Set())
   }
