@@ -129,7 +129,7 @@ export const FOREMAN_TOOLS: ForemanTool[] = [
       type: 'object',
       properties: {
         prompt: { type: 'string', description: 'Task description for the agent.' },
-        agent: { type: 'string', description: 'claude | codex | gemini (default: claude).' },
+        agent: { type: 'string', description: 'claude | codex | gemini | cursor (default: claude).' },
         target: { type: 'string', description: '"local" or "cloud" (default: local).' },
       },
       required: ['prompt'],

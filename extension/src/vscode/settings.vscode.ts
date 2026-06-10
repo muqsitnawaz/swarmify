@@ -855,6 +855,17 @@ export function openPanelAndDispatch(context: vscode.ExtensionContext): void {
   }, alreadyOpen ? 0 : 500);
 }
 
+// Open the new-agent composer in the Factory panel. Bound to cmd+k while the
+// panel is active (VS Code eats cmd+k as a chord prefix before the webview
+// sees the keydown, so the shortcut has to be contributed at this layer).
+export function openPanelAndFocusQuickSpawn(context: vscode.ExtensionContext): void {
+  const alreadyOpen = !!settingsPanel;
+  openPanel(context);
+  setTimeout(() => {
+    settingsPanel?.webview.postMessage({ type: 'focusQuickSpawn' });
+  }, alreadyOpen ? 0 : 500);
+}
+
 // Cache for agent inventories. agents view --json takes 4-6s because it hits
 // vendor APIs for usage stats. Within the TTL, repeat calls are instant.
 // Strategy mutations bust the cache so the UI reflects the new state.

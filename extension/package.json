@@ -3,7 +3,7 @@
   "displayName": "Agents",
   "publisher": "swarmify",
   "description": "Run Claude, Codex, Gemini, Cursor, and other coding agents from one IDE workspace.",
-  "version": "0.9.238",
+  "version": "0.9.239",
   "license": "MIT",
   "author": "Muqsit Nawaz <dev@muqsitnawaz.com>",
   "icon": "assets/agents.png",
@@ -112,6 +112,10 @@
       {
         "command": "agents.dispatchTask",
         "title": "Agents: Dispatch a Task"
+      },
+      {
+        "command": "agents.focusQuickSpawn",
+        "title": "Agents: New Agent Composer"
       },
       {
         "command": "agents.settings",
@@ -723,6 +727,12 @@
         "command": "agents.dispatchTask",
         "key": "ctrl+shift+d",
         "mac": "cmd+shift+d"
+      },
+      {
+        "command": "agents.focusQuickSpawn",
+        "key": "ctrl+k",
+        "mac": "cmd+k",
+        "when": "activeWebviewPanelId == 'agentsSettings'"
       },
       {
         "command": "agents.quickLaunch0",
