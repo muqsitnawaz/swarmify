@@ -31,6 +31,11 @@ const IDLE_WARN_MS = 50_000
 const SPEAKING_DECAY_MS = 1_500
 const TRANSCRIPT_WINDOW = 4
 
+// Press-and-hold threshold. Releases shorter than this are taps (toggle
+// start/stop); anything held longer is push-to-talk — the session runs for
+// the duration of the hold and ends on release.
+const HOLD_MS = 350
+
 // Voice-abort keywords: when any of these appear as a completed user
 // transcript, we dispatch foreman.abort so the ForemanCursor cancels any
 // in-flight UI sequence. The realtime transcript is emitted with final=true
@@ -130,18 +135,42 @@ export function ForemanOrb({ vscode }: ForemanOrbProps) {
     setActivity('idle')
   }
 
-  const handleOrbClick = () => {
-    if (conn === 'connecting') return
-    if (conn === 'connected') {
-      if (idleCountdown !== null) {
-        lastActivityAt.current = Date.now()
-        setIdleCountdown(null)
-        return
-      }
+  // Two interaction modes off one button:
+  //   tap  — toggle: starts the session if idle, stops it if running
+  //   hold — push-to-talk: session starts on press (connection latency
+  //          overlaps the hold) and ends the moment the finger lifts
+  // Start fires on pointerDOWN in both modes so a hold never waits for the
+  // release to begin connecting; the release decides tap-vs-hold semantics.
+  const pressedAt = useRef<number | null>(null)
+  const wasActiveAtPress = useRef(false)
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+    e.currentTarget.setPointerCapture(e.pointerId)
+    pressedAt.current = Date.now()
+    wasActiveAtPress.current = conn === 'connected' || conn === 'connecting'
+    if (!wasActiveAtPress.current) handleStart()
+  }
+
+  const handlePointerUp = () => {
+    if (pressedAt.current === null) return
+    const heldMs = Date.now() - pressedAt.current
+    pressedAt.current = null
+
+    if (heldMs >= HOLD_MS) {
+      // Push-to-talk release: end the session.
       handleStop()
       return
     }
-    handleStart()
+
+    // Tap. If it started the session on press, leave it running (toggle on).
+    if (!wasActiveAtPress.current) return
+    // Tap on a running session: wake from hibernation warning, else stop.
+    if (idleCountdown !== null) {
+      lastActivityAt.current = Date.now()
+      setIdleCountdown(null)
+      return
+    }
+    handleStop()
   }
 
   const visualState: VisualState =
@@ -205,7 +234,9 @@ export function ForemanOrb({ vscode }: ForemanOrbProps) {
 
       <button
         className={`foreman-orb foreman-orb-${visualState}`}
-        onClick={handleOrbClick}
+        onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
         aria-label={`Foreman ${visualState}`}
         title={orbTitle(visualState)}
       >
@@ -296,7 +327,7 @@ function appendTranscript(
 
 function orbTitle(state: VisualState): string {
   switch (state) {
-    case 'idle': return 'Foreman — tap to start'
+    case 'idle': return 'Foreman — tap to talk, or hold to talk while pressed'
     case 'connecting': return 'Connecting...'
     case 'listening': return 'Listening — tap to stop'
     case 'speaking': return 'Speaking — tap to stop'

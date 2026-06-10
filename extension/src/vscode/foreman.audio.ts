@@ -18,6 +18,17 @@ import { FOREMAN_MODEL, FOREMAN_VOICE, FOREMAN_SYSTEM_PROMPT, FOREMAN_TOOLS } fr
 export const REALTIME_WS = `wss://api.openai.com/v1/realtime?model=${encodeURIComponent(FOREMAN_MODEL)}`;
 export const SAMPLE_RATE = 24000;
 
+// Exact mic capture command. Exported so the e2e test spawns the SAME args
+// production uses — a flag the installed ffmpeg rejects (the avfoundation
+// "-sample_rate"/"-channels" regression) fails the suite, not the orb tap.
+export const MIC_FFMPEG_ARGS = [
+  '-hide_banner', '-loglevel', 'error',
+  '-f', 'avfoundation',
+  '-i', ':default',
+  '-ac', '1', '-ar', String(SAMPLE_RATE),
+  '-f', 's16le', 'pipe:1',
+] as const;
+
 // GA Realtime session.update payload. Exported so the e2e WS handshake test
 // can exercise the exact same shape production sends — schema drift caught
 // at test time, not at "tap the orb" time.
@@ -83,30 +94,22 @@ export async function startForemanAudio(
     },
   });
 
-  // ffmpeg reads from the default macOS audio input (avfoundation ":0")
+  // ffmpeg reads from the macOS DEFAULT audio input (avfoundation ":default")
   // and emits raw PCM16 little-endian at 24kHz mono on stdout.
   //
-  // `-sample_rate` and `-channels` are INPUT options (before -i) so we ask
-  // avfoundation to negotiate at 24kHz/mono natively. Without them, USB and
-  // headphone mics often negotiate at 16kHz and ffmpeg's output -ar resample
-  // can either silently produce wrong-rate audio or drop to passthrough —
-  // either way the server-side VAD never recognizes speech because what we
-  // told the API is 24kHz PCM is actually 16kHz. `-async 1` keeps the output
-  // PTS aligned so even on a slow first frame we don't ship garbage.
-  const mic: ChildProcess = spawn(
-    'ffmpeg',
-    [
-      '-hide_banner', '-loglevel', 'error',
-      '-f', 'avfoundation',
-      '-sample_rate', String(SAMPLE_RATE),
-      '-channels', '1',
-      '-i', ':0',
-      '-ac', '1', '-ar', String(SAMPLE_RATE),
-      '-async', '1',
-      '-f', 's16le', 'pipe:1',
-    ],
-    { stdio: ['ignore', 'pipe', 'pipe'] }
-  );
+  // ":default" follows whatever input device macOS currently routes to —
+  // AirPods, USB mic, built-in — so connecting headphones Just Works and we
+  // never capture the wrong device. Numeric indices (":0") are unstable: the
+  // avfoundation device list reorders whenever a device (iPhone Continuity
+  // mic, AirPods) appears, so a hardcoded index silently picks the wrong mic.
+  //
+  // avfoundation has NO -sample_rate / -channels input options (ffmpeg 8
+  // rejects them with "Unrecognized option" and exits before capturing a
+  // byte). The device captures at its native rate and the output-side
+  // `-ac 1 -ar 24000` resample produces the 24kHz mono PCM the API expects.
+  const mic: ChildProcess = spawn('ffmpeg', [...MIC_FFMPEG_ARGS], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
 
   // ffplay reads raw PCM16 from stdin and plays to the default output.
   // -probesize / -fflags nobuffer minimize playback buffering so the
@@ -148,7 +151,17 @@ export async function startForemanAudio(
   // After cleanup() we deliberately kill ffplay/ffmpeg. The resulting exit
   // events and "write EPIPE" errors are expected — suppress them so the UI
   // doesn't flash "FFplayError" when the user taps the orb to stop.
-  mic.on('error', (err) => { if (!closed) events.onStatus?.('error', `ffmpeg: ${err.message}`); });
+  mic.on('error', (err) => {
+    events.onEvent?.('mic.error', err.message.slice(0, 120));
+    if (!closed) events.onStatus?.('error', `ffmpeg: ${err.message}`);
+  });
+  mic.on('exit', (code, signal) => {
+    if (closed) return;
+    events.onEvent?.('mic.exit', `code=${code} signal=${signal ?? ''}`);
+    if (code !== 0 && code !== null) {
+      events.onStatus?.('error', `ffmpeg exited with code ${code} — mic capture dead`);
+    }
+  });
   speaker.on('error', (err) => { if (!closed) events.onStatus?.('error', `ffplay: ${err.message}`); });
   speaker.on('exit', (code, signal) => {
     console.warn(`[foreman] ffplay exited code=${code} signal=${signal}`);
@@ -157,10 +170,15 @@ export async function startForemanAudio(
       events.onStatus?.('error', `ffplay exited with code ${code}`);
     }
   });
+  // ffmpeg runs at -loglevel error, so ANY stderr output is a real problem.
+  // Report it verbatim — keyword-filtering here once swallowed a fatal
+  // "Unrecognized option" startup failure and the orb showed nothing.
   mic.stderr?.on('data', (buf: Buffer) => {
     if (closed) return;
-    const line = buf.toString().split('\n')[0];
-    if (line && /error|invalid/i.test(line)) events.onStatus?.('error', `ffmpeg: ${line.slice(0, 120)}`);
+    const line = buf.toString().trim().split('\n')[0];
+    if (!line) return;
+    events.onEvent?.('mic.stderr', line.slice(0, 120));
+    events.onStatus?.('error', `ffmpeg: ${line.slice(0, 120)}`);
   });
   speaker.stderr?.on('data', (buf: Buffer) => {
     const text = buf.toString().trim();

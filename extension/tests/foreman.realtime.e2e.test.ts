@@ -18,6 +18,8 @@ import * as path from 'path';
 import WebSocket from 'ws';
 import {
   REALTIME_WS,
+  MIC_FFMPEG_ARGS,
+  SAMPLE_RATE,
   buildForemanSessionUpdate,
 } from '../src/vscode/foreman.audio';
 
@@ -104,4 +106,38 @@ describeIfKey('foreman realtime GA handshake', () => {
     }
     expect(result.ok).toBe(true);
   }, 20000);
+});
+
+// Mic capture e2e: spawn the EXACT production ffmpeg command and require real
+// PCM bytes on stdout. This is the test that catches "ffmpeg exits before
+// capturing a byte" regressions — unsupported avfoundation flags, a dead
+// ":default" device mapping, a removed option in a new ffmpeg release.
+// Skips when ffmpeg is not installed (spawn ENOENT).
+describe('foreman mic capture', () => {
+  test('production ffmpeg args capture PCM16 from the default input', async () => {
+    const { spawn } = await import('child_process');
+    const result = await new Promise<{ bytes: number; stderr: string; spawnFailed: boolean }>((resolve) => {
+      const proc = spawn('ffmpeg', [...MIC_FFMPEG_ARGS]);
+      let bytes = 0;
+      let stderr = '';
+      let spawnFailed = false;
+      // Half a second of 24kHz mono PCM16 is SAMPLE_RATE bytes.
+      proc.stdout?.on('data', (b: Buffer) => {
+        bytes += b.length;
+        if (bytes >= SAMPLE_RATE) proc.kill('SIGTERM');
+      });
+      proc.stderr?.on('data', (b: Buffer) => { stderr += b.toString(); });
+      proc.on('error', () => { spawnFailed = true; });
+      const timeout = setTimeout(() => proc.kill('SIGKILL'), 8000);
+      proc.on('exit', () => {
+        clearTimeout(timeout);
+        resolve({ bytes, stderr, spawnFailed });
+      });
+    });
+
+    if (result.spawnFailed) return; // no ffmpeg on this machine
+
+    expect(result.stderr).toBe('');
+    expect(result.bytes).toBeGreaterThanOrEqual(SAMPLE_RATE);
+  }, 15000);
 });
