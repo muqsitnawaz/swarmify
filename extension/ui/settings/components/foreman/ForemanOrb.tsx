@@ -119,13 +119,25 @@ export function ForemanOrb({ vscode }: ForemanOrbProps) {
     }
   }, [conn])
 
+  // Silent mode: when on, the assistant answers in transcript text only —
+  // the extension host drops the PCM instead of piping it to ffplay.
+  // Togglable mid-session; the host applies it to the live audio session.
+  const [speakerMuted, setSpeakerMuted] = useState(false)
+
+  const toggleSpeaker = () => {
+    setSpeakerMuted((muted) => {
+      vscode.postMessage({ type: 'foreman.setSpeakerMuted', muted: !muted })
+      return !muted
+    })
+  }
+
   const handleStart = () => {
     setError(null)
     setTranscript([])
     setDebugEvents([])
     setConn('connecting')
     lastActivityAt.current = Date.now()
-    vscode.postMessage({ type: 'foreman.startSession' })
+    vscode.postMessage({ type: 'foreman.startSession', speakerMuted })
   }
 
   const handleStop = () => {
@@ -242,6 +254,14 @@ export function ForemanOrb({ vscode }: ForemanOrbProps) {
       >
         <OrbBlob state={visualState} />
       </button>
+
+      <button
+        className={`foreman-orb-speaker ${speakerMuted ? 'is-muted' : ''}`}
+        onClick={toggleSpeaker}
+        title={speakerMuted ? 'Silent mode — answers in text only. Click for voice.' : 'Voice replies on. Click for silent mode.'}
+      >
+        {speakerMuted ? 'silent' : 'voice'}
+      </button>
     </div>
   )
 }
@@ -301,12 +321,13 @@ const debugBtnStyle: React.CSSProperties = {
 }
 
 function eventColor(t: string): string {
-  if (t === 'error' || t.endsWith('.failed') || t === 'ws.error') return '#ff7878'
+  if (t === 'error' || t.endsWith('.failed') || t.endsWith('.error') || t.endsWith('.stderr')) return '#ff7878'
   if (t === 'session.created' || t === 'session.updated' || t === 'ws.open') return '#9be39b'
   if (t.includes('transcription')) return '#ffd479'
   if (t.includes('audio_transcript')) return '#79d4ff'
   if (t === 'response.done') return '#c79bff'
   if (t.startsWith('mic.')) return '#888'
+  if (t.startsWith('speaker.')) return '#d4b86a'
   return '#cfe6cf'
 }
 

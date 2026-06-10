@@ -55,6 +55,14 @@ Every open agent terminal is fully restorable. Session ID, icon, and custom labe
 - **TODO.md parsing** - Discovers TODO.md files in your workspace. Spawn agents directly from task items.
 - **Session history** - Browse recent sessions from the dashboard. Resume any previous conversation.
 
+### Factory Floor
+
+The dashboard's mission control. A live grid of every agent on the floor — local IDE tabs, background teams, and cloud dispatches — beside your Linear cycle. Compose and dispatch work with the Cmd+K composer, drag issue cards onto agents, or send a ticket straight to the cloud.
+
+### Foreman Voice Orb
+
+Talk to your factory. Tap the orb in the dashboard and ask "what's running?", "what's left this cycle?", or "dispatch RUSH-557 to the cloud" — a realtime voice model answers out loud with live floor state, and it can dispatch tickets, spawn agents, and file Linear issues for you. Tap to talk, tap again to stop, or press-and-hold to talk only while pressed. A silent-mode toggle under the orb switches replies to text-only transcript.
+
 ### AI Git Commits
 
 Generate commit messages from staged changes with `Cmd+Shift+G`. Learns from your commit style, then stages, commits, and pushes in one action.
@@ -77,7 +85,8 @@ Generate commit messages from staged changes with `Cmd+Shift+G`. Learns from you
 
 - VS Code or Cursor
 - Agent CLIs installed (`claude`, `codex`, `gemini`, `cursor-agent`, `opencode`)
-- OpenAI API key (optional, only for commit generation)
+- OpenAI API key (optional, for commit generation and the Foreman voice orb)
+- ffmpeg (optional, for the Foreman voice orb: `brew install ffmpeg`)
 
 ## Related Packages
 
