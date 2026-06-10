@@ -661,6 +661,16 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     return filterDispatchedTaskIds(eligible, pendingTaskIds)
   }, [unifiedTasks, pendingTaskIds])
 
+  // Attach list for the cmd+k composer: every todo task (not just the
+  // urgent/high Next Up pool), highest priority first.
+  const composerTasks = useMemo(() => {
+    const rank: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 }
+    const todo = unifiedTasks
+      .filter((t) => t.status === 'todo')
+      .sort((a, b) => (rank[a.priority || 'low'] ?? 3) - (rank[b.priority || 'low'] ?? 3))
+    return filterDispatchedTaskIds(todo, pendingTaskIds)
+  }, [unifiedTasks, pendingTaskIds])
+
   // Repo name of the workspace currently open in the IDE (e.g. "swarmify"
   // from "muqsitnawaz/swarmify"). Used to default the Next Up filter so
   // dispatches stay scoped to the repo the user is actually working on.
@@ -950,6 +960,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
           onSpawn={handleQuickSpawn}
           onClose={() => setQuickSpawnOpen(false)}
           prefill={quickSpawnPrefill}
+          tasks={composerTasks}
         />
       )}
 
@@ -1721,14 +1732,16 @@ function DispatchModal({ tasks, loading, onClose, onDispatch, onDispatchBatch, o
 // New-agent composer. Opened via ⌘K (webview listener or the contributed
 // agents.focusQuickSpawn keybinding) or by dropping a Next Up card; mounts
 // fresh on every open so `prefill` seeding via useState is safe.
-function QuickDispatch({ onSpawn, onClose, prefill }: {
+function QuickDispatch({ onSpawn, onClose, prefill, tasks }: {
   onSpawn: (prompt: string, agent: string, target: 'local' | 'cloud') => void
   onClose: () => void
   prefill: string
+  tasks: UnifiedTask[]
 }) {
   const [prompt, setPrompt] = useState(prefill)
   const [agent, setAgent] = useState<'claude' | 'codex' | 'gemini'>('claude')
   const [target, setTarget] = useState<'local' | 'cloud'>('local')
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set())
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
@@ -1736,11 +1749,25 @@ function QuickDispatch({ onSpawn, onClose, prefill }: {
     inputRef.current?.setSelectionRange(prompt.length, prompt.length)
   }, [])
 
+  const toggleTask = (id: string) => {
+    setSelectedTaskIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
   const submit = () => {
     const text = prompt.trim()
-    if (!text) return
-    onSpawn(text, agent, target)
+    const attached = tasks.filter((t) => selectedTaskIds.has(t.id))
+    if (!text && attached.length === 0) return
+    const lines = attached.map((t) =>
+      t.metadata.identifier ? `${t.metadata.identifier}: ${t.title}` : t.title
+    )
+    onSpawn([text, ...lines].filter(Boolean).join('\n\n'), agent, target)
     setPrompt('')
+    setSelectedTaskIds(new Set())
   }
 
   return (
@@ -1765,9 +1792,39 @@ function QuickDispatch({ onSpawn, onClose, prefill }: {
             onClose()
           }
         }}
-        placeholder="Describe the task, or drop a Next Up card here"
+        placeholder={tasks.length > 0 ? 'Describe the task, or attach tasks below' : 'Describe the task for the agent'}
         rows={4}
       />
+      {tasks.length > 0 && (
+        <>
+          <div className="sw-quick-dispatch-header">
+            <span className="sw-section-label">Attach tasks</span>
+            <span className="sw-section-hint">
+              {selectedTaskIds.size > 0 ? `${selectedTaskIds.size} attached` : 'Click to attach'}
+            </span>
+          </div>
+          <div className="sw-quick-dispatch-tasks">
+            {tasks.map((t) => {
+              const attached = selectedTaskIds.has(t.id)
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  className={`sw-quick-dispatch-task ${attached ? 'attached' : ''}`}
+                  aria-pressed={attached}
+                  onClick={() => toggleTask(t.id)}
+                >
+                  <span className="sw-queue-badge">{t.metadata.identifier || t.id.slice(0, 8)}</span>
+                  <span className="sw-quick-dispatch-task-title">{t.title}</span>
+                  {t.metadata.repo && (
+                    <span className="sw-queue-repo-chip mono">{t.metadata.repo.split('/').pop()}</span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </>
+      )}
       <div className="sw-quick-dispatch-controls">
         <div className="sw-active-filter">
           {(['claude', 'codex', 'gemini'] as const).map((a) => (
@@ -1797,7 +1854,7 @@ function QuickDispatch({ onSpawn, onClose, prefill }: {
           type="button"
           className="sw-btn primary sm"
           onClick={submit}
-          disabled={!prompt.trim()}
+          disabled={!prompt.trim() && selectedTaskIds.size === 0}
         >
           Start
         </button>
