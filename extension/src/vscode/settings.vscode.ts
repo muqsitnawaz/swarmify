@@ -36,6 +36,7 @@ import * as foreman from './foreman.vscode';
 import { startForemanAudio, ForemanAudioSession } from './foreman.audio';
 
 let foremanSession: ForemanAudioSession | undefined;
+let foremanSessionGen = 0;
 
 // Get GitHub repo from git remote (returns "username/repo" or null)
 function getGitHubRepo(workspacePath: string): Promise<string | null> {
@@ -1837,11 +1838,16 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
           foremanSession.close();
           foremanSession = undefined;
         }
+        // Generation guard: a quick push-to-talk release can deliver
+        // foreman.stopSession while startForemanAudio is still awaiting the
+        // WS handshake. The stop bumps the generation so the late-arriving
+        // session is closed instead of orphaned (mic + WS leak).
+        const gen = ++foremanSessionGen;
         try {
           const apiKey = foreman.getOpenAIApiKey();
           if (!apiKey) throw new Error('OpenAI API key not configured. Set agents.openaiApiKey in Settings.');
           const wsFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-          foremanSession = await startForemanAudio(apiKey, {
+          const session = await startForemanAudio(apiKey, {
             onStatus: (status, detail) => {
               settingsPanel?.webview.postMessage({ type: 'foreman.status', status, detail });
             },
@@ -1870,6 +1876,11 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
               }
             },
           });
+          if (gen !== foremanSessionGen) {
+            session.close();
+            break;
+          }
+          foremanSession = session;
         } catch (err: any) {
           settingsPanel?.webview.postMessage({
             type: 'foreman.status',
@@ -1880,6 +1891,7 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
         break;
       }
       case 'foreman.stopSession': {
+        foremanSessionGen++;
         foremanSession?.close();
         foremanSession = undefined;
         break;
