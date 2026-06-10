@@ -2981,6 +2981,54 @@
   gap: 8px;
 }
 
+.sw-quick-dispatch-tasks {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--ds-border);
+  border-radius: 6px;
+  padding: 4px;
+  background: var(--ds-bg-recessed);
+}
+
+.sw-quick-dispatch-task {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sw-quick-dispatch-task:hover {
+  background: var(--ds-bg-panel);
+}
+
+.sw-quick-dispatch-task.attached {
+  border-color: var(--brand, #e85d1e);
+  background: var(--ds-bg-panel);
+}
+
+.sw-quick-dispatch-task .sw-queue-badge,
+.sw-quick-dispatch-task .sw-queue-repo-chip {
+  flex-shrink: 0;
+}
+
+.sw-quick-dispatch-task-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .sw-quick-dispatch-dropzone {
   position: fixed;
   top: 0;

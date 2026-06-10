@@ -2681,7 +2681,9 @@ export async function rotateTerminalToBestVersion(
   // `send-keys … Enter` keyword for the same reason.
   const submitToTui = () => {
     terminal.sendText(resumeInput, false);
-    terminal.sendText('\r', false);
+    // Same bracketed-paste race as openSingleAgentWithQueue's flushQueued:
+    // multi-line input swallows a same-tick \r, so Enter goes after a beat.
+    setTimeout(() => terminal.sendText('\r', false), 300);
   };
   readiness.waitFor(terminal, 'agentReady').then(
     () => {
@@ -2861,7 +2863,8 @@ async function goToTerminal(context: vscode.ExtensionContext) {
 export async function openSingleAgentWithQueue(
   context: vscode.ExtensionContext,
   agentConfig: Omit<AgentConfig, 'count'>,
-  messages: string[]
+  messages: string[],
+  opts?: { cwd?: string }
 ) {
   const editorLocation: vscode.TerminalEditorLocationOptions = {
     viewColumn: vscode.ViewColumn.Active,
@@ -2870,7 +2873,12 @@ export async function openSingleAgentWithQueue(
 
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
   const terminalId = terminals.nextId(agentConfig.prefix);
-  const { cwd, isolated: worktreeIsolated } = await resolveTerminalCwd(workspaceFolder, terminalId);
+  // An explicit cwd (task dispatch resolved the task's repo to a local clone)
+  // pins the terminal there; otherwise the workspace folder + optional
+  // worktree isolation applies as before.
+  const { cwd, isolated: worktreeIsolated } = opts?.cwd
+    ? { cwd: opts.cwd, isolated: false }
+    : await resolveTerminalCwd(workspaceFolder, terminalId);
 
   // Determine agent key and handle session ID
   const builtInDef = getBuiltInByPrefix(agentConfig.prefix);
@@ -2897,7 +2905,7 @@ export async function openSingleAgentWithQueue(
     location: editorLocation,
     name: title,
     env: buildAgentTerminalEnv(terminalId, sessionId, cwd),
-    cwd: worktreeIsolated ? cwd : undefined,
+    cwd: worktreeIsolated || opts?.cwd ? cwd : undefined,
     isTransient: true
   });
 
@@ -2946,10 +2954,15 @@ export async function openSingleAgentWithQueue(
   const AGENT_READY_FALLBACK_MS = 45_000;
   const flushQueued = () => {
     const queued = terminals.flushQueue(terminal);
-    for (const msg of queued) {
-      terminal.sendText(msg, false);
-      terminal.sendText('\r', false);
-    }
+    queued.forEach((msg, i) => {
+      setTimeout(() => {
+        terminal.sendText(msg, false);
+        // Multi-line prompts go over the pty as a bracketed paste; a \r sent
+        // in the same tick gets consumed as paste content and the input never
+        // submits. Let the TUI finish ingesting the paste before Enter.
+        setTimeout(() => terminal.sendText('\r', false), 300);
+      }, i * 700);
+    });
   };
   const fallbackHandle = setTimeout(flushQueued, AGENT_READY_FALLBACK_MS);
   readiness.waitFor(terminal, 'agentReady').then(() => {
