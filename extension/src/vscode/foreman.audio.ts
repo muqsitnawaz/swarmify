@@ -18,6 +18,17 @@ import { FOREMAN_MODEL, FOREMAN_VOICE, FOREMAN_SYSTEM_PROMPT, FOREMAN_TOOLS } fr
 export const REALTIME_WS = `wss://api.openai.com/v1/realtime?model=${encodeURIComponent(FOREMAN_MODEL)}`;
 export const SAMPLE_RATE = 24000;
 
+// Playback clock for the mic gate. Each PCM chunk queued into ffplay plays
+// for exactly bytes/(SAMPLE_RATE*2) seconds; the clock accumulates those
+// durations from "now or the current end of queue, whichever is later".
+// Deltas arrive several times faster than realtime, so anchoring the gate to
+// arrival time instead of this clock reopens the mic mid-speech and the
+// assistant answers its own playback in a loop.
+export function advancePlaybackClock(nowMs: number, playbackEndsAtMs: number, pcmBytes: number): number {
+  const durationMs = (pcmBytes / (SAMPLE_RATE * 2)) * 1000;
+  return Math.max(nowMs, playbackEndsAtMs) + durationMs;
+}
+
 // Exact mic capture command. Exported so the e2e test spawns the SAME args
 // production uses — a flag the installed ffmpeg rejects (the avfoundation
 // "-sample_rate"/"-channels" regression) fails the suite, not the orb tap.
@@ -135,16 +146,22 @@ export async function startForemanAudio(
 
   let open = false;
   let closed = false;
-  // Mic gate: when the assistant is speaking (or just finished speaking), we
-  // stop forwarding mic bytes to OpenAI so ffplay's speaker output doesn't
-  // get picked up by the microphone and looped back as "user input". Without
-  // this, the assistant responds to its own voice. The tail buffer keeps the
-  // mic muted for a short window after the last audio delta to swallow
-  // trailing echoes.
+  // Mic gate: while the assistant's voice is PLAYING, stop forwarding mic
+  // bytes to OpenAI so playback doesn't loop back through the microphone as
+  // "user input" and make the assistant answer itself repeatedly.
+  //
+  // The gate must run on the playback clock, not the delta-arrival clock.
+  // OpenAI streams a 10s answer in ~2s of deltas; a gate keyed to "600ms
+  // after the last delta" expires while ffplay still has most of the answer
+  // queued, so the mic reopened mid-speech and the tail of every long answer
+  // leaked back in. Queued PCM has an exact play time (bytes / 48000 per
+  // second at 24kHz PCM16 mono) — extend the gate by each chunk's duration.
   const ASSISTANT_TAIL_MS = 600;
-  let assistantSpeakingUntil = 0;
-  const noteAssistantAudio = () => { assistantSpeakingUntil = Date.now() + ASSISTANT_TAIL_MS; };
-  const micMuted = () => Date.now() < assistantSpeakingUntil;
+  let playbackEndsAt = 0;
+  const notePlayback = (pcmBytes: number) => {
+    playbackEndsAt = advancePlaybackClock(Date.now(), playbackEndsAt, pcmBytes);
+  };
+  const micMuted = () => Date.now() < playbackEndsAt + ASSISTANT_TAIL_MS;
 
   const cleanup = () => {
     if (closed) return;
@@ -266,18 +283,47 @@ export async function startForemanAudio(
   let audioBytesReceived = 0;
   let audioChunksLogged = 0;
 
+  // One response at a time. The Realtime API rejects response.create while a
+  // response is in flight, and firing one per tool result made the model
+  // narrate the same ground twice when a single question triggered two tool
+  // calls. Track the active response and defer creates until response.done;
+  // one deferred create covers every tool output added in the meantime.
+  let responseActive = false;
+  let responseCreatePending = false;
+  const requestResponse = () => {
+    if (responseActive) {
+      responseCreatePending = true;
+      return;
+    }
+    responseActive = true;
+    ws.send(JSON.stringify({ type: 'response.create' }));
+  };
+
   const route = (msg: any) => {
     const type: string = msg?.type ?? '';
     events.onEvent?.(type, summarizeEvent(type, msg));
+
+    if (type === 'response.created') {
+      responseActive = true;
+      return;
+    }
+    if (type === 'response.done') {
+      responseActive = false;
+      if (responseCreatePending) {
+        responseCreatePending = false;
+        requestResponse();
+      }
+      return;
+    }
 
     if (type === 'response.output_audio.delta' && typeof msg.delta === 'string') {
       const pcm = Buffer.from(msg.delta, 'base64');
       audioBytesReceived += pcm.length;
       // Silent mode: drop playback, keep the transcript streaming. Skipping
-      // noteAssistantAudio too — nothing plays, so there is no echo to gate
-      // and the user can interrupt mid-response.
+      // notePlayback too — nothing plays, so there is no echo to gate and
+      // the user can interrupt mid-response.
       if (speakerMuted) return;
-      noteAssistantAudio();
+      notePlayback(pcm.length);
       if (audioChunksLogged < 3) {
         events.onEvent?.(
           'speaker.write',
@@ -296,7 +342,8 @@ export async function startForemanAudio(
     }
 
     if (type === 'response.output_audio.done') {
-      if (!speakerMuted) noteAssistantAudio();
+      // No gate bump needed: notePlayback already accounted for every queued
+      // chunk's real play time, so micMuted() holds until playback drains.
       events.onEvent?.(
         'speaker.written',
         `${(audioBytesReceived / 1024).toFixed(1)} KiB total  muted=${speakerMuted}`
@@ -364,7 +411,7 @@ export async function startForemanAudio(
           output: JSON.stringify(result),
         },
       }));
-      ws.send(JSON.stringify({ type: 'response.create' }));
+      requestResponse();
     },
     setSpeakerMuted(muted) {
       speakerMuted = muted;
