@@ -9,6 +9,9 @@ interface TranscriptLine {
   role: 'user' | 'assistant'
   text: string
   final: boolean
+  // OpenAI conversation item id — the handle for deleting this utterance
+  // from the model's context (conversation.item.delete).
+  itemId?: string
 }
 
 interface DebugEvent {
@@ -64,7 +67,7 @@ export function ForemanOrb({ vscode }: ForemanOrbProps) {
         else if (m.status === 'connecting' || m.status === 'connected') setError(null)
         if (m.status === 'connected') lastActivityAt.current = Date.now()
       } else if (m?.type === 'foreman.transcript') {
-        setTranscript((prev) => appendTranscript(prev, m.role, m.text, m.final))
+        setTranscript((prev) => appendTranscript(prev, m.role, m.text, m.final, m.itemId))
         lastActivityAt.current = Date.now()
         setActivity(m.role === 'assistant' ? 'speaking' : 'listening')
         if (activityTimer.current) clearTimeout(activityTimer.current)
@@ -129,6 +132,13 @@ export function ForemanOrb({ vscode }: ForemanOrbProps) {
       vscode.postMessage({ type: 'foreman.setSpeakerMuted', muted: !muted })
       return !muted
     })
+  }
+
+  // Excise an utterance: server-side conversation.item.delete (so a bad
+  // transcription stops steering follow-up answers) plus local removal.
+  const deleteLine = (line: TranscriptLine) => {
+    if (line.itemId) vscode.postMessage({ type: 'foreman.deleteItem', itemId: line.itemId })
+    setTranscript((prev) => prev.filter((l) => l.id !== line.id))
   }
 
   const handleStart = () => {
@@ -221,6 +231,16 @@ export function ForemanOrb({ vscode }: ForemanOrbProps) {
                 {line.role === 'user' ? 'YOU' : 'FRMN'}
               </span>
               <span>{line.text}</span>
+              {line.final && line.itemId && (
+                <button
+                  className="foreman-orb-line-delete"
+                  onClick={() => deleteLine(line)}
+                  title="Remove this message from the conversation context"
+                  aria-label="Delete message"
+                >
+                  x
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -336,14 +356,15 @@ function appendTranscript(
   role: 'user' | 'assistant',
   text: string,
   final: boolean,
+  itemId?: string,
 ): TranscriptLine[] {
   if (!text) return prev
   const last = prev[prev.length - 1]
   if (last && last.role === role && !last.final) {
-    const updated = { ...last, text: final ? text : last.text + text, final }
+    const updated = { ...last, text: final ? text : last.text + text, final, itemId: itemId ?? last.itemId }
     return [...prev.slice(0, -1), updated]
   }
-  return [...prev, { id: `${role}-${Date.now()}-${Math.random()}`, role, text, final }]
+  return [...prev, { id: `${role}-${Date.now()}-${Math.random()}`, role, text, final, itemId }]
 }
 
 function orbTitle(state: VisualState): string {

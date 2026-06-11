@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.9.246] - 2026-06-10
+
+### Added
+- Delete button on Foreman transcript messages: hover a line and click the x to remove that utterance from the conversation context server-side (`conversation.item.delete`), so a mis-transcription stops steering follow-up answers. The line disappears from the transcript too.
+- E2E test against the live Realtime API: create a conversation item, delete it with the exact payload the button sends, require `conversation.item.deleted` back.
+
 ## [0.9.245] - 2026-06-10
 
 ### Fixed

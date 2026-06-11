@@ -144,6 +144,75 @@ describe('foreman mic capture', () => {
   }, 15000);
 });
 
+// Context excision e2e: the transcript x button sends conversation.item.delete
+// with the item_id from the transcript events. Prove against the live API that
+// a created item can be deleted and the server confirms with
+// conversation.item.deleted — the contract the delete button depends on.
+describeIfKey('foreman conversation item delete', () => {
+  test('conversation.item.delete removes a created item', async () => {
+    const result = await new Promise<{ ok: boolean; detail?: string }>((resolve) => {
+      const ws = new WebSocket(REALTIME_WS, {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+
+      const seen: string[] = [];
+      const timeout = setTimeout(() => {
+        try { ws.close(); } catch { /* noop */ }
+        resolve({ ok: false, detail: `timeout waiting for conversation.item.deleted, events=[${seen.join(',')}]` });
+      }, 15000);
+
+      let done = false;
+      const finish = (r: { ok: boolean; detail?: string }) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timeout);
+        try { ws.close(); } catch { /* noop */ }
+        resolve(r);
+      };
+
+      let createdItemId = '';
+      ws.on('open', () => {
+        ws.send(JSON.stringify(buildForemanSessionUpdate()));
+        ws.send(JSON.stringify({
+          type: 'conversation.item.create',
+          item: {
+            type: 'message',
+            role: 'user',
+            content: [{ type: 'input_text', text: 'transcription glitch to excise' }],
+          },
+        }));
+      });
+
+      ws.on('message', (raw) => {
+        let msg: any;
+        try { msg = JSON.parse(raw.toString()); } catch { return; }
+        const t: string = msg?.type ?? '';
+        seen.push(t);
+        // GA acks item creation with conversation.item.added (beta said
+        // conversation.item.created — that name never arrives on GA).
+        if (t === 'conversation.item.added' && msg.item?.id && !createdItemId) {
+          createdItemId = msg.item.id;
+          // The exact payload ForemanAudioSession.deleteItem sends.
+          ws.send(JSON.stringify({ type: 'conversation.item.delete', item_id: createdItemId }));
+        } else if (t === 'conversation.item.deleted') {
+          finish(msg.item_id === createdItemId
+            ? { ok: true }
+            : { ok: false, detail: `deleted wrong item: ${msg.item_id} != ${createdItemId}` });
+        } else if (t === 'error') {
+          finish({ ok: false, detail: `${msg.error?.code ?? 'error'}: ${msg.error?.message ?? 'unknown'}` });
+        }
+      });
+
+      ws.on('error', (err) => finish({ ok: false, detail: `ws error: ${err.message}` }));
+    });
+
+    if (!result.ok) {
+      throw new Error(`Foreman item delete failed: ${result.detail}`);
+    }
+    expect(result.ok).toBe(true);
+  }, 20000);
+});
+
 // Speaker playback e2e: pipe real PCM through the EXACT production ffplay
 // command and require a SILENT stderr. The session treats any speaker stderr
 // as an error status (no keyword filtering — that hid a fatal mic failure
