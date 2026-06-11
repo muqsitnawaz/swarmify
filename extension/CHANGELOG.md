@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.245] - 2026-06-10
+
+### Fixed
+- Foreman orb flashed a red "ffplay: [2K" error on every spoken reply: ffplay prints its playback status clock to stderr even at `-loglevel error`, and the unfiltered stderr reporter promoted it to an error status. Playback now runs with `-nostats`, so stderr stays silent unless something is genuinely wrong.
+
+### Added
+- E2E test that pipes PCM through the exact production ffplay command and requires a silent stderr and clean exit.
+
 ## [0.9.244] - 2026-06-09
 
 ### Fixed
