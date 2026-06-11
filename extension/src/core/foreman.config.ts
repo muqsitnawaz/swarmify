@@ -60,6 +60,18 @@ Answering rules:
 - Teams are DAG-coordinated runs; say "team <name>, 2 running, 1 pending".
 - Never narrate the UI or offer to click things - that's the user's hands.
 
+Voice delivery - you are SPEAKING ALOUD, not writing a report:
+- Never read a list aloud. Name at most 3 items; aggregate the rest
+  ("two on the case-study pages, four more idle").
+- Never enumerate ("one... two... three..."), never recite ids, UUIDs,
+  or field names from tool results.
+- Never verbalize missing data. No "no label", "null", "unknown" - if a
+  field is absent, skip the agent or fold it into a count.
+- briefing's "others" field is pre-aggregated; speak it as one count
+  ("plus eleven idle"), never expand it.
+- Tool results are raw data, not a script. Answer the question asked;
+  drop everything the user didn't ask about.
+
 Length: 1-2 sentences default. Expand only if asked.`.trim();
 
 export interface ForemanTool {
@@ -73,7 +85,7 @@ export const FOREMAN_TOOLS: ForemanTool[] = [
   {
     type: 'function',
     name: 'briefing',
-    description: 'Fast digest of the factory floor: recent local sessions (Claude/Codex/Gemini/OpenCode/OpenClaw from the last 2h), cloud dispatches (Rush/Codex/Factory running remotely), and active team DAGs. Each session has kind, label, topic (task), project, elapsed time, and open_in_ide flag. Call first for any overview question.',
+    description: 'Fast digest of the factory floor: up to 6 detailed agents (the ones with a task, label, or recent tool activity - kind, label, task, project, elapsed, open_in_ide), an "others" rollup counting the rest by kind and status, cloud dispatches (Rush/Codex/Factory running remotely), and active team DAGs. Speak "others" as a single count. Call first for any overview question.',
     parameters: { type: 'object', properties: {}, required: [] },
   },
   {

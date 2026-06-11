@@ -27,21 +27,38 @@ export interface ForemanTerminal {
   toolCalls?: number;
 }
 
+// One detailed row per agent that has something to say. Empty fields are
+// OMITTED, not null — the voice model verbalizes whatever it sees ("Another
+// Claude, no label"), so a null that reaches the payload gets spoken aloud.
+// id is an 8-char session prefix: enough for a follow-up focus() call,
+// short enough that the model won't try to read a UUID.
 export interface ForemanAgentDigest {
   id: string;
   kind: string;
-  label: string | null;
-  project: string | null;
-  open_in_ide: boolean;
   elapsed: string;
   status: 'idle' | 'working' | 'waiting' | 'blocked';
-  last_tool: string | null;
-  task: string | null;
-  recent_files: string[];
-  recent_tools: string[];
-  last_file: string | null;
-  files_edited: number;
-  tool_calls: number;
+  label?: string;
+  project?: string;
+  open_in_ide?: boolean;
+  last_tool?: string;
+  task?: string;
+  recent_files?: string[];
+  recent_tools?: string[];
+  last_file?: string;
+  files_edited?: number;
+  tool_calls?: number;
+}
+
+// Aggregate for agents with nothing to report (no task, label, or tool
+// activity) plus detailed-row overflow. The model speaks this as a count
+// ("plus eleven idle") instead of reciting empty rows one by one.
+export interface ForemanOthersRollup {
+  count: number;
+  kinds: Record<string, number>;
+  working: number;
+  waiting: number;
+  idle: number;
+  blocked: number;
 }
 
 export interface ForemanCloudTask {
@@ -66,6 +83,7 @@ export interface ForemanDigest {
   when: string;
   summary: string;
   agents: ForemanAgentDigest[];
+  others?: ForemanOthersRollup;
   cloud: ForemanCloudTask[];
   teams: ForemanTeamRollup[];
   concerns: string[];
@@ -91,13 +109,24 @@ function deriveStatus(t: ForemanTerminal, now: number): 'idle' | 'working' | 'wa
   return 'working';
 }
 
+// At most this many detailed rows reach the model. Anything past the cap —
+// and any agent with nothing to say — folds into the `others` rollup. The
+// model recites whatever rows it receives, so the cap IS the spoken-list cap.
+export const MAX_DETAILED_AGENTS = 6;
+
 export function buildForemanDigest(
   terminals: ForemanTerminal[],
   cloud: ForemanCloudTask[] = [],
   teams: ForemanTeamRollup[] = [],
   now: number = Date.now()
 ): ForemanDigest {
-  const agents: ForemanAgentDigest[] = [];
+  interface Candidate {
+    row: ForemanAgentDigest;
+    hasDetail: boolean;
+    working: boolean;
+    activityMs: number;
+  }
+  const candidates: Candidate[] = [];
   const kindCounts: Record<string, number> = {};
   const statusCounts = { idle: 0, working: 0, waiting: 0, blocked: 0 };
   const concerns: string[] = [];
@@ -119,21 +148,34 @@ export function buildForemanDigest(
     const status = deriveStatus(t, now);
     statusCounts[status] += 1;
 
-    agents.push({
-      id: t.sessionId ?? t.name,
+    const row: ForemanAgentDigest = {
+      id: (t.sessionId ?? t.name).slice(0, 8),
       kind,
-      label: t.label ?? null,
-      project: t.project ?? null,
-      open_in_ide: !!t.openInIde,
       elapsed: humanElapsed(elapsedMs),
       status,
-      last_tool: t.lastTool ?? null,
-      task: (t.task ?? '').slice(0, 200) || null,
-      recent_files: (t.recentFiles ?? []).slice(0, 4).map(shortenPath),
-      recent_tools: (t.recentTools ?? []).slice(0, 4),
-      last_file: t.lastFilePath ? shortenPath(t.lastFilePath) : null,
-      files_edited: t.filesEdited ?? 0,
-      tool_calls: t.toolCalls ?? 0,
+    };
+    if (t.label) row.label = t.label;
+    if (t.project) row.project = t.project;
+    if (t.openInIde) row.open_in_ide = true;
+    if (t.lastTool) row.last_tool = t.lastTool;
+    const task = (t.task ?? '').slice(0, 200);
+    if (task) row.task = task;
+    const recentFiles = (t.recentFiles ?? []).slice(0, 4).map(shortenPath);
+    if (recentFiles.length) row.recent_files = recentFiles;
+    const recentTools = (t.recentTools ?? []).slice(0, 4);
+    if (recentTools.length) row.recent_tools = recentTools;
+    if (t.lastFilePath) row.last_file = shortenPath(t.lastFilePath);
+    if (t.filesEdited) row.files_edited = t.filesEdited;
+    if (t.toolCalls) row.tool_calls = t.toolCalls;
+
+    candidates.push({
+      row,
+      // "Something to say": a task, a label, or evidence of tool activity.
+      // A bare live pid (status 'working', everything else empty) is not
+      // narratable — it becomes "Another Claude, no label" when spoken.
+      hasDetail: !!(row.task || row.label || row.last_tool || row.recent_files || row.recent_tools),
+      working: status === 'working',
+      activityMs: t.lastActivityMs ?? startedMs,
     });
 
     if (status === 'waiting' && elapsedMs > 10 * 60_000) {
@@ -144,6 +186,21 @@ export function buildForemanDigest(
     }
   }
 
+  const detailed = candidates
+    .filter((c) => c.hasDetail)
+    .sort((a, b) => Number(b.working) - Number(a.working) || b.activityMs - a.activityMs);
+  const agents = detailed.slice(0, MAX_DETAILED_AGENTS).map((c) => c.row);
+
+  const rest = detailed.slice(MAX_DETAILED_AGENTS).concat(candidates.filter((c) => !c.hasDetail));
+  let others: ForemanOthersRollup | undefined;
+  if (rest.length > 0) {
+    others = { count: rest.length, kinds: {}, working: 0, waiting: 0, idle: 0, blocked: 0 };
+    for (const c of rest) {
+      others.kinds[c.row.kind] = (others.kinds[c.row.kind] || 0) + 1;
+      others[c.row.status] += 1;
+    }
+  }
+
   // Active cloud tasks stand out: they're running even when you close the IDE.
   for (const c of cloud) {
     if (c.status === 'running' || c.status === 'needs_review') {
@@ -151,9 +208,9 @@ export function buildForemanDigest(
     }
   }
 
-  const summary = buildSummary(agents.length, kindCounts, statusCounts, cloud);
+  const summary = buildSummary(candidates.length, kindCounts, statusCounts, cloud);
 
-  return {
+  const digest: ForemanDigest = {
     when: new Date(now).toISOString(),
     summary,
     agents,
@@ -161,6 +218,8 @@ export function buildForemanDigest(
     teams,
     concerns,
   };
+  if (others) digest.others = others;
+  return digest;
 }
 
 function shortenPath(p: string): string {
