@@ -40,6 +40,19 @@ export const MIC_FFMPEG_ARGS = [
   '-f', 's16le', 'pipe:1',
 ] as const;
 
+// Exact playback command, exported for the same reason as MIC_FFMPEG_ARGS.
+// -nostats is load-bearing: ffplay prints its playback clock to stderr even
+// at -loglevel error (an ESC[2K erase-line escape every refresh), and the
+// stderr reporter below treats ANY output as an error — without -nostats
+// every spoken reply flashed a red "ffplay: [2K" in the orb.
+export const SPEAKER_FFPLAY_ARGS = [
+  '-hide_banner', '-loglevel', 'error', '-nostats',
+  '-autoexit', '-nodisp',
+  '-f', 's16le', '-ar', String(SAMPLE_RATE), '-ch_layout', 'mono',
+  '-probesize', '32', '-fflags', 'nobuffer',
+  '-i', 'pipe:0',
+] as const;
+
 // GA Realtime session.update payload. Exported so the e2e WS handshake test
 // can exercise the exact same shape production sends — schema drift caught
 // at test time, not at "tap the orb" time.
@@ -132,17 +145,9 @@ export async function startForemanAudio(
   // ffplay reads raw PCM16 from stdin and plays to the default output.
   // -probesize / -fflags nobuffer minimize playback buffering so the
   // foreman's voice lands close to realtime.
-  const speaker: ChildProcess = spawn(
-    'ffplay',
-    [
-      '-hide_banner', '-loglevel', 'error',
-      '-autoexit', '-nodisp',
-      '-f', 's16le', '-ar', String(SAMPLE_RATE), '-ch_layout', 'mono',
-      '-probesize', '32', '-fflags', 'nobuffer',
-      '-i', 'pipe:0',
-    ],
-    { stdio: ['pipe', 'ignore', 'pipe'] }
-  );
+  const speaker: ChildProcess = spawn('ffplay', [...SPEAKER_FFPLAY_ARGS], {
+    stdio: ['pipe', 'ignore', 'pipe'],
+  });
 
   let open = false;
   let closed = false;

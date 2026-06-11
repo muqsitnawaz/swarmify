@@ -19,6 +19,7 @@ import WebSocket from 'ws';
 import {
   REALTIME_WS,
   MIC_FFMPEG_ARGS,
+  SPEAKER_FFPLAY_ARGS,
   SAMPLE_RATE,
   advancePlaybackClock,
   buildForemanSessionUpdate,
@@ -140,6 +141,40 @@ describe('foreman mic capture', () => {
 
     expect(result.stderr).toBe('');
     expect(result.bytes).toBeGreaterThanOrEqual(SAMPLE_RATE);
+  }, 15000);
+});
+
+// Speaker playback e2e: pipe real PCM through the EXACT production ffplay
+// command and require a SILENT stderr. The session treats any speaker stderr
+// as an error status (no keyword filtering — that hid a fatal mic failure
+// once), so ffplay must not chat: its status clock prints ESC[2K lines to
+// stderr even at -loglevel error unless -nostats is set, which made every
+// spoken reply flash a red "ffplay: [2K" in the orb.
+// Skips when ffplay is not installed (spawn ENOENT).
+describe('foreman speaker playback', () => {
+  test('production ffplay args play PCM16 with a silent stderr', async () => {
+    const { spawn } = await import('child_process');
+    const result = await new Promise<{ code: number | null; stderr: string; spawnFailed: boolean }>((resolve) => {
+      const proc = spawn('ffplay', [...SPEAKER_FFPLAY_ARGS], {
+        stdio: ['pipe', 'ignore', 'pipe'],
+      });
+      let stderr = '';
+      let spawnFailed = false;
+      proc.stderr?.on('data', (b: Buffer) => { stderr += b.toString(); });
+      proc.on('error', () => { spawnFailed = true; });
+      // Half a second of 24kHz mono PCM16 silence; -autoexit ends playback at EOF.
+      proc.stdin?.end(Buffer.alloc(SAMPLE_RATE));
+      const timeout = setTimeout(() => proc.kill('SIGKILL'), 8000);
+      proc.on('exit', (code) => {
+        clearTimeout(timeout);
+        resolve({ code, stderr, spawnFailed });
+      });
+    });
+
+    if (result.spawnFailed) return; // no ffplay on this machine
+
+    expect(result.stderr).toBe('');
+    expect(result.code).toBe(0);
   }, 15000);
 });
 
