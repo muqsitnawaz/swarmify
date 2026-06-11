@@ -1851,8 +1851,8 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
             onStatus: (status, detail) => {
               settingsPanel?.webview.postMessage({ type: 'foreman.status', status, detail });
             },
-            onTranscript: (role, text, final) => {
-              settingsPanel?.webview.postMessage({ type: 'foreman.transcript', role, text, final });
+            onTranscript: (role, text, final, itemId) => {
+              settingsPanel?.webview.postMessage({ type: 'foreman.transcript', role, text, final, itemId });
             },
             onEvent: (eventType, summary) => {
               settingsPanel?.webview.postMessage({ type: 'foreman.event', eventType, summary, at: Date.now() });
@@ -1898,6 +1898,12 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
       }
       case 'foreman.setSpeakerMuted': {
         foremanSession?.setSpeakerMuted(message.muted === true);
+        break;
+      }
+      case 'foreman.deleteItem': {
+        if (typeof message.itemId === 'string' && message.itemId) {
+          foremanSession?.deleteItem(message.itemId);
+        }
         break;
       }
     }

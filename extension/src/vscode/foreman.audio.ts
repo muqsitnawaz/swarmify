@@ -88,7 +88,12 @@ export function buildForemanSessionUpdate() {
 
 export interface ForemanAudioEvents {
   onStatus?: (status: 'connecting' | 'connected' | 'closed' | 'error', detail?: string) => void;
-  onTranscript?: (role: 'user' | 'assistant', text: string, final: boolean) => void;
+  /**
+   * itemId is the OpenAI conversation item id carrying this utterance —
+   * the handle deleteItem() needs to remove it from the model's context
+   * (e.g. a Whisper mis-transcription that derailed the conversation).
+   */
+  onTranscript?: (role: 'user' | 'assistant', text: string, final: boolean, itemId?: string) => void;
   onToolCall?: (callId: string, name: string, args: unknown) => void;
   /**
    * Debug callback fired on EVERY inbound WS event from OpenAI plus synthetic
@@ -106,6 +111,12 @@ export interface ForemanAudioSession {
    * Togglable mid-session with zero latency cost (playback is the last hop).
    */
   setSpeakerMuted(muted: boolean): void;
+  /**
+   * Remove a conversation item from the model's context server-side
+   * (conversation.item.delete). The transcript UI uses this to excise a
+   * bad utterance so it stops steering follow-up answers.
+   */
+  deleteItem(itemId: string): void;
   close(): void;
 }
 
@@ -359,16 +370,16 @@ export async function startForemanAudio(
     }
 
     if (type === 'conversation.item.input_audio_transcription.completed') {
-      events.onTranscript?.('user', msg.transcript ?? '', true);
+      events.onTranscript?.('user', msg.transcript ?? '', true, msg.item_id);
       return;
     }
 
     if (type === 'response.output_audio_transcript.delta') {
-      events.onTranscript?.('assistant', msg.delta ?? '', false);
+      events.onTranscript?.('assistant', msg.delta ?? '', false, msg.item_id);
       return;
     }
     if (type === 'response.output_audio_transcript.done') {
-      events.onTranscript?.('assistant', msg.transcript ?? '', true);
+      events.onTranscript?.('assistant', msg.transcript ?? '', true, msg.item_id);
       return;
     }
 
@@ -422,6 +433,10 @@ export async function startForemanAudio(
       speakerMuted = muted;
       events.onEvent?.('speaker.muted', String(muted));
     },
+    deleteItem(itemId) {
+      if (!open || !itemId) return;
+      ws.send(JSON.stringify({ type: 'conversation.item.delete', item_id: itemId }));
+    },
     close: cleanup,
   };
 }
@@ -437,6 +452,10 @@ function summarizeEvent(type: string, msg: any): string {
     case 'input_audio_buffer.speech_stopped': return '';
     case 'input_audio_buffer.committed': return `item=${(msg.item_id ?? '').slice(0, 8)}`;
     case 'conversation.item.created': return `${msg.item?.role ?? msg.item?.type ?? ''}`;
+    // GA names for item lifecycle (beta said conversation.item.created).
+    case 'conversation.item.added': return `${msg.item?.role ?? msg.item?.type ?? ''}`;
+    case 'conversation.item.done': return `${msg.item?.role ?? msg.item?.type ?? ''}`;
+    case 'conversation.item.deleted': return `item=${(msg.item_id ?? '').slice(0, 12)}`;
     case 'conversation.item.input_audio_transcription.completed':
       return JSON.stringify(msg.transcript ?? '').slice(0, 80);
     case 'conversation.item.input_audio_transcription.failed':
