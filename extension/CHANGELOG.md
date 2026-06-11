@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.9.247] - 2026-06-11
+
+### Fixed
+- Foreman recited raw tool output aloud ("1) Claude: ... 2) Another Claude, no label ..."): the briefing handed the model up to 30 agent rows of mostly-null JSON, and the model read them back item by item. The briefing now sends at most 6 detailed agents (the ones with a real task, label, or tool activity), folds the rest into a pre-aggregated count, omits empty fields entirely, and truncates session UUIDs to 8 chars. The system prompt adds voice-delivery rules: name at most 3 items aloud, aggregate the rest, never verbalize missing data.
+
 ## [0.9.246] - 2026-06-10
 
 ### Added
