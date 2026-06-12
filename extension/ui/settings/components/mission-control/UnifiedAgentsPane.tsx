@@ -14,6 +14,7 @@ import {
   reconcilePending,
   pruneExpiredPending,
   markTimedOutPending,
+  markCloudFailedPending,
   filterDispatchedTaskIds,
   optimisticActivityLabel,
   PENDING_DISPATCH_TTL_MS,
@@ -475,15 +476,16 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     if (pendingDispatches.length === 0) return
     const now = Date.now()
     setPendingDispatches((prev) => {
-      // Two-step lifecycle: flip pending→timedOut at TTL (user sees the
-      // warning), then fully remove once retention window has also passed.
-      // Both functions return the same reference when nothing changes, so
-      // the setState is a no-op in the steady state.
-      const flipped = markTimedOutPending(prev, now)
+      // Lifecycle: surface confirmed Rush Cloud failures immediately, flip
+      // anything past TTL to timedOut next, then fully remove once the
+      // retention window has also passed. Each helper returns the same
+      // reference when nothing changed, so steady state is a no-op.
+      const failed = markCloudFailedPending(prev, tasks)
+      const flipped = markTimedOutPending(failed, now)
       const pruned = pruneExpiredPending(flipped, now)
       return pruned
     })
-  }, [tick, pendingDispatches])
+  }, [tick, pendingDispatches, tasks])
 
   // Listen for backend dispatch follow-ups (repo picker / owner picker prompts)
   useEffect(() => {
