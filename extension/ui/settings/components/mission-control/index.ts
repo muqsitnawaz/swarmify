@@ -1,6 +1,7 @@
 export { MissionControlTab } from './MissionControlTab'
 export { TopBar } from './TopBar'
-export { ThroughputCounter } from './UnifiedAgentsPane'
+export { ThroughputCounter, TaskDetailModal } from './UnifiedAgentsPane'
+export type { CloudProviderId } from './UnifiedAgentsPane'
 export { StatusBar } from './StatusBar'
 export { ActiveSwarmsPane } from './ActiveSwarmsPane'
 export { AgentTerminalsPane } from './AgentTerminalsPane'

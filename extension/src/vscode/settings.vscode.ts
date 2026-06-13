@@ -34,6 +34,7 @@ import * as theme from './theme.vscode';
 import { buildAgentTerminalEnv } from '../core/terminals';
 import * as foreman from './foreman.vscode';
 import { startForemanAudio, ForemanAudioSession } from './foreman.audio';
+import { buildTaskDispatchPrompt } from '../core/tasks';
 
 let foremanSession: ForemanAudioSession | undefined;
 let foremanSessionGen = 0;
@@ -244,11 +245,13 @@ async function dispatchForForeman(
   const target = opts.target === 'local' ? 'local' : 'cloud';
   const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 
-  const parts = [task.title];
-  if (task.description) parts.push(task.description);
   const identifier = task.metadata.identifier ?? '';
-  if (identifier) parts.push(`Reference: ${identifier}`);
-  const prompt = parts.join('\n\n');
+  const prompt = buildTaskDispatchPrompt({
+    title: task.title,
+    description: task.description,
+    identifier,
+    url: task.metadata.url,
+  });
 
   if (target === 'local') {
     const def = getBuiltInByKey(agent);
@@ -1332,6 +1335,8 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
         const title = typeof message.title === 'string' ? message.title : '';
         const description = typeof message.description === 'string' ? message.description : '';
         const identifier = typeof message.identifier === 'string' ? message.identifier : '';
+        const url = typeof message.url === 'string' ? message.url : '';
+        const extraComments = typeof message.extraComments === 'string' ? message.extraComments : '';
         const labels: string[] = Array.isArray(message.labels)
           ? message.labels.filter((l: unknown): l is string => typeof l === 'string')
           : [];
@@ -1343,10 +1348,7 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
           break;
         }
 
-        const parts = [title];
-        if (description) parts.push(description);
-        if (identifier) parts.push(`Reference: ${identifier}`);
-        const prompt = parts.join('\n\n');
+        const prompt = buildTaskDispatchPrompt({ title, description, identifier, url, extraComments });
 
         if (target === 'cloud') {
           const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -1380,6 +1382,8 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
                 title,
                 description,
                 identifier,
+                url,
+                extraComments,
               });
               break;
             }
@@ -1424,6 +1428,8 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
                 title,
                 description,
                 identifier,
+                url,
+                extraComments,
                 labels,
               });
               break;
@@ -1446,6 +1452,8 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
                 title,
                 description,
                 identifier,
+                url,
+                extraComments,
                 labels,
               });
               break;
@@ -1489,11 +1497,12 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
         } | undefined;
         if (!task || !task.title) break;
 
-        const parts = [task.title];
-        if (task.description) parts.push(task.description);
-        if (task.metadata?.identifier) parts.push(`Reference: ${task.metadata.identifier}`);
-        if (task.metadata?.url) parts.push(`URL: ${task.metadata.url}`);
-        const prompt = parts.join('\n\n');
+        const prompt = buildTaskDispatchPrompt({
+          title: task.title,
+          description: task.description,
+          identifier: task.metadata?.identifier,
+          url: task.metadata?.url,
+        });
 
         const defaultTitle = context.globalState.get<string>('agents.defaultAgentTitle', CLAUDE_TITLE);
         const agentConfig = getBuiltInByTitle(context.extensionPath, defaultTitle)

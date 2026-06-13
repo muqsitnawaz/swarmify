@@ -520,11 +520,6 @@ export default function App() {
     vscode.postMessage({ type: 'openTerminalFile', path: filePath })
   }
 
-  const handleSpawnAgentForTask = (task: UnifiedTask) => {
-    setActiveTab('floor')
-    setOpenDetailTaskId(task.id)
-  }
-
   const handleOpenInBench = (taskId: string) => {
     setOpenBenchTaskId(taskId)
     setActiveTab('bench')
@@ -774,7 +769,6 @@ export default function App() {
           icons={icons}
           isLightTheme={isLightTheme}
           onToggleSource={toggleSourceExpanded}
-          onSpawnAgentForTask={handleSpawnAgentForTask}
           onRefreshTasks={() => { fetchUnifiedTasks() }}
           onRefreshContext={() => { setContextLoaded(false); fetchContextFiles() }}
           onUpdateTaskSources={handleUpdateTaskSources}

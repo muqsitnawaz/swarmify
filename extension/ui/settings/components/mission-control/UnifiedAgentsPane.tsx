@@ -437,6 +437,8 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     title: string
     description: string
     identifier: string
+    url: string
+    extraComments: string
   } | null>(null)
   const [ownerPicker, setOwnerPicker] = useState<{
     taskId: string
@@ -444,6 +446,8 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     title: string
     description: string
     identifier: string
+    url: string
+    extraComments: string
     labels: string[]
   } | null>(null)
   const [detailTask, setDetailTask] = useState<UnifiedTask | null>(null)
@@ -497,6 +501,8 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
           title: String(msg.title || ''),
           description: String(msg.description || ''),
           identifier: String(msg.identifier || ''),
+          url: String(msg.url || ''),
+          extraComments: String(msg.extraComments || ''),
         })
       } else if (msg.type === 'needGithubOwner') {
         setOwnerPicker({
@@ -505,6 +511,8 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
           title: String(msg.title || ''),
           description: String(msg.description || ''),
           identifier: String(msg.identifier || ''),
+          url: String(msg.url || ''),
+          extraComments: String(msg.extraComments || ''),
           labels: Array.isArray(msg.labels) ? msg.labels.filter((l: unknown) => typeof l === 'string') : [],
         })
       }
@@ -879,6 +887,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     notifyPrefs?: { onQuestion: boolean; onFinish: boolean; channel: string },
     branch?: string,
     codexEnv?: string,
+    extraComments?: string,
   ) => {
     postMessage({
       type: 'dispatchTask',
@@ -889,10 +898,12 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
       title: task.title,
       description: task.description || '',
       identifier: task.metadata.identifier || '',
+      url: task.metadata.url || '',
       labels: task.metadata.labels || [],
       targetRepos: targetRepos || [],
       branch: branch || '',
       codexEnv: codexEnv || '',
+      extraComments: extraComments || '',
       notify: notifyPrefs || { onQuestion: false, onFinish: false, channel: '' },
     })
     const now = Date.now()
@@ -1186,9 +1197,9 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
               title: repoPicker.title,
               description: repoPicker.description,
               status: 'todo',
-              metadata: { identifier: repoPicker.identifier },
+              metadata: { identifier: repoPicker.identifier, url: repoPicker.url },
             } as UnifiedTask
-            handleDispatchTask(pseudoTask, repoPicker.agentType, 'cloud', selected)
+            handleDispatchTask(pseudoTask, repoPicker.agentType, 'cloud', selected, 'rush', undefined, undefined, undefined, repoPicker.extraComments)
             setRepoPicker(null)
           }}
         />
@@ -1202,8 +1213,8 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
             ? () => { setDetailTask(null); setDetailSiblings([]); setDispatchOpen(true) }
             : undefined}
           onTaskSwitch={(next) => setDetailTask(next)}
-          onDispatch={({ agent, target, cloudProvider, branch, codexEnv, notify }) => {
-            handleDispatchTask(detailTask, agent, target, undefined, cloudProvider, notify, branch, codexEnv)
+          onDispatch={({ agent, target, cloudProvider, branch, codexEnv, notify, extraComments }) => {
+            handleDispatchTask(detailTask, agent, target, undefined, cloudProvider, notify, branch, codexEnv, extraComments)
             setDetailTask(null)
             setDetailSiblings([])
           }}
@@ -1220,11 +1231,11 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
               title: ownerPicker.title,
               description: ownerPicker.description,
               status: 'todo',
-              metadata: { identifier: ownerPicker.identifier, labels: ownerPicker.labels },
+              metadata: { identifier: ownerPicker.identifier, url: ownerPicker.url, labels: ownerPicker.labels },
             } as UnifiedTask
             setOwnerPicker(null)
             // Re-fire the dispatch; backend will now succeed with the saved owner.
-            setTimeout(() => handleDispatchTask(pseudoTask, ownerPicker.agentType, 'cloud'), 200)
+            setTimeout(() => handleDispatchTask(pseudoTask, ownerPicker.agentType, 'cloud', undefined, 'rush', undefined, undefined, undefined, ownerPicker.extraComments), 200)
           }}
         />
       )}
@@ -2780,7 +2791,7 @@ function DispatchCard({ task, onOpen, onOpenInBench }: { task: UnifiedTask; onOp
   )
 }
 
-type CloudProviderId = 'rush' | 'codex' | 'factory'
+export type CloudProviderId = 'rush' | 'codex' | 'factory'
 
 type DispatchPrefs = {
   lastAgent: string
@@ -2969,7 +2980,7 @@ function TaskSwitcher({ current, tasks, onPick }: {
   )
 }
 
-function TaskDetailModal({ task, tasks, onClose, onBack, onDispatch, onTaskSwitch }: {
+export function TaskDetailModal({ task, tasks, onClose, onBack, onDispatch, onTaskSwitch, requireCloudRepo = false }: {
   task: UnifiedTask
   // Sibling tasks for the in-header switcher. When provided, the modal
   // shows a search input that filters these and lets the user jump to
@@ -2988,9 +2999,11 @@ function TaskDetailModal({ task, tasks, onClose, onBack, onDispatch, onTaskSwitc
     branch: string
     codexEnv: string
     targetRepos: string[]
+    extraComments: string
     notify: { onQuestion: boolean; onFinish: boolean; channel: string }
   }) => void
   onTaskSwitch?: (task: UnifiedTask) => void
+  requireCloudRepo?: boolean
 }) {
   const prefs = useRef<DispatchPrefs>(loadDispatchPrefs())
   // Resolve per-task-type overrides at mount so e.g. `docs` tasks default
@@ -3004,6 +3017,7 @@ function TaskDetailModal({ task, tasks, onClose, onBack, onDispatch, onTaskSwitc
   const [cloudProvider, setCloudProvider] = useState<CloudProviderId>(seed.lastCloudProvider)
   const [branch, setBranch] = useState('')
   const [codexEnv, setCodexEnv] = useState(prefs.current.lastCodexEnv)
+  const [extraComments, setExtraComments] = useState('')
   const [notifyOnQuestion, setNotifyOnQuestion] = useState(prefs.current.notifyOnQuestion)
   const [notifyOnFinish, setNotifyOnFinish] = useState(prefs.current.notifyOnFinish)
   const [notifyChannel, setNotifyChannel] = useState(prefs.current.notifyChannel)
@@ -3184,9 +3198,8 @@ function TaskDetailModal({ task, tasks, onClose, onBack, onDispatch, onTaskSwitc
   // Show the task switcher only when there are sibling tasks to jump to.
   const switcherEnabled = !!onTaskSwitch && !!tasks && tasks.length > 1
 
-  const canDispatch = (runTarget !== 'codex' || codexEnv.trim().length > 0) && (
-    runTarget === 'local' || selectedRepos.length > 0 || runTarget === 'rush' || runTarget === 'codex'
-  )
+  const hasCloudRepo = runTarget === 'local' || selectedRepos.length > 0 || (!requireCloudRepo && (runTarget === 'rush' || runTarget === 'codex'))
+  const canDispatch = (runTarget !== 'codex' || codexEnv.trim().length > 0) && hasCloudRepo
 
   const handleDispatch = () => {
     // All other prefs are already persisted by the on-change effect above.
@@ -3205,6 +3218,7 @@ function TaskDetailModal({ task, tasks, onClose, onBack, onDispatch, onTaskSwitc
       branch: branch.trim(),
       codexEnv: codexEnv.trim(),
       targetRepos: selectedRepos,
+      extraComments: extraComments.trim(),
       notify: { onQuestion: notifyOnQuestion, onFinish: notifyOnFinish, channel: notifyChannel },
     })
   }
@@ -3259,6 +3273,17 @@ function TaskDetailModal({ task, tasks, onClose, onBack, onDispatch, onTaskSwitc
         </div>
 
         <div className="sw-task-detail-form">
+          <div className="sw-task-detail-row sw-task-detail-row-notes">
+            <label className="sw-task-detail-label">Comments</label>
+            <textarea
+              className="sw-task-detail-input sw-task-detail-textarea"
+              placeholder="Context, constraints, handoff notes"
+              value={extraComments}
+              onChange={(e) => setExtraComments(e.target.value)}
+              rows={3}
+            />
+          </div>
+
           <div className="sw-task-detail-row">
             <label className="sw-task-detail-label">Run on</label>
             <div className="sw-task-detail-seg">

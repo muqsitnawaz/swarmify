@@ -3,6 +3,8 @@
 ## [Unreleased]
 
 ### Added
+- Dispatch modal gains a **Comments** field — free-text context, constraints, or handoff notes appended to the agent's prompt as `Additional instructions:`. Threaded end-to-end through local, Rush Cloud, and Codex Cloud dispatch, and preserved across the repo/owner fallback pickers.
+- Bench page now opens the full dispatch modal **inline** (model, run target, repositories, branch, notify, comments) instead of bouncing to the Floor tab. Floor and Bench share one `TaskDetailModal`.
 - Peer agent messaging via a new `send_to_agent` MCP tool on the watchdog server. Address by `sessionId`; recipient sees the text typed directly into its terminal prompt via `vscode.Terminal.sendText`. Self-send is rejected. 2000-char cap. Logged to `~/.agents/peer-messages.log`.
 - On activation the extension registers the watchdog MCP server in each supported agent's user-scope config (Claude + Gemini) so peer terminals can call `send_to_agent`. Idempotent — skips agents whose CLI is missing or that already have a `watchdog` entry.
 

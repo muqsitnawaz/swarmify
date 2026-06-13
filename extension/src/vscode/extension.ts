@@ -2517,7 +2517,7 @@ export async function rotateTerminalToBestVersion(
 
   const agentKey = terminalEntry.agentType
     || prefixToAgentType(terminalEntry.agentConfig?.prefix ?? null);
-  if (!agentKey) {
+  if (!agentKey || !supportsPrewarming(agentKey)) {
     return { status: 'unsupported_agent' };
   }
 
