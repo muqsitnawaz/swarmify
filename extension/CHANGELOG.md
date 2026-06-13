@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.9.248] - 2026-06-13
+
+### Added
+- Dispatch modal gains a **Comments** field — free-text context, constraints, or handoff notes appended to the agent's prompt as `Additional instructions:`. Threaded end-to-end through local, Rush Cloud, and Codex Cloud dispatch, and preserved across the repo/owner fallback pickers.
+- Bench page now opens the full dispatch modal **inline** (model, run target, repositories, branch, notify, comments) instead of bouncing to the Floor tab. Floor and Bench share one `TaskDetailModal`.
+
 ## [0.9.247] - 2026-06-11
 
 ### Fixed

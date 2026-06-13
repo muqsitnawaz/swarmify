@@ -35,6 +35,35 @@ export interface TaskComment {
   author?: string;
 }
 
+export interface TaskDispatchPromptInput {
+  title: string;
+  description?: string;
+  identifier?: string;
+  url?: string;
+  extraComments?: string;
+}
+
+function cleanPromptPart(value: string | undefined): string {
+  return value?.trim() ?? '';
+}
+
+export function buildTaskDispatchPrompt(input: TaskDispatchPromptInput): string {
+  const parts: string[] = [];
+  const title = cleanPromptPart(input.title);
+  const description = cleanPromptPart(input.description);
+  const identifier = cleanPromptPart(input.identifier);
+  const url = cleanPromptPart(input.url);
+  const extraComments = cleanPromptPart(input.extraComments);
+
+  if (title) parts.push(title);
+  if (description) parts.push(description);
+  if (identifier) parts.push(`Reference: ${identifier}`);
+  if (url) parts.push(`URL: ${url}`);
+  if (extraComments) parts.push(`Additional instructions:\n${extraComments}`);
+
+  return parts.join('\n\n');
+}
+
 // A Linear user whose name matches one of these is treated as an agent, so the
 // card renders an agent chip rather than a @mention. Case-insensitive match.
 const AGENT_ASSIGNEE_PATTERN = /^(claude|codex|gemini|cursor|opencode)$/i;

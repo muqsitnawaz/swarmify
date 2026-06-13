@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { Icon } from '../mission-control/icons'
+import { Icon, TaskDetailModal } from '../mission-control'
 import { postMessage } from '../../hooks'
 import { TaskCard } from './TaskCard'
 import { TaskDetail } from './TaskDetail'
 import { CycleBar } from './CycleBar'
 import type { FlatTask } from './TaskCard'
+import type { CloudProviderId } from '../mission-control'
 import type {
   AgentSettings,
   ContextFile,
@@ -40,7 +41,6 @@ interface BenchTabProps {
   icons: IconConfig
   isLightTheme: boolean
   onToggleSource: (source: TaskSource) => void
-  onSpawnAgentForTask: (task: UnifiedTask) => void
   onRefreshTasks: () => void
   onRefreshContext: () => void
   onUpdateTaskSources: (sources: Partial<any>) => void
@@ -73,13 +73,13 @@ export function BenchTab(props: BenchTabProps) {
     githubRepo,
     availableSources,
     onRefreshTasks,
-    onSpawnAgentForTask,
     onDismissTask,
     openBenchTaskId,
     onOpenBenchTaskConsumed,
   } = props
 
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+  const [dispatchTask, setDispatchTask] = useState<UnifiedTask | null>(null)
   const [activeFilters, setActiveFilters] = useState<Set<TaskSource>>(
     new Set(['linear', 'github'])
   )
@@ -172,6 +172,11 @@ export function BenchTab(props: BenchTabProps) {
     return tasks
   }, [flatTasks, activeFilters, repoFilter])
 
+  const dispatchSiblings = useMemo(() => {
+    const ids = new Set(filteredTasks.map(t => t.id))
+    return unifiedTasks.filter(t => ids.has(t.id))
+  }, [filteredTasks, unifiedTasks])
+
   const selectedTask = useMemo(
     () => filteredTasks.find(t => t.id === selectedTaskId) ?? null,
     [filteredTasks, selectedTaskId]
@@ -204,7 +209,38 @@ export function BenchTab(props: BenchTabProps) {
 
   const handleDispatch = (task: FlatTask) => {
     const source = unifiedTasks.find(t => t.id === task.id)
-    if (source) onSpawnAgentForTask(source)
+    if (source) setDispatchTask(source)
+  }
+
+  const handleConfiguredDispatch = (args: {
+    agent: string
+    target: 'local' | 'cloud'
+    cloudProvider: CloudProviderId
+    branch: string
+    codexEnv: string
+    targetRepos: string[]
+    extraComments: string
+    notify: { onQuestion: boolean; onFinish: boolean; channel: string }
+  }) => {
+    if (!dispatchTask) return
+    postMessage({
+      type: 'dispatchTask',
+      taskId: dispatchTask.id,
+      agentType: args.agent,
+      target: args.target,
+      cloudProvider: args.cloudProvider,
+      title: dispatchTask.title,
+      description: dispatchTask.description || '',
+      identifier: dispatchTask.metadata.identifier || '',
+      url: dispatchTask.metadata.url || '',
+      labels: dispatchTask.metadata.labels || [],
+      targetRepos: args.targetRepos,
+      branch: args.branch,
+      codexEnv: args.codexEnv,
+      extraComments: args.extraComments,
+      notify: args.notify,
+    })
+    setDispatchTask(null)
   }
 
   const handleDismiss = (taskId: string) => {
@@ -219,9 +255,10 @@ export function BenchTab(props: BenchTabProps) {
   const isLoading = unifiedTasksLoading
 
   return (
-    <div className="sw-bench">
-      {/* Left column: task list */}
-      <div className="sw-bench-list">
+    <>
+      <div className="sw-bench">
+        {/* Left column: task list */}
+        <div className="sw-bench-list">
         <div className="sw-bench-list-head">
           <span className="sw-section-label">Work Queue</span>
           <span className="sw-section-count">{filteredTasks.length}</span>
@@ -298,28 +335,39 @@ export function BenchTab(props: BenchTabProps) {
             ))
           )}
         </div>
-      </div>
+        </div>
 
-      {/* Right column: task detail */}
-      <div className="sw-bench-detail">
-        {selectedTask ? (
-          <TaskDetail
-            task={selectedTask}
-            cycleInfo={cycleInfo}
-            onDispatch={handleDispatch}
-            onDismiss={handleDismiss}
-            onOpenExternal={handleOpenExternal}
-          />
-        ) : (
-          <div className="sw-empty" style={{ flex: 1 }}>
-            <Icon name="inbox" size={32} style={{ color: 'var(--ds-text-faint)' }} />
-            <span className="sw-empty-title">Select a task to see details</span>
-            <span className="sw-empty-sub">
-              Click a task in the work queue to view its full description, metadata, and actions.
-            </span>
-          </div>
-        )}
+        {/* Right column: task detail */}
+        <div className="sw-bench-detail">
+          {selectedTask ? (
+            <TaskDetail
+              task={selectedTask}
+              cycleInfo={cycleInfo}
+              onDispatch={handleDispatch}
+              onDismiss={handleDismiss}
+              onOpenExternal={handleOpenExternal}
+            />
+          ) : (
+            <div className="sw-empty" style={{ flex: 1 }}>
+              <Icon name="inbox" size={32} style={{ color: 'var(--ds-text-faint)' }} />
+              <span className="sw-empty-title">Select a task to see details</span>
+              <span className="sw-empty-sub">
+                Click a task in the work queue to view its full description, metadata, and actions.
+              </span>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+      {dispatchTask && (
+        <TaskDetailModal
+          task={dispatchTask}
+          tasks={dispatchSiblings.length > 1 ? dispatchSiblings : undefined}
+          onClose={() => setDispatchTask(null)}
+          onTaskSwitch={setDispatchTask}
+          onDispatch={handleConfiguredDispatch}
+          requireCloudRepo
+        />
+      )}
+    </>
   )
 }
