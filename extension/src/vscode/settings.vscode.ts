@@ -226,6 +226,38 @@ async function findTaskDetailsForForeman(
 // picker protocol: resolves target repos from the ticket's repo:<name>
 // label (optionally overridden by `opts.repo`), and fails fast with a
 // speakable message when the repo is ambiguous. No UI prompts.
+// Map "owner/repo" to a local clone so local dispatches start the agent in
+// the task's repo instead of whatever workspace happens to be open. Checks
+// open workspace folders first (matched by git remote), then two layouts
+// derived from the current workspace's location: a flat sibling
+// (<parent>/<repo>) and an owner-nested sibling (<grandparent>/<owner>/<repo>,
+// i.e. the ~/src/github.com/<owner>/<repo> convention). The owner half of the
+// slug is a guess from resolveGithubOwner (Linear labels only carry the repo
+// name), so a candidate also wins when its origin's repo NAME matches even if
+// the owner differs (e.g. label says muqsitnawaz/agents-cli but the clone's
+// remote is phnx-labs/agents-cli).
+async function resolveLocalRepoPath(repo: string): Promise<string | null> {
+  const repoName = repo.split('/')[1];
+  if (!repoName) return null;
+  const remoteMatches = (remote: string | null) =>
+    remote !== null && (remote === repo || remote.split('/')[1] === repoName);
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  for (const folder of folders) {
+    if (remoteMatches(await getGitHubRepo(folder.uri.fsPath))) return folder.uri.fsPath;
+  }
+  const base = folders[0]?.uri.fsPath;
+  if (!base) return null;
+  const candidates = [
+    path.join(path.dirname(base), repoName),
+    path.join(path.dirname(path.dirname(base)), repo),
+  ];
+  for (const dir of candidates) {
+    if (dir === base || !fs.existsSync(dir)) continue;
+    if (remoteMatches(await getGitHubRepo(dir))) return dir;
+  }
+  return null;
+}
+
 async function dispatchForForeman(
   context: vscode.ExtensionContext,
   opts: foreman.ForemanDispatchOpts,
@@ -257,11 +289,16 @@ async function dispatchForForeman(
     const def = getBuiltInByKey(agent);
     if (!def) return { ok: false, message: `Unknown agent type: ${agent}.` };
     const agentConfig = configFromDef(context.extensionPath, def);
-    await openSingleAgentWithQueue(context, agentConfig, [prompt]);
+    const localOwner = await resolveGithubOwner(workspacePath, settings);
+    const repoSlugs = opts.repo && /^[^/]+\/[^/]+$/.test(opts.repo)
+      ? [opts.repo]
+      : resolveReposFromLabels(task.metadata.labels, localOwner);
+    const cwd = repoSlugs.length === 1 ? await resolveLocalRepoPath(repoSlugs[0]) : null;
+    await openSingleAgentWithQueue(context, agentConfig, [prompt], cwd ? { cwd } : undefined);
     return {
       ok: true,
-      message: `Started ${agent} locally on ${identifier || task.title}.`,
-      dispatched: { id: identifier || task.id, agent, target, repos: [] },
+      message: `Started ${agent} locally on ${identifier || task.title}${cwd ? ` in ${cwd}` : ''}.`,
+      dispatched: { id: identifier || task.id, agent, target, repos: repoSlugs },
     };
   }
 
@@ -310,7 +347,7 @@ async function dispatchForForeman(
 // to fix X" without needing a Linear ticket.
 async function spawnAgentForForeman(
   context: vscode.ExtensionContext,
-  opts: { prompt: string; agent?: string; target?: string },
+  opts: { prompt: string; agent?: string; target?: string; repos?: string[] },
 ): Promise<{ ok: boolean; message: string }> {
   const agentKey = opts.agent?.trim() || 'claude';
   const target = opts.target === 'cloud' ? 'cloud' : 'local';
@@ -319,8 +356,12 @@ async function spawnAgentForForeman(
     const def = getBuiltInByKey(agentKey);
     if (!def) return { ok: false, message: `Unknown agent: ${agentKey}.` };
     const agentConfig = configFromDef(context.extensionPath, def);
-    await openSingleAgentWithQueue(context, agentConfig, [opts.prompt]);
-    return { ok: true, message: `Started ${agentKey} locally.` };
+    // Attached tasks pin the working directory when they all share one repo
+    // and a local clone is found; otherwise the workspace folder applies.
+    const slugs = [...new Set((opts.repos ?? []).filter((r) => /^[^/]+\/[^/]+$/.test(r)))];
+    const cwd = slugs.length === 1 ? await resolveLocalRepoPath(slugs[0]) : null;
+    await openSingleAgentWithQueue(context, agentConfig, [opts.prompt], cwd ? { cwd } : undefined);
+    return { ok: true, message: cwd ? `Started ${agentKey} locally in ${cwd}.` : `Started ${agentKey} locally.` };
   }
 
   const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -856,6 +897,17 @@ export function openPanelAndDispatch(context: vscode.ExtensionContext): void {
   // Small delay so the webview is ready to receive messages on cold open.
   setTimeout(() => {
     settingsPanel?.webview.postMessage({ type: 'openDispatchModal' });
+  }, alreadyOpen ? 0 : 500);
+}
+
+// Open the new-agent composer in the Factory panel. Bound to cmd+k while the
+// panel is active (VS Code eats cmd+k as a chord prefix before the webview
+// sees the keydown, so the shortcut has to be contributed at this layer).
+export function openPanelAndFocusQuickSpawn(context: vscode.ExtensionContext): void {
+  const alreadyOpen = !!settingsPanel;
+  openPanel(context);
+  setTimeout(() => {
+    settingsPanel?.webview.postMessage({ type: 'focusQuickSpawn' });
   }, alreadyOpen ? 0 : 500);
 }
 
@@ -1486,14 +1538,20 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
           break;
         }
         const agentConfig = configFromDef(context.extensionPath, def);
-        await openSingleAgentWithQueue(context, agentConfig, [prompt]);
+        const localWorkspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        const localOwner = await resolveGithubOwner(localWorkspace, getSettings(context));
+        const localSlugs = overrideRepos.length > 0
+          ? overrideRepos
+          : resolveReposFromLabels(labels, localOwner);
+        const localCwd = localSlugs.length === 1 ? await resolveLocalRepoPath(localSlugs[0]) : null;
+        await openSingleAgentWithQueue(context, agentConfig, [prompt], localCwd ? { cwd: localCwd } : undefined);
         break;
       }
       case 'spawnAgentForTask': {
         const task = message.task as {
           title: string;
           description?: string;
-          metadata?: { identifier?: string; url?: string };
+          metadata?: { identifier?: string; url?: string; repo?: string };
         } | undefined;
         if (!task || !task.title) break;
 
@@ -1512,7 +1570,8 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
           break;
         }
 
-        await openSingleAgentWithQueue(context, agentConfig, [prompt]);
+        const taskCwd = task.metadata?.repo ? await resolveLocalRepoPath(task.metadata.repo) : null;
+        await openSingleAgentWithQueue(context, agentConfig, [prompt], taskCwd ? { cwd: taskCwd } : undefined);
         break;
       }
       case 'openSession':
@@ -1749,7 +1808,10 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
         if (prompt) {
           const agent = typeof message.agent === 'string' ? message.agent : undefined;
           const target = typeof message.target === 'string' ? message.target : undefined;
-          await spawnAgentForForeman(context, { prompt, agent, target });
+          const repos: string[] = Array.isArray(message.repos)
+            ? message.repos.filter((r: unknown): r is string => typeof r === 'string')
+            : [];
+          await spawnAgentForForeman(context, { prompt, agent, target, repos });
         }
         break;
       }
@@ -1798,8 +1860,8 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
             onStatus: (status, detail) => {
               settingsPanel?.webview.postMessage({ type: 'foreman.status', status, detail });
             },
-            onTranscript: (role, text, final) => {
-              settingsPanel?.webview.postMessage({ type: 'foreman.transcript', role, text, final });
+            onTranscript: (role, text, final, itemId) => {
+              settingsPanel?.webview.postMessage({ type: 'foreman.transcript', role, text, final, itemId });
             },
             onEvent: (eventType, summary) => {
               settingsPanel?.webview.postMessage({ type: 'foreman.event', eventType, summary, at: Date.now() });
@@ -1822,7 +1884,7 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
                 foremanSession?.sendToolResult(callId, { error: err?.message ?? String(err) });
               }
             },
-          });
+          }, { speakerMuted: message.speakerMuted === true });
           if (gen !== foremanSessionGen) {
             session.close();
             break;
@@ -1841,6 +1903,16 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
         foremanSessionGen++;
         foremanSession?.close();
         foremanSession = undefined;
+        break;
+      }
+      case 'foreman.setSpeakerMuted': {
+        foremanSession?.setSpeakerMuted(message.muted === true);
+        break;
+      }
+      case 'foreman.deleteItem': {
+        if (typeof message.itemId === 'string' && message.itemId) {
+          foremanSession?.deleteItem(message.itemId);
+        }
         break;
       }
     }

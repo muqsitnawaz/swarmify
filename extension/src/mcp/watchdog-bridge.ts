@@ -4,6 +4,7 @@ import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as vscode from 'vscode';
 import { getAllTerminals } from '../vscode/terminals.vscode';
+import { resolvePeerMessage } from '../core/peerMessaging';
 
 const SOCKET_PATH = path.join(os.homedir(), '.agents', '.tmp', 'watchdog.sock');
 const WATCHDOG_LOG = path.join(os.homedir(), '.agents', 'watchdog.log');
@@ -103,68 +104,51 @@ async function handleSendToAgent(
 ): Promise<SendToAgentResponse> {
   const { senderSessionId, targetSessionId, text } = request;
 
-  const trimmedText = text.trim();
-  if (!trimmedText) {
-    return { success: false, error: 'Text cannot be empty' };
-  }
-  if (trimmedText.length > 2000) {
-    return { success: false, error: 'Text must be under 2000 characters' };
-  }
+  const resolved = resolvePeerMessage({
+    terminals: getAllTerminals(),
+    senderSessionId,
+    targetSessionId,
+    text,
+  });
 
-  // Self-send guard. Only enforced when sender identified itself —
-  // smart-watchdog one-shots have no AGENT_SESSION_ID and that's fine.
-  if (senderSessionId && senderSessionId === targetSessionId) {
-    return { success: false, error: 'Cannot send a message to your own session' };
+  if (resolved.kind !== 'ok') {
+    return { success: false, error: resolved.error };
   }
 
-  const terminals = getAllTerminals();
-  const exact = terminals.find((t) => t.sessionId === targetSessionId);
-  const recipient =
-    exact ||
-    terminals.find(
-      (t) =>
-        (t.sessionId && t.sessionId.startsWith(targetSessionId)) ||
-        (t.sessionId && targetSessionId.startsWith(t.sessionId))
-    );
-
-  if (!recipient) {
-    const active = terminals.map((t) => t.sessionId).filter(Boolean).join(', ');
-    return {
-      success: false,
-      error: `No terminal found for session ${targetSessionId}. Active sessions: ${active}`,
-    };
-  }
-
-  if (senderSessionId && recipient.sessionId === senderSessionId) {
-    return { success: false, error: 'Cannot send a message to your own session' };
+  const { terminal: recipient, trimmedText } = resolved;
+  // resolvePeerMessage returns the lookup record (id, sessionId, agentType).
+  // Re-locate the live vscode.Terminal handle by id so the bridge keeps the
+  // type information without leaking it across the module boundary.
+  const live = getAllTerminals().find((t) => t.id === recipient.id);
+  if (!live) {
+    return { success: false, error: `Terminal ${recipient.id} disappeared` };
   }
 
   try {
     // Claude's Ink TUI needs an explicit carriage return; other agents take \n.
-    // Same convention as handleSendNudge.
-    if (recipient.agentType === 'claude') {
-      recipient.terminal.sendText(trimmedText, false);
-      recipient.terminal.sendText('\r', false);
+    if (live.agentType === 'claude') {
+      live.terminal.sendText(trimmedText, false);
+      live.terminal.sendText('\r', false);
     } else {
-      recipient.terminal.sendText(trimmedText, true);
+      live.terminal.sendText(trimmedText, true);
     }
 
     await logPeerMessage({
       senderSessionId: senderSessionId || 'unknown',
       targetSessionId,
-      recipientTerminalId: recipient.id,
-      recipientAgentType: recipient.agentType,
+      recipientTerminalId: live.id,
+      recipientAgentType: live.agentType,
       text: trimmedText,
     });
 
     console.log(
-      `[PEER-MSG] ${senderSessionId || 'unknown'} -> ${recipient.id} (${recipient.agentType}): "${trimmedText.slice(0, 80)}${trimmedText.length > 80 ? '…' : ''}"`
+      `[PEER-MSG] ${senderSessionId || 'unknown'} -> ${live.id} (${live.agentType}): "${trimmedText.slice(0, 80)}${trimmedText.length > 80 ? '…' : ''}"`
     );
 
     return {
       success: true,
       sentAt: Date.now(),
-      recipientTerminalId: recipient.id,
+      recipientTerminalId: live.id,
     };
   } catch (err) {
     return {

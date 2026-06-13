@@ -1,10 +1,49 @@
 # Changelog
 
-## [Unreleased]
+## [0.9.248] - 2026-06-13
 
 ### Added
 - Dispatch modal gains a **Comments** field — free-text context, constraints, or handoff notes appended to the agent's prompt as `Additional instructions:`. Threaded end-to-end through local, Rush Cloud, and Codex Cloud dispatch, and preserved across the repo/owner fallback pickers.
 - Bench page now opens the full dispatch modal **inline** (model, run target, repositories, branch, notify, comments) instead of bouncing to the Floor tab. Floor and Bench share one `TaskDetailModal`.
+
+## [0.9.247] - 2026-06-11
+
+### Fixed
+- Foreman recited raw tool output aloud ("1) Claude: ... 2) Another Claude, no label ..."): the briefing handed the model up to 30 agent rows of mostly-null JSON, and the model read them back item by item. The briefing now sends at most 6 detailed agents (the ones with a real task, label, or tool activity), folds the rest into a pre-aggregated count, omits empty fields entirely, and truncates session UUIDs to 8 chars. The system prompt adds voice-delivery rules: name at most 3 items aloud, aggregate the rest, never verbalize missing data.
+
+## [0.9.246] - 2026-06-10
+
+### Added
+- Delete button on Foreman transcript messages: hover a line and click the x to remove that utterance from the conversation context server-side (`conversation.item.delete`), so a mis-transcription stops steering follow-up answers. The line disappears from the transcript too.
+- E2E test against the live Realtime API: create a conversation item, delete it with the exact payload the button sends, require `conversation.item.deleted` back.
+
+## [0.9.245] - 2026-06-10
+
+### Fixed
+- Foreman orb flashed a red "ffplay: [2K" error on every spoken reply: ffplay prints its playback status clock to stderr even at `-loglevel error`, and the unfiltered stderr reporter promoted it to an error status. Playback now runs with `-nostats`, so stderr stays silent unless something is genuinely wrong.
+
+### Added
+- E2E test that pipes PCM through the exact production ffplay command and requires a silent stderr and clean exit.
+
+## [0.9.244] - 2026-06-09
+
+### Fixed
+- Foreman answered itself in a loop on long replies: the anti-echo mic gate was keyed to audio delta arrival (OpenAI streams a 10s answer in ~2s), so the mic reopened mid-playback and the assistant's own voice came back as user input. The gate now runs on a playback clock that accounts for each queued chunk's real play duration.
+- Foreman narrated the same ground twice when one question triggered two tool calls: every tool result fired its own `response.create`. Responses are now serialized — one in flight, deferred creates coalesce into a single follow-up response.
+
+## [0.9.243] - 2026-06-09
+
+### Fixed
+- Foreman voice orb mic capture was dead: the ffmpeg avfoundation command used `-sample_rate`/`-channels` input options that ffmpeg 8 rejects, so the process exited before capturing a byte — and the stderr keyword filter swallowed the error. The orb now captures from the macOS default input (`:default`), which follows AirPods and other device switches automatically, and resamples to 24kHz on the output side.
+- Foreman audio failures are no longer silent: all ffmpeg/ffplay stderr, spawn, and exit events surface in the orb's event overlay and status line.
+- Start/stop race: a quick stop while the realtime session was still connecting could orphan the mic and WebSocket; sessions are now generation-guarded.
+
+### Added
+- Press-and-hold push-to-talk on the Foreman orb: hold to talk for the duration of the press, release to end. Tap still toggles start/stop.
+- Silent mode toggle below the Foreman orb: replies arrive as text-only transcript with playback dropped; togglable mid-session.
+- Speaker-path diagnostics in the event overlay (`speaker.spawn`, `speaker.write`, `speaker.written`, `speaker.stderr`, `speaker.exit`).
+- E2E test that spawns the exact production ffmpeg capture command and requires real PCM on stdout, plus a live OpenAI Realtime GA handshake test.
+- Factory floor UX: Cmd+K composer with task attachment, draggable issue cards, bare repo chips, QuickDispatch restore.
 - Peer agent messaging via a new `send_to_agent` MCP tool on the watchdog server. Address by `sessionId`; recipient sees the text typed directly into its terminal prompt via `vscode.Terminal.sendText`. Self-send is rejected. 2000-char cap. Logged to `~/.agents/peer-messages.log`.
 - On activation the extension registers the watchdog MCP server in each supported agent's user-scope config (Claude + Gemini) so peer terminals can call `send_to_agent`. Idempotent — skips agents whose CLI is missing or that already have a `watchdog` entry.
 

@@ -14,6 +14,7 @@ import {
   reconcilePending,
   pruneExpiredPending,
   markTimedOutPending,
+  markCloudFailedPending,
   filterDispatchedTaskIds,
   optimisticActivityLabel,
   PENDING_DISPATCH_TTL_MS,
@@ -401,6 +402,7 @@ interface UnifiedAgentsPaneProps {
   onNavigate?: (tab: 'floor' | 'bench' | 'panel') => void
   onOpenInBench?: (taskId: string) => void
   openDispatchTrigger?: number
+  quickSpawnTrigger?: number
   openDetailTaskId?: string | null
   onDetailTaskConsumed?: () => void
   onThroughputChange?: (tokensPerSec: number) => void
@@ -409,14 +411,23 @@ interface UnifiedAgentsPaneProps {
   watchdogEvents?: WatchdogEventUI[]
 }
 
-export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks, unifiedTasksLoading, onDispatch, onNavigate, onOpenInBench, openDispatchTrigger, openDetailTaskId, onDetailTaskConsumed, onThroughputChange, githubRepo, watchdogEnabled = false, watchdogEvents = [] }: UnifiedAgentsPaneProps) {
+export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks, unifiedTasksLoading, onDispatch, onNavigate, onOpenInBench, openDispatchTrigger, quickSpawnTrigger, openDetailTaskId, onDetailTaskConsumed, onThroughputChange, githubRepo, watchdogEnabled = false, watchdogEvents = [] }: UnifiedAgentsPaneProps) {
   const panelVisible = usePanelVisibility()
   const [newMenuOpen, setNewMenuOpen] = useState(false)
   const [statPopover, setStatPopover] = useState<'shipped' | 'open' | 'running' | 'nextup' | 'files' | null>(null)
   const [dispatchOpen, setDispatchOpen] = useState(false)
+  const [quickSpawnOpen, setQuickSpawnOpen] = useState(false)
+  const [quickSpawnPrefill, setQuickSpawnPrefill] = useState('')
+  const [cardDragActive, setCardDragActive] = useState(false)
   useEffect(() => {
     if (openDispatchTrigger !== undefined && openDispatchTrigger > 0) setDispatchOpen(true)
   }, [openDispatchTrigger])
+  useEffect(() => {
+    if (quickSpawnTrigger !== undefined && quickSpawnTrigger > 0) {
+      setQuickSpawnPrefill('')
+      setQuickSpawnOpen(true)
+    }
+  }, [quickSpawnTrigger])
   useEffect(() => {
     if (!openDetailTaskId) return
     const task = unifiedTasks.find(t => t.id === openDetailTaskId)
@@ -469,15 +480,16 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     if (pendingDispatches.length === 0) return
     const now = Date.now()
     setPendingDispatches((prev) => {
-      // Two-step lifecycle: flip pending→timedOut at TTL (user sees the
-      // warning), then fully remove once retention window has also passed.
-      // Both functions return the same reference when nothing changes, so
-      // the setState is a no-op in the steady state.
-      const flipped = markTimedOutPending(prev, now)
+      // Lifecycle: surface confirmed Rush Cloud failures immediately, flip
+      // anything past TTL to timedOut next, then fully remove once the
+      // retention window has also passed. Each helper returns the same
+      // reference when nothing changed, so steady state is a no-op.
+      const failed = markCloudFailedPending(prev, tasks)
+      const flipped = markTimedOutPending(failed, now)
       const pruned = pruneExpiredPending(flipped, now)
       return pruned
     })
-  }, [tick, pendingDispatches])
+  }, [tick, pendingDispatches, tasks])
 
   // Listen for backend dispatch follow-ups (repo picker / owner picker prompts)
   useEffect(() => {
@@ -657,6 +669,16 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
       (t) => t.status === 'todo' && (t.priority === 'urgent' || t.priority === 'high')
     )
     return filterDispatchedTaskIds(eligible, pendingTaskIds)
+  }, [unifiedTasks, pendingTaskIds])
+
+  // Attach list for the cmd+k composer: every todo task (not just the
+  // urgent/high Next Up pool), highest priority first.
+  const composerTasks = useMemo(() => {
+    const rank: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 }
+    const todo = unifiedTasks
+      .filter((t) => t.status === 'todo')
+      .sort((a, b) => (rank[a.priority || 'low'] ?? 3) - (rank[b.priority || 'low'] ?? 3))
+    return filterDispatchedTaskIds(todo, pendingTaskIds)
   }, [unifiedTasks, pendingTaskIds])
 
   // Repo name of the workspace currently open in the IDE (e.g. "swarmify"
@@ -862,8 +884,9 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     postMessage({ type: 'killSwarm', taskName })
   }
 
-  const handleQuickSpawn = useCallback((prompt: string, agent: string, target: 'local' | 'cloud') => {
-    postMessage({ type: 'quickSpawn', prompt, agent, target })
+  const handleQuickSpawn = useCallback((prompt: string, agent: string, target: 'local' | 'cloud', repos: string[]) => {
+    setQuickSpawnOpen(false)
+    postMessage({ type: 'quickSpawn', prompt, agent, target, repos })
     const now = Date.now()
     const truncated = prompt.length > 60 ? prompt.slice(0, 60) + '…' : prompt
     const pending: PendingDispatch = {
@@ -927,7 +950,32 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
 
   return (
     <div className="sw-floor-dashboard">
-      <QuickDispatch onSpawn={handleQuickSpawn} />
+      {cardDragActive && (
+        <div
+          className="sw-quick-dispatch-dropzone"
+          onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy' }}
+          onDrop={(e) => {
+            e.preventDefault()
+            const text = e.dataTransfer.getData('text/plain')
+            setCardDragActive(false)
+            if (text) {
+              setQuickSpawnPrefill(text)
+              setQuickSpawnOpen(true)
+            }
+          }}
+        >
+          Drop to start an agent with this issue
+        </div>
+      )}
+
+      {quickSpawnOpen && (
+        <QuickDispatch
+          onSpawn={handleQuickSpawn}
+          onClose={() => setQuickSpawnOpen(false)}
+          prefill={quickSpawnPrefill}
+          tasks={composerTasks}
+        />
+      )}
 
       {/* Intake Q&A -- teammates waiting on a human answer */}
       {intakeTeams.length > 0 && (
@@ -944,7 +992,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
           <div className="sw-section-header-row">
             <span className="sw-section-label">Next Up</span>
             <span className="sw-section-count-pill">{queueTasks.length}</span>
-            <span className="sw-section-hint">Click a card to configure and dispatch</span>
+            <span className="sw-section-hint">Click a card to configure · drag to draft · ⌘K new agent</span>
             <span className="sw-section-line" />
             {(workspaceRepoName || queueRepos.length >= 2) && (
               <select
@@ -972,7 +1020,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
           {queueTasks.length > 0 ? (
             <div className="sw-queue-cards">
               {queueTasks.map((task) => (
-                <DispatchCard key={task.id} task={task} onOpen={setDetailTask} onOpenInBench={onOpenInBench} />
+                <DispatchCard key={task.id} task={task} onOpen={setDetailTask} onOpenInBench={onOpenInBench} onDragStateChange={setCardDragActive} />
               ))}
             </div>
           ) : (
@@ -1694,37 +1742,103 @@ function DispatchModal({ tasks, loading, onClose, onDispatch, onDispatchBatch, o
   )
 }
 
-// Agent horizontal strip
-function QuickDispatch({ onSpawn }: { onSpawn: (prompt: string, agent: string, target: 'local' | 'cloud') => void }) {
-  const [prompt, setPrompt] = useState('')
+// New-agent composer. Opened via ⌘K (webview listener or the contributed
+// agents.focusQuickSpawn keybinding) or by dropping a Next Up card; mounts
+// fresh on every open so `prefill` seeding via useState is safe.
+function QuickDispatch({ onSpawn, onClose, prefill, tasks }: {
+  onSpawn: (prompt: string, agent: string, target: 'local' | 'cloud', repos: string[]) => void
+  onClose: () => void
+  prefill: string
+  tasks: UnifiedTask[]
+}) {
+  const [prompt, setPrompt] = useState(prefill)
   const [agent, setAgent] = useState<'claude' | 'codex' | 'gemini'>('claude')
   const [target, setTarget] = useState<'local' | 'cloud'>('local')
-  const [focused, setFocused] = useState(false)
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set())
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    inputRef.current?.focus()
+    inputRef.current?.setSelectionRange(prompt.length, prompt.length)
+  }, [])
+
+  const toggleTask = (id: string) => {
+    setSelectedTaskIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   const submit = () => {
     const text = prompt.trim()
-    if (!text) return
-    onSpawn(text, agent, target)
+    const attached = tasks.filter((t) => selectedTaskIds.has(t.id))
+    if (!text && attached.length === 0) return
+    const lines = attached.map((t) =>
+      t.metadata.identifier ? `${t.metadata.identifier}: ${t.title}` : t.title
+    )
+    const repos = [...new Set(attached.map((t) => t.metadata.repo).filter((r): r is string => !!r))]
+    onSpawn([text, ...lines].filter(Boolean).join('\n\n'), agent, target, repos)
     setPrompt('')
+    setSelectedTaskIds(new Set())
   }
 
   return (
-    <div className="sw-quick-dispatch">
+    <div className="sw-dispatch-modal-overlay" onMouseDown={onClose} role="dialog" aria-modal="true">
+      <div className="sw-quick-dispatch sw-quick-dispatch-modal" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="sw-quick-dispatch-header">
+        <span className="sw-section-label">New agent</span>
+        <span className="sw-section-hint">Enter to start · Esc to close</span>
+      </div>
       <textarea
+        ref={inputRef}
         className="sw-quick-dispatch-input"
         value={prompt}
         onChange={(e) => setPrompt(e.target.value)}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault()
             submit()
           }
+          if (e.key === 'Escape') {
+            e.preventDefault()
+            onClose()
+          }
         }}
-        placeholder="Start a new agent… describe the task"
-        rows={focused ? 3 : 1}
+        placeholder={tasks.length > 0 ? 'Describe the task, or attach tasks below' : 'Describe the task for the agent'}
+        rows={4}
       />
+      {tasks.length > 0 && (
+        <>
+          <div className="sw-quick-dispatch-header">
+            <span className="sw-section-label">Attach tasks</span>
+            <span className="sw-section-hint">
+              {selectedTaskIds.size > 0 ? `${selectedTaskIds.size} attached` : 'Click to attach'}
+            </span>
+          </div>
+          <div className="sw-quick-dispatch-tasks">
+            {tasks.map((t) => {
+              const attached = selectedTaskIds.has(t.id)
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  className={`sw-quick-dispatch-task ${attached ? 'attached' : ''}`}
+                  aria-pressed={attached}
+                  onClick={() => toggleTask(t.id)}
+                >
+                  <span className="sw-queue-badge">{t.metadata.identifier || t.id.slice(0, 8)}</span>
+                  <span className="sw-quick-dispatch-task-title">{t.title}</span>
+                  {t.metadata.repo && (
+                    <span className="sw-queue-repo-chip mono">{t.metadata.repo.split('/').pop()}</span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </>
+      )}
       <div className="sw-quick-dispatch-controls">
         <div className="sw-active-filter">
           {(['claude', 'codex', 'gemini'] as const).map((a) => (
@@ -1754,10 +1868,11 @@ function QuickDispatch({ onSpawn }: { onSpawn: (prompt: string, agent: string, t
           type="button"
           className="sw-btn primary sm"
           onClick={submit}
-          disabled={!prompt.trim()}
+          disabled={!prompt.trim() && selectedTaskIds.size === 0}
         >
           Start
         </button>
+      </div>
       </div>
     </div>
   )
@@ -2725,9 +2840,12 @@ function formatDueDate(iso: string | undefined): { label: string; tone: 'overdue
 }
 
 // Dispatch card with agent picker
-function DispatchCard({ task, onOpen, onOpenInBench }: { task: UnifiedTask; onOpen: (task: UnifiedTask) => void; onOpenInBench?: (taskId: string) => void }) {
+function DispatchCard({ task, onOpen, onOpenInBench, onDragStateChange }: { task: UnifiedTask; onOpen: (task: UnifiedTask) => void; onOpenInBench?: (taskId: string) => void; onDragStateChange?: (dragging: boolean) => void }) {
   const priorityCls = task.priority === 'urgent' ? 'urgent' : task.priority === 'high' ? 'high' : 'medium'
   const repo = task.metadata.repo
+  // Owner prefix ("muqsitnawaz/") bloats the 280px card; show the bare repo
+  // name and keep the full slug in the hover tooltip.
+  const repoName = repo ? repo.split('/').pop() : null
   const due = formatDueDate(task.metadata.dueDate)
   const repoHref = repo ? `https://github.com/${repo}` : null
 
@@ -2750,6 +2868,16 @@ function DispatchCard({ task, onOpen, onOpenInBench }: { task: UnifiedTask; onOp
           onOpen(task)
         }
       }}
+      draggable
+      onDragStart={(e) => {
+        const label = task.metadata.identifier ? `${task.metadata.identifier}: ${task.title}` : task.title
+        e.dataTransfer.setData('text/plain', label)
+        e.dataTransfer.effectAllowed = 'copy'
+        // Deferred: synchronous DOM mutation inside dragstart cancels the
+        // drag in Chromium, and the dropzone strip mounts on this signal.
+        setTimeout(() => onDragStateChange?.(true), 0)
+      }}
+      onDragEnd={() => onDragStateChange?.(false)}
     >
       <div className="sw-queue-card-header">
         <div className={`sw-queue-priority-led ${priorityCls}`} />
@@ -2762,10 +2890,10 @@ function DispatchCard({ task, onOpen, onOpenInBench }: { task: UnifiedTask; onOp
             title={`Open ${repo} on GitHub`}
             style={{ marginLeft: 'auto' }}
           >
-            {repo}
+            {repoName}
           </ExtLink>
         ) : repo ? (
-          <span className="sw-queue-repo-chip mono" style={{ marginLeft: 'auto' }}>{repo}</span>
+          <span className="sw-queue-repo-chip mono" title={repo} style={{ marginLeft: 'auto' }}>{repoName}</span>
         ) : null}
         {onOpenInBench && (
           <button

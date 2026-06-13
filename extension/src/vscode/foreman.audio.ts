@@ -18,6 +18,17 @@ import { FOREMAN_MODEL, FOREMAN_VOICE, FOREMAN_SYSTEM_PROMPT, FOREMAN_TOOLS } fr
 export const REALTIME_WS = `wss://api.openai.com/v1/realtime?model=${encodeURIComponent(FOREMAN_MODEL)}`;
 export const SAMPLE_RATE = 24000;
 
+// Playback clock for the mic gate. Each PCM chunk queued into ffplay plays
+// for exactly bytes/(SAMPLE_RATE*2) seconds; the clock accumulates those
+// durations from "now or the current end of queue, whichever is later".
+// Deltas arrive several times faster than realtime, so anchoring the gate to
+// arrival time instead of this clock reopens the mic mid-speech and the
+// assistant answers its own playback in a loop.
+export function advancePlaybackClock(nowMs: number, playbackEndsAtMs: number, pcmBytes: number): number {
+  const durationMs = (pcmBytes / (SAMPLE_RATE * 2)) * 1000;
+  return Math.max(nowMs, playbackEndsAtMs) + durationMs;
+}
+
 // Exact mic capture command. Exported so the e2e test spawns the SAME args
 // production uses — a flag the installed ffmpeg rejects (the avfoundation
 // "-sample_rate"/"-channels" regression) fails the suite, not the orb tap.
@@ -27,6 +38,19 @@ export const MIC_FFMPEG_ARGS = [
   '-i', ':default',
   '-ac', '1', '-ar', String(SAMPLE_RATE),
   '-f', 's16le', 'pipe:1',
+] as const;
+
+// Exact playback command, exported for the same reason as MIC_FFMPEG_ARGS.
+// -nostats is load-bearing: ffplay prints its playback clock to stderr even
+// at -loglevel error (an ESC[2K erase-line escape every refresh), and the
+// stderr reporter below treats ANY output as an error — without -nostats
+// every spoken reply flashed a red "ffplay: [2K" in the orb.
+export const SPEAKER_FFPLAY_ARGS = [
+  '-hide_banner', '-loglevel', 'error', '-nostats',
+  '-autoexit', '-nodisp',
+  '-f', 's16le', '-ar', String(SAMPLE_RATE), '-ch_layout', 'mono',
+  '-probesize', '32', '-fflags', 'nobuffer',
+  '-i', 'pipe:0',
 ] as const;
 
 // GA Realtime session.update payload. Exported so the e2e WS handshake test
@@ -64,7 +88,12 @@ export function buildForemanSessionUpdate() {
 
 export interface ForemanAudioEvents {
   onStatus?: (status: 'connecting' | 'connected' | 'closed' | 'error', detail?: string) => void;
-  onTranscript?: (role: 'user' | 'assistant', text: string, final: boolean) => void;
+  /**
+   * itemId is the OpenAI conversation item id carrying this utterance —
+   * the handle deleteItem() needs to remove it from the model's context
+   * (e.g. a Whisper mis-transcription that derailed the conversation).
+   */
+  onTranscript?: (role: 'user' | 'assistant', text: string, final: boolean, itemId?: string) => void;
   onToolCall?: (callId: string, name: string, args: unknown) => void;
   /**
    * Debug callback fired on EVERY inbound WS event from OpenAI plus synthetic
@@ -76,12 +105,25 @@ export interface ForemanAudioEvents {
 
 export interface ForemanAudioSession {
   sendToolResult(callId: string, result: unknown): void;
+  /**
+   * Silent mode: when muted, assistant PCM is dropped instead of written to
+   * ffplay — the transcript keeps streaming, so the orb answers in text only.
+   * Togglable mid-session with zero latency cost (playback is the last hop).
+   */
+  setSpeakerMuted(muted: boolean): void;
+  /**
+   * Remove a conversation item from the model's context server-side
+   * (conversation.item.delete). The transcript UI uses this to excise a
+   * bad utterance so it stops steering follow-up answers.
+   */
+  deleteItem(itemId: string): void;
   close(): void;
 }
 
 export async function startForemanAudio(
   apiKey: string,
-  events: ForemanAudioEvents
+  events: ForemanAudioEvents,
+  opts?: { speakerMuted?: boolean }
 ): Promise<ForemanAudioSession> {
   events.onStatus?.('connecting');
 
@@ -114,30 +156,28 @@ export async function startForemanAudio(
   // ffplay reads raw PCM16 from stdin and plays to the default output.
   // -probesize / -fflags nobuffer minimize playback buffering so the
   // foreman's voice lands close to realtime.
-  const speaker: ChildProcess = spawn(
-    'ffplay',
-    [
-      '-hide_banner', '-loglevel', 'error',
-      '-autoexit', '-nodisp',
-      '-f', 's16le', '-ar', String(SAMPLE_RATE), '-ch_layout', 'mono',
-      '-probesize', '32', '-fflags', 'nobuffer',
-      '-i', 'pipe:0',
-    ],
-    { stdio: ['pipe', 'ignore', 'pipe'] }
-  );
+  const speaker: ChildProcess = spawn('ffplay', [...SPEAKER_FFPLAY_ARGS], {
+    stdio: ['pipe', 'ignore', 'pipe'],
+  });
 
   let open = false;
   let closed = false;
-  // Mic gate: when the assistant is speaking (or just finished speaking), we
-  // stop forwarding mic bytes to OpenAI so ffplay's speaker output doesn't
-  // get picked up by the microphone and looped back as "user input". Without
-  // this, the assistant responds to its own voice. The tail buffer keeps the
-  // mic muted for a short window after the last audio delta to swallow
-  // trailing echoes.
+  // Mic gate: while the assistant's voice is PLAYING, stop forwarding mic
+  // bytes to OpenAI so playback doesn't loop back through the microphone as
+  // "user input" and make the assistant answer itself repeatedly.
+  //
+  // The gate must run on the playback clock, not the delta-arrival clock.
+  // OpenAI streams a 10s answer in ~2s of deltas; a gate keyed to "600ms
+  // after the last delta" expires while ffplay still has most of the answer
+  // queued, so the mic reopened mid-speech and the tail of every long answer
+  // leaked back in. Queued PCM has an exact play time (bytes / 48000 per
+  // second at 24kHz PCM16 mono) — extend the gate by each chunk's duration.
   const ASSISTANT_TAIL_MS = 600;
-  let assistantSpeakingUntil = 0;
-  const noteAssistantAudio = () => { assistantSpeakingUntil = Date.now() + ASSISTANT_TAIL_MS; };
-  const micMuted = () => Date.now() < assistantSpeakingUntil;
+  let playbackEndsAt = 0;
+  const notePlayback = (pcmBytes: number) => {
+    playbackEndsAt = advancePlaybackClock(Date.now(), playbackEndsAt, pcmBytes);
+  };
+  const micMuted = () => Date.now() < playbackEndsAt + ASSISTANT_TAIL_MS;
 
   const cleanup = () => {
     if (closed) return;
@@ -162,10 +202,17 @@ export async function startForemanAudio(
       events.onStatus?.('error', `ffmpeg exited with code ${code} — mic capture dead`);
     }
   });
-  speaker.on('error', (err) => { if (!closed) events.onStatus?.('error', `ffplay: ${err.message}`); });
+  speaker.on('spawn', () => {
+    events.onEvent?.('speaker.spawn', `ffplay pid=${speaker.pid}`);
+  });
+  speaker.on('error', (err) => {
+    events.onEvent?.('speaker.error', err.message.slice(0, 120));
+    if (!closed) events.onStatus?.('error', `ffplay: ${err.message}`);
+  });
   speaker.on('exit', (code, signal) => {
     console.warn(`[foreman] ffplay exited code=${code} signal=${signal}`);
     if (closed) return;
+    events.onEvent?.('speaker.exit', `code=${code} signal=${signal ?? ''}`);
     if (code !== 0 && code !== null) {
       events.onStatus?.('error', `ffplay exited with code ${code}`);
     }
@@ -180,14 +227,17 @@ export async function startForemanAudio(
     events.onEvent?.('mic.stderr', line.slice(0, 120));
     events.onStatus?.('error', `ffmpeg: ${line.slice(0, 120)}`);
   });
+  // ffplay also runs at -loglevel error: any stderr is a real problem.
+  // Mirror every line into the event overlay — keyword filters hid the
+  // fatal mic failure once already; don't repeat that for the speaker.
   speaker.stderr?.on('data', (buf: Buffer) => {
     const text = buf.toString().trim();
     if (text) console.warn('[foreman ffplay]', text.slice(0, 400));
     if (closed) return;
     const firstLine = text.split('\n')[0];
-    if (firstLine && /error|invalid|cannot|no such|not found|failed/i.test(firstLine)) {
-      events.onStatus?.('error', `ffplay: ${firstLine.slice(0, 160)}`);
-    }
+    if (!firstLine) return;
+    events.onEvent?.('speaker.stderr', firstLine.slice(0, 120));
+    events.onStatus?.('error', `ffplay: ${firstLine.slice(0, 160)}`);
   });
 
   // Mic byte accounting so the debug overlay can show "still sending audio"
@@ -243,10 +293,114 @@ export async function startForemanAudio(
     });
   });
 
+  // Per-session speaker accounting (session-scoped on purpose: the old
+  // module-level counters bled across sessions and corrupted diagnostics).
+  let speakerMuted = opts?.speakerMuted ?? false;
+  let audioBytesReceived = 0;
+  let audioChunksLogged = 0;
+
+  // One response at a time. The Realtime API rejects response.create while a
+  // response is in flight, and firing one per tool result made the model
+  // narrate the same ground twice when a single question triggered two tool
+  // calls. Track the active response and defer creates until response.done;
+  // one deferred create covers every tool output added in the meantime.
+  let responseActive = false;
+  let responseCreatePending = false;
+  const requestResponse = () => {
+    if (responseActive) {
+      responseCreatePending = true;
+      return;
+    }
+    responseActive = true;
+    ws.send(JSON.stringify({ type: 'response.create' }));
+  };
+
+  const route = (msg: any) => {
+    const type: string = msg?.type ?? '';
+    events.onEvent?.(type, summarizeEvent(type, msg));
+
+    if (type === 'response.created') {
+      responseActive = true;
+      return;
+    }
+    if (type === 'response.done') {
+      responseActive = false;
+      if (responseCreatePending) {
+        responseCreatePending = false;
+        requestResponse();
+      }
+      return;
+    }
+
+    if (type === 'response.output_audio.delta' && typeof msg.delta === 'string') {
+      const pcm = Buffer.from(msg.delta, 'base64');
+      audioBytesReceived += pcm.length;
+      // Silent mode: drop playback, keep the transcript streaming. Skipping
+      // notePlayback too — nothing plays, so there is no echo to gate and
+      // the user can interrupt mid-response.
+      if (speakerMuted) return;
+      notePlayback(pcm.length);
+      if (audioChunksLogged < 3) {
+        events.onEvent?.(
+          'speaker.write',
+          `${pcm.length}B -> ffplay pid=${speaker.pid} writable=${speaker.stdin?.writable}`
+        );
+        audioChunksLogged++;
+      }
+      try {
+        const ok = speaker.stdin?.write(pcm);
+        if (ok === false && audioChunksLogged <= 3) events.onEvent?.('speaker.write', 'stdin backpressure');
+      } catch (err: any) {
+        events.onEvent?.('speaker.error', `stdin.write: ${err?.message ?? err}`.slice(0, 120));
+        console.warn('[foreman] speaker.stdin.write threw:', err);
+      }
+      return;
+    }
+
+    if (type === 'response.output_audio.done') {
+      // No gate bump needed: notePlayback already accounted for every queued
+      // chunk's real play time, so micMuted() holds until playback drains.
+      events.onEvent?.(
+        'speaker.written',
+        `${(audioBytesReceived / 1024).toFixed(1)} KiB total  muted=${speakerMuted}`
+      );
+      audioBytesReceived = 0;
+      audioChunksLogged = 0;
+      return;
+    }
+
+    if (type === 'conversation.item.input_audio_transcription.completed') {
+      events.onTranscript?.('user', msg.transcript ?? '', true, msg.item_id);
+      return;
+    }
+
+    if (type === 'response.output_audio_transcript.delta') {
+      events.onTranscript?.('assistant', msg.delta ?? '', false, msg.item_id);
+      return;
+    }
+    if (type === 'response.output_audio_transcript.done') {
+      events.onTranscript?.('assistant', msg.transcript ?? '', true, msg.item_id);
+      return;
+    }
+
+    if (type === 'response.function_call_arguments.done') {
+      const callId: string = msg.call_id ?? msg.id ?? '';
+      const name: string = msg.name ?? '';
+      let args: unknown = {};
+      try { args = msg.arguments ? JSON.parse(msg.arguments) : {}; } catch { args = {}; }
+      events.onToolCall?.(callId, name, args);
+      return;
+    }
+
+    if (type === 'error') {
+      events.onStatus?.('error', msg.error?.message ?? 'realtime error');
+    }
+  };
+
   ws.on('message', (raw) => {
     let msg: any;
     try { msg = JSON.parse(raw.toString()); } catch { return; }
-    route(msg, speaker, events, noteAssistantAudio);
+    route(msg);
   });
 
   ws.on('close', (code, reason) => {
@@ -273,70 +427,18 @@ export async function startForemanAudio(
           output: JSON.stringify(result),
         },
       }));
-      ws.send(JSON.stringify({ type: 'response.create' }));
+      requestResponse();
+    },
+    setSpeakerMuted(muted) {
+      speakerMuted = muted;
+      events.onEvent?.('speaker.muted', String(muted));
+    },
+    deleteItem(itemId) {
+      if (!open || !itemId) return;
+      ws.send(JSON.stringify({ type: 'conversation.item.delete', item_id: itemId }));
     },
     close: cleanup,
   };
-}
-
-let audioBytesReceived = 0;
-let audioChunksLogged = 0;
-
-function route(msg: any, speaker: ChildProcess, events: ForemanAudioEvents, noteAssistantAudio: () => void) {
-  const type: string = msg?.type ?? '';
-  events.onEvent?.(type, summarizeEvent(type, msg));
-
-  if (type === 'response.output_audio.delta' && typeof msg.delta === 'string') {
-    noteAssistantAudio();
-    const pcm = Buffer.from(msg.delta, 'base64');
-    audioBytesReceived += pcm.length;
-    if (audioChunksLogged < 3) {
-      console.log(`[foreman] audio delta #${audioChunksLogged + 1}: ${pcm.length} bytes, speaker.stdin.writable=${speaker.stdin?.writable}, killed=${speaker.killed}`);
-      audioChunksLogged++;
-    }
-    try {
-      const ok = speaker.stdin?.write(pcm);
-      if (ok === false && audioChunksLogged <= 3) console.log('[foreman] ffplay stdin backpressure');
-    } catch (err) {
-      console.warn('[foreman] speaker.stdin.write threw:', err);
-    }
-    return;
-  }
-
-  if (type === 'response.output_audio.done') {
-    noteAssistantAudio();
-    console.log(`[foreman] audio response done. total bytes: ${audioBytesReceived}`);
-    audioBytesReceived = 0;
-    audioChunksLogged = 0;
-    return;
-  }
-
-  if (type === 'conversation.item.input_audio_transcription.completed') {
-    events.onTranscript?.('user', msg.transcript ?? '', true);
-    return;
-  }
-
-  if (type === 'response.output_audio_transcript.delta') {
-    events.onTranscript?.('assistant', msg.delta ?? '', false);
-    return;
-  }
-  if (type === 'response.output_audio_transcript.done') {
-    events.onTranscript?.('assistant', msg.transcript ?? '', true);
-    return;
-  }
-
-  if (type === 'response.function_call_arguments.done') {
-    const callId: string = msg.call_id ?? msg.id ?? '';
-    const name: string = msg.name ?? '';
-    let args: unknown = {};
-    try { args = msg.arguments ? JSON.parse(msg.arguments) : {}; } catch { args = {}; }
-    events.onToolCall?.(callId, name, args);
-    return;
-  }
-
-  if (type === 'error') {
-    events.onStatus?.('error', msg.error?.message ?? 'realtime error');
-  }
 }
 
 // Compact one-line summary per event type for the debug overlay. Keep these
@@ -350,6 +452,10 @@ function summarizeEvent(type: string, msg: any): string {
     case 'input_audio_buffer.speech_stopped': return '';
     case 'input_audio_buffer.committed': return `item=${(msg.item_id ?? '').slice(0, 8)}`;
     case 'conversation.item.created': return `${msg.item?.role ?? msg.item?.type ?? ''}`;
+    // GA names for item lifecycle (beta said conversation.item.created).
+    case 'conversation.item.added': return `${msg.item?.role ?? msg.item?.type ?? ''}`;
+    case 'conversation.item.done': return `${msg.item?.role ?? msg.item?.type ?? ''}`;
+    case 'conversation.item.deleted': return `item=${(msg.item_id ?? '').slice(0, 12)}`;
     case 'conversation.item.input_audio_transcription.completed':
       return JSON.stringify(msg.transcript ?? '').slice(0, 80);
     case 'conversation.item.input_audio_transcription.failed':

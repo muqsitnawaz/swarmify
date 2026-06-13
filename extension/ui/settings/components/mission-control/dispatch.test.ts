@@ -8,6 +8,7 @@ import {
   reconcilePending,
   pruneExpiredPending,
   markTimedOutPending,
+  markCloudFailedPending,
   filterDispatchedTaskIds,
   optimisticActivityLabel,
   resolveReposFromLabels,
@@ -180,10 +181,34 @@ describe('reconcilePending', () => {
     expect(out).toHaveLength(0)
   })
 
-  test('cloud pending NOT reconciled by local terminal', () => {
-    const pending = [makePending({ target: 'cloud' })]
+  test('cloud pending reconciled by fresh local terminal (rush cloud run shell)', () => {
+    // The extension dispatches Rush Cloud via `rush cloud run` inside a
+    // local terminal. A fresh same-agentType terminal proves dispatch fired
+    // even when the cloud-runs poll hasn't caught up yet — without this
+    // fallback, the pending sits unmatched for 180s and surfaces a
+    // false-positive timeout banner.
+    const pending = [makePending({ target: 'cloud', createdAt: FIXED_NOW - 1_000 })]
     const terminals = [makeTerminal({ createdAt: FIXED_NOW })]
     const out = reconcilePending(pending, terminals, [])
+    expect(out).toHaveLength(0)
+  })
+
+  test('cloud pending NOT reconciled by older terminal outside slack', () => {
+    const pending = [makePending({ target: 'cloud', createdAt: FIXED_NOW })]
+    const terminals = [makeTerminal({ createdAt: FIXED_NOW - 5_000 })]
+    const out = reconcilePending(pending, terminals, [])
+    expect(out).toHaveLength(1)
+  })
+
+  test('cloud pending NOT reconciled by failed cloud-run (markCloudFailedPending handles it)', () => {
+    // A failed cloud-run must not silently consume the pending — otherwise
+    // the user gets no signal that Rush Cloud failed. markCloudFailedPending
+    // flips it to timedOut so the banner surfaces.
+    const pending = [makePending({ target: 'cloud', createdAt: FIXED_NOW - 1_000 })]
+    const failedTask = makeTask({
+      agents: [makeAgent({ status: 'failed', started_at: new Date(FIXED_NOW).toISOString() })],
+    })
+    const out = reconcilePending(pending, [], [failedTask])
     expect(out).toHaveLength(1)
   })
 
@@ -274,6 +299,77 @@ describe('markTimedOutPending', () => {
   test('empty list returns same reference', () => {
     const pending: PendingDispatch[] = []
     const out = markTimedOutPending(pending, FIXED_NOW)
+    expect(out).toBe(pending)
+  })
+})
+
+describe('markCloudFailedPending', () => {
+  test('cloud pending flips to timedOut when a matching failed cloud-run exists', () => {
+    const pending = [makePending({ target: 'cloud', createdAt: FIXED_NOW - 500 })]
+    const failedTask = makeTask({
+      agents: [makeAgent({ status: 'failed', started_at: new Date(FIXED_NOW).toISOString() })],
+    })
+    const out = markCloudFailedPending(pending, [failedTask])
+    expect(out[0].status).toBe('timedOut')
+  })
+
+  test('local pending is untouched even if a failed cloud-run exists', () => {
+    const pending = [makePending({ target: 'local', createdAt: FIXED_NOW - 500 })]
+    const failedTask = makeTask({
+      agents: [makeAgent({ status: 'failed', started_at: new Date(FIXED_NOW).toISOString() })],
+    })
+    const out = markCloudFailedPending(pending, [failedTask])
+    expect(out).toBe(pending)
+  })
+
+  test('does not flip on a failed cloud-run that pre-dates the dispatch (unrelated earlier run)', () => {
+    // The match must be time-bounded — otherwise an old failed execution
+    // from yesterday would mark every fresh dispatch as failed.
+    const pending = [makePending({ target: 'cloud', createdAt: FIXED_NOW })]
+    const failedTask = makeTask({
+      agents: [makeAgent({ status: 'failed', started_at: new Date(FIXED_NOW - 60_000).toISOString() })],
+    })
+    const out = markCloudFailedPending(pending, [failedTask])
+    expect(out).toBe(pending)
+  })
+
+  test('does not flip when matching cloud-run is running, not failed', () => {
+    const pending = [makePending({ target: 'cloud', createdAt: FIXED_NOW - 500 })]
+    const runningTask = makeTask({
+      agents: [makeAgent({ status: 'running', started_at: new Date(FIXED_NOW).toISOString() })],
+    })
+    const out = markCloudFailedPending(pending, [runningTask])
+    expect(out).toBe(pending)
+  })
+
+  test('does not re-flip already-timedOut entries (same-reference preserved)', () => {
+    const p: PendingDispatch = {
+      ...makePending({ target: 'cloud', createdAt: FIXED_NOW - 500 }),
+      status: 'timedOut',
+    }
+    const failedTask = makeTask({
+      agents: [makeAgent({ status: 'failed', started_at: new Date(FIXED_NOW).toISOString() })],
+    })
+    const input = [p]
+    const out = markCloudFailedPending(input, [failedTask])
+    expect(out).toBe(input)
+    expect(out[0]).toBe(p)
+  })
+
+  test('mixed list: only matching cloud pending flips', () => {
+    const fresh = makePending({ id: 'fresh', target: 'cloud', createdAt: FIXED_NOW - 500 })
+    const other = makePending({ id: 'other', target: 'cloud', agentType: 'codex', createdAt: FIXED_NOW - 500 })
+    const failedTask = makeTask({
+      agents: [makeAgent({ status: 'failed', agent_type: 'claude', started_at: new Date(FIXED_NOW).toISOString() })],
+    })
+    const out = markCloudFailedPending([fresh, other], [failedTask])
+    expect(out.find((p) => p.id === 'fresh')?.status).toBe('timedOut')
+    expect(out.find((p) => p.id === 'other')?.status ?? 'pending').toBe('pending')
+  })
+
+  test('empty list returns same reference', () => {
+    const pending: PendingDispatch[] = []
+    const out = markCloudFailedPending(pending, [])
     expect(out).toBe(pending)
   })
 })

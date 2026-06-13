@@ -9,6 +9,9 @@ interface TranscriptLine {
   role: 'user' | 'assistant'
   text: string
   final: boolean
+  // OpenAI conversation item id — the handle for deleting this utterance
+  // from the model's context (conversation.item.delete).
+  itemId?: string
 }
 
 interface DebugEvent {
@@ -64,7 +67,7 @@ export function ForemanOrb({ vscode }: ForemanOrbProps) {
         else if (m.status === 'connecting' || m.status === 'connected') setError(null)
         if (m.status === 'connected') lastActivityAt.current = Date.now()
       } else if (m?.type === 'foreman.transcript') {
-        setTranscript((prev) => appendTranscript(prev, m.role, m.text, m.final))
+        setTranscript((prev) => appendTranscript(prev, m.role, m.text, m.final, m.itemId))
         lastActivityAt.current = Date.now()
         setActivity(m.role === 'assistant' ? 'speaking' : 'listening')
         if (activityTimer.current) clearTimeout(activityTimer.current)
@@ -119,13 +122,32 @@ export function ForemanOrb({ vscode }: ForemanOrbProps) {
     }
   }, [conn])
 
+  // Silent mode: when on, the assistant answers in transcript text only —
+  // the extension host drops the PCM instead of piping it to ffplay.
+  // Togglable mid-session; the host applies it to the live audio session.
+  const [speakerMuted, setSpeakerMuted] = useState(false)
+
+  const toggleSpeaker = () => {
+    setSpeakerMuted((muted) => {
+      vscode.postMessage({ type: 'foreman.setSpeakerMuted', muted: !muted })
+      return !muted
+    })
+  }
+
+  // Excise an utterance: server-side conversation.item.delete (so a bad
+  // transcription stops steering follow-up answers) plus local removal.
+  const deleteLine = (line: TranscriptLine) => {
+    if (line.itemId) vscode.postMessage({ type: 'foreman.deleteItem', itemId: line.itemId })
+    setTranscript((prev) => prev.filter((l) => l.id !== line.id))
+  }
+
   const handleStart = () => {
     setError(null)
     setTranscript([])
     setDebugEvents([])
     setConn('connecting')
     lastActivityAt.current = Date.now()
-    vscode.postMessage({ type: 'foreman.startSession' })
+    vscode.postMessage({ type: 'foreman.startSession', speakerMuted })
   }
 
   const handleStop = () => {
@@ -209,6 +231,16 @@ export function ForemanOrb({ vscode }: ForemanOrbProps) {
                 {line.role === 'user' ? 'YOU' : 'FRMN'}
               </span>
               <span>{line.text}</span>
+              {line.final && line.itemId && (
+                <button
+                  className="foreman-orb-line-delete"
+                  onClick={() => deleteLine(line)}
+                  title="Remove this message from the conversation context"
+                  aria-label="Delete message"
+                >
+                  x
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -241,6 +273,14 @@ export function ForemanOrb({ vscode }: ForemanOrbProps) {
         title={orbTitle(visualState)}
       >
         <OrbBlob state={visualState} />
+      </button>
+
+      <button
+        className={`foreman-orb-speaker ${speakerMuted ? 'is-muted' : ''}`}
+        onClick={toggleSpeaker}
+        title={speakerMuted ? 'Silent mode — answers in text only. Click for voice.' : 'Voice replies on. Click for silent mode.'}
+      >
+        {speakerMuted ? 'silent' : 'voice'}
       </button>
     </div>
   )
@@ -301,12 +341,13 @@ const debugBtnStyle: React.CSSProperties = {
 }
 
 function eventColor(t: string): string {
-  if (t === 'error' || t.endsWith('.failed') || t === 'ws.error') return '#ff7878'
+  if (t === 'error' || t.endsWith('.failed') || t.endsWith('.error') || t.endsWith('.stderr')) return '#ff7878'
   if (t === 'session.created' || t === 'session.updated' || t === 'ws.open') return '#9be39b'
   if (t.includes('transcription')) return '#ffd479'
   if (t.includes('audio_transcript')) return '#79d4ff'
   if (t === 'response.done') return '#c79bff'
   if (t.startsWith('mic.')) return '#888'
+  if (t.startsWith('speaker.')) return '#d4b86a'
   return '#cfe6cf'
 }
 
@@ -315,14 +356,15 @@ function appendTranscript(
   role: 'user' | 'assistant',
   text: string,
   final: boolean,
+  itemId?: string,
 ): TranscriptLine[] {
   if (!text) return prev
   const last = prev[prev.length - 1]
   if (last && last.role === role && !last.final) {
-    const updated = { ...last, text: final ? text : last.text + text, final }
+    const updated = { ...last, text: final ? text : last.text + text, final, itemId: itemId ?? last.itemId }
     return [...prev.slice(0, -1), updated]
   }
-  return [...prev, { id: `${role}-${Date.now()}-${Math.random()}`, role, text, final }]
+  return [...prev, { id: `${role}-${Date.now()}-${Math.random()}`, role, text, final, itemId }]
 }
 
 function orbTitle(state: VisualState): string {

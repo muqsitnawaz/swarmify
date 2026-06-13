@@ -54,24 +54,66 @@ export function reconcilePending(
   if (pending.length === 0) return pending
   const consumed = new Set<string>()
   for (const p of pending) {
+    const termMatch = terminals.find((t) =>
+      t.agentType === p.agentType && (t.createdAt || 0) >= p.createdAt - matchSlackMs
+    )
     if (p.target === 'local') {
-      const match = terminals.find((t) =>
-        t.agentType === p.agentType && (t.createdAt || 0) >= p.createdAt - matchSlackMs
-      )
-      if (match) consumed.add(p.id)
-    } else {
-      const match = tasks.find((task) =>
-        task.agents.some((a) =>
-          a.agent_type === p.agentType &&
-          a.started_at &&
-          new Date(a.started_at).getTime() >= p.createdAt - matchSlackMs
-        )
-      )
-      if (match) consumed.add(p.id)
+      if (termMatch) consumed.add(p.id)
+      continue
     }
+    // Cloud target: the authoritative signal is a non-failed cloud-run
+    // agent in `tasks` (cloud-runs API merges into the same shape via
+    // fetchCloudRuns). A fresh local terminal of the same agentType is the
+    // secondary signal — the extension dispatches via `rush cloud run` in
+    // a local terminal, so a fresh terminal proves the dispatch fired even
+    // when the cloud-runs poll is briefly stale or paused. `failed` cloud
+    // agents are excluded here so a real Rush Cloud failure isn't silently
+    // consumed; markCloudFailedPending surfaces those as a banner instead.
+    const cloudMatch = tasks.find((task) =>
+      task.agents.some((a) =>
+        a.agent_type === p.agentType &&
+        a.status !== 'failed' &&
+        a.started_at &&
+        new Date(a.started_at).getTime() >= p.createdAt - matchSlackMs
+      )
+    )
+    if (cloudMatch || termMatch) consumed.add(p.id)
   }
   if (consumed.size === 0) return pending
   return pending.filter((p) => !consumed.has(p.id))
+}
+
+/**
+ * Surface a Rush Cloud `failed` execution as a timeout banner immediately,
+ * without waiting for the 180s TTL. The match is conservative: agent type,
+ * target=cloud, and the failed run's `started_at` must fall within the
+ * dispatch's slack window — otherwise an unrelated earlier `failed`
+ * execution could prematurely poison a healthy dispatch. Returns the same
+ * reference when nothing transitioned so React can bail out.
+ */
+export function markCloudFailedPending(
+  pending: PendingDispatch[],
+  tasks: TaskSummary[],
+  matchSlackMs = 1000,
+): PendingDispatch[] {
+  if (pending.length === 0) return pending
+  let changed = false
+  const next = pending.map((p) => {
+    if (p.target !== 'cloud') return p
+    if ((p.status ?? 'pending') !== 'pending') return p
+    const failedMatch = tasks.find((task) =>
+      task.agents.some((a) =>
+        a.agent_type === p.agentType &&
+        a.status === 'failed' &&
+        a.started_at &&
+        new Date(a.started_at).getTime() >= p.createdAt - matchSlackMs
+      )
+    )
+    if (!failedMatch) return p
+    changed = true
+    return { ...p, status: 'timedOut' as const }
+  })
+  return changed ? next : pending
 }
 
 /**

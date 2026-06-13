@@ -154,6 +154,7 @@ export interface UnifiedTask {
     state?: string
     createdAt?: string
     dueDate?: string
+    repo?: string
     comments?: TaskComment[]
   }
 }

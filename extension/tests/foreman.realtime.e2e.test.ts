@@ -19,7 +19,9 @@ import WebSocket from 'ws';
 import {
   REALTIME_WS,
   MIC_FFMPEG_ARGS,
+  SPEAKER_FFPLAY_ARGS,
   SAMPLE_RATE,
+  advancePlaybackClock,
   buildForemanSessionUpdate,
 } from '../src/vscode/foreman.audio';
 
@@ -141,3 +143,127 @@ describe('foreman mic capture', () => {
     expect(result.bytes).toBeGreaterThanOrEqual(SAMPLE_RATE);
   }, 15000);
 });
+
+// Context excision e2e: the transcript x button sends conversation.item.delete
+// with the item_id from the transcript events. Prove against the live API that
+// a created item can be deleted and the server confirms with
+// conversation.item.deleted — the contract the delete button depends on.
+describeIfKey('foreman conversation item delete', () => {
+  test('conversation.item.delete removes a created item', async () => {
+    const result = await new Promise<{ ok: boolean; detail?: string }>((resolve) => {
+      const ws = new WebSocket(REALTIME_WS, {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+
+      const seen: string[] = [];
+      const timeout = setTimeout(() => {
+        try { ws.close(); } catch { /* noop */ }
+        resolve({ ok: false, detail: `timeout waiting for conversation.item.deleted, events=[${seen.join(',')}]` });
+      }, 15000);
+
+      let done = false;
+      const finish = (r: { ok: boolean; detail?: string }) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timeout);
+        try { ws.close(); } catch { /* noop */ }
+        resolve(r);
+      };
+
+      let createdItemId = '';
+      ws.on('open', () => {
+        ws.send(JSON.stringify(buildForemanSessionUpdate()));
+        ws.send(JSON.stringify({
+          type: 'conversation.item.create',
+          item: {
+            type: 'message',
+            role: 'user',
+            content: [{ type: 'input_text', text: 'transcription glitch to excise' }],
+          },
+        }));
+      });
+
+      ws.on('message', (raw) => {
+        let msg: any;
+        try { msg = JSON.parse(raw.toString()); } catch { return; }
+        const t: string = msg?.type ?? '';
+        seen.push(t);
+        // GA acks item creation with conversation.item.added (beta said
+        // conversation.item.created — that name never arrives on GA).
+        if (t === 'conversation.item.added' && msg.item?.id && !createdItemId) {
+          createdItemId = msg.item.id;
+          // The exact payload ForemanAudioSession.deleteItem sends.
+          ws.send(JSON.stringify({ type: 'conversation.item.delete', item_id: createdItemId }));
+        } else if (t === 'conversation.item.deleted') {
+          finish(msg.item_id === createdItemId
+            ? { ok: true }
+            : { ok: false, detail: `deleted wrong item: ${msg.item_id} != ${createdItemId}` });
+        } else if (t === 'error') {
+          finish({ ok: false, detail: `${msg.error?.code ?? 'error'}: ${msg.error?.message ?? 'unknown'}` });
+        }
+      });
+
+      ws.on('error', (err) => finish({ ok: false, detail: `ws error: ${err.message}` }));
+    });
+
+    if (!result.ok) {
+      throw new Error(`Foreman item delete failed: ${result.detail}`);
+    }
+    expect(result.ok).toBe(true);
+  }, 20000);
+});
+
+// Speaker playback e2e: pipe real PCM through the EXACT production ffplay
+// command and require a SILENT stderr. The session treats any speaker stderr
+// as an error status (no keyword filtering — that hid a fatal mic failure
+// once), so ffplay must not chat: its status clock prints ESC[2K lines to
+// stderr even at -loglevel error unless -nostats is set, which made every
+// spoken reply flash a red "ffplay: [2K" in the orb.
+// Skips when ffplay is not installed (spawn ENOENT).
+describe('foreman speaker playback', () => {
+  test('production ffplay args play PCM16 with a silent stderr', async () => {
+    const { spawn } = await import('child_process');
+    const result = await new Promise<{ code: number | null; stderr: string; spawnFailed: boolean }>((resolve) => {
+      const proc = spawn('ffplay', [...SPEAKER_FFPLAY_ARGS], {
+        stdio: ['pipe', 'ignore', 'pipe'],
+      });
+      let stderr = '';
+      let spawnFailed = false;
+      proc.stderr?.on('data', (b: Buffer) => { stderr += b.toString(); });
+      proc.on('error', () => { spawnFailed = true; });
+      // Half a second of 24kHz mono PCM16 silence; -autoexit ends playback at EOF.
+      proc.stdin?.end(Buffer.alloc(SAMPLE_RATE));
+      const timeout = setTimeout(() => proc.kill('SIGKILL'), 8000);
+      proc.on('exit', (code) => {
+        clearTimeout(timeout);
+        resolve({ code, stderr, spawnFailed });
+      });
+    });
+
+    if (result.spawnFailed) return; // no ffplay on this machine
+
+    expect(result.stderr).toBe('');
+    expect(result.code).toBe(0);
+  }, 15000);
+});
+
+// The mic-gate playback clock. If this regresses to delta-arrival timing the
+// mic reopens mid-speech and the assistant answers its own playback in a
+// loop — the bug class is "burst-arriving audio must gate for its full
+// real-time play duration".
+describe('foreman playback clock', () => {
+  test('a burst of fast-arriving deltas gates for the full play duration', () => {
+    // 10s of audio (480000 bytes) arriving as 10 chunks within one millisecond.
+    const now = 1_000_000
+    let endsAt = 0
+    for (let i = 0; i < 10; i++) {
+      endsAt = advancePlaybackClock(now, endsAt, SAMPLE_RATE * 2) // 1s of PCM each
+    }
+    expect(endsAt).toBe(now + 10_000)
+  })
+
+  test('clock anchors to now after idle silence instead of accumulating stale time', () => {
+    const endsAt = advancePlaybackClock(1_000_000, 0, SAMPLE_RATE) // 0.5s chunk, queue long drained
+    expect(endsAt).toBe(1_000_500)
+  })
+})
