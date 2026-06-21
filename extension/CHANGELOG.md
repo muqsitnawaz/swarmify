@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.9.249] - 2026-06-18
+
+### Added
+- **Per-strategy launch trio** for every version/account-managed agent (Claude, Codex, Gemini, Cursor, Antigravity). Each now exposes three explicit command-palette entries instead of one rotating default plus a version picker:
+  - **New X (Latest)** — resolves the newest installed version and launches it pinned (`agents run X@<newest> --interactive`), no prompt. Picks the highest version numerically, so `2.1.181` wins over `2.1.170` even when an older build is the pinned default.
+  - **New X (Balanced)** — forces `--strategy balanced` so the agents-cli rotates across healthy signed-in accounts regardless of the ambient `agents.yaml` setting.
+  - **New X (Pinned)** — interactive version picker (the former "Pick Version"), launches the chosen version pinned.
+- **Antigravity** joins the version/account-managed agents: its launch now routes through `agents run antigravity` (the managed `agy` CLI) instead of the bare binary, so it gets the same version pinning and strategy control as the other agents.
+
+### Changed
+- "New X (Pick Version)" command titles renamed to "New X (Pinned)" for Claude, Codex, Gemini, Cursor, Antigravity, and the unified "New Agent" picker. Command IDs are unchanged, so existing keybindings keep working. The primary "New X (CC/CX/...)" entry is untouched.
+
 ## [0.9.248] - 2026-06-13
 
 ### Added
