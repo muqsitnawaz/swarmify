@@ -18,6 +18,7 @@ import { CLAUDE_TITLE } from '../core/utils';
 import { discoverRecentSessions, getSessionPathBySessionId } from './sessions.vscode';
 import { formatTerminalTitle, parseTerminalName, getSessionChunk } from '../core/utils';
 import { getBuiltInByKey } from '../core/agents';
+import { resolveForemanTarget, candidateName } from '../core/foreman.target';
 import { parseEvents } from '../core/watchdogLog';
 import {
   WATCHDOG_PLAYBOOK_PATH,
@@ -377,6 +378,46 @@ async function spawnAgentForForeman(
   term.sendText(`rush cloud run ${agentKey} ${repoFlag} -p '${safePrompt}'`.trimEnd());
   term.show(true);
   return { ok: true, message: `Dispatched to ${agentKey} on Rush Cloud (${workspaceRepo}).` };
+}
+
+// Send a follow-up prompt into an ALREADY-RUNNING agent terminal, used by
+// Foreman's message_agent tool. Resolves "who" against the live registry the
+// same way focus does (label/kind/session prefix), then types the text in -
+// handling Claude's Ink TUI quirk (needs an explicit carriage return) exactly
+// like the watchdog bridge's send_to_agent does. Unlike that cross-process
+// path this runs in-host, so it can address any live terminal directly.
+async function messageAgentForForeman(
+  opts: { who: string; prompt: string },
+): Promise<{ ok: boolean; message: string; candidates?: string[] }> {
+  const text = (opts.prompt ?? '').trim();
+  if (!opts.who?.trim()) return { ok: false, message: 'No agent named.' };
+  if (!text) return { ok: false, message: 'No message given.' };
+
+  const agents = terminals.getAllTerminals()
+    .filter((t) => t.agentConfig)
+    .map((t) => ({ ...t, prefix: t.agentConfig?.prefix }));
+  const resolved = resolveForemanTarget(agents, opts.who);
+
+  if (resolved.kind === 'none') {
+    return { ok: false, message: `No running agent matching "${opts.who}".`, candidates: resolved.candidates };
+  }
+  if (resolved.kind === 'ambiguous') {
+    return { ok: false, message: `Ambiguous - ${resolved.candidates.length} agents match "${opts.who}".`, candidates: resolved.candidates };
+  }
+
+  const entry = resolved.terminal;
+  try {
+    // Claude's Ink TUI needs an explicit carriage return; others take \n.
+    if (entry.agentType === 'claude') {
+      entry.terminal.sendText(text, false);
+      entry.terminal.sendText('\r', false);
+    } else {
+      entry.terminal.sendText(text, true);
+    }
+    return { ok: true, message: `Sent to ${candidateName(entry)}.` };
+  } catch (err: any) {
+    return { ok: false, message: `Failed to send: ${err?.message ?? String(err)}` };
+  }
 }
 
 // Headless ticket creation used by Foreman's create_ticket tool. Shells out
@@ -1876,6 +1917,7 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
                   fetchTaskDetails: (id) => findTaskDetailsForForeman(context, id),
                   dispatchTask: (opts) => dispatchForForeman(context, opts),
                   spawnAgent: (opts) => spawnAgentForForeman(context, opts),
+                  messageAgent: (opts) => messageAgentForForeman(opts),
                   createTicket: (opts) => createTicketForForeman(opts),
                 };
                 const result = await foreman.runForemanTool(name, args, wsFolder, deps);
