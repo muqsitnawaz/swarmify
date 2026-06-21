@@ -388,6 +388,7 @@ export interface ForemanToolDeps {
   fetchTaskDetails?: (id: string) => Promise<ForemanTaskDetails | null>;
   dispatchTask?: (opts: ForemanDispatchOpts) => Promise<ForemanDispatchResult>;
   spawnAgent?: (opts: { prompt: string; agent?: string; target?: string }) => Promise<{ ok: boolean; message: string }>;
+  messageAgent?: (opts: { who: string; prompt: string }) => Promise<{ ok: boolean; message: string; candidates?: string[] }>;
   createTicket?: (opts: ForemanCreateTicketOpts) => Promise<ForemanCreateTicketResult>;
 }
 
@@ -449,6 +450,17 @@ export async function runForemanTool(
       const agent = typeof a.agent === 'string' && a.agent.trim() ? a.agent.trim() : undefined;
       const target = typeof a.target === 'string' && a.target.trim() ? a.target.trim() : undefined;
       return deps.spawnAgent({ prompt, agent, target });
+    }
+    case 'message_agent': {
+      if (!deps?.messageAgent) {
+        return { ok: false, message: 'message_agent tool unavailable' };
+      }
+      const a = (args && typeof args === 'object') ? args as Record<string, unknown> : {};
+      const who = String(a.who ?? '').trim();
+      const prompt = String(a.prompt ?? '').trim();
+      if (!who) return { ok: false, message: 'no agent named' };
+      if (!prompt) return { ok: false, message: 'no message given' };
+      return deps.messageAgent({ who, prompt });
     }
     case 'create_ticket': {
       if (!deps?.createTicket) {
