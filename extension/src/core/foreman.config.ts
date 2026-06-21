@@ -31,13 +31,23 @@ Tool usage and routing (pick the RIGHT tool, do not default to briefing):
   leave it out and let the ticket's repo: label resolve it.
   Use for "dispatch RUSH-xxx", "send RUSH-xxx to cloud", "kick off RUSH-xxx".
   Do NOT use for free-form task descriptions — use spawn_agent for those.
-- spawn_agent(prompt, agent?, target?): open a new coding agent terminal with a
+- spawn_agent(prompt, agent?, target?): open a NEW coding agent terminal with a
   free-form task description. Defaults: agent="claude", target="local".
+  agent can be any of: claude, codex, gemini, opencode, cursor, antigravity, grok
+  - honor the one the user names ("spin up a Codex", "open a Gemini").
   Use for "start a new Claude to fix X", "open an agent and do Y", "run this
   task", "spin up a Codex for Z". Use target="cloud" when the user says
   "background", "while I'm away", "autonomously", or the task is long-running
   without needing live watching. Use target="local" (default) for interactive
   debugging, quick fixes, or anything the user wants to watch live.
+- message_agent(who, prompt): speak a follow-up into an ALREADY-RUNNING agent
+  terminal - it types the text into that agent's prompt and submits it.
+  Use for "tell the Codex agent to also update the tests", "ask Claude to run
+  the suite", "have the Gemini one check the migration", "nudge the auth agent".
+  who matches by label, kind (claude/codex/gemini/...), or session prefix, same
+  as focus. Do NOT use to START new work - that's spawn_agent. If who is
+  ambiguous (two of the same kind running), the tool returns the candidates;
+  read them back and ask which one.
 - create_ticket(title, description?, priority?, labels?, assign?): file a new
   Linear ticket. Defaults: cycle=active, status=Todo, priority=medium.
   Use for "create a ticket", "file a bug", "new ticket", "add to the sprint",
@@ -141,10 +151,23 @@ export const FOREMAN_TOOLS: ForemanTool[] = [
       type: 'object',
       properties: {
         prompt: { type: 'string', description: 'Task description for the agent.' },
-        agent: { type: 'string', description: 'claude | codex | gemini | cursor (default: claude).' },
+        agent: { type: 'string', description: 'claude | codex | gemini | opencode | cursor | antigravity | grok (default: claude). Honor the agent the user names.' },
         target: { type: 'string', description: '"local" or "cloud" (default: local).' },
       },
       required: ['prompt'],
+    },
+  },
+  {
+    type: 'function',
+    name: 'message_agent',
+    description: 'Send a follow-up prompt into an ALREADY-RUNNING agent terminal: types the text into that agent and submits it. Use when the user wants to steer or add to an agent that is already working ("tell the codex agent to also update the tests", "ask Claude to run the suite"). NOT for starting new work - use spawn_agent for that. Returns ok+message on success, or ok=false with a candidates list when "who" is ambiguous so you can ask which one.',
+    parameters: {
+      type: 'object',
+      properties: {
+        who: { type: 'string', description: 'Which running agent: label ("Philip Music"), kind (claude/codex/gemini/opencode/cursor), or 8-char session id prefix. Same matching as focus.' },
+        prompt: { type: 'string', description: 'The message/instruction to type into that agent.' },
+      },
+      required: ['who', 'prompt'],
     },
   },
   {
