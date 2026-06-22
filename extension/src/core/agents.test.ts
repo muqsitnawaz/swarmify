@@ -3,13 +3,15 @@ import {
   BUILT_IN_AGENTS,
   getBuiltInByKey,
   getBuiltInByPrefix,
-  getBuiltInDefByTitle
+  getBuiltInDefByTitle,
+  pickLatestVersion,
+  STRATEGY_LAUNCH_AGENTS
 } from './agents';
 import { CLAUDE_TITLE, CODEX_TITLE, GEMINI_TITLE, OPENCODE_TITLE, CURSOR_TITLE, SHELL_TITLE } from './utils';
 
 describe('BUILT_IN_AGENTS', () => {
-  test('has 6 built-in agents', () => {
-    expect(BUILT_IN_AGENTS).toHaveLength(6);
+  test('has 8 built-in agents', () => {
+    expect(BUILT_IN_AGENTS).toHaveLength(8);
   });
 
   test('claude agent has correct properties', () => {
@@ -139,5 +141,42 @@ describe('getBuiltInDefByTitle', () => {
   test('returns undefined for unknown title', () => {
     const agent = getBuiltInDefByTitle('Unknown');
     expect(agent).toBeUndefined();
+  });
+});
+
+describe('pickLatestVersion', () => {
+  test('picks the highest semver regardless of input order', () => {
+    expect(pickLatestVersion(['2.1.168', '2.1.170', '2.1.142'])).toBe('2.1.170');
+  });
+
+  test('compares segments numerically, not lexically', () => {
+    // Lexical sort would wrongly pick "2.1.9" over "2.1.42".
+    expect(pickLatestVersion(['2.1.9', '2.1.42'])).toBe('2.1.42');
+    expect(pickLatestVersion(['0.43.0', '0.45.2', '0.42.0'])).toBe('0.45.2');
+  });
+
+  test('ignores non-semver profile names like yosemite/test-proxy', () => {
+    expect(pickLatestVersion(['2.1.170', 'yosemite', 'test-proxy'])).toBe('2.1.170');
+  });
+
+  test('returns undefined when no semver-shaped entry exists', () => {
+    expect(pickLatestVersion([])).toBeUndefined();
+    expect(pickLatestVersion(['yosemite', 'proxy missing'])).toBeUndefined();
+  });
+
+  test('handles single-entry lists', () => {
+    expect(pickLatestVersion(['1.0.6'])).toBe('1.0.6');
+  });
+});
+
+describe('STRATEGY_LAUNCH_AGENTS', () => {
+  test('covers the five version/account-managed agents incl. antigravity', () => {
+    expect([...STRATEGY_LAUNCH_AGENTS]).toEqual(['claude', 'codex', 'gemini', 'cursor', 'antigravity']);
+  });
+
+  test('every strategy-launch agent is a known built-in', () => {
+    for (const key of STRATEGY_LAUNCH_AGENTS) {
+      expect(getBuiltInByKey(key)).toBeDefined();
+    }
   });
 });

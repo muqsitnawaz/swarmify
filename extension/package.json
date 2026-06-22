@@ -3,7 +3,7 @@
   "displayName": "Agents",
   "publisher": "swarmify",
   "description": "Run Claude, Codex, Gemini, Cursor, and other coding agents from one IDE workspace.",
-  "version": "0.9.248",
+  "version": "0.9.249",
   "license": "MIT",
   "author": "Muqsit Nawaz <dev@muqsitnawaz.com>",
   "icon": "assets/agents.png",
@@ -191,7 +191,7 @@
       },
       {
         "command": "agents.newAgentPickVersion",
-        "title": "Agents: New Agent (Pick Version)",
+        "title": "Agents: New Agent (Pinned)",
         "icon": {
           "light": "assets/agents.png",
           "dark": "assets/agents.png"
@@ -199,7 +199,23 @@
       },
       {
         "command": "agents.newClaudePickVersion",
-        "title": "Agents: New Claude (Pick Version)",
+        "title": "Agents: New Claude (Pinned)",
+        "icon": {
+          "light": "assets/claude.png",
+          "dark": "assets/claude.png"
+        }
+      },
+      {
+        "command": "agents.newClaudeLatest",
+        "title": "Agents: New Claude (Latest)",
+        "icon": {
+          "light": "assets/claude.png",
+          "dark": "assets/claude.png"
+        }
+      },
+      {
+        "command": "agents.newClaudeBalanced",
+        "title": "Agents: New Claude (Balanced)",
         "icon": {
           "light": "assets/claude.png",
           "dark": "assets/claude.png"
@@ -207,7 +223,23 @@
       },
       {
         "command": "agents.newCodexPickVersion",
-        "title": "Agents: New Codex (Pick Version)",
+        "title": "Agents: New Codex (Pinned)",
+        "icon": {
+          "light": "assets/chatgpt-light.png",
+          "dark": "assets/chatgpt.png"
+        }
+      },
+      {
+        "command": "agents.newCodexLatest",
+        "title": "Agents: New Codex (Latest)",
+        "icon": {
+          "light": "assets/chatgpt-light.png",
+          "dark": "assets/chatgpt.png"
+        }
+      },
+      {
+        "command": "agents.newCodexBalanced",
+        "title": "Agents: New Codex (Balanced)",
         "icon": {
           "light": "assets/chatgpt-light.png",
           "dark": "assets/chatgpt.png"
@@ -215,7 +247,23 @@
       },
       {
         "command": "agents.newGeminiPickVersion",
-        "title": "Agents: New Gemini (Pick Version)",
+        "title": "Agents: New Gemini (Pinned)",
+        "icon": {
+          "light": "assets/gemini.png",
+          "dark": "assets/gemini.png"
+        }
+      },
+      {
+        "command": "agents.newGeminiLatest",
+        "title": "Agents: New Gemini (Latest)",
+        "icon": {
+          "light": "assets/gemini.png",
+          "dark": "assets/gemini.png"
+        }
+      },
+      {
+        "command": "agents.newGeminiBalanced",
+        "title": "Agents: New Gemini (Balanced)",
         "icon": {
           "light": "assets/gemini.png",
           "dark": "assets/gemini.png"
@@ -223,7 +271,23 @@
       },
       {
         "command": "agents.newAntigravityPickVersion",
-        "title": "Agents: New Antigravity (Pick Version)",
+        "title": "Agents: New Antigravity (Pinned)",
+        "icon": {
+          "light": "assets/antigravity.png",
+          "dark": "assets/antigravity.png"
+        }
+      },
+      {
+        "command": "agents.newAntigravityLatest",
+        "title": "Agents: New Antigravity (Latest)",
+        "icon": {
+          "light": "assets/antigravity.png",
+          "dark": "assets/antigravity.png"
+        }
+      },
+      {
+        "command": "agents.newAntigravityBalanced",
+        "title": "Agents: New Antigravity (Balanced)",
         "icon": {
           "light": "assets/antigravity.png",
           "dark": "assets/antigravity.png"
@@ -239,7 +303,23 @@
       },
       {
         "command": "agents.newCursorPickVersion",
-        "title": "Agents: New Cursor (Pick Version)",
+        "title": "Agents: New Cursor (Pinned)",
+        "icon": {
+          "light": "assets/cursor-light.png",
+          "dark": "assets/cursor.png"
+        }
+      },
+      {
+        "command": "agents.newCursorLatest",
+        "title": "Agents: New Cursor (Latest)",
+        "icon": {
+          "light": "assets/cursor-light.png",
+          "dark": "assets/cursor.png"
+        }
+      },
+      {
+        "command": "agents.newCursorBalanced",
+        "title": "Agents: New Cursor (Balanced)",
         "icon": {
           "light": "assets/cursor-light.png",
           "dark": "assets/cursor.png"

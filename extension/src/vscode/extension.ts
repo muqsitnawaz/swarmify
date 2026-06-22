@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { BUILT_IN_AGENTS, getBuiltInByKey, getBuiltInDefByTitle, getBuiltInByPrefix } from '../core/agents';
+import { BUILT_IN_AGENTS, getBuiltInByKey, getBuiltInDefByTitle, getBuiltInByPrefix, pickLatestVersion, STRATEGY_LAUNCH_AGENTS } from '../core/agents';
 import {
   AgentConfig,
   buildIconPath,
@@ -159,7 +159,13 @@ function buildTerminalTitle(
 // configured strategy (pinned/available/balanced) from agents.yaml. Claude
 // gets --session-id for resume; other agents detect their own session
 // post-spawn.
-type LaunchableAgent = 'claude' | 'codex' | 'gemini' | 'opencode' | 'cursor';
+type LaunchableAgent = 'claude' | 'codex' | 'gemini' | 'opencode' | 'cursor' | 'antigravity';
+
+// Version/account selection strategy passed to `agents run --strategy`. Mirrors
+// the agents-cli: pinned uses the configured default, balanced rotates across
+// healthy accounts. (Latest is expressed as an explicit @version pin, not a
+// strategy.) The CLI ignores --strategy when an @version is pinned.
+type RunStrategy = 'pinned' | 'available' | 'balanced';
 
 function buildAgentLaunchCommand(
   agentKey: LaunchableAgent,
@@ -167,11 +173,17 @@ function buildAgentLaunchCommand(
   defaultModel?: string,
   additionalFlags?: string,
   pinnedVersion?: string,
+  strategy?: RunStrategy,
 ): string {
   const agentSpec = pinnedVersion ? `${agentKey}@${pinnedVersion}` : agentKey;
   let command = `agents run ${agentSpec} --interactive`;
   if (sessionId && agentKey === 'claude') {
     command += ` --session-id ${sessionId}`;
+  }
+  // --strategy is meaningless (and ignored by the CLI) once a version is
+  // pinned, so only emit it for the unpinned, strategy-driven launches.
+  if (strategy && !pinnedVersion) {
+    command += ` --strategy ${strategy}`;
   }
   if (defaultModel && (!additionalFlags || !additionalFlags.includes('--model'))) {
     command += ` --model ${defaultModel}`;
@@ -1153,18 +1165,48 @@ export async function activate(context: vscode.ExtensionContext) {
     );
   }
 
-  // Register version picker commands for agents that support multiple versions
-  const VERSIONABLE_AGENTS = ['claude', 'codex', 'gemini', 'cursor'];
+  // Register the per-strategy launch trio for version/account-managed agents:
+  //   (Pinned)   -> pick an exact version interactively, launch it pinned
+  //   (Latest)   -> resolve the newest installed version, launch it pinned
+  //   (Balanced) -> launch with --strategy balanced (rotate across accounts)
+  // STRATEGY_LAUNCH_AGENTS = claude, codex, gemini, cursor, antigravity.
   for (const def of BUILT_IN_AGENTS) {
-    if (!VERSIONABLE_AGENTS.includes(def.key)) continue;
-    const pickVersionCommandId = `${def.commandId}PickVersion`;
+    if (!(STRATEGY_LAUNCH_AGENTS as readonly string[]).includes(def.key)) continue;
+
+    // (Pinned): interactive version picker. Command id keeps the legacy
+    // `PickVersion` suffix for back-compat with existing keybindings.
     context.subscriptions.push(
-      vscode.commands.registerCommand(pickVersionCommandId, async () => {
+      vscode.commands.registerCommand(`${def.commandId}PickVersion`, async () => {
         const version = await pickAgentVersion(def.key);
         if (!version) return;
         const agentConfig = getBuiltInByTitle(context.extensionPath, def.title);
         if (agentConfig) {
           openSingleAgent(context, agentConfig, undefined, version.version);
+        }
+      })
+    );
+
+    // (Latest): newest installed version, no prompt.
+    context.subscriptions.push(
+      vscode.commands.registerCommand(`${def.commandId}Latest`, async () => {
+        const latest = await resolveLatestVersion(def.key);
+        if (!latest) {
+          vscode.window.showInformationMessage(`No installed ${def.key} versions found`);
+          return;
+        }
+        const agentConfig = getBuiltInByTitle(context.extensionPath, def.title);
+        if (agentConfig) {
+          openSingleAgent(context, agentConfig, undefined, latest);
+        }
+      })
+    );
+
+    // (Balanced): rotate across healthy accounts via --strategy balanced.
+    context.subscriptions.push(
+      vscode.commands.registerCommand(`${def.commandId}Balanced`, () => {
+        const agentConfig = getBuiltInByTitle(context.extensionPath, def.title);
+        if (agentConfig) {
+          openSingleAgent(context, agentConfig, undefined, undefined, 'balanced');
         }
       })
     );
@@ -1459,7 +1501,8 @@ async function openSingleAgent(
   context: vscode.ExtensionContext,
   agentConfig: Omit<AgentConfig, 'count'>,
   additionalFlags?: string,
-  pinnedVersion?: string
+  pinnedVersion?: string,
+  strategy?: RunStrategy
 ) {
   const config = vscode.workspace.getConfiguration('agents');
   const enableTmux = config.get<boolean>('enableTmux', false);
@@ -1504,16 +1547,17 @@ async function openSingleAgent(
 
   // All built-in agents launch via `agents run <agent> --interactive` so the
   // agents-cli picks up the configured strategy (pinned/available/balanced)
-  // from ~/.agents-system/agents.yaml automatically. Only Claude's session
-  // is generated up-front for the resume flow; other agents detect their
-  // session post-spawn.
-  const LAUNCHABLE: ReadonlySet<string> = new Set(['claude', 'codex', 'gemini', 'opencode', 'cursor']);
+  // from ~/.agents-system/agents.yaml automatically — or an explicit override
+  // (pinnedVersion / strategy) from the per-strategy launch commands. Only
+  // Claude's session is generated up-front for the resume flow; other agents
+  // detect their session post-spawn.
+  const LAUNCHABLE: ReadonlySet<string> = new Set(['claude', 'codex', 'gemini', 'opencode', 'cursor', 'antigravity']);
   if (agentKey && LAUNCHABLE.has(agentKey)) {
     if (agentKey === 'claude') {
       sessionId = generateClaudeSessionId();
       console.log(`[SESSION] Claude using on-demand session ID: ${sessionId}`);
     }
-    command = buildAgentLaunchCommand(agentKey as LaunchableAgent, sessionId, defaultModel, additionalFlags, pinnedVersion);
+    command = buildAgentLaunchCommand(agentKey as LaunchableAgent, sessionId, defaultModel, additionalFlags, pinnedVersion, strategy);
   }
 
   if (tmuxOk) {
@@ -1967,6 +2011,13 @@ async function listAgentVersions(agentKey: string): Promise<AgentVersionInfo[]> 
   } catch {
     return [];
   }
+}
+
+// Resolve the newest installed version for an agent (used by the "(Latest)"
+// launch commands). Returns null when nothing semver-shaped is installed.
+async function resolveLatestVersion(agentKey: string): Promise<string | null> {
+  const versions = await listAgentVersions(agentKey);
+  return pickLatestVersion(versions.map(v => v.version)) ?? null;
 }
 
 function formatUsageStatus(status?: string): string {
