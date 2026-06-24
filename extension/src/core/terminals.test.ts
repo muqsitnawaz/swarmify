@@ -242,6 +242,26 @@ describe('buildAgentTerminalEnv', () => {
     expect(env.AWS_SECRET_ACCESS_KEY).toBeNull();
     expect(env.AWS_ACCESS_KEY_ID).toBeNull();
   });
+
+  test('scrubSensitive:false keeps the user shell on its normal environment', () => {
+    const original = process.env.GITHUB_TOKEN;
+    process.env.GITHUB_TOKEN = 'ghp_realtoken';
+    try {
+      const env = buildAgentTerminalEnv('SH-123', null, '/ws', undefined, { scrubSensitive: false });
+      // No static credential key is deleted...
+      for (const key of SENSITIVE_ENV_KEYS) {
+        expect(env[key]).toBeUndefined();
+      }
+      // ...and nothing dynamically matched from process.env is nulled out,
+      // so VS Code inherits the user's real value instead of removing it.
+      expect(env.GITHUB_TOKEN).toBeUndefined();
+      // Internal tracking vars still flow through (shell adoption reads them).
+      expect(env.AGENT_TERMINAL_ID).toBe('SH-123');
+    } finally {
+      if (original === undefined) delete process.env.GITHUB_TOKEN;
+      else process.env.GITHUB_TOKEN = original;
+    }
+  });
 });
 
 // Regression guard for the "Cmd+Shift+J loses version pin across reload" bug.

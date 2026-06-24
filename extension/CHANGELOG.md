@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.9.250] - 2026-06-24
+
+### Fixed
+- **User-opened shell tabs no longer have their environment scrubbed.** The credential/infra env-var scrub (added in 0.8.x to protect against a prompt-injected agent shelling out) was also stripping keys from plain `Shell` tabs that the user drives directly with no agent attached. `buildAgentTerminalEnv` now takes a `scrubSensitive` option: agent terminals still scrub (default `true`), but `sh`-prefixed / `shell` tabs inherit the user's normal environment, credentials included. Applied at spawn (`openSingleAgent`) and on restore (`restoreAgentTerminals`).
+- **Release script could not read marketplace tokens.** `scripts/release.sh` now calls `agents secrets export vs-marketplace --plaintext`; without `--plaintext` the export emitted no values and publishing failed.
+
 ## [0.9.249] - 2026-06-18
 
 ### Added

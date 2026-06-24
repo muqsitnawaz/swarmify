@@ -148,13 +148,21 @@ export function isSensitiveEnvKey(key: string): boolean {
  * @param workspacePath - Workspace root path (for MCP server to identify project)
  * @param version - Pinned agent version (e.g. "2.1.113"); omitted when the
  *   agent was launched via its PATH shim and the concrete version is unknown.
+ * @param options.scrubSensitive - Whether to delete infra/credential env vars
+ *   from the spawned terminal. Defaults to `true` for agent terminals, where a
+ *   prompt-injected agent could shell out and read them. Set to `false` for a
+ *   user-opened shell tab: the user drives it directly (no agent), so it should
+ *   load their normal environment, credentials included.
  */
 export function buildAgentTerminalEnv(
   terminalId: string,
   sessionId: string | null | undefined,
   workspacePath: string | null | undefined = undefined,
-  version: string | null | undefined = undefined
+  version: string | null | undefined = undefined,
+  options: { scrubSensitive?: boolean } = {}
 ): Record<string, string | null> {
+  const { scrubSensitive = true } = options;
+
   const env: Record<string, string | null> = {
     AGENT_TERMINAL_ID: terminalId,
     AGENT_SESSION_ID: sessionId ?? '',
@@ -163,6 +171,10 @@ export function buildAgentTerminalEnv(
     DISABLE_AUTO_TITLE: 'true',
     PROMPT_COMMAND: ''
   };
+
+  if (!scrubSensitive) {
+    return env;
+  }
 
   // 1. Scrub known static keys
   for (const key of SENSITIVE_ENV_KEYS) {

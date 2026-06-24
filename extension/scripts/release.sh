@@ -142,7 +142,8 @@ if [ -z "${VSCE_PAT:-}" ] || { [ -n "$PUBLISHED_OVSX" ] && [ -z "${OVSX_PAT:-}" 
         echo "       Either export them or install agents-cli to read keychain bundle 'vs-marketplace'." >&2
         exit 1
     fi
-    eval "$(agents secrets export vs-marketplace 2>/dev/null)" || {
+    # `agents secrets export` requires --plaintext to emit values (TTY or pipe).
+    eval "$(agents secrets export vs-marketplace --plaintext 2>/dev/null)" || {
         echo "Error: failed to export 'vs-marketplace' bundle." >&2
         echo "       Create with: agents secrets create vs-marketplace" >&2
         echo "       Then add VSCE_PAT and OVSX_PAT keys." >&2
