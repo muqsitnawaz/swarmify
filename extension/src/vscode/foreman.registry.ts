@@ -20,6 +20,7 @@ import * as os from 'os';
 import * as vscode from 'vscode';
 import { createHash } from 'crypto';
 import { computeWindowId } from '../core/foreman.windowId';
+import { isPidAlive } from '../core/liveness';
 
 const REGISTRY_DIR = path.join(os.homedir(), '.agents', '.cache', 'terminals');
 const REGISTRY_FILE = path.join(REGISTRY_DIR, 'live-terminals.json');
@@ -93,18 +94,6 @@ async function writeRegistryAsync(reg: RegistryFile): Promise<void> {
     await fs.promises.rename(tmp, REGISTRY_FILE);
   } catch {
     /* best effort */
-  }
-}
-
-function isPidAlive(pid: number): boolean {
-  if (!pid || pid < 1) return false;
-  try {
-    // signal 0 doesn't kill; throws ESRCH if pid is gone, EPERM if alive but
-    // owned by another user (not our case for IDE-spawned terminals).
-    process.kill(pid, 0);
-    return true;
-  } catch (err: any) {
-    return err?.code === 'EPERM';
   }
 }
 
