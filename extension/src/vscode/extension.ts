@@ -4090,10 +4090,19 @@ function initForemanRegistry(context: vscode.ExtensionContext): void {
       await registry.publishLiveTerminals(snap);
     } catch { /* best effort */ }
   };
+  // Trailing-edge debounce: a flurry of terminal-state changes (each of which
+  // awaits processId + does a registry file read/write) coalesces into a
+  // single publish instead of N.
+  let debounceTimer: NodeJS.Timeout | undefined;
+  const schedulePublish = () => {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => { debounceTimer = undefined; void publish(); }, 300);
+  };
   context.subscriptions.push(
-    vscode.window.onDidOpenTerminal(() => { void publish(); }),
-    vscode.window.onDidCloseTerminal(() => { void publish(); }),
-    vscode.window.onDidChangeTerminalState(() => { void publish(); }),
+    vscode.window.onDidOpenTerminal(() => schedulePublish()),
+    vscode.window.onDidCloseTerminal(() => schedulePublish()),
+    vscode.window.onDidChangeTerminalState(() => schedulePublish()),
+    { dispose: () => { if (debounceTimer) clearTimeout(debounceTimer); } },
   );
   // Long keepalive: publish() itself skips the disk write when nothing
   // changed and the keepalive window isn't due, so this interval is just a

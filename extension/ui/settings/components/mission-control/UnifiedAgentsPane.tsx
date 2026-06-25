@@ -471,10 +471,13 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   const nextUpSectionRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (pendingDispatches.length === 0) return
+    // Gate the 1s countdown on visibility: no point ticking the pending-dispatch
+    // timeout clock while the panel is hidden — it just burns a wakeup per second
+    // off-screen. The next reveal re-arms it (panelVisible flips true).
+    if (pendingDispatches.length === 0 || !panelVisible) return
     const interval = setInterval(() => setTick((n) => n + 1), 1000)
     return () => clearInterval(interval)
-  }, [pendingDispatches.length])
+  }, [pendingDispatches.length, panelVisible])
 
   useEffect(() => {
     if (pendingDispatches.length === 0) return
@@ -843,7 +846,15 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
       onThroughputChange?.(0)
       return
     }
-    if (!panelVisible) return
+    if (!panelVisible) {
+      // Panel hidden: stop polling AND zero the throughput. ThroughputCounter
+      // early-returns its 140ms sparkline interval when tokensPerSec <= 0, so
+      // resetting here clears the animation instead of letting it run off-screen
+      // against the last frozen value.
+      setLiveThroughput(0)
+      onThroughputChange?.(0)
+      return
+    }
     const poll = () => postMessage({ type: 'getFloorThroughput' })
     poll()
     const id = setInterval(poll, 2500)

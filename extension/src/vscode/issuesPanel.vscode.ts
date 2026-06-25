@@ -159,10 +159,12 @@ function sortByPriorityThenRecency(a: UnifiedTask, b: UnifiedTask): number {
 
 export function registerIssuesPanel(context: vscode.ExtensionContext): void {
   const provider = new IssuesPanelProvider(context);
+  // No retainContextWhenHidden: the view re-posts a full snapshot on 'ready'
+  // (onMessage 'ready' -> postSnapshot + refresh) and re-fetches on reveal
+  // (onDidChangeVisibility -> refresh), so a torn-down hidden webview restores
+  // its state on re-show without burning CPU on a backgrounded iframe.
   context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider(ISSUES_PANEL_VIEW_ID, provider, {
-      webviewOptions: { retainContextWhenHidden: true },
-    }),
+    vscode.window.registerWebviewViewProvider(ISSUES_PANEL_VIEW_ID, provider),
   );
 }
 

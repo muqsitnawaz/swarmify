@@ -1517,6 +1517,19 @@ window.addEventListener('message', (e) => {
   if (msg && msg.type === 'snapshot') render(msg.data);
 });
 
+// The panel keeps retainContextWhenHidden so quick tab switches preserve scroll
+// + DOM state, and the heavy snapshot polling is already gated on visibility
+// (startPolling/stopPolling). The one thing retain leaves running is the
+// .pulse-dot's "animation: pulse ... infinite" — off-screen it still forces
+// layout/paint every frame and burns CPU. Remove the element from the DOM while
+// hidden (CSS-hiding alone doesn't stop the animation); the next snapshot on
+// reveal (onDidChangeVisibility -> refresh) re-renders it if still streaming.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    for (const el of root.querySelectorAll('.pulse-dot')) el.remove();
+  }
+});
+
 // Drag a file from the explorer/editor onto the panel -> paste its absolute
 // path into the focused agent terminal instead of letting VS Code's editor
 // host catch the drop and open the file.
@@ -1714,11 +1727,25 @@ export function registerAgentPanel(context: vscode.ExtensionContext): AgentPanel
     })
   );
 
-  // Re-render on terminal lifecycle events.
+  // Re-render on terminal lifecycle events. refresh() -> buildSnapshot() spawns
+  // 2-8 subprocesses (git/teams probes), so a burst of events — e.g. clicking
+  // through editor tabs fires onDidChangeActiveTerminal per tab, and closing a
+  // terminal fires close + active-change together — would stampede the box.
+  // Trailing-edge debounce (matching the inline clearTimeout/setTimeout idiom
+  // in settings.vscode.ts) coalesces a burst into one snapshot per window.
+  let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+  const debouncedRefresh = () => {
+    if (refreshTimer) clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(() => {
+      refreshTimer = undefined;
+      void provider.refresh();
+    }, 300);
+  };
   context.subscriptions.push(
-    vscode.window.onDidChangeActiveTerminal(() => void provider.refresh()),
-    vscode.window.onDidCloseTerminal(() => void provider.refresh()),
-    vscode.window.onDidOpenTerminal(() => void provider.refresh())
+    vscode.window.onDidChangeActiveTerminal(debouncedRefresh),
+    vscode.window.onDidCloseTerminal(debouncedRefresh),
+    vscode.window.onDidOpenTerminal(debouncedRefresh),
+    { dispose: () => { if (refreshTimer) clearTimeout(refreshTimer); } }
   );
 
   return provider;

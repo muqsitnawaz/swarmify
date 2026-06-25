@@ -5,10 +5,36 @@ import * as os from 'os';
 import * as vscode from 'vscode';
 import { getAllTerminals } from '../vscode/terminals.vscode';
 import { resolvePeerMessage } from '../core/peerMessaging';
+import { trimToLast } from '../core/watchdogLog';
 
 const SOCKET_PATH = path.join(os.homedir(), '.agents', '.tmp', 'watchdog.sock');
 const WATCHDOG_LOG = path.join(os.homedir(), '.agents', 'watchdog.log');
 const PEER_MESSAGES_LOG = path.join(os.homedir(), '.agents', 'peer-messages.log');
+
+// Hot path: append is O(1). Each log is trimmed back to LOG_MAX_LINES only
+// once every LOG_TRIM_EVERY appends, not on every write, so high-frequency
+// nudges/peer-messages don't read+rewrite the whole file each time.
+const LOG_MAX_LINES = 500;
+const LOG_TRIM_EVERY = 100;
+const appendCounts = new Map<string, number>();
+
+async function appendLineTrimmed(logPath: string, line: string): Promise<void> {
+  await fs.mkdir(path.dirname(logPath), { recursive: true });
+  await fs.appendFile(logPath, line, 'utf8');
+  const n = (appendCounts.get(logPath) ?? 0) + 1;
+  appendCounts.set(logPath, n);
+  if (n % LOG_TRIM_EVERY === 0) {
+    try {
+      const existing = await fs.readFile(logPath, 'utf8');
+      const trimmed = trimToLast(existing, LOG_MAX_LINES);
+      if (trimmed.length !== existing.length) {
+        await fs.writeFile(logPath, trimmed, 'utf8');
+      }
+    } catch {
+      // file missing or unreadable — nothing to trim
+    }
+  }
+}
 
 export interface WatchdogBridge {
   mcpServerPath: string;
@@ -73,8 +99,7 @@ async function logNudge(entry: {
     ...entry,
   };
   try {
-    await fs.mkdir(path.dirname(WATCHDOG_LOG), { recursive: true });
-    await fs.appendFile(WATCHDOG_LOG, JSON.stringify(logEntry) + '\n');
+    await appendLineTrimmed(WATCHDOG_LOG, JSON.stringify(logEntry) + '\n');
   } catch (err) {
     console.warn('[WATCHDOG] Failed to log nudge:', err);
   }
@@ -92,8 +117,7 @@ async function logPeerMessage(entry: {
     ...entry,
   };
   try {
-    await fs.mkdir(path.dirname(PEER_MESSAGES_LOG), { recursive: true });
-    await fs.appendFile(PEER_MESSAGES_LOG, JSON.stringify(logEntry) + '\n');
+    await appendLineTrimmed(PEER_MESSAGES_LOG, JSON.stringify(logEntry) + '\n');
   } catch (err) {
     console.warn('[PEER-MSG] Failed to log message:', err);
   }

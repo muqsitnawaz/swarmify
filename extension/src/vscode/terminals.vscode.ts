@@ -326,6 +326,12 @@ export function setAutoLabel(terminal: vscode.Terminal, autoLabel: string | unde
   }
 }
 
+// Cap the auto-label poll interval. Once a stable label exists the poller
+// stops entirely; until then the interval doubles after each failed poll so a
+// terminal whose label never resolves doesn't re-spawn a model subprocess
+// every 5 minutes forever.
+const AUTO_LABEL_MAX_INTERVAL_MS = 60 * 60 * 1000;
+
 export function startAutoLabelPoller(
   terminal: vscode.Terminal,
   pollFn: () => Promise<void>,
@@ -336,20 +342,29 @@ export function startAutoLabelPoller(
   if (entry.autoLabelPollerId) return;
   if (entry.autoLabel || entry.label) return;
 
-  // Run immediately on start, then set up the interval for subsequent polls
+  // Run immediately on start, then back off for subsequent polls.
   pollFn().catch(() => {});
 
-  entry.autoLabelPollerId = setInterval(async () => {
-    if (entry.autoLabel || entry.label) {
-      if (entry.autoLabelPollerId) {
-        clearInterval(entry.autoLabelPollerId);
+  let delay = intervalMs;
+  const schedule = (): void => {
+    entry.autoLabelPollerId = setTimeout(async () => {
+      // Stable label exists -> stop the drip entirely.
+      if (entry.autoLabel || entry.label) {
         entry.autoLabelPollerId = undefined;
+        return;
       }
-      return;
-    }
-    await pollFn();
-  }, intervalMs);
-  console.log(`[TERMINALS] Started auto-label poller for terminal "${terminal.name}" (interval: ${intervalMs}ms)`);
+      await pollFn().catch(() => {});
+      if (entry.autoLabel || entry.label) {
+        entry.autoLabelPollerId = undefined;
+        return;
+      }
+      // Still unlabeled: back off before trying again.
+      delay = Math.min(delay * 2, AUTO_LABEL_MAX_INTERVAL_MS);
+      schedule();
+    }, delay);
+  };
+  schedule();
+  console.log(`[TERMINALS] Started auto-label poller for terminal "${terminal.name}" (interval: ${intervalMs}ms, backoff cap: ${AUTO_LABEL_MAX_INTERVAL_MS}ms)`);
 }
 
 export function stopAutoLabelPoller(terminal: vscode.Terminal): void {
@@ -1162,6 +1177,14 @@ export async function getFloorTerminalDetails(workspacePath?: string): Promise<T
 
 // Clear state (for testing/deactivation)
 export function clear(): void {
+  // Dispose any auto-label pollers still running so deactivate doesn't leak
+  // intervals for terminals whose label never resolved.
+  for (const entry of editorTerminals.values()) {
+    if (entry.autoLabelPollerId) {
+      clearInterval(entry.autoLabelPollerId);
+      entry.autoLabelPollerId = undefined;
+    }
+  }
   editorTerminals.clear();
   terminalIdCounter = 0;
   sessionSummaryCache.clear();

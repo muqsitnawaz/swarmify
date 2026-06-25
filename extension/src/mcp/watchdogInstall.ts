@@ -36,28 +36,45 @@ async function install(agent: Agent, mcpServerPath: string): Promise<void> {
   await execAsync(cmd, { timeout: 10000 });
 }
 
+// Memoize per extension load: this runs on every activation, but the four
+// `which`/`mcp list` subprocesses only need to run once per process. Repeat
+// callers get the in-flight/completed promise instead of re-forking.
+let installPromise: Promise<void> | null = null;
+
+async function ensureOne(agent: Agent, mcpServerPath: string): Promise<void> {
+  if (!(await isCliAvailable(agent))) {
+    return;
+  }
+  try {
+    if (await isInstalled(agent)) {
+      return;
+    }
+    await install(agent, mcpServerPath);
+    console.log(`[WATCHDOG] Registered ${SERVER_NAME} MCP for ${agent}`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(`[WATCHDOG] Failed to register MCP for ${agent}: ${message}`);
+  }
+}
+
 /**
  * Register the watchdog MCP server in each supported agent's user-scope
  * config so peer terminals can call `send_to_agent`. Idempotent — skips
  * agents whose CLI is missing or that already have a `watchdog` entry.
+ *
+ * Agents are probed in parallel (no longer four sequential subprocesses on the
+ * activation path) and the result is memoized for the process lifetime.
  */
-export async function ensureWatchdogMcpInstalled(mcpServerPath: string): Promise<void> {
+export function ensureWatchdogMcpInstalled(mcpServerPath: string): Promise<void> {
+  if (installPromise) return installPromise;
   const agents: Agent[] = ['claude', 'gemini'];
+  installPromise = Promise.all(
+    agents.map((agent) => ensureOne(agent, mcpServerPath)),
+  ).then(() => undefined);
+  return installPromise;
+}
 
-  for (const agent of agents) {
-    if (!(await isCliAvailable(agent))) {
-      continue;
-    }
-
-    try {
-      if (await isInstalled(agent)) {
-        continue;
-      }
-      await install(agent, mcpServerPath);
-      console.log(`[WATCHDOG] Registered ${SERVER_NAME} MCP for ${agent}`);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.warn(`[WATCHDOG] Failed to register MCP for ${agent}: ${message}`);
-    }
-  }
+/** Test-only: drop the memoized result so the next call re-probes. */
+export function __resetWatchdogInstallCache(): void {
+  installPromise = null;
 }
