@@ -271,6 +271,29 @@ export interface AgentInventory {
   versions: AgentInventoryVersion[]
 }
 
+// A DotAgents resource repo (user / system / project / alias) as surfaced by
+// `agents inspect <target> --json`, with capability counts per kind.
+export interface AgentResourceRepo {
+  repo: string
+  root: string
+  counts: {
+    commands: number
+    skills: number
+    hooks: number
+    mcp: number
+    rules: number
+    plugins: number
+    workflows: number
+    subagents: number
+  }
+  git?: {
+    branch?: string
+    ahead?: number
+    behind?: number
+    dirty?: number
+  }
+}
+
 // Agent detail types (from swarm)
 export interface AgentDetail {
   agent_id: string

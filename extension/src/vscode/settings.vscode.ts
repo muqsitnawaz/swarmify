@@ -30,6 +30,7 @@ import { createSymlinksCodebaseWide } from './agentlinks.vscode';
 import { scanMemoryFiles } from './contextFiles';
 import { fetchAllAgentModels, checkInstalledAgentsViaCli, resolveAlias } from '../core/agentModels';
 import { fetchAgentInventories, writeAgentRunStrategy, AgentRunStrategy, AgentInventory, normalizeRunStrategy } from '../core/agentInventory';
+import { getAgentResources, invalidateAgentResourcesCache } from '../core/agentResources';
 import * as workbench from './workbench.vscode';
 import * as theme from './theme.vscode';
 import { buildAgentTerminalEnv } from '../core/terminals';
@@ -1287,6 +1288,19 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
           type: 'agentInventoriesData',
           agentInventories: await getCachedAgentInventories(force),
         });
+        break;
+      }
+      case 'fetchAgentResources': {
+        const force = message?.force === true;
+        if (force) invalidateAgentResourcesCache();
+        const wsPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        try {
+          const repos = await getAgentResources(wsPath, force);
+          settingsPanel?.webview.postMessage({ type: 'agentResourcesData', repos });
+        } catch (err) {
+          console.error('[SETTINGS] Error fetching agent resources:', err);
+          settingsPanel?.webview.postMessage({ type: 'agentResourcesData', repos: [] });
+        }
         break;
       }
       case 'getDefaultAgent':
