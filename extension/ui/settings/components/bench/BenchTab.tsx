@@ -4,6 +4,8 @@ import { postMessage } from '../../hooks'
 import { TaskCard } from './TaskCard'
 import { TaskDetail } from './TaskDetail'
 import { CycleBar } from './CycleBar'
+import { KanbanBoard } from './KanbanBoard'
+import { DeadlineView } from './DeadlineView'
 import type { FlatTask } from './TaskCard'
 import type { CloudProviderId } from '../mission-control'
 import type {
@@ -62,6 +64,13 @@ const SOURCE_FILTERS: Array<{ key: TaskSource; label: string; cls: string }> = [
 ]
 
 type SortOption = 'priority' | 'due' | 'priority+due'
+type BenchView = 'list' | 'kanban' | 'deadline'
+
+const BENCH_VIEWS: Array<{ key: BenchView; label: string }> = [
+  { key: 'list', label: 'List' },
+  { key: 'kanban', label: 'Board' },
+  { key: 'deadline', label: 'Deadline' },
+]
 
 export function BenchTab(props: BenchTabProps) {
   const {
@@ -85,6 +94,7 @@ export function BenchTab(props: BenchTabProps) {
   )
   const [repoFilter, setRepoFilter] = useState<string>('all')
   const [sortBy, setSortBy] = useState<SortOption>('priority')
+  const [view, setView] = useState<BenchView>('list')
 
   const toggleFilter = (source: TaskSource) => {
     setActiveFilters(prev => {
@@ -203,6 +213,7 @@ export function BenchTab(props: BenchTabProps) {
     if (repoFilter !== 'all' && task.metadata.repo !== repoFilter) {
       setRepoFilter('all')
     }
+    setView('list')
     setSelectedTaskId(openBenchTaskId)
     onOpenBenchTaskConsumed?.()
   }, [openBenchTaskId, flatTasks, activeFilters, repoFilter, onOpenBenchTaskConsumed])
@@ -254,14 +265,37 @@ export function BenchTab(props: BenchTabProps) {
 
   const isLoading = unifiedTasksLoading
 
+  const emptyState = (
+    <div className="sw-empty">
+      <span className="sw-empty-title">Work queue empty</span>
+      <span className="sw-empty-sub">
+        {availableSources.linear || availableSources.github
+          ? 'No tasks in view. Either the active cycle is empty, your filters are hiding everything, or the source returned an error — check the extension Output panel for details.'
+          : 'Connect Linear or GitHub to see tasks here.'}
+      </span>
+    </div>
+  )
+
   return (
     <>
-      <div className="sw-bench">
-        {/* Left column: task list */}
-        <div className="sw-bench-list">
-        <div className="sw-bench-list-head">
+      <div className="sw-bench-wrap">
+        <div className="sw-bench-toolbar">
           <span className="sw-section-label">Work Queue</span>
           <span className="sw-section-count">{filteredTasks.length}</span>
+          <div className="sw-active-filter sw-bench-view-switch" role="tablist" aria-label="Bench view">
+            {BENCH_VIEWS.map(v => (
+              <button
+                key={v.key}
+                type="button"
+                role="tab"
+                aria-selected={view === v.key}
+                className={`sw-active-filter-btn ${view === v.key ? 'active' : ''}`}
+                onClick={() => setView(v.key)}
+              >
+                {v.label}
+              </button>
+            ))}
+          </div>
           <div className="sw-bench-list-filters">
             {SOURCE_FILTERS.map(f => (
               <button
@@ -288,16 +322,19 @@ export function BenchTab(props: BenchTabProps) {
               ))}
             </select>
           )}
-          <select
-            className="sw-bench-filter-select"
-            value={sortBy}
-            onChange={e => setSortBy(e.target.value as SortOption)}
-            title="Sort tasks"
-          >
-            <option value="priority">Priority</option>
-            <option value="due">Due date</option>
-            <option value="priority+due">Priority, then due</option>
-          </select>
+          {view !== 'kanban' && (
+            <select
+              className="sw-bench-filter-select"
+              value={sortBy}
+              onChange={e => setSortBy(e.target.value as SortOption)}
+              title="Sort tasks"
+            >
+              <option value="priority">Priority</option>
+              <option value="due">Due date</option>
+              <option value="priority+due">Priority, then due</option>
+            </select>
+          )}
+          <span className="sw-section-line" />
           <button
             className="sw-icon-btn"
             onClick={onRefreshTasks}
@@ -308,55 +345,67 @@ export function BenchTab(props: BenchTabProps) {
           </button>
         </div>
 
-        {cycleInfo && <CycleBar cycleInfo={cycleInfo} />}
-
-        <div className="sw-bench-list-body">
-          {isLoading && filteredTasks.length === 0 ? (
-            <div className="sw-empty">
-              <span className="sw-empty-title">Loading tasks...</span>
+        {view === 'list' && (
+          <div className="sw-bench">
+            <div className="sw-bench-list">
+              {cycleInfo && <CycleBar cycleInfo={cycleInfo} />}
+              <div className="sw-bench-list-body">
+                {isLoading && filteredTasks.length === 0 ? (
+                  <div className="sw-empty">
+                    <span className="sw-empty-title">Loading tasks...</span>
+                  </div>
+                ) : filteredTasks.length === 0 ? (
+                  emptyState
+                ) : (
+                  filteredTasks.map(task => (
+                    <TaskCard
+                      key={task.id}
+                      task={task}
+                      selected={task.id === selectedTaskId}
+                      onClick={() => setSelectedTaskId(task.id)}
+                    />
+                  ))
+                )}
+              </div>
             </div>
-          ) : filteredTasks.length === 0 ? (
-            <div className="sw-empty">
-              <span className="sw-empty-title">Work queue empty</span>
-              <span className="sw-empty-sub">
-                {availableSources.linear || availableSources.github
-                  ? 'No tasks in view. Either the active cycle is empty, your filters are hiding everything, or the source returned an error — check the extension Output panel for details.'
-                  : 'Connect Linear or GitHub to see tasks here.'}
-              </span>
-            </div>
-          ) : (
-            filteredTasks.map(task => (
-              <TaskCard
-                key={task.id}
-                task={task}
-                selected={task.id === selectedTaskId}
-                onClick={() => setSelectedTaskId(task.id)}
-              />
-            ))
-          )}
-        </div>
-        </div>
 
-        {/* Right column: task detail */}
-        <div className="sw-bench-detail">
-          {selectedTask ? (
-            <TaskDetail
-              task={selectedTask}
-              cycleInfo={cycleInfo}
-              onDispatch={handleDispatch}
-              onDismiss={handleDismiss}
-              onOpenExternal={handleOpenExternal}
+            <div className="sw-bench-detail">
+              {selectedTask ? (
+                <TaskDetail
+                  task={selectedTask}
+                  cycleInfo={cycleInfo}
+                  onDispatch={handleDispatch}
+                  onDismiss={handleDismiss}
+                  onOpenExternal={handleOpenExternal}
+                />
+              ) : (
+                <div className="sw-empty" style={{ flex: 1 }}>
+                  <Icon name="inbox" size={32} style={{ color: 'var(--ds-text-faint)' }} />
+                  <span className="sw-empty-title">Select a task to see details</span>
+                  <span className="sw-empty-sub">
+                    Click a task in the work queue to view its full description, metadata, and actions.
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {view === 'kanban' && (
+          filteredTasks.length === 0 ? emptyState : (
+            <KanbanBoard
+              tasks={filteredTasks}
+              selectedTaskId={selectedTaskId}
+              onOpen={handleDispatch}
             />
-          ) : (
-            <div className="sw-empty" style={{ flex: 1 }}>
-              <Icon name="inbox" size={32} style={{ color: 'var(--ds-text-faint)' }} />
-              <span className="sw-empty-title">Select a task to see details</span>
-              <span className="sw-empty-sub">
-                Click a task in the work queue to view its full description, metadata, and actions.
-              </span>
-            </div>
-          )}
-        </div>
+          )
+        )}
+
+        {view === 'deadline' && (
+          filteredTasks.length === 0 ? emptyState : (
+            <DeadlineView tasks={filteredTasks} onOpen={handleDispatch} />
+          )
+        )}
       </div>
       {dispatchTask && (
         <TaskDetailModal

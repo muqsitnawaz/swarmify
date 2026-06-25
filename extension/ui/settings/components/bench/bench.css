@@ -1,9 +1,34 @@
 /* Bench tab - 2-column industrial work queue layout */
 
+/* Shell wraps a shared toolbar (view switcher + filters) above the active view. */
+.sw-bench-wrap {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.sw-bench-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  flex-shrink: 0;
+  border-bottom: 2px solid var(--ds-border);
+  background: var(--ds-bg-panel);
+  box-shadow: var(--shadow-emboss);
+  font-family: "Geist Mono", monospace;
+}
+
+.sw-bench-view-switch {
+  margin-left: 4px;
+}
+
 .sw-bench {
   display: grid;
   grid-template-columns: 380px 1fr;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -745,4 +770,262 @@
 .sw-due-chip.late::before {
   background: var(--stale-rotten);
   box-shadow: 0 0 4px var(--stale-rotten-glow);
+}
+
+/* ============================================
+   BENCH KANBAN — status columns (To Do / In Progress / Done)
+   ============================================ */
+.sw-kanban {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: var(--ds-border);
+  overflow: hidden;
+}
+
+.sw-kanban-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--ds-bg);
+  overflow: hidden;
+}
+
+.sw-kanban-col-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--ds-border);
+  background: var(--ds-bg-panel);
+  box-shadow: var(--shadow-emboss);
+}
+
+.sw-kanban-col-led {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--ds-text-faint);
+}
+.sw-kanban-col.todo .sw-kanban-col-led { background: var(--ds-text-dim); }
+.sw-kanban-col.in_progress .sw-kanban-col-led {
+  background: var(--led-running);
+  box-shadow: 0 0 6px var(--led-running-glow);
+}
+.sw-kanban-col.done .sw-kanban-col-led { background: var(--led-running); }
+
+.sw-kanban-col-head .sw-section-count {
+  margin-left: auto;
+}
+
+.sw-kanban-col-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sw-kanban-col-empty {
+  font-family: "Geist Mono", monospace;
+  font-size: 10.5px;
+  color: var(--ds-text-faint);
+  text-align: center;
+  padding: 20px 0;
+  letter-spacing: 0.04em;
+}
+
+/* ============================================
+   BENCH DEADLINE — month grid plotting tasks by due date
+   ============================================ */
+.sw-deadline {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 12px 14px;
+  background: var(--ds-bg);
+}
+
+.sw-deadline-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  flex-shrink: 0;
+}
+
+.sw-deadline-month {
+  font-family: "Geist Mono", monospace;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ds-text);
+  letter-spacing: 0.02em;
+  min-width: 140px;
+}
+
+.sw-deadline-nav {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--ds-border);
+  background: var(--ds-bg-recessed);
+  color: var(--ds-text-dim);
+  cursor: pointer;
+  box-shadow: var(--shadow-raised);
+  font-size: 14px;
+  line-height: 1;
+}
+.sw-deadline-nav:hover { color: var(--ds-text); }
+
+.sw-deadline-today {
+  font-family: "Geist Mono", monospace;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 3px 9px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--ds-border);
+  background: var(--ds-bg-recessed);
+  color: var(--ds-text-dim);
+  cursor: pointer;
+  box-shadow: var(--shadow-raised);
+}
+.sw-deadline-today:hover { color: var(--ds-text); }
+
+.sw-deadline-count {
+  font-family: "Geist Mono", monospace;
+  font-size: 10px;
+  color: var(--ds-text-faint);
+  letter-spacing: 0.03em;
+  flex-shrink: 0;
+}
+
+.sw-deadline-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+  flex-shrink: 0;
+  margin-bottom: 1px;
+}
+.sw-deadline-weekdays span {
+  font-family: "Geist Mono", monospace;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ds-text-faint);
+  text-align: center;
+  padding: 4px 0;
+}
+
+.sw-deadline-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  grid-auto-rows: 1fr;
+  gap: 1px;
+  flex: 1;
+  min-height: 0;
+  background: var(--ds-border);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+
+.sw-deadline-cell {
+  background: var(--ds-bg-panel);
+  padding: 4px 5px;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.sw-deadline-cell.other-month { background: var(--ds-bg-recessed); }
+.sw-deadline-cell.other-month .sw-deadline-cell-num { opacity: 0.35; }
+.sw-deadline-cell.today {
+  outline: 1.5px solid var(--brand);
+  outline-offset: -1.5px;
+}
+
+.sw-deadline-cell-num {
+  font-family: "Geist Mono", monospace;
+  font-size: 10px;
+  color: var(--ds-text-dim);
+  flex-shrink: 0;
+}
+.sw-deadline-cell.today .sw-deadline-cell-num {
+  color: var(--brand);
+  font-weight: 700;
+}
+
+.sw-deadline-cell-tasks {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.sw-deadline-chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 5px;
+  border-radius: var(--r-xs);
+  border: 1px solid var(--ds-border);
+  background: var(--ds-bg-recessed);
+  box-shadow: var(--shadow-inset);
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  font: inherit;
+  color: var(--ds-text-muted);
+  transition: border-color 0.12s;
+}
+.sw-deadline-chip:hover { border-color: var(--ds-border-strong); }
+.sw-deadline-chip.soon { border-left: 2px solid var(--stale-aging); }
+.sw-deadline-chip.late {
+  border-left: 2px solid var(--stale-rotten);
+  background: rgba(239, 68, 68, 0.06);
+}
+.sw-deadline-chip .sw-priority-led { width: 6px; height: 6px; }
+.sw-deadline-chip-title {
+  font-size: 10.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.sw-deadline-unscheduled {
+  flex-shrink: 0;
+  margin-top: 10px;
+  border-top: 1px solid var(--ds-border);
+  padding-top: 8px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+.sw-deadline-unscheduled-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.sw-deadline-unscheduled-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.sw-deadline-unscheduled-body .sw-deadline-chip {
+  width: auto;
+  max-width: 260px;
 }
