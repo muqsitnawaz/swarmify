@@ -627,6 +627,12 @@ export async function activate(context: vscode.ExtensionContext) {
   // fires on open/close.
   initForemanRegistry(context);
 
+  // Elect exactly one "monitor" owner across all open IDE windows (epic #64,
+  // foundation #65). The winner will own the heavy global probes/watches in
+  // later migration issues; for now it just holds a renewable lease so the rest
+  // of the stack can gate on isLeader(). Re-elects automatically on takeover.
+  initMonitorLeader(context);
+
   // Activity-bar sidebar that always reflects the currently focused agent
   // terminal: title, version, label, cwd, PLAN.md, and any teams running in
   // this directory. Lazy-resolves when the user clicks the activity-bar icon.
@@ -4103,11 +4109,30 @@ function initForemanRegistry(context: vscode.ExtensionContext): void {
   void publish();
 }
 
+function initMonitorLeader(context: vscode.ExtensionContext): void {
+  // Lazy import to keep activation lean and avoid loading the elector early.
+  const leader = require('../monitor/leader') as typeof import('../monitor/leader');
+  const { computeWindowId } = require('../core/foreman.windowId') as typeof import('../core/foreman.windowId');
+  // process.pid is per-extension-host, so a window reload yields a fresh
+  // windowId and leadership is re-elected rather than silently continued.
+  const selfId = computeWindowId(vscode.env.sessionId, process.pid);
+  leader.electLeader({ selfId, pid: process.pid });
+  // Graceful handoff: drop the lease on dispose so a peer takes over at once
+  // instead of waiting out the TTL.
+  context.subscriptions.push({ dispose: () => leader.disposeLeader() });
+}
+
 export async function deactivate(): Promise<void> {
   if (extensionContext) {
     // Persist open agent terminals for restore on next launch (immediate, not debounced)
     terminals.persistNow();
   }
+
+  // Release the monitor lease so another window can take over immediately.
+  try {
+    const leader = require('../monitor/leader') as typeof import('../monitor/leader');
+    leader.disposeLeader();
+  } catch { /* best effort */ }
 
   // Clear internal tracking (don't dispose terminals - let VS Code handle them)
   terminals.clear();
