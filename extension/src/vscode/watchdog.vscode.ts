@@ -98,18 +98,34 @@ export function getWatchdogPlaybookStatus(): WatchdogPlaybookStatus {
   }
 }
 
+// Hot path: append is O(1) (no read+rewrite of the whole file). The file is
+// trimmed back to LOG_MAX_LINES only once every LOG_TRIM_EVERY appends, so a
+// stalled-terminal tick that logs many events doesn't rewrite the file each
+// time. Between trims the file may briefly exceed the cap by up to that many
+// lines — acceptable for a diagnostic feed.
+const LOG_TRIM_EVERY = 100;
+let appendCount = 0;
+
+async function trimLogToCap(logPath: string, maxLines: number): Promise<void> {
+  try {
+    const existing = await fs.readFile(logPath, 'utf8');
+    const trimmed = trimToLast(existing, maxLines);
+    if (trimmed.length !== existing.length) {
+      await fs.writeFile(logPath, trimmed, 'utf8');
+    }
+  } catch {
+    // file missing or unreadable — nothing to trim
+  }
+}
+
 async function appendToLog(ev: WatchdogEvent): Promise<void> {
   try {
     const line = formatEvent(ev) + '\n';
-    let existing = '';
-    try {
-      existing = await fs.readFile(WATCHDOG_LOG_PATH, 'utf8');
-    } catch {
-      // file doesn't exist yet
-    }
-    const trimmed = trimToLast(existing + line, LOG_MAX_LINES);
     await fs.mkdir(path.dirname(WATCHDOG_LOG_PATH), { recursive: true });
-    await fs.writeFile(WATCHDOG_LOG_PATH, trimmed, 'utf8');
+    await fs.appendFile(WATCHDOG_LOG_PATH, line, 'utf8');
+    if (++appendCount % LOG_TRIM_EVERY === 0) {
+      await trimLogToCap(WATCHDOG_LOG_PATH, LOG_MAX_LINES);
+    }
   } catch (err) {
     console.warn('[WATCHDOG] log write failed:', err);
   }

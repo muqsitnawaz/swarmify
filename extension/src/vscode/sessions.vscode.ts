@@ -294,6 +294,18 @@ function parseCodexTimestamp(sessionId: string): Date | null {
   return new Date(`${year}-${month}-${day}T${hour}:${minute}:${second}`);
 }
 
+// Per-file cache for built sessions, keyed by mtime+size. The discovery walk
+// runs on every fetchSessions webview message and otherwise re-reads each
+// session file's head (getPreview) every time; this skips the read for files
+// that haven't changed since the last scan.
+interface SessionBuildCacheEntry {
+  mtimeMs: number;
+  size: number;
+  session: AgentSession;
+}
+const SESSION_BUILD_CACHE = new Map<string, SessionBuildCacheEntry>();
+const SESSION_BUILD_CACHE_MAX = 1000;
+
 async function buildSession(
   agentType: AgentSession['agentType'],
   filePath: string,
@@ -302,18 +314,28 @@ async function buildSession(
   const stats = await safeStat(filePath);
   if (!stats) return null;
 
+  const cached = SESSION_BUILD_CACHE.get(filePath);
+  if (cached && cached.mtimeMs === stats.mtimeMs && cached.size === stats.size) {
+    return cached.session;
+  }
+
   const sessionId = path.basename(filePath, path.extname(filePath));
   const hasOverride = timestampOverride && !Number.isNaN(timestampOverride.getTime());
   const timestamp = hasOverride ? timestampOverride : (stats.mtime ?? stats.birthtime);
   const preview = await getPreview(filePath);
 
-  return {
+  const session: AgentSession = {
     agentType,
     sessionId,
     timestamp,
     path: filePath,
     preview
   };
+
+  SESSION_BUILD_CACHE.set(filePath, { mtimeMs: stats.mtimeMs, size: stats.size, session });
+  evictLRU(SESSION_BUILD_CACHE, SESSION_BUILD_CACHE_MAX);
+
+  return session;
 }
 
 // Convert workspace path to Claude's project folder name format
@@ -353,14 +375,34 @@ async function discoverClaudeProjectSessions(projectPath: string): Promise<Agent
   return sessions;
 }
 
+// Short-TTL cache for the discovery walk. fetchSessions fires this on every
+// webview message; without a cache the no-workspace branch readdir-walks every
+// project under ~/.claude/projects each time. Per-file head reads are already
+// cached by mtime in buildSession (SESSION_BUILD_CACHE); this caps how often
+// the directory walk itself runs. New sessions surface within DISCOVER_TTL_MS.
+interface DiscoverCacheEntry {
+  at: number;
+  sessions: AgentSession[];
+}
+const CLAUDE_DISCOVER_CACHE = new Map<string, DiscoverCacheEntry>();
+const DISCOVER_TTL_MS = 3000;
+
 async function discoverClaudeSessions(workspacePath?: string): Promise<AgentSession[]> {
+  const cacheKey = workspacePath ?? '<all>';
+  const cachedDiscovery = CLAUDE_DISCOVER_CACHE.get(cacheKey);
+  if (cachedDiscovery && Date.now() - cachedDiscovery.at < DISCOVER_TTL_MS) {
+    return cachedDiscovery.sessions;
+  }
+
   const root = path.join(homedir(), '.claude', 'projects');
 
   // If workspace provided, only scan that project folder
   if (workspacePath) {
     const projectFolder = workspaceToClaudeFolder(workspacePath);
     const projectPath = path.join(root, projectFolder);
-    return await discoverClaudeProjectSessions(projectPath);
+    const scoped = await discoverClaudeProjectSessions(projectPath);
+    CLAUDE_DISCOVER_CACHE.set(cacheKey, { at: Date.now(), sessions: scoped });
+    return scoped;
   }
 
   // No filter - scan all projects
@@ -374,6 +416,7 @@ async function discoverClaudeSessions(workspacePath?: string): Promise<AgentSess
     sessions.push(...projectSessions);
   }
 
+  CLAUDE_DISCOVER_CACHE.set(cacheKey, { at: Date.now(), sessions });
   return sessions;
 }
 
@@ -610,17 +653,70 @@ function extractLastUserMessage(tail: string): string | undefined {
   return undefined;
 }
 
+// Whitespace bytes for the "non-empty line" test. '\n' (0x0a) is never part of
+// a multi-byte UTF-8 sequence, and every ASCII whitespace byte is single-byte,
+// so we can count lines at the byte level without decoding the file.
+const WS_BYTES = new Set([0x20, 0x09, 0x0d, 0x0a]);
+
+// Incremental non-empty line count for append-only JSONL session files.
+// We cache how many complete (newline-terminated) non-empty lines we've already
+// counted and the byte offset just past the last counted '\n', then only scan
+// the bytes appended since. A trailing partial line (no '\n' yet) is counted in
+// the return value but not cached, so it's re-evaluated once it's completed.
+interface LineCountCacheEntry {
+  scannedBytes: number;
+  completeLines: number;
+}
+const LINE_COUNT_CACHE = new Map<string, LineCountCacheEntry>();
+const LINE_COUNT_CACHE_MAX = 200;
+
 async function countNonEmptyLines(filePath: string): Promise<number> {
+  let size: number;
   try {
-    const stream = createReadStream(filePath, { encoding: 'utf-8' });
-    const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
-    let count = 0;
-    for await (const line of rl) {
-      if (line.trim()) count++;
-    }
-    return count;
+    size = (await fs.stat(filePath)).size;
   } catch {
     return 0;
+  }
+
+  let cached = LINE_COUNT_CACHE.get(filePath);
+  if (cached && cached.scannedBytes > size) {
+    cached = undefined; // file shrank or was replaced -> rescan from the top
+  }
+
+  let handle: Awaited<ReturnType<typeof fs.open>> | undefined;
+  try {
+    handle = await fs.open(filePath, 'r');
+    let scannedBytes = cached?.scannedBytes ?? 0;
+    let completeLines = cached?.completeLines ?? 0;
+    let pendingHasContent = false; // current (unterminated) line has non-ws bytes
+
+    const CHUNK_SIZE = 64 * 1024;
+    let position = scannedBytes;
+    while (position < size) {
+      const readLen = Math.min(CHUNK_SIZE, size - position);
+      const buf = Buffer.alloc(readLen);
+      await handle.read(buf, 0, readLen, position);
+      for (let i = 0; i < readLen; i++) {
+        const b = buf[i];
+        if (b === 0x0a) {
+          if (pendingHasContent) completeLines++;
+          pendingHasContent = false;
+          scannedBytes = position + i + 1;
+        } else if (!WS_BYTES.has(b)) {
+          pendingHasContent = true;
+        }
+      }
+      position += readLen;
+    }
+
+    LINE_COUNT_CACHE.set(filePath, { scannedBytes, completeLines });
+    evictLRU(LINE_COUNT_CACHE, LINE_COUNT_CACHE_MAX);
+
+    return completeLines + (pendingHasContent ? 1 : 0);
+  } catch {
+    return 0;
+  } finally {
+    await handle?.close().catch(() => {});
   }
 }
 

@@ -1,4 +1,5 @@
 import { spawn } from 'child_process';
+import { resolveAgentsBin, bootstrapPath } from './agentsBin';
 
 const MAX_INPUT_CHARS = 4000;
 const MAX_LABEL_CHARS = 50;
@@ -26,14 +27,25 @@ export async function generateLabelWithLLM(
 
   const model = await resolveFastModel();
 
+  // Resolve the absolute `agents` binary + bootstrapped PATH so this works when
+  // the editor is launched from Dock/Finder with a minimal PATH (see agentsBin).
+  let bin: string;
+  let runPath: string;
+  try {
+    bin = await resolveAgentsBin();
+    runPath = `${bootstrapPath(bin)}:${process.env.PATH ?? ''}`;
+  } catch {
+    return null;
+  }
+
   return new Promise<string | null>((resolve) => {
     let stdout = '';
     let resolved = false;
 
     const child = spawn(
-      'agents',
+      bin,
       ['run', 'claude', prompt, '--mode', 'plan', '--model', model],
-      { stdio: ['ignore', 'pipe', 'ignore'] }
+      { stdio: ['ignore', 'pipe', 'ignore'], env: { ...process.env, PATH: runPath } }
     );
 
     const finish = (result: string | null) => {
@@ -76,12 +88,13 @@ interface CatalogEntry {
 }
 
 function queryFastModel(): Promise<string> {
-  return new Promise<string>((resolve, reject) => {
+  return resolveAgentsBin().then((bin) => new Promise<string>((resolve, reject) => {
     let stdout = '';
     let resolved = false;
 
-    const child = spawn('agents', ['models', 'claude', '--json'], {
-      stdio: ['ignore', 'pipe', 'ignore']
+    const child = spawn(bin, ['models', 'claude', '--json'], {
+      stdio: ['ignore', 'pipe', 'ignore'],
+      env: { ...process.env, PATH: `${bootstrapPath(bin)}:${process.env.PATH ?? ''}` },
     });
 
     const finish = (result: string | null) => {
@@ -102,7 +115,7 @@ function queryFastModel(): Promise<string> {
       if (code !== 0) return finish(null);
       finish(pickFastFromCatalog(stdout));
     });
-  });
+  }));
 }
 
 function pickFastFromCatalog(raw: string): string | null {

@@ -3,9 +3,11 @@
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as fsp from 'fs/promises';
 import * as vscode from 'vscode';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { readTailLines } from './sessions.vscode';
 import {
   AgentCli,
   PromptPackAgent,
@@ -640,14 +642,22 @@ function calcDuration(startedAt: Date, completedAt: Date | null, status: string)
   return `${roundedDays}d`;
 }
 
-// Parse stdout.log to extract file operations and commands
-function parseAgentLog(logPath: string): {
+// How many trailing lines of stdout.log to parse for the dashboard. The log
+// can grow to many MB for a long-running agent; the UI only shows recent
+// activity (last few messages / file ops), so we tail instead of reading the
+// whole file off the main thread.
+const LOG_TAIL_LINES = 400;
+
+// Parse stdout.log to extract file operations and commands. Reads only the
+// last LOG_TAIL_LINES lines via an async backward scan (readTailLines), never
+// the whole file.
+async function parseAgentLog(logPath: string): Promise<{
   filesCreated: string[];
   filesModified: string[];
   filesDeleted: string[];
   bashCommands: string[];
   lastMessages: string[];
-} {
+}> {
   const result = {
     filesCreated: [] as string[],
     filesModified: [] as string[],
@@ -656,13 +666,12 @@ function parseAgentLog(logPath: string): {
     lastMessages: [] as string[],
   };
 
-  if (!fs.existsSync(logPath)) {
+  const lines = await readTailLines(logPath, LOG_TAIL_LINES);
+  if (lines.length === 0) {
     return result;
   }
 
   try {
-    const content = fs.readFileSync(logPath, 'utf-8');
-    const lines = content.split('\n').filter(l => l.trim());
     const messages: string[] = [];
 
     for (const line of lines) {
@@ -883,8 +892,13 @@ export async function fetchTasks(limit?: number, filterCwd?: string): Promise<Ta
   const agentDirs: Array<{ dir: string; agentId: string }> = [];
 
   for (const baseDir of [AGENT_SWARM_DIR, AGENT_TEAMS_DIR]) {
-    if (!fs.existsSync(baseDir)) continue;
-    for (const agentId of fs.readdirSync(baseDir)) {
+    let agentIds: string[];
+    try {
+      agentIds = await fsp.readdir(baseDir);
+    } catch {
+      continue; // directory missing or unreadable
+    }
+    for (const agentId of agentIds) {
       agentDirs.push({ dir: baseDir, agentId });
     }
   }
@@ -899,10 +913,13 @@ export async function fetchTasks(limit?: number, filterCwd?: string): Promise<Ta
     const metaPath = path.join(agentDir, 'meta.json');
     const logPath = path.join(agentDir, 'stdout.log');
 
-    if (!fs.existsSync(metaPath)) continue;
-
     try {
-      const metaContent = fs.readFileSync(metaPath, 'utf-8');
+      let metaContent: string;
+      try {
+        metaContent = await fsp.readFile(metaPath, 'utf-8');
+      } catch {
+        continue; // meta.json missing or unreadable
+      }
       const meta: AgentMeta = JSON.parse(metaContent);
 
       // Filter by workspace cwd if specified (allow null cwd through)
@@ -910,7 +927,7 @@ export async function fetchTasks(limit?: number, filterCwd?: string): Promise<Ta
 
       const startedAt = new Date(meta.started_at);
       const completedAt = meta.completed_at ? new Date(meta.completed_at) : null;
-      const logData = parseAgentLog(logPath);
+      const logData = await parseAgentLog(logPath);
 
       const detail: AgentDetail = {
         agent_id: meta.agent_id,

@@ -12,14 +12,13 @@ const documentAgents = new Map<string, vscode.Terminal>();
 export class AgentsMarkdownEditorProvider implements vscode.CustomTextEditorProvider {
   public static register(context: vscode.ExtensionContext): vscode.Disposable {
     const provider = new AgentsMarkdownEditorProvider(context);
+    // No retainContextWhenHidden: on re-show the webview re-mounts and posts
+    // { type: 'ready' } (ui/editor App.tsx), which handleMessage answers with a
+    // full updateWebview(), so the document content restores without keeping a
+    // backgrounded iframe alive at full CPU.
     const providerRegistration = vscode.window.registerCustomEditorProvider(
       'agents.markdownEditor',
-      provider,
-      {
-        webviewOptions: {
-          retainContextWhenHidden: true,
-        },
-      }
+      provider
     );
     return providerRegistration;
   }
@@ -205,6 +204,12 @@ The user selected the above text from a markdown file. Help them with whatever t
           documentAgents.delete(docUri);
           webview.postMessage({ type: 'activeAgentChanged', hasActiveAgent: false });
           disposeListener.dispose();
+          // Prune ourselves from the tracking array too. dispose() stops the
+          // listener firing, but leaves a dead Disposable in context.subscriptions
+          // forever — one accrues per "Send to Agent" click. Splice it out so the
+          // array doesn't grow unbounded across the session.
+          const idx = this.context.subscriptions.indexOf(disposeListener);
+          if (idx !== -1) this.context.subscriptions.splice(idx, 1);
         }
       });
       this.context.subscriptions.push(disposeListener);

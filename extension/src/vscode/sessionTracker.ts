@@ -23,6 +23,14 @@ interface TrackedTerminal {
   workspacePath: string;
   sessionId?: string;
   trackedFile?: string;
+  // The watcher roots actually mounted for this terminal, captured at register
+  // time (plus any opencode roots resolved asynchronously afterwards). Release
+  // exactly these on unregister so mount/release stays symmetric even when the
+  // opencode root set is discovered lazily.
+  mountedRoots?: string[];
+  // setTimeout handles for the deferred adoption retries (450ms, 1200ms), so
+  // they can be cancelled if the terminal closes before they fire.
+  adoptionRetryTimers?: NodeJS.Timeout[];
 }
 
 interface SharedWatcher {
@@ -37,6 +45,26 @@ interface SharedWatcher {
 const DEBOUNCE_MS = 300;
 const LINE_CAP = 100;
 const DORMANT_THRESHOLD_MS = 10_000;
+// Bound the codex adoption scan: only the most-recent N session files by mtime
+// are inspected per call (a freshly launched session is always near the top).
+const CODEX_ADOPT_MAX_FILES = 40;
+// Cache parsed codex session cwd by file+mtime so the immediate + 450ms +
+// 1200ms retries (and concurrent terminals) don't re-readline the same files.
+const CODEX_CWD_CACHE_MAX = 500;
+const codexCwdCache = new Map<string, string | undefined>();
+
+function getCodexCwd(file: string, mtimeMs: number): Promise<string | undefined> {
+  const key = `${file}:${mtimeMs}`;
+  if (codexCwdCache.has(key)) return Promise.resolve(codexCwdCache.get(key));
+  return parseHead(file, 'codex').then((parsed) => {
+    if (codexCwdCache.size >= CODEX_CWD_CACHE_MAX) {
+      const oldest = codexCwdCache.keys().next().value;
+      if (oldest !== undefined) codexCwdCache.delete(oldest);
+    }
+    codexCwdCache.set(key, parsed.codexCwd);
+    return parsed.codexCwd;
+  });
+}
 // Bound for `lastWriteMs`: every fs.watch event on a watched session dir adds
 // an entry, but we only delete entries for tracked files. Without an upper
 // bound the map grows for the entire extension-host lifetime — over a long
@@ -123,16 +151,34 @@ function geminiRootsFor(workspacePath: string): string[] {
   return [...new Set(roots)];
 }
 
+// Opencode maps a workspace to its session dirs by scanning every project
+// JSON. That scan used to run synchronously (readdirSync + readFileSync of
+// EVERY project file) inside registerTerminal on the activation path. It now
+// runs off-thread via fs.promises and is cached per workspace; the sync getter
+// only returns what's already cached so terminal registration never blocks.
+const opencodeRootsCache = new Map<string, string[]>();
+const opencodeRootsInFlight = new Map<string, Promise<string[]>>();
+
 function opencodeRootsFor(workspacePath: string): string[] {
+  return opencodeRootsCache.get(workspacePath) ?? [];
+}
+
+async function resolveOpencodeRoots(workspacePath: string): Promise<string[]> {
   const projectRoot = path.join(homeDir(), '.local', 'share', 'opencode', 'storage', 'project');
   const sessionRoot = path.join(homeDir(), '.local', 'share', 'opencode', 'storage', 'session');
-  const roots: string[] = [];
+  let entries: fs.Dirent[];
   try {
-    for (const entry of fs.readdirSync(projectRoot, { withFileTypes: true })) {
-      if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
+    entries = await fs.promises.readdir(projectRoot, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const roots: string[] = [];
+  await Promise.all(
+    entries.map(async (entry) => {
+      if (!entry.isFile() || !entry.name.endsWith('.json')) return;
       const fullPath = path.join(projectRoot, entry.name);
       try {
-        const raw = fs.readFileSync(fullPath, 'utf-8');
+        const raw = await fs.promises.readFile(fullPath, 'utf-8');
         const parsed = JSON.parse(raw);
         const worktree = parsed?.worktree;
         const id = parsed?.id;
@@ -142,11 +188,29 @@ function opencodeRootsFor(workspacePath: string): string[] {
       } catch {
         /* ignore malformed project json */
       }
-    }
-  } catch {
-    /* ignore missing opencode storage */
-  }
+    }),
+  );
   return [...new Set(roots)];
+}
+
+function ensureOpencodeRoots(workspacePath: string): Promise<string[]> {
+  const cached = opencodeRootsCache.get(workspacePath);
+  if (cached) return Promise.resolve(cached);
+  let inflight = opencodeRootsInFlight.get(workspacePath);
+  if (!inflight) {
+    inflight = resolveOpencodeRoots(workspacePath)
+      .then((roots) => {
+        opencodeRootsCache.set(workspacePath, roots);
+        opencodeRootsInFlight.delete(workspacePath);
+        return roots;
+      })
+      .catch(() => {
+        opencodeRootsInFlight.delete(workspacePath);
+        return [];
+      });
+    opencodeRootsInFlight.set(workspacePath, inflight);
+  }
+  return inflight;
 }
 
 function msUntilNextMidnight(): number {
@@ -532,7 +596,7 @@ async function adoptExistingCodexSession(
 
     files.sort((a, b) => b.mtimeMs - a.mtimeMs);
 
-    for (const candidate of files.slice(0, 120)) {
+    for (const candidate of files.slice(0, CODEX_ADOPT_MAX_FILES)) {
       const candidateId = sessionIdFromFile(candidate.file);
       if (isSessionIdAlreadyTracked('codex', candidateId, t.terminal)) continue;
       if (codexAdoptionClaims.has(candidateId)) continue;
@@ -541,8 +605,8 @@ async function adoptExistingCodexSession(
       try {
         if (isSessionIdAlreadyTracked('codex', candidateId, t.terminal)) continue;
 
-        const parsed = await parseHead(candidate.file, 'codex');
-        if (parsed.codexCwd !== t.workspacePath) continue;
+        const cwd = await getCodexCwd(candidate.file, candidate.mtimeMs);
+        if (cwd !== t.workspacePath) continue;
         applyChange(t, candidateId, candidate.file);
         return;
       } finally {
@@ -714,11 +778,13 @@ function scheduleAdoptionRetry(
   rootsOverride?: string[],
 ): void {
   const delays = [450, 1200];
+  const timers = entry.adoptionRetryTimers ?? (entry.adoptionRetryTimers = []);
   for (const delayMs of delays) {
-    setTimeout(() => {
+    const handle = setTimeout(() => {
       if (tracked.get(terminal) !== entry) return;
       void adoptExistingSessionForTerminal(entry, rootsOverride);
     }, delayMs);
+    timers.push(handle);
   }
 }
 
@@ -753,9 +819,17 @@ export function initSessionTracker(context: vscode.ExtensionContext): void {
       watchersByDir.clear();
       for (const timer of debounceTimers.values()) clearTimeout(timer);
       debounceTimers.clear();
+      for (const entry of tracked.values()) {
+        if (entry.adoptionRetryTimers) {
+          for (const timer of entry.adoptionRetryTimers) clearTimeout(timer);
+        }
+      }
       tracked.clear();
       lastWriteMs.clear();
       codexAdoptionClaims.clear();
+      codexCwdCache.clear();
+      opencodeRootsCache.clear();
+      opencodeRootsInFlight.clear();
       listeners = [];
       initialized = false;
     },
@@ -780,7 +854,9 @@ export function registerTerminal(
     sessionId: currentSessionId,
   };
   tracked.set(terminal, entry);
-  for (const root of rootsFor(entry)) {
+  const initialRoots = rootsFor(entry);
+  entry.mountedRoots = [...initialRoots];
+  for (const root of initialRoots) {
     mountWatcher(root, agentType);
   }
 
@@ -792,14 +868,36 @@ export function registerTerminal(
     // Fallback for environments where fs.watch may miss/deny create events.
     scheduleAdoptionRetry(terminal, entry);
   }
+
+  // Opencode roots are resolved off the activation path (see ensureOpencodeRoots).
+  // Once resolved, mount any newly discovered roots and run adoption against
+  // them; mounted roots are tracked so unregister releases them symmetrically.
+  if (agentType === 'opencode') {
+    void ensureOpencodeRoots(workspacePath).then((roots) => {
+      if (tracked.get(terminal) !== entry) return;
+      const already = entry.mountedRoots ?? (entry.mountedRoots = []);
+      for (const root of roots) {
+        if (already.includes(root)) continue;
+        mountWatcher(root, agentType);
+        already.push(root);
+      }
+      if (roots.length > 0 && !entry.sessionId) {
+        void adoptExistingSessionForTerminal(entry, roots);
+      }
+    });
+  }
 }
 
 export function unregisterTerminal(terminal: vscode.Terminal): void {
   const entry = tracked.get(terminal);
   if (!entry) return;
   tracked.delete(terminal);
+  if (entry.adoptionRetryTimers) {
+    for (const timer of entry.adoptionRetryTimers) clearTimeout(timer);
+    entry.adoptionRetryTimers = undefined;
+  }
   if (entry.trackedFile) lastWriteMs.delete(entry.trackedFile);
-  for (const root of rootsFor(entry)) {
+  for (const root of entry.mountedRoots ?? rootsFor(entry)) {
     releaseWatcher(root);
   }
 }
@@ -827,9 +925,17 @@ export function __reset(): void {
   debounceTimers.clear();
   if (midnightTimer) clearTimeout(midnightTimer);
   midnightTimer = undefined;
+  for (const entry of tracked.values()) {
+    if (entry.adoptionRetryTimers) {
+      for (const timer of entry.adoptionRetryTimers) clearTimeout(timer);
+    }
+  }
   tracked.clear();
   lastWriteMs.clear();
   codexAdoptionClaims.clear();
+  codexCwdCache.clear();
+  opencodeRootsCache.clear();
+  opencodeRootsInFlight.clear();
   listeners = [];
   initialized = false;
   cachedClaudeVersions = undefined;
@@ -849,6 +955,7 @@ export function __testRegister(
     sessionId: currentSessionId,
   };
   tracked.set(terminal, entry);
+  entry.mountedRoots = [...rootDirs];
   for (const root of rootDirs) mountWatcher(root, agentType);
   if ((agentType === 'claude' && currentSessionId) || (agentType !== 'claude' && !currentSessionId)) {
     void adoptExistingSessionForTerminal(entry, rootDirs);

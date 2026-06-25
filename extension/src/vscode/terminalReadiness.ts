@@ -44,13 +44,25 @@ const KNOWN_SHELLS = new Set([
   'zsh', '-zsh', 'bash', '-bash', 'fish', '-fish', 'sh', '-sh',
 ]);
 
-const PS_POLL_MS = 50;
+// Probe polling uses exponential backoff instead of a fixed tight interval.
+// Each probe starts at its base cadence (the fast case is unchanged) and
+// doubles the delay on every non-firing tick up to PROBE_BACKOFF_CAP_MS, so an
+// idle machine with many terminals stops spinning `ps`/`pgrep` every 50-150ms.
+const SHELL_PROBE_BASE_MS = 50;          // shellReady: first poll cadence
+const IDLE_PROBE_BASE_MS = 150;          // prompt/agent: first poll cadence
+const PROBE_BACKOFF_CAP_MS = 1000;       // never poll slower than this
 const PS_TIMEOUT_MS = 2000;
 
-const IDLE_POLL_MS = 150;
-const IDLE_DEBOUNCE_COUNT = 2;
+// Debounce windows are wall-clock so backoff (variable poll cadence) never
+// changes when the event fires — only how often we sample.
+const PROMPT_IDLE_WINDOW_MS = 150;       // continuous "no children" before promptReady
 const PROMPT_READY_TIMEOUT_MS = 30_000;
 const AGENT_READY_TIMEOUT_MS = 60_000;
+
+// Prefer the shell-integration event (see initReadiness) for promptReady; only
+// poll if it hasn't fired within this grace window. When shell integration is
+// available (the common case) the fallback probe never runs a single pgrep.
+const PROMPT_FALLBACK_GRACE_MS = 300;
 
 // The agent process (Node-based TUIs like Claude/Codex/Gemini) will sit in
 // 'S' state during ANY I/O wait — including auto-update network calls that
@@ -58,8 +70,31 @@ const AGENT_READY_TIMEOUT_MS = 60_000;
 // distinguish "idle at prompt" from "idle on network." We defend with a
 // minimum wall-clock floor since the child appeared, and a longer continuous
 // idle window than promptReady uses.
-const AGENT_IDLE_DEBOUNCE_COUNT = 10;    // 1500ms of continuous S-state
+const AGENT_IDLE_WINDOW_MS = 1500;       // continuous S-state before agentReady
 const AGENT_MIN_CHILD_RUNTIME_MS = 2500; // child has existed at least 2.5s
+
+// Hard cap on concurrent ps/pgrep probe subprocesses across every terminal, so
+// a burst of terminal opens can't fork dozens of probes at once.
+const MAX_CONCURRENT_PROBES = 8;
+
+function backoffMs(base: number, attempt: number): number {
+  return Math.min(base * 2 ** attempt, PROBE_BACKOFF_CAP_MS);
+}
+
+let activeProbeCount = 0;
+const probeWaiters: Array<() => void> = [];
+async function withProbeSlot<T>(fn: () => Promise<T>): Promise<T> {
+  if (activeProbeCount >= MAX_CONCURRENT_PROBES) {
+    await new Promise<void>((res) => probeWaiters.push(res));
+  }
+  activeProbeCount++;
+  try {
+    return await fn();
+  } finally {
+    activeProbeCount--;
+    probeWaiters.shift()?.();
+  }
+}
 
 interface Registered {
   entry: ReadinessEntry;
@@ -411,7 +446,7 @@ async function findAgentInTree(
     const childrenResults = await Promise.all(
       frontier.map(async (pid) => {
         try {
-          const { stdout } = await execAsync(`pgrep -P ${pid}`);
+          const { stdout } = await withProbeSlot(() => execAsync(`pgrep -P ${pid}`));
           return stdout.trim().split(/\s+/).filter(Boolean).map((s) => parseInt(s, 10));
         } catch {
           return [];
@@ -421,7 +456,7 @@ async function findAgentInTree(
     const nextFrontier = childrenResults.flat().filter((n) => Number.isFinite(n));
     for (const childPid of nextFrontier) {
       try {
-        const { stdout: argsOut } = await execAsync(`ps -p ${childPid} -o args=`);
+        const { stdout: argsOut } = await withProbeSlot(() => execAsync(`ps -p ${childPid} -o args=`));
         const args = argsOut.trim();
         const agentKey = detectAgentKeyFromArgs(args);
         if (agentKey) {
@@ -442,7 +477,7 @@ async function locateSessionIdForAgent(
 ): Promise<string | undefined> {
   let childStartMs = Date.now() - SHELL_ADOPTION_SESSION_LOOKBACK_MS;
   try {
-    const { stdout } = await execAsync(`ps -p ${childPid} -o lstart=`);
+    const { stdout } = await withProbeSlot(() => execAsync(`ps -p ${childPid} -o lstart=`));
     const parsed = Date.parse(stdout.trim());
     if (!Number.isNaN(parsed)) childStartMs = parsed - 1000;
   } catch {
@@ -504,13 +539,14 @@ function startShellReadyProbe(r: Registered): void {
   const pid = r.pid;
   if (pid === null) return;
   const startedAt = Date.now();
+  let attempt = 0;
 
   const tick = async () => {
     if (r.entry.disposed) return;
     if (hasFired(r.entry, 'shellReady')) return;
 
     try {
-      const { stdout } = await execAsync(`ps -p ${pid} -o comm=`);
+      const { stdout } = await withProbeSlot(() => execAsync(`ps -p ${pid} -o comm=`));
       const comm = stdout.trim().split('/').pop() || '';
       if (KNOWN_SHELLS.has(comm)) {
         markEvent(r.entry, 'shellReady');
@@ -528,7 +564,7 @@ function startShellReadyProbe(r: Registered): void {
       return;
     }
 
-    const t = setTimeout(tick, PS_POLL_MS);
+    const t = setTimeout(tick, backoffMs(SHELL_PROBE_BASE_MS, attempt++));
     r.timers.push(t);
   };
   tick();
@@ -539,39 +575,48 @@ function startPromptReadyFallbackProbe(r: Registered): void {
   if (pid === null) return;
   if (hasFired(r.entry, 'promptReady')) return;
 
-  let consecutiveIdle = 0;
+  let idleSince: number | null = null;
+  let attempt = 0;
 
   const tick = async () => {
     if (r.entry.disposed) return;
+    // Shell-integration event (initReadiness) is the preferred signal; if it
+    // already fired we never poll again.
     if (hasFired(r.entry, 'promptReady')) return;
 
+    let idle = false;
     try {
-      const { stdout } = await execAsync(`pgrep -P ${pid}`);
-      const children = stdout.trim();
-      if (children === '') {
-        consecutiveIdle++;
-        if (consecutiveIdle >= IDLE_DEBOUNCE_COUNT) {
-          markEvent(r.entry, 'promptReady');
-          return;
-        }
-      } else {
-        consecutiveIdle = 0;
-      }
+      const { stdout } = await withProbeSlot(() => execAsync(`pgrep -P ${pid}`));
+      idle = stdout.trim() === '';
     } catch {
       // pgrep returns exit code 1 when no matches — promisified exec rejects.
-      // That means zero children; count as idle tick.
-      consecutiveIdle++;
-      if (consecutiveIdle >= IDLE_DEBOUNCE_COUNT) {
+      // That means zero children; treat as idle.
+      idle = true;
+    }
+
+    let accumulating = false;
+    if (idle) {
+      if (idleSince === null) idleSince = Date.now();
+      if (Date.now() - idleSince >= PROMPT_IDLE_WINDOW_MS) {
         markEvent(r.entry, 'promptReady');
         return;
       }
+      accumulating = true;
+    } else {
+      idleSince = null;
     }
 
-    const t = setTimeout(tick, IDLE_POLL_MS);
+    // Sample at base cadence while accumulating the idle window so we fire on
+    // time; back off only while there's no idle signal to chase.
+    const delay = accumulating ? IDLE_PROBE_BASE_MS : backoffMs(IDLE_PROBE_BASE_MS, attempt++);
+    const t = setTimeout(tick, delay);
     r.timers.push(t);
   };
 
-  tick();
+  // Give shell integration a chance first; only fall back to polling if it
+  // hasn't fired by the grace deadline.
+  const first = setTimeout(tick, PROMPT_FALLBACK_GRACE_MS);
+  r.timers.push(first);
 }
 
 function startAgentReadyProbe(r: Registered): void {
@@ -579,52 +624,54 @@ function startAgentReadyProbe(r: Registered): void {
   if (pid === null) return;
   if (hasFired(r.entry, 'agentReady')) return;
 
-  let consecutiveIdle = 0;
+  let idleSince: number | null = null;
   let childFirstSeenAt: number | null = null;
+  let attempt = 0;
 
   const tick = async () => {
     if (r.entry.disposed) return;
     if (hasFired(r.entry, 'agentReady')) return;
 
+    let accumulating = false;
     try {
-      const { stdout: childrenOut } = await execAsync(`pgrep -P ${pid}`);
+      const { stdout: childrenOut } = await withProbeSlot(() => execAsync(`pgrep -P ${pid}`));
       const childPid = childrenOut.trim().split(/\s+/)[0];
       if (!childPid) {
         // No child yet — agent CLI hasn't started. Reset both signals.
-        consecutiveIdle = 0;
+        idleSince = null;
         childFirstSeenAt = null;
-        const t = setTimeout(tick, IDLE_POLL_MS);
-        r.timers.push(t);
-        return;
-      }
-
-      if (childFirstSeenAt === null) {
-        childFirstSeenAt = Date.now();
-      }
-
-      const { stdout: statOut } = await execAsync(`ps -p ${childPid} -o stat=`);
-      const state = statOut.trim();
-      const idle = state.startsWith('S');
-      if (idle) {
-        consecutiveIdle++;
-        const runtimeMs = Date.now() - childFirstSeenAt;
-        if (
-          consecutiveIdle >= AGENT_IDLE_DEBOUNCE_COUNT &&
-          runtimeMs >= AGENT_MIN_CHILD_RUNTIME_MS
-        ) {
-          markEvent(r.entry, 'agentReady');
-          return;
-        }
       } else {
-        // Any R/D/Z state breaks continuity. This is the main defense against
-        // mistaking network-I/O sleep for TUI-idle sleep.
-        consecutiveIdle = 0;
+        if (childFirstSeenAt === null) {
+          childFirstSeenAt = Date.now();
+        }
+
+        const { stdout: statOut } = await withProbeSlot(() => execAsync(`ps -p ${childPid} -o stat=`));
+        const idle = statOut.trim().startsWith('S');
+        if (idle) {
+          if (idleSince === null) idleSince = Date.now();
+          const runtimeMs = Date.now() - childFirstSeenAt;
+          if (
+            Date.now() - idleSince >= AGENT_IDLE_WINDOW_MS &&
+            runtimeMs >= AGENT_MIN_CHILD_RUNTIME_MS
+          ) {
+            markEvent(r.entry, 'agentReady');
+            return;
+          }
+          accumulating = true;
+        } else {
+          // Any R/D/Z state breaks continuity. This is the main defense against
+          // mistaking network-I/O sleep for TUI-idle sleep.
+          idleSince = null;
+        }
       }
     } catch {
-      consecutiveIdle = 0;
+      idleSince = null;
     }
 
-    const t = setTimeout(tick, IDLE_POLL_MS);
+    // Sample at base cadence while the idle window accumulates; back off while
+    // the agent is actively working so an idle machine isn't probed every 150ms.
+    const delay = accumulating ? IDLE_PROBE_BASE_MS : backoffMs(IDLE_PROBE_BASE_MS, attempt++);
+    const t = setTimeout(tick, delay);
     r.timers.push(t);
   };
 
