@@ -1,7 +1,11 @@
 import { test, expect } from 'bun:test';
 import { getAgentResources, invalidateAgentResourcesCache, RESOURCE_KINDS } from './agentResources';
 
-// Real-service test: shells the actual `agents inspect <target> --json` CLI.
+// Real-service tests: shell the actual `agents inspect <target> --json` CLI.
+// A generous timeout keeps them green under full-suite parallel CLI contention
+// (the default 5s flakes when many tests invoke the agents CLI at once).
+const CLI_TIMEOUT_MS = 30_000;
+
 // Skips gracefully when the agents CLI is not installed in this environment.
 test('getAgentResources returns DotAgents repos with numeric capability counts', async () => {
   invalidateAgentResourcesCache();
@@ -23,7 +27,7 @@ test('getAgentResources returns DotAgents repos with numeric capability counts',
     expect(Number.isFinite(user!.counts[kind])).toBe(true);
     expect(user!.counts[kind]).toBeGreaterThanOrEqual(0);
   }
-});
+}, CLI_TIMEOUT_MS);
 
 test('getAgentResources caches within the TTL window', async () => {
   invalidateAgentResourcesCache();
@@ -31,4 +35,4 @@ test('getAgentResources caches within the TTL window', async () => {
   const second = await getAgentResources(undefined, false);
   // Same cached reference (no re-shell) within the 60s window.
   expect(second).toBe(first);
-});
+}, CLI_TIMEOUT_MS);
