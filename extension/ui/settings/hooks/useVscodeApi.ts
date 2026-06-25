@@ -58,3 +58,6 @@ export type VsCodeMessageType =
   | 'installSwarmAgent'
   | 'installCommandPack'
   | 'quickSpawn'
+  | 'subscribeFloor'
+  | 'unsubscribeFloor'
+  | 'fetchAgentResources'

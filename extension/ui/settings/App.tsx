@@ -377,17 +377,24 @@ export default function App() {
     vscode.postMessage({ type: 'refreshAgentInventories' })
   }, [activeTab, agentInventories])
 
-  // Poll for tasks and terminals when floor tab is active and the panel is
-  // visible. retainContextWhenHidden keeps the React tree alive when the tab
-  // is hidden behind another, so without the visibility gate these would
-  // keep firing network requests for a UI nobody is looking at.
+  // Stream Floor updates while the floor tab is active and the panel is
+  // visible. The host watches session files of all floor terminals + the teams
+  // config and pushes allTerminalsData/tasksData on change (debounced), so
+  // activity shows in near-real-time instead of on a fixed poll. A slow 30s
+  // poll stays as a safety backstop in case a filesystem event is missed.
+  // retainContextWhenHidden keeps the React tree alive when the tab is hidden,
+  // so the visibility gate prevents work for a UI nobody is looking at.
   useEffect(() => {
     if (activeTab !== 'floor' || !tasksLoaded || !panelVisible) return
+    vscode.postMessage({ type: 'subscribeFloor' })
     const interval = setInterval(() => {
       vscode.postMessage({ type: 'fetchTasks' })
       vscode.postMessage({ type: 'fetchAllTerminals' })
-    }, 10_000)
-    return () => clearInterval(interval)
+    }, 30_000)
+    return () => {
+      clearInterval(interval)
+      vscode.postMessage({ type: 'unsubscribeFloor' })
+    }
   }, [activeTab, tasksLoaded, panelVisible])
 
   // Poll watchdog log when floor tab is active and watchdog is enabled

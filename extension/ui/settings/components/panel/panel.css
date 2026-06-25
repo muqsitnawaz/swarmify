@@ -915,3 +915,132 @@
     padding: 12px;
   }
 }
+
+/* ============================================
+   HARNESS ROSTER — full multi-agent inventory
+   ============================================ */
+.sw-panel-section-head { position: relative; }
+.sw-roster-refresh {
+  position: absolute; right: 0; top: -2px;
+  font-family: "Geist Mono", monospace; font-size: 9.5px; font-weight: 600;
+  letter-spacing: 0.04em; text-transform: uppercase;
+  padding: 3px 8px; border-radius: var(--r-xs);
+  border: 1px solid var(--ds-border); background: var(--ds-bg-recessed);
+  color: var(--ds-text-dim); cursor: pointer; box-shadow: var(--shadow-raised);
+}
+.sw-roster-refresh:hover { color: var(--ds-text); }
+
+.sw-roster-empty {
+  font-size: 12px; color: var(--ds-text-dim); padding: 14px 4px; line-height: 1.5;
+}
+
+.sw-roster-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(248px, 1fr));
+  gap: 10px;
+}
+
+.sw-roster-card {
+  background: var(--ds-bg-panel);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-emboss);
+  padding: 12px 13px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.sw-roster-card.dim { opacity: 0.6; }
+
+.sw-roster-card-top { display: flex; align-items: center; gap: 9px; }
+.sw-roster-logo {
+  width: 28px; height: 28px; border-radius: var(--r-md); flex-shrink: 0;
+  object-fit: contain; background: var(--ds-bg-recessed);
+}
+.sw-roster-logo.placeholder {
+  display: flex; align-items: center; justify-content: center;
+  font-family: "Geist Mono", monospace; font-weight: 800; font-size: 10px;
+  color: var(--ds-text-dim); box-shadow: var(--shadow-inset);
+}
+.sw-roster-id { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.sw-roster-name { font-size: 13px; font-weight: 700; color: var(--ds-text); }
+.sw-roster-ver { font-size: 9.5px; color: var(--ds-text-dim); margin-top: 1px; }
+.sw-roster-running {
+  font-family: "Geist Mono", monospace; font-size: 10px; font-weight: 700;
+  color: var(--brand); background: var(--ds-bg-recessed);
+  padding: 1px 7px; border-radius: 999px;
+  box-shadow: 0 0 6px var(--brand-ring), inset 0 0 0 1px var(--brand-700);
+}
+.sw-roster-usage-led { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; border: 1px solid rgba(0,0,0,0.25); }
+.sw-roster-usage-led.ok { background: var(--led-running); box-shadow: 0 0 5px var(--led-running-glow); }
+.sw-roster-usage-led.warn { background: var(--status-pending); box-shadow: 0 0 5px var(--led-pending-glow); }
+.sw-roster-usage-led.hot { background: var(--status-failed); box-shadow: 0 0 5px var(--led-failed-glow); }
+.sw-roster-usage-led.idle { background: var(--ds-text-faint); }
+
+.sw-roster-rows { display: flex; flex-direction: column; gap: 6px; }
+.sw-roster-row { display: flex; align-items: center; gap: 8px; font-size: 11.5px; }
+.sw-roster-k {
+  font-family: "Geist Mono", monospace; font-size: 9px; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--ds-text-faint); width: 52px; flex-shrink: 0;
+}
+.sw-roster-v { color: var(--ds-text-muted); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sw-roster-usage { display: flex; align-items: center; gap: 8px; }
+.sw-roster-gauge {
+  flex: 1; height: 6px; border-radius: 99px; background: var(--ds-bg-sunken);
+  box-shadow: var(--shadow-inset); overflow: hidden;
+}
+.sw-roster-gauge > i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--brand-700), var(--brand)); }
+.sw-roster-gauge.warn > i { background: linear-gradient(90deg, #a8771a, var(--status-pending)); }
+.sw-roster-gauge.hot > i { background: linear-gradient(90deg, #a11, var(--status-failed)); }
+.sw-roster-pct { font-size: 10px; color: var(--ds-text-dim); min-width: 30px; text-align: right; }
+
+.sw-roster-foot {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  border-top: 1px solid var(--ds-border-subtle); padding-top: 9px;
+}
+.sw-roster-chip {
+  font-size: 10px; padding: 1px 6px; border-radius: var(--r-xs);
+  background: var(--ds-bg-recessed); border: 1px solid var(--ds-border);
+  color: var(--ds-text-dim); box-shadow: var(--shadow-inset);
+}
+.sw-roster-foot-spacer { flex: 1; }
+.sw-roster-strategy {
+  display: inline-flex; gap: 2px; padding: 2px; border-radius: 6px;
+  border: 1px solid var(--ds-border); background: var(--ds-bg-sunken);
+}
+.sw-roster-strat-btn {
+  border: 0; background: transparent; color: var(--ds-text-dim);
+  font-family: "Geist Mono", monospace; font-size: 8.5px; font-weight: 600;
+  letter-spacing: 0.04em; text-transform: uppercase;
+  padding: 2px 6px; border-radius: 4px; cursor: pointer;
+}
+.sw-roster-strat-btn:hover:not(:disabled) { color: var(--ds-text); }
+.sw-roster-strat-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.sw-roster-strat-btn.active { background: var(--ds-bg-panel); color: var(--ds-text); box-shadow: var(--shadow-raised); }
+
+/* ============================================
+   AGENT RESOURCES — .agents repos (inspect --json)
+   ============================================ */
+.sw-resources-grid { display: flex; flex-direction: column; gap: 10px; }
+.sw-resource-repo {
+  background: var(--ds-bg-panel); border: 1px solid var(--ds-border);
+  border-radius: var(--r-lg); box-shadow: var(--shadow-emboss); padding: 12px 14px;
+}
+.sw-resource-repo-top { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.sw-resource-tag {
+  font-family: "Geist Mono", monospace; font-size: 9px; font-weight: 800;
+  letter-spacing: 0.06em; text-transform: uppercase; color: #0a0a0a;
+  background: var(--brand); padding: 2px 7px; border-radius: var(--r-xs);
+}
+.sw-resource-tag.system { background: #4A7DFF; color: #fff; }
+.sw-resource-tag.project { background: var(--status-pending); }
+.sw-resource-tag.alias { background: #8b5cf6; color: #fff; }
+.sw-resource-path { font-family: "Geist Mono", monospace; font-size: 11px; color: var(--ds-text-muted); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sw-resource-counts { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 6px; }
+.sw-resource-stat {
+  display: flex; flex-direction: column; gap: 2px; padding: 7px 9px;
+  border-radius: var(--r-md); background: var(--ds-bg-recessed);
+  border: 1px solid var(--ds-border-subtle); box-shadow: var(--shadow-inset);
+}
+.sw-resource-stat .n { font-family: "Geist Mono", monospace; font-size: 16px; font-weight: 700; color: var(--ds-text); line-height: 1; }
+.sw-resource-stat.zero .n { color: var(--ds-text-faint); }
+.sw-resource-stat .l { font-family: "Geist Mono", monospace; font-size: 8.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ds-text-faint); }
+.sw-resources-empty, .sw-resources-loading { font-size: 12px; color: var(--ds-text-dim); padding: 14px 4px; }

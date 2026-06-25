@@ -3,6 +3,8 @@ import { RefreshCw, Waypoints, KeyRound, ShieldAlert, FileEdit } from 'lucide-re
 import { Input } from '../ui/input'
 import { postMessage } from '../../hooks'
 import { AgentDial } from './AgentDial'
+import { HarnessRoster } from './HarnessRoster'
+import { AgentResources } from './AgentResources'
 import { LaunchMatrix } from './LaunchMatrix'
 import { StatusBank } from './StatusBank'
 import type { StatusBankItem, StatusBankLevel } from './StatusBank'
@@ -361,6 +363,16 @@ export function PanelTab({
           />
         </div>
       </div>
+
+      <HarnessRoster
+        agentInventories={agentInventories}
+        runningCounts={runningCounts}
+        icons={icons}
+        isLightTheme={isLightTheme}
+        onSetAgentRunStrategy={onSetAgentRunStrategy}
+      />
+
+      <AgentResources />
 
       <div className="sw-panel-grid sw-panel-grid-main">
         <section className="sw-panel-section">
