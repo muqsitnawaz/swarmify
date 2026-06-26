@@ -633,6 +633,13 @@ export async function activate(context: vscode.ExtensionContext) {
   // of the stack can gate on isLeader(). Re-elects automatically on takeover.
   initMonitorLeader(context);
 
+  // Monitor runtime (#67): the leader runs the broadcast host; EVERY window runs
+  // a thin follower that reports its terminal tuples to the monitor and resolves
+  // broadcast facts back to its own terminals. Migrations #68-71 move the heavy
+  // probes/watchers/watchdog/panel behind this gate; they are NOT moved here.
+  initMonitorHost(context);
+  initMonitorFollower(context);
+
   // Activity-bar sidebar that always reflects the currently focused agent
   // terminal: title, version, label, cwd, PLAN.md, and any teams running in
   // this directory. Lazy-resolves when the user clicks the activity-bar icon.
@@ -4120,6 +4127,90 @@ function initMonitorLeader(context: vscode.ExtensionContext): void {
   // Graceful handoff: drop the lease on dispose so a peer takes over at once
   // instead of waiting out the TTL.
   context.subscriptions.push({ dispose: () => leader.disposeLeader() });
+}
+
+// Run the monitor host (the broadcast server) ONLY while this window is the
+// elected leader (#67). `runOnLeaderOnly` starts it on leadership gain and
+// disposes it on loss; the next leader binds the same socket and followers
+// auto-reconnect. This is also the seam the migration issues (#68-71) wrap
+// their heavy starters in — they are intentionally NOT moved here.
+function initMonitorHost(context: vscode.ExtensionContext): void {
+  const { runOnLeaderOnly } = require('../monitor/gate') as typeof import('../monitor/gate');
+  const { MonitorHost } = require('../monitor/host') as typeof import('../monitor/host');
+  const gate = runOnLeaderOnly(() => {
+    const host = new MonitorHost();
+    void host.start().catch((err) => console.error('[MONITOR] host start failed:', err));
+    return { dispose: () => { void host.stop().catch(() => {}); } };
+  });
+  context.subscriptions.push(gate);
+}
+
+// The always-on per-window follower (#67). It connects to the monitor, reports
+// this window's terminal tuples over the broadcast request channel, and
+// resolves broadcast facts back to this window's own `vscode.Terminal` via the
+// window-local `editorTerminals` map (never moved out of this window). The
+// foreman-registry write (initForemanRegistry) stays as the disconnected-case
+// fallback — reportTuples is a no-op until the connection is up.
+function initMonitorFollower(context: vscode.ExtensionContext): void {
+  const { MonitorFollower } = require('../monitor/follower') as typeof import('../monitor/follower');
+  const { computeWindowId } = require('../core/foreman.windowId') as typeof import('../core/foreman.windowId');
+  type TerminalTuple = import('../monitor/protocol').TerminalTuple;
+
+  const windowId = computeWindowId(vscode.env.sessionId, process.pid);
+
+  // Resolve a broadcast pid/sessionId back to THIS window's terminal, scanning
+  // only the window-local registry (stays per-window per epic #64).
+  const resolver = (key: { pid?: number | null; sessionId?: string | null }):
+    | vscode.Terminal
+    | undefined => {
+    for (const entry of terminals.getAllTerminals()) {
+      if (key.pid != null && entry.pid === key.pid) return entry.terminal;
+      if (key.sessionId && entry.sessionId === key.sessionId) return entry.terminal;
+    }
+    return undefined;
+  };
+
+  const collectTuples = (): TerminalTuple[] => {
+    const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? null;
+    return terminals
+      .getAllTerminals()
+      .filter((e) => e.terminal.exitStatus === undefined && e.agentConfig)
+      .map((e) => ({
+        windowId,
+        terminalId: e.id,
+        pid: e.pid ?? null,
+        sessionId: e.sessionId ?? null,
+        workspacePath,
+        agentType: e.agentType ?? null,
+      }));
+  };
+
+  let follower: InstanceType<typeof MonitorFollower<vscode.Terminal>>;
+  const report = () => {
+    if (follower?.connected) void follower.reportTuples(collectTuples());
+  };
+
+  follower = new MonitorFollower<vscode.Terminal>({
+    windowId,
+    resolver,
+    // Report as soon as the connection (re)establishes, then on terminal events.
+    clientOptions: { onStateChange: (s) => { if (s === 'connected') report(); } },
+  });
+  follower.start();
+
+  context.subscriptions.push(
+    vscode.window.onDidOpenTerminal(() => report()),
+    vscode.window.onDidCloseTerminal(() => report()),
+    vscode.window.onDidChangeTerminalState(() => report()),
+  );
+  const timer = setInterval(report, 60_000);
+  (timer as { unref?: () => void })?.unref?.();
+  context.subscriptions.push({
+    dispose: () => {
+      clearInterval(timer);
+      follower.stop();
+    },
+  });
 }
 
 export async function deactivate(): Promise<void> {
