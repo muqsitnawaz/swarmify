@@ -19,6 +19,8 @@ import {
 } from './broadcast';
 import { MonitorEvent } from './broadcastTypes';
 import {
+  ArmAgentRequest,
+  ArmShellAdoptionRequest,
   isTuplesSnapshot,
   MONITOR_OP,
   ReportTuplesAck,
@@ -101,6 +103,45 @@ export class MonitorFollower<T> {
     return () => {
       this.listeners.delete(listener);
     };
+  }
+
+  /**
+   * Subscribe to EVERY raw broadcast event (readiness/session/etc.), not just
+   * resolved tuple snapshots. The wiring layer uses this to route the migrated
+   * facts (#68, #69) into terminalReadiness / sessionTracker. Returns an
+   * unsubscribe function.
+   */
+  onMonitorEvent(listener: (event: MonitorEvent) => void): () => void {
+    return this.client.subscribe(listener);
+  }
+
+  /**
+   * Ask the monitor to arm agentReady detection for a shell pid (#68). No-op
+   * (returns false) while disconnected so the caller keeps the local fallback.
+   */
+  async armAgent(pid: number, agentKey?: string, sessionId?: string): Promise<boolean> {
+    if (!this.client.connected) return false;
+    const request: ArmAgentRequest = { op: MONITOR_OP.armAgent, pid, agentKey, sessionId };
+    try {
+      await this.client.request(request);
+      return true;
+    } catch (err) {
+      console.error('[MONITOR] armAgent failed:', err);
+      return false;
+    }
+  }
+
+  /** Ask the monitor to arm shell-adoption detection for a shell pid (#68). */
+  async armShellAdoption(pid: number): Promise<boolean> {
+    if (!this.client.connected) return false;
+    const request: ArmShellAdoptionRequest = { op: MONITOR_OP.armShellAdoption, pid };
+    try {
+      await this.client.request(request);
+      return true;
+    } catch (err) {
+      console.error('[MONITOR] armShellAdoption failed:', err);
+      return false;
+    }
   }
 
   /**
