@@ -38,17 +38,11 @@ fi
 echo "Compiling TypeScript..."
 bun run compile
 
-# Install vsce if not available
-if ! command -v vsce &> /dev/null; then
-    echo "Installing vsce..."
-    bun add -g @vscode/vsce
-fi
-
 # Package extension
 echo "Creating dist directory..."
 mkdir -p "$DIST_DIR"
 
 echo "Packaging extension..."
-vsce package --out "$DIST_DIR/swarm-ext-${VERSION}.vsix"
+bunx @vscode/vsce package --out "$DIST_DIR/swarm-ext-${VERSION}.vsix"
 
 echo "Build complete: $DIST_DIR/swarm-ext-${VERSION}.vsix"
