@@ -26,7 +26,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { execFile } from 'child_process';
 import * as terminals from './terminals.vscode';
 import { buildAgentTerminalEnv } from '../core/terminals';
 import { listTeamsForCwd, TeamWithMates } from './foreman.sources';
@@ -38,10 +37,12 @@ import { parseLineForActivity, formatActivity } from '../core/session.activity';
 import { getSessionToolStatsViaAgentsCli } from '../core/handoff';
 import {
   extractPrUrls as extractPrUrlsHelper,
-  parseWorktreeListPorcelain,
   type PullRequestRef as SharedPullRequestRef,
   type WorktreeRef as SharedWorktreeRef,
 } from '../core/panel.helpers';
+import { fetchUsage, fetchWorktrees } from '../monitor/snapshotDetector';
+import type { AgentsViewJsonAgent } from '../core/resumeInBest';
+import type { SnapshotWatch } from '../monitor/protocol';
 
 export const AGENT_PANEL_VIEW_ID = 'agentsPanel.terminal';
 
@@ -158,6 +159,10 @@ function computeAgentState(snap: PanelSnapshot): AgentState {
 class AgentPanelProvider implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | undefined;
   private snapshot: PanelSnapshot = { hasTerminal: false, teams: [], quickPrompts: [] };
+  // IN-FLIGHT GUARD (#71): overlapping refreshes (4s poll racing an event-driven
+  // refresh, or a slow local-fallback `agents view`) coalesce onto one running
+  // build so two snapshot computations never run concurrently.
+  private buildInFlight: Promise<PanelSnapshot> | undefined;
   private pollTimer: NodeJS.Timeout | undefined;
   private planWatcher: vscode.FileSystemWatcher | undefined;
   private lastWatchedDir: string | undefined;
@@ -344,7 +349,7 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
   // (open / close / active change) without us subscribing to them here.
   async refresh(): Promise<void> {
     if (!this.view) return;
-    this.snapshot = await this.buildSnapshot();
+    this.snapshot = await this.runBuildSnapshot();
     this.syncPlanWatcher(this.snapshot.cwd);
     if (this.webviewReady) {
       this.view.webview.postMessage({ type: 'snapshot', data: this.snapshot });
@@ -386,6 +391,16 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
     this.planWatcher.onDidCreate(onChange);
     this.planWatcher.onDidDelete(onChange);
     this.lastWatchedDir = cwd;
+  }
+
+  // Coalesce concurrent builds onto one running computation (in-flight guard).
+  private runBuildSnapshot(): Promise<PanelSnapshot> {
+    if (this.buildInFlight) return this.buildInFlight;
+    const p = this.buildSnapshot().finally(() => {
+      if (this.buildInFlight === p) this.buildInFlight = undefined;
+    });
+    this.buildInFlight = p;
+    return p;
   }
 
   private async buildSnapshot(): Promise<PanelSnapshot> {
@@ -491,28 +506,38 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
       } catch { /* best-effort */ }
     }
 
+    // Arm the monitor with what this window's panel + floor need so the leader
+    // computes git/worktrees (workspace root) + teams/usage (active tuple) once
+    // machine-wide (#71). Replaces this window's whole slice each refresh.
+    if (workspaceRoot) {
+      const watches: SnapshotWatch[] = [{ workspaceRoot }];
+      watches.push({ workspaceRoot, cwd: cwd ?? workspaceRoot, agentType: entry.agentType });
+      terminals.armSnapshotWatches(watches);
+    }
+
     snapshot.git = cwd ? await readGitInfo(cwd) : undefined;
 
     // Worktrees attached to this workspace — `git worktree list --porcelain`
     // emits the main checkout + every additional worktree. Lets the user see
-    // sibling agents working on parallel branches.
+    // sibling agents working on parallel branches. Rendered from the broadcast
+    // snapshot when connected; computed locally only while disconnected (#71).
     if (workspaceRoot) {
       try {
-        snapshot.worktrees = await listWorktrees(workspaceRoot, cwd);
+        snapshot.worktrees = await getWorktreesRouted(workspaceRoot, cwd);
       } catch { /* best-effort */ }
     }
 
     // Usage status (rate-limited / out of credits) for the bound agent
     // version. The signal is the same one `agents view --json` exposes per
-    // version. Cached by the agents-cli for ~2 min so the shellout is cheap.
+    // version. Rendered from the broadcast snapshot when connected (#71).
     if (entry.agentType) {
       try {
-        snapshot.usageStatus = await readUsageStatus(entry.agentType, entry.statusVersion || entry.version);
+        snapshot.usageStatus = await getUsageStatusRouted(entry.agentType, entry.statusVersion || entry.version);
       } catch { /* best-effort */ }
     }
 
     try {
-      snapshot.teams = await listTeamsForCwd(cwd);
+      snapshot.teams = await getTeamsRouted(cwd);
     } catch (err) {
       snapshot.teamsError = err instanceof Error ? err.message : String(err);
     }
@@ -1630,52 +1655,76 @@ function extractPrUrls(lines: string[]): PullRequestRef[] {
 
 /**
  * Enumerate every worktree attached to `workspaceRoot` via
- * `git worktree list --porcelain`. Resolves the active terminal's cwd against
- * each entry so the matching one is flagged `isActive`. Returns [] when the
- * directory isn't a git repo or git isn't available.
+ * `git worktree list --porcelain`. Delegates to the canonical `fetchWorktrees`
+ * (snapshotDetector) the leader runs, so the local fallback and the broadcast
+ * path share one implementation. Returns [] when the directory isn't a git repo
+ * or git isn't available.
  */
 async function listWorktrees(workspaceRoot: string, activeCwd: string | undefined): Promise<WorktreeRef[]> {
-  const stdout: string = await new Promise((resolve, reject) => {
-    execFile('git', ['-C', workspaceRoot, 'worktree', 'list', '--porcelain'], { maxBuffer: 1024 * 1024 }, (err, out) => {
-      if (err) reject(err); else resolve(out);
-    });
-  });
-  return parseWorktreeListPorcelain(
-    stdout,
-    activeCwd ? path.resolve(activeCwd) : undefined,
-    path.resolve(workspaceRoot),
-    path.basename,
-    path.resolve,
-  );
+  return fetchWorktrees(workspaceRoot, activeCwd);
+}
+
+type UsageStatus = 'available' | 'rate_limited' | 'out_of_credits' | null;
+
+/**
+ * Pick the throttle state for `version` from a parsed `agents view --json` view.
+ * Prefers the exact version match, then the default row, then the first. Shared
+ * by the local fetch and the broadcast-snapshot path so selection is identical.
+ */
+function selectUsageStatus(view: AgentsViewJsonAgent, version: string | undefined): UsageStatus {
+  const rows = view.versions || [];
+  const match = (version && rows.find((r) => r.version === version))
+    || rows.find((r) => r.isDefault)
+    || rows[0];
+  return match?.usageStatus ?? null;
 }
 
 /**
  * Read the throttle state for `agentType@version` from `agents view --json`.
  * Returns null when the binary isn't on PATH, when the JSON doesn't include a
- * matching version row, or when the field is missing — never throws.
+ * matching version row, or when the field is missing — never throws. The fetch
+ * reuses the canonical `fetchUsage` (snapshotDetector) the leader runs.
  */
 async function readUsageStatus(
   agentType: string,
   version: string | undefined,
-): Promise<'available' | 'rate_limited' | 'out_of_credits' | null> {
-  try {
-    const stdout: string = await new Promise((resolve, reject) => {
-      execFile('agents', ['view', agentType, '--json'], { maxBuffer: 4 * 1024 * 1024 }, (err, out) => {
-        if (err) reject(err); else resolve(out);
-      });
-    });
-    const data = JSON.parse(stdout) as {
-      versions?: Array<{ version?: string; isDefault?: boolean; usageStatus?: 'available' | 'rate_limited' | 'out_of_credits' | null }>;
-    };
-    const rows = data.versions || [];
-    // Prefer the exact version match; fall back to the default row.
-    const match = (version && rows.find((r) => r.version === version))
-      || rows.find((r) => r.isDefault)
-      || rows[0];
-    return match?.usageStatus ?? null;
-  } catch {
-    return null;
+): Promise<UsageStatus> {
+  const view = await fetchUsage(agentType);
+  return view ? selectUsageStatus(view, version) : null;
+}
+
+// --- Monitor follower routing (#71) ---------------------------------------
+// Prefer the leader's broadcast panel-snapshot (computed once machine-wide);
+// fall back to a local compute only while disconnected from the monitor.
+
+async function getWorktreesRouted(
+  workspaceRoot: string,
+  activeCwd: string | undefined,
+): Promise<WorktreeRef[]> {
+  if (terminals.isSnapshotMonitorConnected()) {
+    const broadcast = terminals.getLatestPanelSnapshot()?.worktreesByRoot[workspaceRoot];
+    if (broadcast) return broadcast;
   }
+  return listWorktrees(workspaceRoot, activeCwd);
+}
+
+async function getUsageStatusRouted(
+  agentType: string,
+  version: string | undefined,
+): Promise<UsageStatus> {
+  if (terminals.isSnapshotMonitorConnected()) {
+    const view = terminals.getLatestPanelSnapshot()?.usageByAgent[agentType];
+    if (view) return selectUsageStatus(view, version);
+  }
+  return readUsageStatus(agentType, version);
+}
+
+async function getTeamsRouted(cwd: string | undefined): Promise<TeamWithMates[]> {
+  if (cwd && terminals.isSnapshotMonitorConnected()) {
+    const broadcast = terminals.getLatestPanelSnapshot()?.teamsByCwd[cwd];
+    if (broadcast) return broadcast as TeamWithMates[];
+  }
+  return listTeamsForCwd(cwd);
 }
 
 function pickQuickPrompts(): QuickPromptLite[] {
