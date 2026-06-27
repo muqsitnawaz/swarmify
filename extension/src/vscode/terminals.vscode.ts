@@ -4,11 +4,10 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs/promises';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
 import { AgentConfig } from './agents.vscode';
 
-const execFileAsync = promisify(execFile);
+import { fetchGitInfo } from '../monitor/snapshotDetector';
+import { PanelSnapshotPayload, SnapshotWatch } from '../monitor/protocol';
 import { generateTerminalId, resolveRestoredVersion, RunningCounts } from '../core/terminals';
 import * as sessionsPersist from '../core/sessions.persist';
 import { getSessionPathBySessionId, getSessionPreviewInfo, getOpenCodeSessionPreviewInfo, getCursorSessionPreviewInfo, SessionPreviewInfo, readTailLines } from './sessions.vscode';
@@ -835,37 +834,79 @@ interface WorkspaceGitInfo {
 }
 const gitInfoCache = new Map<string, { ts: number; info: WorkspaceGitInfo }>();
 const GIT_INFO_TTL_MS = 2000;
+// IN-FLIGHT GUARD (#71): coalesce concurrent computations for the same workspace
+// so overlapping panel/floor ticks never fork `git` twice for one path.
+const gitInfoInFlight = new Map<string, Promise<WorkspaceGitInfo>>();
+
+// --- Monitor follower routing (#71) ---------------------------------------
+//
+// When connected to the centralized monitor, the leader's snapshot detector
+// computes git/worktree/usage/teams ONCE machine-wide and broadcasts a
+// `panel-snapshot` fact; this module + agentPanel render from it instead of
+// each window forking the subprocesses on its own 4s poll. When disconnected
+// (election race, leader loss) the local compute below runs as the fallback.
+// The local code is preserved, not deleted; it is gated on connectivity.
+let snapshotMonitorConnected: () => boolean = () => false;
+let latestPanelSnapshot: PanelSnapshotPayload | undefined;
+let snapshotArmSink: ((watches: SnapshotWatch[]) => void) | undefined;
+
+/** Wire the predicate the snapshot consumers consult for local-vs-broadcast. */
+export function setSnapshotMonitorConnectivity(fn: () => boolean): void {
+  snapshotMonitorConnected = fn;
+}
+
+/** Wire the sink that arms the monitor with this window's snapshot watches. */
+export function setSnapshotArmSink(
+  fn: ((watches: SnapshotWatch[]) => void) | undefined,
+): void {
+  snapshotArmSink = fn;
+}
+
+/** Replace this window's snapshot watch slice on the monitor (#71). */
+export function armSnapshotWatches(watches: SnapshotWatch[]): void {
+  snapshotArmSink?.(watches);
+}
+
+/** Apply a broadcast panel-snapshot fact: cache it for the panel + floor. */
+export function ingestPanelSnapshotFact(payload: PanelSnapshotPayload): void {
+  latestPanelSnapshot = payload;
+}
+
+/** True while this window is consuming the leader's broadcast snapshot. */
+export function isSnapshotMonitorConnected(): boolean {
+  return snapshotMonitorConnected();
+}
+
+/** The latest broadcast snapshot, or undefined before the first one arrives. */
+export function getLatestPanelSnapshot(): PanelSnapshotPayload | undefined {
+  return latestPanelSnapshot;
+}
 
 async function getWorkspaceGitInfo(workspacePath: string): Promise<WorkspaceGitInfo> {
+  // Prefer the leader's broadcast: one git fork machine-wide, not one per window.
+  if (snapshotMonitorConnected()) {
+    const broadcast = latestPanelSnapshot?.gitByRoot[workspacePath];
+    if (broadcast) return broadcast;
+  }
+
   const now = Date.now();
   const cached = gitInfoCache.get(workspacePath);
   if (cached && now - cached.ts < GIT_INFO_TTL_MS) return cached.info;
 
-  const [branchRes, numstatRes] = await Promise.all([
-    execFileAsync('git', ['branch', '--show-current'], { cwd: workspacePath }).catch(() => null),
-    execFileAsync('git', ['diff', '--numstat', 'HEAD'], { cwd: workspacePath, maxBuffer: 4 * 1024 * 1024 }).catch(() => null),
-  ]);
+  const existing = gitInfoInFlight.get(workspacePath);
+  if (existing) return existing;
 
-  const branch = branchRes ? (branchRes.stdout.trim() || null) : null;
-  const numstat: Record<string, { added: number; removed: number }> = {};
-  if (numstatRes) {
-    for (const line of numstatRes.stdout.split('\n')) {
-      const parts = line.split('\t');
-      if (parts.length < 3) continue;
-      const added = parseInt(parts[0], 10);
-      const removed = parseInt(parts[1], 10);
-      const relPath = parts[2];
-      if (!Number.isFinite(added) || !Number.isFinite(removed) || !relPath) continue;
-      const absPath = path.resolve(workspacePath, relPath);
-      const stat = { added, removed };
-      numstat[absPath] = stat;
-      numstat[relPath] = stat;
-    }
-  }
+  const compute = (async () => {
+    // Canonical git compute lives in snapshotDetector (the leader uses the same).
+    const info = await fetchGitInfo(workspacePath);
+    gitInfoCache.set(workspacePath, { ts: Date.now(), info });
+    return info;
+  })().finally(() => {
+    gitInfoInFlight.delete(workspacePath);
+  });
 
-  const info: WorkspaceGitInfo = { branch, numstat };
-  gitInfoCache.set(workspacePath, { ts: now, info });
-  return info;
+  gitInfoInFlight.set(workspacePath, compute);
+  return compute;
 }
 
 const SESSION_SUMMARY_CACHE_MAX = 200;
