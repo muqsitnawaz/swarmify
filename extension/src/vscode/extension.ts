@@ -4147,7 +4147,9 @@ function initMonitorHost(context: vscode.ExtensionContext): void {
   const { runOnLeaderOnly } = require('../monitor/gate') as typeof import('../monitor/gate');
   const { MonitorHost } = require('../monitor/host') as typeof import('../monitor/host');
   const gate = runOnLeaderOnly(() => {
-    const host = new MonitorHost();
+    // detectors:{} enables the centralized readiness probes (#68) and the
+    // machine-wide session watcher (#69) on the leader only.
+    const host = new MonitorHost({ detectors: {} });
     void host.start().catch((err) => console.error('[MONITOR] host start failed:', err));
     return { dispose: () => { void host.stop().catch(() => {}); } };
   });
@@ -4203,8 +4205,46 @@ function initMonitorFollower(context: vscode.ExtensionContext): void {
     windowId,
     resolver,
     // Report as soon as the connection (re)establishes, then on terminal events.
-    clientOptions: { onStateChange: (s) => { if (s === 'connected') report(); } },
+    // On loss, restart local readiness probing so nothing stalls (#68 fallback).
+    clientOptions: {
+      onStateChange: (s) => {
+        if (s === 'connected') report();
+        else if (s === 'disconnected' || s === 'closed') readiness.onMonitorDisconnected();
+      },
+    },
   });
+
+  // Migration wiring (#68, #69): the leader runs the probes/watchers once and
+  // broadcasts facts; this window resolves them to its own terminals. The gate
+  // predicates make terminalReadiness / sessionTracker suppress their local
+  // probing while connected and fall back when not.
+  const connected = () => follower.connected;
+  readiness.setMonitorConnectivity(connected);
+  sessionTracker.setMonitorConnectivity(connected);
+  readiness.setMonitorArmSink({
+    armAgent: (pid, agentKey, sessionId) => { void follower.armAgent(pid, agentKey, sessionId); },
+    armShellAdoption: (pid) => { void follower.armShellAdoption(pid); },
+  });
+
+  const proto = require('../monitor/protocol') as typeof import('../monitor/protocol');
+  const factSub = follower.onMonitorEvent((event) => {
+    if (proto.isReadinessFact(event)) {
+      readiness.ingestReadinessFact(event.payload.pid, event.payload.event);
+    } else if (proto.isShellAdoptionFact(event)) {
+      const p = event.payload;
+      readiness.ingestShellAdoptionFact(p.pid, {
+        agentKey: p.agentKey as readiness.ShellAdoptionInfo['agentKey'],
+        sessionId: p.sessionId,
+        childPid: p.childPid,
+      });
+    } else if (proto.isSessionFact(event)) {
+      sessionTracker.ingestSessionFact(event.payload);
+    } else if (proto.isSessionWarmth(event)) {
+      sessionTracker.ingestSessionWarmth(event.payload.filePath);
+    }
+  });
+  context.subscriptions.push({ dispose: factSub });
+
   follower.start();
 
   context.subscriptions.push(
