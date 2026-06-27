@@ -25,12 +25,14 @@ import {
   MONITOR_FACT,
   MONITOR_OP,
   MonitorRequest,
+  PanelSnapshotPayload,
   ReadinessFactPayload,
   ReportTuplesAck,
   SessionFactPayload,
   SessionWarmthPayload,
   ShellAdoptionFactPayload,
   SnapshotReply,
+  SnapshotWatchRequest,
   TerminalTuple,
   TuplesSnapshotPayload,
   WatchdogStallPayload,
@@ -41,6 +43,7 @@ import { ReadinessDetector } from './readinessDetector';
 import { SessionWatcher } from './sessionWatcher';
 import { WatcherRoot } from './sessionParse';
 import { WatchdogDetector } from './watchdogDetector';
+import { SnapshotDetector } from './snapshotDetector';
 import { AgentsViewJsonAgent } from '../core/resumeInBest';
 
 /** Enable + configure the centralized detectors (#68, #69). */
@@ -61,6 +64,16 @@ export interface MonitorDetectorOptions {
   watchdogViewPollMs?: number;
   /** Inject the `agents view` fetcher (tests). */
   watchdogFetchView?: (agentKey: string) => Promise<AgentsViewJsonAgent | null>;
+  /** Run the panel/floor snapshot detector (#71). Default true. */
+  snapshot?: boolean;
+  /** Snapshot recompute cadence (tests). */
+  snapshotTickMs?: number;
+  /**
+   * Inject the vscode-coupled `agents teams list` fetcher (#71). The wiring layer
+   * (extension.ts) supplies `listTeamsForCwd`; omitted in tests/standalone so the
+   * snapshot fact simply carries no teams.
+   */
+  snapshotFetchTeams?: (cwd: string) => Promise<unknown[]>;
 }
 
 export interface MonitorHostOptions {
@@ -85,6 +98,7 @@ export class MonitorHost {
   private readinessDetector?: ReadinessDetector;
   private sessionWatcher?: SessionWatcher;
   private watchdogDetector?: WatchdogDetector;
+  private snapshotDetector?: SnapshotDetector;
 
   constructor(options: MonitorHostOptions = {}) {
     this.detectorOpts = options.detectors;
@@ -109,6 +123,11 @@ export class MonitorHost {
     return this.watchdogDetector?.watchedSessionCount ?? 0;
   }
 
+  /** Distinct snapshot tuples the detector is computing (verification/tests). */
+  get watchedSnapshotKeyCount(): number {
+    return this.snapshotDetector?.watchedKeyCount ?? 0;
+  }
+
   /** Bind the broadcast socket, start detectors, and begin serving followers. */
   async start(): Promise<void> {
     if (this.running) return;
@@ -127,6 +146,8 @@ export class MonitorHost {
     this.sessionWatcher = undefined;
     this.watchdogDetector?.stop();
     this.watchdogDetector = undefined;
+    this.snapshotDetector?.stop();
+    this.snapshotDetector = undefined;
     this.slices.clear();
     await this.server.close();
   }
@@ -167,6 +188,14 @@ export class MonitorHost {
       });
       this.watchdogDetector.start();
     }
+    if (opts.snapshot !== false) {
+      this.snapshotDetector = new SnapshotDetector({
+        emit: (fact) => this.broadcastPanelSnapshot(fact),
+        tickMs: opts.snapshotTickMs,
+        fetchTeams: opts.snapshotFetchTeams,
+      });
+      this.snapshotDetector.start();
+    }
   }
 
   private handleRequest(
@@ -196,6 +225,11 @@ export class MonitorHost {
     if (req && op === MONITOR_OP.watchdogWatch) {
       const r = req as WatchdogWatchRequest;
       this.watchdogDetector?.setWatches(r.windowId, r.watches ?? []);
+      return { ok: true };
+    }
+    if (req && op === MONITOR_OP.snapshotWatch) {
+      const r = req as SnapshotWatchRequest;
+      this.snapshotDetector?.setWatches(r.windowId, r.watches ?? []);
       return { ok: true };
     }
     throw new Error(`Unknown monitor request op: ${JSON.stringify(op)}`);
@@ -247,5 +281,9 @@ export class MonitorHost {
 
   private broadcastWatchdogVersions(payload: WatchdogVersionsPayload): void {
     this.broadcast(MONITOR_FACT.watchdogVersions, payload);
+  }
+
+  private broadcastPanelSnapshot(payload: PanelSnapshotPayload): void {
+    this.broadcast(MONITOR_FACT.panelSnapshot, payload);
   }
 }
