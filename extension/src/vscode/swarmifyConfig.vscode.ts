@@ -116,6 +116,43 @@ export function clearConfigCache(workspaceFolder?: vscode.WorkspaceFolder): void
   }
 }
 
+// Trailing debounce for the .agents watcher. A single tool rewriting a config
+// file can emit a burst of create/change/delete events; without coalescing each
+// one fans out into a findFiles/symlink pass per workspace folder x mapping.
+const CONFIG_WATCH_DEBOUNCE_MS = 500;
+
+// A trailing-edge scheduler that coalesces rapid calls per key into a single
+// invocation after `delayMs` of quiet. Exported for unit testing.
+export function createCoalescingScheduler<T>(
+  delayMs: number,
+  fn: (value: T) => void
+): { schedule: (key: string, value: T) => void; dispose: () => void } {
+  const pending = new Map<string, NodeJS.Timeout>();
+
+  const schedule = (key: string, value: T): void => {
+    const existing = pending.get(key);
+    if (existing) {
+      clearTimeout(existing);
+    }
+    pending.set(
+      key,
+      setTimeout(() => {
+        pending.delete(key);
+        fn(value);
+      }, delayMs)
+    );
+  };
+
+  const dispose = (): void => {
+    for (const timer of pending.values()) {
+      clearTimeout(timer);
+    }
+    pending.clear();
+  };
+
+  return { schedule, dispose };
+}
+
 export function watchConfigFile(
   context: vscode.ExtensionContext,
   onConfigChange: (workspaceFolder: vscode.WorkspaceFolder) => void
@@ -128,31 +165,27 @@ export function watchConfigFile(
     false // delete
   );
 
-  watcher.onDidChange(uri => {
-    const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
-    if (workspaceFolder) {
-      clearConfigCache(workspaceFolder);
-      onConfigChange(workspaceFolder);
-    }
-  });
+  const scheduler = createCoalescingScheduler<vscode.WorkspaceFolder>(
+    CONFIG_WATCH_DEBOUNCE_MS,
+    onConfigChange
+  );
 
-  watcher.onDidCreate(uri => {
+  // The cache is cleared eagerly on every event so a subsequent read sees fresh
+  // data; only the (expensive) onConfigChange fan-out is debounced.
+  const handleEvent = (uri: vscode.Uri): void => {
     const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
     if (workspaceFolder) {
       clearConfigCache(workspaceFolder);
-      onConfigChange(workspaceFolder);
+      scheduler.schedule(workspaceFolder.uri.toString(), workspaceFolder);
     }
-  });
+  };
 
-  watcher.onDidDelete(uri => {
-    const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
-    if (workspaceFolder) {
-      clearConfigCache(workspaceFolder);
-      onConfigChange(workspaceFolder);
-    }
-  });
+  watcher.onDidChange(handleEvent);
+  watcher.onDidCreate(handleEvent);
+  watcher.onDidDelete(handleEvent);
 
   context.subscriptions.push(watcher);
+  context.subscriptions.push({ dispose: () => scheduler.dispose() });
 }
 
 // How often to poll for the user config file when it doesn't exist yet.
