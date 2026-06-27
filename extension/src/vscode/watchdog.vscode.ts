@@ -24,6 +24,11 @@ import { getSessionPathBySessionId, readTailLines } from './sessions.vscode';
 import { formatEvent, trimToLast, WatchdogEvent } from '../core/watchdogLog';
 import { detectWaitingForInput } from '../core/session.activity';
 import { summarizeWatchdogTail, TailSummary } from '../core/watchdogTail';
+import {
+  WatchdogStallPayload,
+  WatchdogVersionsPayload,
+  WatchdogWatch,
+} from '../monitor/protocol';
 
 const WATCHDOG_LOG_PATH = path.join(os.homedir(), '.agents', 'watchdog.log');
 const LOG_MAX_LINES = 500;
@@ -330,6 +335,47 @@ async function runSmartWatchdogAgent(
   });
 }
 
+// --- Monitor follower routing (#70) ---------------------------------------
+//
+// When this window is connected to the centralized monitor, DETECTION is
+// global: the leader's watchdog detector stats every session file once and
+// polls `agents view --json` once per agent, broadcasting `watchdog/stall` and
+// `watchdog/versions` facts. This window then ARMS the monitor with the
+// sessions it owns and DELIVERS — resolving each stall fact to its own terminal
+// and running the unchanged nudge/rotate pipeline. Delivery (sendText, focus
+// gating) stays per-window by design (epic #64). When disconnected (election
+// race, leader loss) the per-window stat/poll tick runs locally — nothing
+// breaks. The local detection code is preserved, not deleted; it is gated.
+
+let monitorConnected: () => boolean = () => false;
+let monitorArmWatches: ((watches: WatchdogWatch[]) => void) | undefined;
+// sessionId -> latest broadcast stall fact, drained by the owning window's tick.
+const pendingStalls = new Map<string, WatchdogStallPayload>();
+// agentKey -> latest broadcast `agents view` result, consumed by auto-rotate.
+const broadcastViews = new Map<string, AgentsViewJsonAgent>();
+
+/** Wire the predicate the tick consults to decide local-vs-broadcast detection. */
+export function setWatchdogMonitorConnectivity(fn: () => boolean): void {
+  monitorConnected = fn;
+}
+
+/** Wire the sink that arms the monitor with this window's watched sessions. */
+export function setWatchdogArmSink(
+  fn: ((watches: WatchdogWatch[]) => void) | undefined,
+): void {
+  monitorArmWatches = fn;
+}
+
+/** Apply a broadcast stall fact: queue it for the owning window's next tick. */
+export function ingestWatchdogStallFact(payload: WatchdogStallPayload): void {
+  pendingStalls.set(payload.sessionId, payload);
+}
+
+/** Apply a broadcast `agents view` fact: cache it for the auto-rotate check. */
+export function ingestWatchdogVersionsFact(payload: WatchdogVersionsPayload): void {
+  broadcastViews.set(payload.agentKey, payload.view);
+}
+
 let tickInFlight = false;
 // Idle-window gating: when the IDE window has been unfocused for this long,
 // skip ticks. The watchdog does network-bound `agents view` calls and may
@@ -370,13 +416,60 @@ async function tick(
     const optOut = getOptOut(context);
     const candidates: WatchdogCandidate[] = [];
 
+    // Detection mode: when connected to the monitor, the leader stats session
+    // files + polls `agents view` once machine-wide; this window only arms it
+    // and consumes the broadcast facts. When disconnected, fall back to the
+    // local stat/poll tick (preserved below).
+    const useMonitor = monitorConnected();
+
+    // Memoize session-path resolution within a tick — used both to arm the
+    // monitor and (when stalled) to read the tail. Keeps the readdir bounded.
+    const sessionPathCache = new Map<string, string | undefined>();
+    const resolveSessionPath = async (
+      sessionId: string,
+      agentType: 'claude' | 'codex' | 'gemini',
+    ): Promise<string | undefined> => {
+      if (sessionPathCache.has(sessionId)) return sessionPathCache.get(sessionId);
+      const p = await getSessionPathBySessionId(sessionId, agentType, workspacePath);
+      sessionPathCache.set(sessionId, p);
+      return p;
+    };
+
     const agentViewCache = new Map<string, AgentsViewJsonAgent | null>();
     const getAgentView = async (agentKey: string): Promise<AgentsViewJsonAgent | null> => {
       if (agentViewCache.has(agentKey)) return agentViewCache.get(agentKey) ?? null;
-      const data = await fetchAgentsViewJsonForWatchdog(agentKey);
+      // Prefer the leader's broadcast poll; fall back to a local spawn only
+      // while disconnected so we never each fork `agents view` per window.
+      const cached = useMonitor ? broadcastViews.get(agentKey) ?? null : null;
+      const data = cached ?? await fetchAgentsViewJsonForWatchdog(agentKey);
       agentViewCache.set(agentKey, data);
       return data;
     };
+
+    // Arm the monitor with this window's watched sessions so the leader knows
+    // what to stat. Replaces this window's whole slice each tick, so closed
+    // terminals drop out automatically.
+    if (useMonitor && monitorArmWatches) {
+      const watches: WatchdogWatch[] = [];
+      for (const entry of tracked) {
+        if (!entry.sessionId || !entry.agentType) continue;
+        const at = entry.agentType;
+        if (at !== 'claude' && at !== 'codex' && at !== 'gemini') continue;
+        if (optOut[entry.id]) continue;
+        const p = await resolveSessionPath(entry.sessionId, at);
+        if (!p) continue;
+        watches.push({
+          sessionId: entry.sessionId,
+          agentType: at,
+          sessionFilePath: p,
+          stallMs: cfg.stallMs,
+          dormantMs: DORMANT_MS,
+          rotateAgentKey:
+            cfg.autoRotate && at === 'claude' && entry.version ? at : undefined,
+        });
+      }
+      monitorArmWatches(watches);
+    }
 
     for (const entry of tracked) {
       if (!entry.sessionId || !entry.agentType) continue;
@@ -435,32 +528,46 @@ async function tick(
 
       if (!cfg.stallNudgeEnabled) continue;
 
-      const sessionPath = await getSessionPathBySessionId(
-        entry.sessionId,
-        agentType,
-        workspacePath
-      );
-      if (!sessionPath) continue;
+      // Decide staleness: from the broadcast stall fact (connected) or from a
+      // local `fs.stat` of the session file (disconnected fallback).
+      let stalledForMs: number;
+      let sessionPath: string | undefined;
+      if (useMonitor) {
+        const stall = pendingStalls.get(entry.sessionId);
+        if (!stall) continue;
+        pendingStalls.delete(entry.sessionId);
+        // The detector already excluded active/dormant; the cooldown gate that
+        // classifyTerminal applies locally stays here, window-local.
+        const lastNudge = lastNudgeMs.get(entry.id) ?? null;
+        if (lastNudge !== null && now - lastNudge < cfg.cooldownMs) continue;
+        stalledForMs = stall.idleMs;
+        sessionPath = await resolveSessionPath(entry.sessionId, agentType);
+        if (!sessionPath) continue;
+      } else {
+        sessionPath = await resolveSessionPath(entry.sessionId, agentType);
+        if (!sessionPath) continue;
 
-      let mtimeMs: number;
-      try {
-        const stat = await fs.stat(sessionPath);
-        mtimeMs = stat.mtimeMs;
-      } catch {
-        continue;
+        let mtimeMs: number;
+        try {
+          const stat = await fs.stat(sessionPath);
+          mtimeMs = stat.mtimeMs;
+        } catch {
+          continue;
+        }
+
+        const status = classifyTerminal({
+          lastActivityMs: mtimeMs,
+          nowMs: now,
+          lastNudgeMs: lastNudgeMs.get(entry.id) ?? null,
+          optedOut: !!optOut[entry.id],
+          stallMs: cfg.stallMs,
+          cooldownMs: cfg.cooldownMs,
+          dormantMs: DORMANT_MS,
+        });
+
+        if (status.kind !== 'stalled') continue;
+        stalledForMs = status.stalledForMs;
       }
-
-      const status = classifyTerminal({
-        lastActivityMs: mtimeMs,
-        nowMs: now,
-        lastNudgeMs: lastNudgeMs.get(entry.id) ?? null,
-        optedOut: !!optOut[entry.id],
-        stallMs: cfg.stallMs,
-        cooldownMs: cfg.cooldownMs,
-        dormantMs: DORMANT_MS,
-      });
-
-      if (status.kind !== 'stalled') continue;
 
       const tailLines = await readTailLines(sessionPath, TAIL_LINES);
       const tailText = tailLines.join('\n');
@@ -470,7 +577,7 @@ async function tick(
         terminalId: entry.id,
         agentType,
         tailLines,
-        stalledForMs: status.stalledForMs,
+        stalledForMs,
       };
       if (!isLikelyTrulyBlocked(candidate)) continue;
       candidates.push(candidate);
