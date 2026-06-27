@@ -44,7 +44,7 @@ export function AgentResources() {
       {repos === null ? (
         <div className="sw-resources-loading">Scanning .agents repos…</div>
       ) : repos.length === 0 ? (
-        <div className="sw-resources-empty">No .agents repos found.</div>
+        <div className="sw-resources-empty">No .agents repos found, or the scan timed out on a large repo. Hit Refresh to retry.</div>
       ) : (
         <div className="sw-resources-grid">
           {repos.map(repo => {
