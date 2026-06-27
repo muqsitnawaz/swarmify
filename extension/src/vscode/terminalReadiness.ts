@@ -49,10 +49,15 @@ import {
   probeIsKnownShell,
   probeChildPids,
   probeStat,
-  probeArgs,
-  probeStartMs,
 } from '../monitor/probes';
 import { agentSessionRoots, __clearRootCacheForTests } from '../monitor/sessionParse';
+import {
+  SHELL_ADOPTION_POLL_MS,
+  SHELL_ADOPTION_MAX_LIFETIME_MS,
+  SHELL_ADOPTION_TREE_DEPTH,
+  findAgentInTree,
+  locateSessionIdForAgent,
+} from '../monitor/readinessDetector';
 
 interface Registered {
   entry: ReadinessEntry;
@@ -291,13 +296,6 @@ export function disposeTerminal(terminal: vscode.Terminal): void {
 //   2. Fall back to scanning the agent's session-file root for a file with
 //      mtime >= the agent process start time
 
-const SHELL_ADOPTION_POLL_MS = 2000;
-const SHELL_ADOPTION_MAX_LIFETIME_MS = 10 * 60 * 1000;
-const SHELL_ADOPTION_TREE_DEPTH = 5;
-const SHELL_ADOPTION_SESSION_LOOKBACK_MS = 60 * 1000;
-
-const SESSION_UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
-
 export interface ShellAdoptionInfo {
   agentKey: FastPathAgentKey;
   sessionId: string | undefined;
@@ -382,93 +380,6 @@ export function armShellAdoption(
 
   const first = setTimeout(tick, SHELL_ADOPTION_POLL_MS);
   r.timers.push(first);
-}
-
-interface AgentInTreeMatch {
-  agentKey: FastPathAgentKey;
-  childPid: number;
-  sessionId?: string;
-}
-
-async function findAgentInTree(
-  rootPid: number,
-  maxDepth: number
-): Promise<AgentInTreeMatch | null> {
-  let frontier = [rootPid];
-  for (let depth = 0; depth < maxDepth && frontier.length > 0; depth++) {
-    const childrenResults = await Promise.all(frontier.map((pid) => probeChildPids(pid)));
-    const nextFrontier = childrenResults.flat().filter((n) => Number.isFinite(n));
-    for (const childPid of nextFrontier) {
-      try {
-        const args = await probeArgs(childPid);
-        const agentKey = detectAgentKeyFromArgs(args);
-        if (agentKey) {
-          return { agentKey, childPid, sessionId: extractSessionIdFromArgs(args) };
-        }
-      } catch {
-        // child may have exited; skip
-      }
-    }
-    frontier = nextFrontier;
-  }
-  return null;
-}
-
-async function locateSessionIdForAgent(
-  agentKey: FastPathAgentKey,
-  childPid: number
-): Promise<string | undefined> {
-  let childStartMs = Date.now() - SHELL_ADOPTION_SESSION_LOOKBACK_MS;
-  const start = await probeStartMs(childPid);
-  if (start !== undefined) childStartMs = start - 1000;
-
-  const roots = sessionRootsForAgent(agentKey);
-  let best: { sessionId: string; mtimeMs: number } | null = null;
-  for (const root of roots) {
-    if (!fs.existsSync(root)) continue;
-    const found = await collectRecentSessionFiles(root, childStartMs);
-    for (const f of found) {
-      const m = f.filename.match(SESSION_UUID_RE);
-      if (!m) continue;
-      if (!best || f.mtimeMs > best.mtimeMs) {
-        best = { sessionId: m[0], mtimeMs: f.mtimeMs };
-      }
-    }
-  }
-  return best?.sessionId;
-}
-
-async function collectRecentSessionFiles(
-  root: string,
-  sinceMs: number
-): Promise<Array<{ filename: string; mtimeMs: number }>> {
-  const out: Array<{ filename: string; mtimeMs: number }> = [];
-
-  const walk = async (dir: string, depth: number): Promise<void> => {
-    if (depth > 4) return;
-    let entries: fs.Dirent[];
-    try {
-      entries = await fs.promises.readdir(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const e of entries) {
-      const full = path.join(dir, e.name);
-      try {
-        const stat = await fs.promises.stat(full);
-        if (e.isDirectory()) {
-          if (stat.mtimeMs >= sinceMs - 1000) await walk(full, depth + 1);
-        } else if (stat.mtimeMs >= sinceMs - 1000) {
-          out.push({ filename: e.name, mtimeMs: stat.mtimeMs });
-        }
-      } catch {
-        // ignore stat errors
-      }
-    }
-  };
-
-  await walk(root, 0);
-  return out;
 }
 
 // --- Probes ---------------------------------------------------------------
