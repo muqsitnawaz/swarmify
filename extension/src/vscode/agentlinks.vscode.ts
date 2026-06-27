@@ -15,13 +15,44 @@ import { loadWorkspaceConfig, hasEffectiveConfig } from './swarmifyConfig.vscode
 const PROMPT_ACTION_CREATE = 'Create symlinks';
 const PROMPT_ACTION_NOT_NOW = 'Not now';
 
-async function pathExists(filePath: string): Promise<boolean> {
+// Existence cache per workspace, invalidated when the mapping set changes (#98).
+// re-check only happens when the resolved mapping set differs from last time.
+const existenceCache = new Map<string, { signature: string; paths: Map<string, boolean> }>();
+
+// The last mapping-set signature fully processed per workspace. When unchanged,
+// the whole glob + symlink pass is skipped (#98, #99).
+const lastProcessedSignature = new Map<string, string>();
+
+function mappingSignature(config: AgentsConfig): string {
+  return JSON.stringify(
+    getContextMappings(config).map(m => [m.source, [...m.aliases].sort()])
+  );
+}
+
+function getExistenceCache(workspaceKey: string, signature: string): Map<string, boolean> {
+  const entry = existenceCache.get(workspaceKey);
+  if (entry && entry.signature === signature) {
+    return entry.paths;
+  }
+  const paths = new Map<string, boolean>();
+  existenceCache.set(workspaceKey, { signature, paths });
+  return paths;
+}
+
+async function pathExists(filePath: string, cache?: Map<string, boolean>): Promise<boolean> {
+  const cached = cache?.get(filePath);
+  if (cached !== undefined) {
+    return cached;
+  }
+  let exists: boolean;
   try {
     await fs.promises.lstat(filePath);
-    return true;
+    exists = true;
   } catch {
-    return false;
+    exists = false;
   }
+  cache?.set(filePath, exists);
+  return exists;
 }
 
 // Legacy function for backward compatibility - used when no .agents config exists
@@ -97,14 +128,19 @@ export async function maybePromptForAgentSymlinks(
 }
 
 // Create symlink at a specific path
-async function createSymlink(sourcePath: string, targetPath: string): Promise<string | null> {
-  if (await pathExists(targetPath)) {
+async function createSymlink(
+  sourcePath: string,
+  targetPath: string,
+  cache?: Map<string, boolean>
+): Promise<string | null> {
+  if (await pathExists(targetPath, cache)) {
     return null; // Target exists, skip (safety: don't overwrite)
   }
 
   try {
     const relativeSource = path.relative(path.dirname(targetPath), sourcePath);
     await fs.promises.symlink(relativeSource, targetPath, 'file');
+    cache?.set(targetPath, true);
     return null;
   } catch (err) {
     const error = err as Error;
@@ -142,7 +178,8 @@ async function findSourceFilesRecursively(
 // Create symlinks for a single source file in its directory
 async function createSymlinksInDirectory(
   sourcePath: string,
-  aliases: string[]
+  aliases: string[],
+  cache?: Map<string, boolean>
 ): Promise<{ created: number; errors: string[] }> {
   const dirPath = path.dirname(sourcePath);
   const errors: string[] = [];
@@ -150,10 +187,10 @@ async function createSymlinksInDirectory(
 
   for (const target of aliases) {
     const targetPath = path.join(dirPath, target);
-    const error = await createSymlink(sourcePath, targetPath);
+    const error = await createSymlink(sourcePath, targetPath, cache);
     if (error) {
       errors.push(`${targetPath}: ${error}`);
-    } else if (!(await pathExists(targetPath))) {
+    } else if (!(await pathExists(targetPath, cache))) {
       // Symlink was not created because target already existed
     } else {
       created++;
@@ -166,7 +203,8 @@ async function createSymlinksInDirectory(
 // Create symlinks codebase-wide using config
 export async function createSymlinksCodebaseWide(
   workspaceFolder: vscode.WorkspaceFolder,
-  config: AgentsConfig
+  config: AgentsConfig,
+  existsCache?: Map<string, boolean>
 ): Promise<{ created: number; errors: string[] }> {
   if (!isSymlinkingEnabled(config)) {
     return { created: 0, errors: [] };
@@ -183,7 +221,7 @@ export async function createSymlinksCodebaseWide(
     );
 
     for (const sourcePath of sourceFiles) {
-      const { created, errors } = await createSymlinksInDirectory(sourcePath, mapping.aliases);
+      const { created, errors } = await createSymlinksInDirectory(sourcePath, mapping.aliases, existsCache);
       totalCreated += created;
       allErrors.push(...errors);
     }
@@ -205,7 +243,19 @@ export async function ensureSymlinksOnWorkspaceOpen(
     return;
   }
 
-  const { created, errors } = await createSymlinksCodebaseWide(workspaceFolder, config);
+  const workspaceKey = workspaceFolder.uri.toString();
+  const signature = mappingSignature(config);
+
+  // Skip the entire glob + symlink pass when the mapping set is unchanged since
+  // the last run for this workspace. This is what keeps a burst of .agents
+  // events from re-globbing the codebase (#99) and re-lstat-ing every alias (#98).
+  if (lastProcessedSignature.get(workspaceKey) === signature) {
+    return;
+  }
+
+  const existsCache = getExistenceCache(workspaceKey, signature);
+  const { created, errors } = await createSymlinksCodebaseWide(workspaceFolder, config, existsCache);
+  lastProcessedSignature.set(workspaceKey, signature);
 
   // Silent operation - only show errors if any
   if (errors.length > 0) {
