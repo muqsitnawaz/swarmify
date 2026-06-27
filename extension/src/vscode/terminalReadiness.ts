@@ -7,8 +7,6 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { exec } from 'child_process';
-import { promisify } from 'util';
 
 // Diagnostic file logger for shell adoption — VS Code's console.log doesn't
 // land in any persisted log file, so we mirror adoption events to disk for
@@ -37,64 +35,23 @@ import {
   detectAgentKeyFromArgs,
   extractSessionIdFromArgs,
 } from '../core/terminalReadiness';
-
-const execAsync = promisify(exec);
-
-const KNOWN_SHELLS = new Set([
-  'zsh', '-zsh', 'bash', '-bash', 'fish', '-fish', 'sh', '-sh',
-]);
-
-// Probe polling uses exponential backoff instead of a fixed tight interval.
-// Each probe starts at its base cadence (the fast case is unchanged) and
-// doubles the delay on every non-firing tick up to PROBE_BACKOFF_CAP_MS, so an
-// idle machine with many terminals stops spinning `ps`/`pgrep` every 50-150ms.
-const SHELL_PROBE_BASE_MS = 50;          // shellReady: first poll cadence
-const IDLE_PROBE_BASE_MS = 150;          // prompt/agent: first poll cadence
-const PROBE_BACKOFF_CAP_MS = 1000;       // never poll slower than this
-const PS_TIMEOUT_MS = 2000;
-
-// Debounce windows are wall-clock so backoff (variable poll cadence) never
-// changes when the event fires — only how often we sample.
-const PROMPT_IDLE_WINDOW_MS = 150;       // continuous "no children" before promptReady
-const PROMPT_READY_TIMEOUT_MS = 30_000;
-const AGENT_READY_TIMEOUT_MS = 60_000;
-
-// Prefer the shell-integration event (see initReadiness) for promptReady; only
-// poll if it hasn't fired within this grace window. When shell integration is
-// available (the common case) the fallback probe never runs a single pgrep.
-const PROMPT_FALLBACK_GRACE_MS = 300;
-
-// The agent process (Node-based TUIs like Claude/Codex/Gemini) will sit in
-// 'S' state during ANY I/O wait — including auto-update network calls that
-// fire before the TUI renders. A short idle debounce is not sufficient to
-// distinguish "idle at prompt" from "idle on network." We defend with a
-// minimum wall-clock floor since the child appeared, and a longer continuous
-// idle window than promptReady uses.
-const AGENT_IDLE_WINDOW_MS = 1500;       // continuous S-state before agentReady
-const AGENT_MIN_CHILD_RUNTIME_MS = 2500; // child has existed at least 2.5s
-
-// Hard cap on concurrent ps/pgrep probe subprocesses across every terminal, so
-// a burst of terminal opens can't fork dozens of probes at once.
-const MAX_CONCURRENT_PROBES = 8;
-
-function backoffMs(base: number, attempt: number): number {
-  return Math.min(base * 2 ** attempt, PROBE_BACKOFF_CAP_MS);
-}
-
-let activeProbeCount = 0;
-const probeWaiters: Array<() => void> = [];
-async function withProbeSlot<T>(fn: () => Promise<T>): Promise<T> {
-  if (activeProbeCount >= MAX_CONCURRENT_PROBES) {
-    await new Promise<void>((res) => probeWaiters.push(res));
-  }
-  activeProbeCount++;
-  try {
-    return await fn();
-  } finally {
-    activeProbeCount--;
-    probeWaiters.shift()?.();
-  }
-}
+import {
+  SHELL_PROBE_BASE_MS,
+  IDLE_PROBE_BASE_MS,
+  PS_TIMEOUT_MS,
+  PROMPT_IDLE_WINDOW_MS,
+  PROMPT_READY_TIMEOUT_MS,
+  AGENT_READY_TIMEOUT_MS,
+  PROMPT_FALLBACK_GRACE_MS,
+  AGENT_IDLE_WINDOW_MS,
+  AGENT_MIN_CHILD_RUNTIME_MS,
+  backoffMs,
+  probeIsKnownShell,
+  probeChildPids,
+  probeStat,
+  probeArgs,
+  probeStartMs,
+} from '../monitor/probes';
 
 interface Registered {
   entry: ReadinessEntry;
@@ -443,21 +400,11 @@ async function findAgentInTree(
 ): Promise<AgentInTreeMatch | null> {
   let frontier = [rootPid];
   for (let depth = 0; depth < maxDepth && frontier.length > 0; depth++) {
-    const childrenResults = await Promise.all(
-      frontier.map(async (pid) => {
-        try {
-          const { stdout } = await withProbeSlot(() => execAsync(`pgrep -P ${pid}`));
-          return stdout.trim().split(/\s+/).filter(Boolean).map((s) => parseInt(s, 10));
-        } catch {
-          return [];
-        }
-      })
-    );
+    const childrenResults = await Promise.all(frontier.map((pid) => probeChildPids(pid)));
     const nextFrontier = childrenResults.flat().filter((n) => Number.isFinite(n));
     for (const childPid of nextFrontier) {
       try {
-        const { stdout: argsOut } = await withProbeSlot(() => execAsync(`ps -p ${childPid} -o args=`));
-        const args = argsOut.trim();
+        const args = await probeArgs(childPid);
         const agentKey = detectAgentKeyFromArgs(args);
         if (agentKey) {
           return { agentKey, childPid, sessionId: extractSessionIdFromArgs(args) };
@@ -476,13 +423,8 @@ async function locateSessionIdForAgent(
   childPid: number
 ): Promise<string | undefined> {
   let childStartMs = Date.now() - SHELL_ADOPTION_SESSION_LOOKBACK_MS;
-  try {
-    const { stdout } = await withProbeSlot(() => execAsync(`ps -p ${childPid} -o lstart=`));
-    const parsed = Date.parse(stdout.trim());
-    if (!Number.isNaN(parsed)) childStartMs = parsed - 1000;
-  } catch {
-    // fall back to lookback window
-  }
+  const start = await probeStartMs(childPid);
+  if (start !== undefined) childStartMs = start - 1000;
 
   const roots = sessionRootsForAgent(agentKey);
   let best: { sessionId: string; mtimeMs: number } | null = null;
@@ -546,9 +488,7 @@ function startShellReadyProbe(r: Registered): void {
     if (hasFired(r.entry, 'shellReady')) return;
 
     try {
-      const { stdout } = await withProbeSlot(() => execAsync(`ps -p ${pid} -o comm=`));
-      const comm = stdout.trim().split('/').pop() || '';
-      if (KNOWN_SHELLS.has(comm)) {
+      if (await probeIsKnownShell(pid)) {
         markEvent(r.entry, 'shellReady');
         return;
       }
@@ -584,15 +524,7 @@ function startPromptReadyFallbackProbe(r: Registered): void {
     // already fired we never poll again.
     if (hasFired(r.entry, 'promptReady')) return;
 
-    let idle = false;
-    try {
-      const { stdout } = await withProbeSlot(() => execAsync(`pgrep -P ${pid}`));
-      idle = stdout.trim() === '';
-    } catch {
-      // pgrep returns exit code 1 when no matches — promisified exec rejects.
-      // That means zero children; treat as idle.
-      idle = true;
-    }
+    const idle = (await probeChildPids(pid)).length === 0;
 
     let accumulating = false;
     if (idle) {
@@ -634,9 +566,8 @@ function startAgentReadyProbe(r: Registered): void {
 
     let accumulating = false;
     try {
-      const { stdout: childrenOut } = await withProbeSlot(() => execAsync(`pgrep -P ${pid}`));
-      const childPid = childrenOut.trim().split(/\s+/)[0];
-      if (!childPid) {
+      const childPid = (await probeChildPids(pid))[0];
+      if (childPid === undefined) {
         // No child yet — agent CLI hasn't started. Reset both signals.
         idleSince = null;
         childFirstSeenAt = null;
@@ -645,8 +576,7 @@ function startAgentReadyProbe(r: Registered): void {
           childFirstSeenAt = Date.now();
         }
 
-        const { stdout: statOut } = await withProbeSlot(() => execAsync(`ps -p ${childPid} -o stat=`));
-        const idle = statOut.trim().startsWith('S');
+        const idle = (await probeStat(childPid)).startsWith('S');
         if (idle) {
           if (idleSince === null) idleSince = Date.now();
           const runtimeMs = Date.now() - childFirstSeenAt;
