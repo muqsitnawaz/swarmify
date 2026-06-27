@@ -33,10 +33,15 @@ import {
   SnapshotReply,
   TerminalTuple,
   TuplesSnapshotPayload,
+  WatchdogStallPayload,
+  WatchdogVersionsPayload,
+  WatchdogWatchRequest,
 } from './protocol';
 import { ReadinessDetector } from './readinessDetector';
 import { SessionWatcher } from './sessionWatcher';
 import { WatcherRoot } from './sessionParse';
+import { WatchdogDetector } from './watchdogDetector';
+import { AgentsViewJsonAgent } from '../core/resumeInBest';
 
 /** Enable + configure the centralized detectors (#68, #69). */
 export interface MonitorDetectorOptions {
@@ -48,6 +53,14 @@ export interface MonitorDetectorOptions {
   sessionRoots?: WatcherRoot[];
   /** Session-watcher debounce (tests). */
   sessionDebounceMs?: number;
+  /** Run the sessionId-keyed watchdog stall detector (#70). Default true. */
+  watchdog?: boolean;
+  /** Watchdog stat cadence (tests). */
+  watchdogTickMs?: number;
+  /** Watchdog `agents view` cadence (tests). */
+  watchdogViewPollMs?: number;
+  /** Inject the `agents view` fetcher (tests). */
+  watchdogFetchView?: (agentKey: string) => Promise<AgentsViewJsonAgent | null>;
 }
 
 export interface MonitorHostOptions {
@@ -71,6 +84,7 @@ export class MonitorHost {
   private readonly detectorOpts?: MonitorDetectorOptions;
   private readinessDetector?: ReadinessDetector;
   private sessionWatcher?: SessionWatcher;
+  private watchdogDetector?: WatchdogDetector;
 
   constructor(options: MonitorHostOptions = {}) {
     this.detectorOpts = options.detectors;
@@ -90,6 +104,11 @@ export class MonitorHost {
     return this.sessionWatcher?.watchedRootCount ?? 0;
   }
 
+  /** Distinct sessions the watchdog detector is watching (verification/tests). */
+  get watchedSessionCount(): number {
+    return this.watchdogDetector?.watchedSessionCount ?? 0;
+  }
+
   /** Bind the broadcast socket, start detectors, and begin serving followers. */
   async start(): Promise<void> {
     if (this.running) return;
@@ -106,6 +125,8 @@ export class MonitorHost {
     this.readinessDetector = undefined;
     this.sessionWatcher?.stop();
     this.sessionWatcher = undefined;
+    this.watchdogDetector?.stop();
+    this.watchdogDetector = undefined;
     this.slices.clear();
     await this.server.close();
   }
@@ -136,6 +157,16 @@ export class MonitorHost {
       });
       this.sessionWatcher.start();
     }
+    if (opts.watchdog !== false) {
+      this.watchdogDetector = new WatchdogDetector({
+        emitStall: (fact) => this.broadcastWatchdogStall(fact),
+        emitVersions: (fact) => this.broadcastWatchdogVersions(fact),
+        tickMs: opts.watchdogTickMs,
+        viewPollMs: opts.watchdogViewPollMs,
+        fetchView: opts.watchdogFetchView,
+      });
+      this.watchdogDetector.start();
+    }
   }
 
   private handleRequest(
@@ -160,6 +191,11 @@ export class MonitorHost {
     if (req && op === MONITOR_OP.armShellAdoption) {
       const r = req as ArmShellAdoptionRequest;
       this.readinessDetector?.armShellAdoption(r.pid);
+      return { ok: true };
+    }
+    if (req && op === MONITOR_OP.watchdogWatch) {
+      const r = req as WatchdogWatchRequest;
+      this.watchdogDetector?.setWatches(r.windowId, r.watches ?? []);
       return { ok: true };
     }
     throw new Error(`Unknown monitor request op: ${JSON.stringify(op)}`);
@@ -203,5 +239,13 @@ export class MonitorHost {
 
   private broadcastSessionWarmth(payload: SessionWarmthPayload): void {
     this.broadcast(MONITOR_FACT.sessionWarmth, payload);
+  }
+
+  private broadcastWatchdogStall(payload: WatchdogStallPayload): void {
+    this.broadcast(MONITOR_FACT.watchdogStall, payload);
+  }
+
+  private broadcastWatchdogVersions(payload: WatchdogVersionsPayload): void {
+    this.broadcast(MONITOR_FACT.watchdogVersions, payload);
   }
 }
