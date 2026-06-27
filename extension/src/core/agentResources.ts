@@ -20,11 +20,16 @@ interface InspectJson {
   git?: { branch?: string; ahead?: number; behind?: number; dirty?: number };
 }
 
+// `agents inspect --json` walks the whole DotAgents tree to compute resource
+// sizes, so it can take 10-20s on a large ~/.agents (hundreds of MB). Give it
+// room rather than flashing an empty state on big repos.
+const INSPECT_TIMEOUT_MS = 25_000;
+
 async function inspectRepo(target: string, cwd?: string): Promise<AgentResourceRepo | null> {
   try {
     const { stdout } = await runAgents(`inspect ${target} --json`, {
-      timeout: 8000,
-      maxBuffer: 8 * 1024 * 1024,
+      timeout: INSPECT_TIMEOUT_MS,
+      maxBuffer: 16 * 1024 * 1024,
       cwd,
     });
     const parsed = JSON.parse(stdout) as InspectJson;
