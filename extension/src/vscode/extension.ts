@@ -12,7 +12,13 @@ import * as git from './git.vscode';
 import { AgentSettings, hasLoginEnabled, PromptEntry, QUICK_LAUNCH_SLOT_KEYS, getQuickLaunchSlot, QuickLaunchSlot } from '../core/settings';
 import * as settings from './settings.vscode';
 import * as swarm from './swarm.vscode';
-import { startWatchdog } from './watchdog.vscode';
+import {
+  startWatchdog,
+  setWatchdogMonitorConnectivity,
+  setWatchdogArmSink,
+  ingestWatchdogStallFact,
+  ingestWatchdogVersionsFact,
+} from './watchdog.vscode';
 import { startWatchdogBridge } from '../mcp/watchdog-bridge';
 import { ensureWatchdogMcpInstalled } from '../mcp/watchdogInstall';
 import * as notifications from './notifications.vscode';
@@ -4225,6 +4231,10 @@ function initMonitorFollower(context: vscode.ExtensionContext): void {
     armAgent: (pid, agentKey, sessionId) => { void follower.armAgent(pid, agentKey, sessionId); },
     armShellAdoption: (pid) => { void follower.armShellAdoption(pid); },
   });
+  // Watchdog (#70): the leader detects stalls + polls `agents view` once; this
+  // window arms its sessions and delivers the nudge/rotate locally.
+  setWatchdogMonitorConnectivity(connected);
+  setWatchdogArmSink((watches) => { void follower.setWatchdogWatches(watches); });
 
   const proto = require('../monitor/protocol') as typeof import('../monitor/protocol');
   const factSub = follower.onMonitorEvent((event) => {
@@ -4241,6 +4251,10 @@ function initMonitorFollower(context: vscode.ExtensionContext): void {
       sessionTracker.ingestSessionFact(event.payload);
     } else if (proto.isSessionWarmth(event)) {
       sessionTracker.ingestSessionWarmth(event.payload.filePath);
+    } else if (proto.isWatchdogStall(event)) {
+      ingestWatchdogStallFact(event.payload);
+    } else if (proto.isWatchdogVersions(event)) {
+      ingestWatchdogVersionsFact(event.payload);
     }
   });
   context.subscriptions.push({ dispose: factSub });
