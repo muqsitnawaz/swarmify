@@ -1,30 +1,63 @@
-// Monitor host runtime — foundation 3/3 of the centralized-monitor epic (#64).
+// Monitor host runtime — foundation 3/3 of the centralized-monitor epic (#64),
+// extended by the migrations (#68, #69).
 //
 // The elected leader (#65) == the monitor. While this window holds the lease it
 // runs ONE `MonitorBroadcastServer` (#66); followers connect to it, report their
 // terminal tuples, and receive the merged snapshot back as a broadcast fact.
-// When leadership is lost the host stops and its socket is unlinked, so the next
-// leader can bind the same path (the client's auto-reconnect handles the gap).
+// When `detectors` is enabled the host ALSO runs the centralized work:
+//   - a ReadinessDetector (#68) fed the union of all windows' shell pids, which
+//     broadcasts tabReady/shellReady/promptReady/agentReady + ShellAdoptionInfo
+//     facts keyed by pid;
+//   - a SessionWatcher (#69) that watches each session root once and broadcasts
+//     parsed session + warmth facts.
+// Followers map every fact back to their own terminals window-locally.
 //
-// This module is the runtime only — the leader/follower lifecycle gating lives
-// in `gate.ts` (`runOnLeaderOnly`). Kept vscode-free so it runs and tests in a
-// plain process against real Unix sockets (see follower.test.ts).
+// Kept vscode-free so it runs and tests in a plain process against real Unix
+// sockets and real subprocesses/files (see *.test.ts).
 
+import * as path from 'path';
 import { MonitorBroadcastServer } from './broadcast';
 import { MonitorEvent } from './broadcastTypes';
 import {
+  ArmAck,
+  ArmAgentRequest,
+  ArmShellAdoptionRequest,
   MONITOR_FACT,
   MONITOR_OP,
   MonitorRequest,
+  ReadinessFactPayload,
   ReportTuplesAck,
+  SessionFactPayload,
+  SessionWarmthPayload,
+  ShellAdoptionFactPayload,
   SnapshotReply,
   TerminalTuple,
   TuplesSnapshotPayload,
 } from './protocol';
+import { ReadinessDetector } from './readinessDetector';
+import { SessionWatcher } from './sessionWatcher';
+import { WatcherRoot } from './sessionParse';
+
+/** Enable + configure the centralized detectors (#68, #69). */
+export interface MonitorDetectorOptions {
+  /** Run the pid-keyed readiness detector. Default true. */
+  readiness?: boolean;
+  /** Run the machine-wide session watcher. Default true. */
+  session?: boolean;
+  /** Override the session-watcher roots (tests). */
+  sessionRoots?: WatcherRoot[];
+  /** Session-watcher debounce (tests). */
+  sessionDebounceMs?: number;
+}
 
 export interface MonitorHostOptions {
   /** Override the broadcast socket path (tests). */
   socketPath?: string;
+  /**
+   * Run the centralized probes/watchers (#68, #69). Omit (or undefined) to run
+   * a tuple-only host — the foundation behavior used by the #67 tests.
+   */
+  detectors?: MonitorDetectorOptions;
 }
 
 export class MonitorHost {
@@ -35,7 +68,12 @@ export class MonitorHost {
   private readonly slices = new Map<string, TerminalTuple[]>();
   private running = false;
 
+  private readonly detectorOpts?: MonitorDetectorOptions;
+  private readinessDetector?: ReadinessDetector;
+  private sessionWatcher?: SessionWatcher;
+
   constructor(options: MonitorHostOptions = {}) {
+    this.detectorOpts = options.detectors;
     this.server = new MonitorBroadcastServer({
       socketPath: options.socketPath,
       onRequest: (payload) => this.handleRequest(payload),
@@ -47,17 +85,27 @@ export class MonitorHost {
     return this.server.clientCount;
   }
 
-  /** Bind the broadcast socket and begin serving followers. */
+  /** Live session roots being watched (verification/tests). */
+  get watchedRootCount(): number {
+    return this.sessionWatcher?.watchedRootCount ?? 0;
+  }
+
+  /** Bind the broadcast socket, start detectors, and begin serving followers. */
   async start(): Promise<void> {
     if (this.running) return;
     await this.server.start();
     this.running = true;
+    this.startDetectors();
   }
 
-  /** Stop serving, drop all tuple slices, and unlink the socket. */
+  /** Stop serving, stop detectors, drop all tuple slices, and unlink the socket. */
   async stop(): Promise<void> {
     if (!this.running) return;
     this.running = false;
+    this.readinessDetector?.stop();
+    this.readinessDetector = undefined;
+    this.sessionWatcher?.stop();
+    this.sessionWatcher = undefined;
     this.slices.clear();
     await this.server.close();
   }
@@ -69,27 +117,91 @@ export class MonitorHost {
     return out;
   }
 
-  private handleRequest(payload: unknown): ReportTuplesAck | SnapshotReply {
+  private startDetectors(): void {
+    const opts = this.detectorOpts;
+    if (!opts) return;
+    if (opts.readiness !== false) {
+      this.readinessDetector = new ReadinessDetector({
+        emit: (fact) => this.broadcastReadiness(fact),
+        emitAdoption: (fact) => this.broadcastShellAdoption(fact),
+      });
+      this.syncDetectorPids();
+    }
+    if (opts.session !== false) {
+      this.sessionWatcher = new SessionWatcher({
+        emit: (fact) => this.broadcastSession(fact),
+        emitWarmth: (fact) => this.broadcastSessionWarmth(fact),
+        roots: opts.sessionRoots,
+        debounceMs: opts.sessionDebounceMs,
+      });
+      this.sessionWatcher.start();
+    }
+  }
+
+  private handleRequest(
+    payload: unknown,
+  ): ReportTuplesAck | SnapshotReply | ArmAck {
     const req = payload as MonitorRequest | undefined;
     const op = req?.op;
     if (req && op === MONITOR_OP.reportTuples) {
       this.slices.set(req.windowId, req.tuples ?? []);
+      this.syncDetectorPids();
       this.broadcastSnapshot();
       return { ok: true, windowId: req.windowId, count: req.tuples?.length ?? 0 };
     }
     if (req && op === MONITOR_OP.snapshot) {
       return { tuples: this.snapshot() };
     }
+    if (req && op === MONITOR_OP.armAgent) {
+      const r = req as ArmAgentRequest;
+      this.readinessDetector?.armAgent(r.pid, r.agentKey, r.sessionId);
+      return { ok: true };
+    }
+    if (req && op === MONITOR_OP.armShellAdoption) {
+      const r = req as ArmShellAdoptionRequest;
+      this.readinessDetector?.armShellAdoption(r.pid);
+      return { ok: true };
+    }
     throw new Error(`Unknown monitor request op: ${JSON.stringify(op)}`);
+  }
+
+  private syncDetectorPids(): void {
+    if (!this.readinessDetector) return;
+    const pids = new Set<number>();
+    for (const slice of this.slices.values()) {
+      for (const t of slice) {
+        if (typeof t.pid === 'number') pids.add(t.pid);
+      }
+    }
+    this.readinessDetector.setPids(pids);
+  }
+
+  private broadcast(type: string, payload: unknown): void {
+    const event: MonitorEvent = { type, payload, ts: Date.now() };
+    this.server.broadcast(event);
   }
 
   private broadcastSnapshot(): void {
     const payload: TuplesSnapshotPayload = { tuples: this.snapshot() };
-    const event: MonitorEvent = {
-      type: MONITOR_FACT.tuplesSnapshot,
-      payload,
-      ts: Date.now(),
-    };
-    this.server.broadcast(event);
+    this.broadcast(MONITOR_FACT.tuplesSnapshot, payload);
+  }
+
+  private broadcastReadiness(payload: ReadinessFactPayload): void {
+    this.broadcast(MONITOR_FACT.readiness, payload);
+  }
+
+  private broadcastShellAdoption(payload: ShellAdoptionFactPayload): void {
+    this.broadcast(MONITOR_FACT.shellAdoption, payload);
+  }
+
+  private broadcastSession(payload: SessionFactPayload): void {
+    // Feed the session-file fast path so an armed agentReady can resolve from
+    // the file appearing (mirrors armSessionFileFastPath).
+    this.readinessDetector?.noteSessionFile(path.basename(payload.filePath));
+    this.broadcast(MONITOR_FACT.session, payload);
+  }
+
+  private broadcastSessionWarmth(payload: SessionWarmthPayload): void {
+    this.broadcast(MONITOR_FACT.sessionWarmth, payload);
   }
 }
