@@ -6,6 +6,7 @@ import * as vscode from 'vscode';
 import { getAllTerminals } from '../vscode/terminals.vscode';
 import { resolvePeerMessage } from '../core/peerMessaging';
 import { trimToLast } from '../core/watchdogLog';
+import { runOnLeaderOnly } from '../monitor/gate';
 
 const SOCKET_PATH = path.join(os.homedir(), '.agents', '.tmp', 'watchdog.sock');
 const WATCHDOG_LOG = path.join(os.homedir(), '.agents', 'watchdog.log');
@@ -310,18 +311,31 @@ export function startWatchdogBridge(
     });
   };
 
-  startServer().catch((err) => {
-    console.error('[WATCHDOG] Failed to start bridge:', err);
+  const stopServer = () => {
+    if (server) {
+      server.close();
+      server = null;
+    }
+    cleanupSocket().catch(() => {});
+  };
+
+  // Only the elected monitor leader binds the shared socket (#70). Every window
+  // used to start its own bridge and unconditionally unlink+relisten on the same
+  // path, so the last window to activate clobbered the others. Gating ownership
+  // behind the leader makes it deterministic: the leader owns the socket, and on
+  // a leadership flip the new leader binds while the old one releases. The MCP
+  // server path is static, so followers still return it for `--mcp` wiring.
+  const gate = runOnLeaderOnly(() => {
+    startServer().catch((err) => {
+      console.error('[WATCHDOG] Failed to start bridge:', err);
+    });
+    return { dispose: stopServer };
   });
 
   return {
     mcpServerPath,
     dispose() {
-      if (server) {
-        server.close();
-        server = null;
-      }
-      cleanupSocket().catch(() => {});
+      gate.dispose();
       console.log('[WATCHDOG] Bridge disposed');
     },
   };
