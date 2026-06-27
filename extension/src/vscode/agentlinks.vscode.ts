@@ -176,7 +176,7 @@ async function findSourceFilesRecursively(
 }
 
 // Create symlinks for a single source file in its directory
-async function createSymlinksInDirectory(
+export async function createSymlinksInDirectory(
   sourcePath: string,
   aliases: string[],
   cache?: Map<string, boolean>
