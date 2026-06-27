@@ -118,6 +118,73 @@ function addSharedWatcher(
   };
 }
 
+// --- Monitor follower routing (#68) ---------------------------------------
+//
+// When this window is connected to the centralized monitor, the leader runs the
+// ps/pgrep probes once per pid and broadcasts readiness facts; this window then
+// resolves each fact to its own terminal and feeds the SAME state machine via
+// markEvent. Local probing is therefore SUPPRESSED while connected, and the arm
+// intents are forwarded to the monitor. When disconnected (election race, leader
+// loss) everything falls back to local probing — nothing breaks.
+
+export interface MonitorArmSink {
+  armAgent(pid: number, agentKey: string | undefined, sessionId: string | undefined): void;
+  armShellAdoption(pid: number): void;
+}
+
+let monitorConnected: () => boolean = () => false;
+let monitorArmSink: MonitorArmSink | undefined;
+
+/** Wire the predicate the gating consults to decide local-vs-broadcast. */
+export function setMonitorConnectivity(fn: () => boolean): void {
+  monitorConnected = fn;
+}
+
+/** Wire the sink that forwards arm intents to the monitor. */
+export function setMonitorArmSink(sink: MonitorArmSink | undefined): void {
+  monitorArmSink = sink;
+}
+
+function useMonitor(pid: number | null): pid is number {
+  return pid !== null && monitorConnected() && monitorArmSink !== undefined;
+}
+
+/** Apply a broadcast readiness fact to every local terminal on that pid. */
+export function ingestReadinessFact(pid: number, event: ReadinessEvent): void {
+  for (const r of registry.values()) {
+    if (r.pid === pid) markEvent(r.entry, event);
+  }
+}
+
+/** Apply a broadcast shell-adoption fact: fire the armed callback for that pid. */
+export function ingestShellAdoptionFact(pid: number, info: ShellAdoptionInfo): void {
+  for (const [terminal, r] of registry.entries()) {
+    if (r.pid !== pid) continue;
+    const state = shellAdoptions.get(terminal);
+    if (!state || !state.armed) continue;
+    state.armed = false;
+    shellAdoptions.delete(terminal);
+    try {
+      state.onAdopted(info);
+    } catch (err) {
+      console.error('[READINESS] shell adoption callback threw', err);
+    }
+  }
+}
+
+// On leadership loss / disconnect, restart local probing for any terminal still
+// waiting on an event it would otherwise only learn via broadcast.
+export function onMonitorDisconnected(): void {
+  for (const [terminal, r] of registry.entries()) {
+    if (r.pid === null) continue;
+    if (!hasFired(r.entry, 'shellReady')) startShellReadyProbe(r);
+    if (!hasFired(r.entry, 'promptReady')) startPromptReadyFallbackProbe(r);
+    if (r.agentArmed && !hasFired(r.entry, 'agentReady')) startAgentReadyProbe(r);
+    const state = shellAdoptions.get(terminal);
+    if (state && state.armed) startLocalShellAdoption(terminal, r, state);
+  }
+}
+
 let shellIntegrationDisposable: vscode.Disposable | null = null;
 let closeDisposable: vscode.Disposable | null = null;
 
@@ -181,6 +248,10 @@ export function registerTerminal(
     if (!pid) return;
     r.pid = pid;
     markEvent(r.entry, 'tabReady');
+    // When connected to the monitor, the leader probes this pid once and
+    // broadcasts shellReady/promptReady (resolved via ingestReadinessFact);
+    // skip the local ps/pgrep probes. The follower already reports this pid.
+    if (useMonitor(r.pid)) return;
     startShellReadyProbe(r);
     startPromptReadyFallbackProbe(r);
   }, () => {
@@ -233,6 +304,13 @@ export function armAgentReady(terminal: vscode.Terminal, opts: ArmAgentOptions =
   if (r.agentArmed) return;
   if (hasFired(r.entry, 'agentReady')) return;
   r.agentArmed = true;
+
+  // Connected: forward the arm to the monitor (which runs the process-state
+  // probe + session-file fast path once per pid) and resolve via broadcast.
+  if (useMonitor(r.pid)) {
+    monitorArmSink!.armAgent(r.pid, opts.agentKey, opts.sessionId);
+    return;
+  }
 
   if (isFastPathKey(opts.agentKey) && opts.sessionId) {
     armSessionFileFastPath(r, opts.agentKey, opts.sessionId, opts.cwd);
@@ -307,6 +385,7 @@ export type ShellAdoptionCallback = (info: ShellAdoptionInfo) => void;
 interface ShellAdoptionState {
   startedAt: number;
   armed: boolean;
+  onAdopted: ShellAdoptionCallback;
 }
 
 const shellAdoptions = new WeakMap<vscode.Terminal, ShellAdoptionState>();
@@ -324,10 +403,27 @@ export function armShellAdoption(
     adoptLog(`armShellAdoption: terminal "${terminal.name}" already armed — skipping`);
     return;
   }
-  const state: ShellAdoptionState = { startedAt: Date.now(), armed: true };
+  const state: ShellAdoptionState = { startedAt: Date.now(), armed: true, onAdopted };
   shellAdoptions.set(terminal, state);
   adoptLog(`armShellAdoption: armed for terminal "${terminal.name}" (pid=${r.pid})`);
 
+  // Connected: the monitor walks this pid's tree once and broadcasts the
+  // ShellAdoptionInfo (resolved via ingestShellAdoptionFact). Forward the arm.
+  if (useMonitor(r.pid)) {
+    adoptLog(`armShellAdoption: forwarding to monitor for "${terminal.name}" (pid=${r.pid})`);
+    monitorArmSink!.armShellAdoption(r.pid);
+    return;
+  }
+
+  startLocalShellAdoption(terminal, r, state);
+}
+
+function startLocalShellAdoption(
+  terminal: vscode.Terminal,
+  r: Registered,
+  state: ShellAdoptionState,
+): void {
+  const onAdopted = state.onAdopted;
   let tickCount = 0;
   const tick = async () => {
     tickCount++;
