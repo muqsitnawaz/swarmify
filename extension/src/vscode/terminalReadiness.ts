@@ -52,6 +52,7 @@ import {
   probeArgs,
   probeStartMs,
 } from '../monitor/probes';
+import { agentSessionRoots, __clearRootCacheForTests } from '../monitor/sessionParse';
 
 interface Registered {
   entry: ReadinessEntry;
@@ -111,11 +112,6 @@ function addSharedWatcher(
     }
   };
 }
-
-// Cache version-directory enumeration. Without this, every terminal
-// registration runs a synchronous readdir over ~/.agents/.history/versions/claude on
-// the extension-host thread.
-let cachedClaudeRoots: string[] | undefined;
 
 let shellIntegrationDisposable: vscode.Disposable | null = null;
 let closeDisposable: vscode.Disposable | null = null;
@@ -656,37 +652,10 @@ function armSessionFileFastPath(
   r.timers.push(safetyTimer);
 }
 
-function sessionRootsForAgent(
-  agentKey: FastPathAgentKey,
-): string[] {
-  const home = os.homedir();
-  switch (agentKey) {
-    case 'claude': {
-      if (cachedClaudeRoots) return cachedClaudeRoots;
-      // Shim sets CLAUDE_CONFIG_DIR per version, so files land under
-      // ~/.agents/.history/versions/claude/{v}/home/.claude/projects/... — watch both.
-      const roots = [path.join(home, '.claude', 'projects')];
-      const versionsDir = path.join(home, '.agents', '.history', 'versions', 'claude');
-      if (fs.existsSync(versionsDir)) {
-        try {
-          for (const entry of fs.readdirSync(versionsDir, { withFileTypes: true })) {
-            if (!entry.isDirectory()) continue;
-            roots.push(path.join(versionsDir, entry.name, 'home', '.claude', 'projects'));
-          }
-        } catch { /* ignore */ }
-      }
-      cachedClaudeRoots = roots;
-      return roots;
-    }
-    case 'codex':
-      return [path.join(home, '.codex', 'sessions')];
-    case 'gemini':
-      return [path.join(home, '.gemini', 'tmp')];
-    case 'opencode':
-      return [path.join(home, '.local', 'share', 'opencode', 'storage', 'message')];
-    case 'cursor':
-      return [path.join(home, '.cursor', 'chats')];
-  }
+// The per-agent session roots are shared with the monitor's session watcher;
+// `agentSessionRoots` (sessionParse.ts) is the single source of truth.
+function sessionRootsForAgent(agentKey: FastPathAgentKey): string[] {
+  return agentSessionRoots(agentKey);
 }
 
 
@@ -709,5 +678,5 @@ export function __clearRegistryForTests(): void {
     try { sw.watcher.close(); } catch { /* ignore */ }
   }
   sharedWatchers.clear();
-  cachedClaudeRoots = undefined;
+  __clearRootCacheForTests();
 }
