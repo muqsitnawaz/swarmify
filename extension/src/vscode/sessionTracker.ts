@@ -2,10 +2,13 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import * as readline from 'readline';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { createHash } from 'crypto';
+import {
+  parseSessionHead,
+  sessionIdFromFile,
+  workspaceHash,
+} from '../monitor/sessionParse';
 
 const execAsync = promisify(exec);
 
@@ -43,7 +46,6 @@ interface SharedWatcher {
 }
 
 const DEBOUNCE_MS = 300;
-const LINE_CAP = 100;
 const DORMANT_THRESHOLD_MS = 10_000;
 // Bound the codex adoption scan: only the most-recent N session files by mtime
 // are inspected per call (a freshly launched session is always near the top).
@@ -56,7 +58,7 @@ const codexCwdCache = new Map<string, string | undefined>();
 function getCodexCwd(file: string, mtimeMs: number): Promise<string | undefined> {
   const key = `${file}:${mtimeMs}`;
   if (codexCwdCache.has(key)) return Promise.resolve(codexCwdCache.get(key));
-  return parseHead(file, 'codex').then((parsed) => {
+  return parseSessionHead(file, 'codex').then((parsed) => {
     if (codexCwdCache.size >= CODEX_CWD_CACHE_MAX) {
       const oldest = codexCwdCache.keys().next().value;
       if (oldest !== undefined) codexCwdCache.delete(oldest);
@@ -135,10 +137,6 @@ function codexRootYesterday(): string {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return path.join(homeDir(), '.codex', 'sessions', y, m, day);
-}
-
-function workspaceHash(workspacePath: string): string {
-  return createHash('sha256').update(workspacePath).digest('hex');
 }
 
 function geminiRootsFor(workspacePath: string): string[] {
@@ -332,91 +330,9 @@ function onRename(dir: string, filename: string, agentType: TrackedAgentType): v
   debounceTimers.set(full, timer);
 }
 
-interface ParseResult {
-  forkedFromId?: string;
-  codexCwd?: string;
-  geminiProjectHash?: string;
-  geminiSessionId?: string;
-  opencodeDirectory?: string;
-  opencodeSessionId?: string;
-}
-
-async function parseHead(file: string, agentType: TrackedAgentType): Promise<ParseResult> {
-  const result: ParseResult = {};
-  if (agentType === 'gemini' || agentType === 'opencode') {
-    try {
-      const raw = await fs.promises.readFile(file, 'utf-8');
-      const parsed = JSON.parse(raw);
-      if (agentType === 'gemini') {
-        if (typeof parsed?.projectHash === 'string') {
-          result.geminiProjectHash = parsed.projectHash;
-        }
-        if (typeof parsed?.sessionId === 'string') {
-          result.geminiSessionId = parsed.sessionId;
-        }
-      } else {
-        if (typeof parsed?.directory === 'string') {
-          result.opencodeDirectory = parsed.directory;
-        }
-        if (typeof parsed?.id === 'string') {
-          result.opencodeSessionId = parsed.id;
-        }
-      }
-    } catch {
-      /* ignore malformed json */
-    }
-    return result;
-  }
-
-  let stream: fs.ReadStream | undefined;
-  let rl: readline.Interface | undefined;
-  let count = 0;
-  try {
-    stream = fs.createReadStream(file, { encoding: 'utf-8' });
-    rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
-    for await (const line of rl) {
-      if (++count > LINE_CAP) break;
-      if (!line.trim()) continue;
-      let parsed: any;
-      try {
-        parsed = JSON.parse(line);
-      } catch {
-        continue;
-      }
-      if (agentType === 'claude') {
-        const forked = parsed?.forkedFrom?.sessionId;
-        if (typeof forked === 'string' && forked.length > 0) {
-          result.forkedFromId = forked;
-          break;
-        }
-      } else {
-        if (parsed?.type === 'session_meta') {
-          const cwd = parsed?.payload?.cwd;
-          if (typeof cwd === 'string') result.codexCwd = cwd;
-          break;
-        }
-        if (parsed?.payload?.cwd && typeof parsed.payload.cwd === 'string') {
-          result.codexCwd = parsed.payload.cwd;
-          break;
-        }
-      }
-    }
-  } catch {
-    /* ignore transient read errors (deleted/rotated files) */
-  } finally {
-    rl?.close();
-    stream?.destroy();
-  }
-  return result;
-}
-
-function sessionIdFromFile(file: string): string {
-  return path.basename(file).replace(/\.jsonl$/, '');
-}
-
 async function processNewFile(file: string, agentType: TrackedAgentType): Promise<void> {
   let newId = sessionIdFromFile(file);
-  const parsed = await parseHead(file, agentType);
+  const parsed = await parseSessionHead(file, agentType);
 
   if (agentType === 'claude' && parsed.forkedFromId) {
     const match = findTrackedBySessionId(parsed.forkedFromId, 'claude');
@@ -650,7 +566,7 @@ async function adoptExistingClaudeFork(
 
     files.sort((a, b) => b.mtimeMs - a.mtimeMs);
     for (const candidate of files.slice(0, 120)) {
-      const parsed = await parseHead(candidate.file, 'claude');
+      const parsed = await parseSessionHead(candidate.file, 'claude');
       if (parsed.forkedFromId !== expectedForkFrom) continue;
       const candidateId = sessionIdFromFile(candidate.file);
       if (isSessionIdAlreadyTracked('claude', candidateId, t.terminal)) continue;
@@ -695,7 +611,7 @@ async function adoptExistingGeminiSession(
     files.sort((a, b) => b.mtimeMs - a.mtimeMs);
 
     for (const candidate of files.slice(0, 120)) {
-      const parsed = await parseHead(candidate.file, 'gemini');
+      const parsed = await parseSessionHead(candidate.file, 'gemini');
       const candidateId = parsed.geminiSessionId;
       if (!candidateId) continue;
       if (parsed.geminiProjectHash !== expectedHash) continue;
@@ -740,7 +656,7 @@ async function adoptExistingOpencodeSession(
     files.sort((a, b) => b.mtimeMs - a.mtimeMs);
 
     for (const candidate of files.slice(0, 120)) {
-      const parsed = await parseHead(candidate.file, 'opencode');
+      const parsed = await parseSessionHead(candidate.file, 'opencode');
       const candidateId = parsed.opencodeSessionId;
       if (!candidateId) continue;
       if (parsed.opencodeDirectory !== t.workspacePath) continue;
