@@ -25,6 +25,8 @@ import {
   MONITOR_OP,
   ReportTuplesAck,
   ReportTuplesRequest,
+  SnapshotWatch,
+  SnapshotWatchRequest,
   TerminalTuple,
   WatchdogWatch,
   WatchdogWatchRequest,
@@ -151,6 +153,28 @@ export class MonitorFollower<T> {
       return true;
     } catch (err) {
       console.error('[MONITOR] setWatchdogWatches failed:', err);
+      return false;
+    }
+  }
+
+  /**
+   * Replace this window's panel-snapshot watch slice on the monitor (#71). The
+   * leader computes git/worktree/usage/teams once and broadcasts a `panel-snapshot`
+   * fact this window renders from. Returns false (rather than throwing) while
+   * disconnected so the caller keeps computing the snapshot locally.
+   */
+  async setSnapshotWatches(watches: SnapshotWatch[]): Promise<boolean> {
+    if (!this.client.connected) return false;
+    const request: SnapshotWatchRequest = {
+      op: MONITOR_OP.snapshotWatch,
+      windowId: this.windowId,
+      watches,
+    };
+    try {
+      await this.client.request(request);
+      return true;
+    } catch (err) {
+      console.error('[MONITOR] setSnapshotWatches failed:', err);
       return false;
     }
   }
