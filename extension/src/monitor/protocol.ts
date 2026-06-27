@@ -10,6 +10,7 @@
 
 import { MonitorEvent } from './broadcastTypes';
 import { AgentsViewJsonAgent } from '../core/resumeInBest';
+import { WorktreeRef } from '../core/panel.helpers';
 
 /** A single agent terminal as seen by the window that owns it. */
 export interface TerminalTuple {
@@ -58,6 +59,18 @@ export const MONITOR_OP = {
    * `fs.stat`/`agents view` polling watchdog tick (watchdog.vscode.ts).
    */
   watchdogWatch: 'watchdog-watch',
+  /**
+   * Follower -> monitor: replace this window's panel-snapshot watch slice (#71).
+   * The monitor's snapshot detector runs ONE machine-wide tick that computes the
+   * GLOBAL per-tick work every visible panel/floor used to fork on its own 4s
+   * poll — `git branch`/`git diff --numstat HEAD` per workspace, `git worktree
+   * list`, `agents view <type> --json` usage per agent, and `agents teams list`
+   * per cwd — then broadcasts ONE `panel-snapshot` fact. Windows render from the
+   * broadcast instead of each spawning the subprocesses. This is the cross-window
+   * successor to `buildSnapshot` (agentPanel) + `getWorkspaceGitInfo` (terminals);
+   * the local compute stays as the disconnected-case fallback.
+   */
+  snapshotWatch: 'snapshot-watch',
 } as const;
 
 export interface ReportTuplesRequest {
@@ -109,12 +122,29 @@ export interface WatchdogWatchRequest {
   watches: WatchdogWatch[];
 }
 
+/** One workspace/agent tuple a window asks the monitor to snapshot (#71). */
+export interface SnapshotWatch {
+  /** Workspace root — `git branch`/`git diff --numstat` + worktree list keyed here. */
+  workspaceRoot: string;
+  /** Active terminal cwd — `agents teams list` keyed here. Defaults to workspaceRoot. */
+  cwd?: string;
+  /** Bound agent type — `agents view <type> --json` usage keyed here. */
+  agentType?: string;
+}
+
+export interface SnapshotWatchRequest {
+  op: typeof MONITOR_OP.snapshotWatch;
+  windowId: string;
+  watches: SnapshotWatch[];
+}
+
 export type MonitorRequest =
   | ReportTuplesRequest
   | SnapshotRequest
   | ArmAgentRequest
   | ArmShellAdoptionRequest
-  | WatchdogWatchRequest;
+  | WatchdogWatchRequest
+  | SnapshotWatchRequest;
 
 export interface ReportTuplesAck {
   ok: true;
@@ -153,6 +183,8 @@ export const MONITOR_FACT = {
   watchdogStall: 'monitor.watchdog-stall',
   /** `agents view <agentKey> --json` polled once machine-wide (#70). */
   watchdogVersions: 'monitor.watchdog-versions',
+  /** The merged panel/floor snapshot computed once machine-wide (#71). */
+  panelSnapshot: 'monitor.panel-snapshot',
 } as const;
 
 export interface TuplesSnapshotPayload {
@@ -225,6 +257,32 @@ export interface WatchdogStallPayload {
 export interface WatchdogVersionsPayload {
   agentKey: string;
   view: AgentsViewJsonAgent;
+}
+
+/** Per-workspace git facts (`git branch --show-current` + `git diff --numstat HEAD`). */
+export interface GitNumstat {
+  branch: string | null;
+  /** Keyed by BOTH the relative and the absolute path, mirroring getWorkspaceGitInfo. */
+  numstat: Record<string, { added: number; removed: number }>;
+}
+
+/**
+ * The merged panel/floor snapshot the leader's snapshot detector computes once
+ * per tick and broadcasts (#71). Each map is keyed so a follower looks up only
+ * the slice its visible panel needs:
+ *   - gitByRoot / worktreesByRoot — keyed by workspace root
+ *   - teamsByCwd                  — keyed by the active terminal cwd
+ *   - usageByAgent                — keyed by agent type (the raw `agents view`)
+ *
+ * `teamsByCwd` carries `unknown[]` so this wire type stays vscode-free; the
+ * consumer casts each entry back to its `TeamWithMates`.
+ */
+export interface PanelSnapshotPayload {
+  gitByRoot: Record<string, GitNumstat>;
+  worktreesByRoot: Record<string, WorktreeRef[]>;
+  teamsByCwd: Record<string, unknown[]>;
+  usageByAgent: Record<string, AgentsViewJsonAgent>;
+  ts: number;
 }
 
 /** Narrow a raw broadcast event to a tuples-snapshot fact. */
@@ -300,6 +358,20 @@ export function isWatchdogStall(
     !!p &&
     typeof p.sessionId === 'string' &&
     typeof p.idleMs === 'number'
+  );
+}
+
+/** Narrow a raw broadcast event to a panel-snapshot fact (#71). */
+export function isPanelSnapshot(
+  event: MonitorEvent,
+): event is MonitorEvent & { payload: PanelSnapshotPayload } {
+  const p = event.payload as PanelSnapshotPayload | undefined;
+  return (
+    event.type === MONITOR_FACT.panelSnapshot &&
+    !!p &&
+    typeof p.gitByRoot === 'object' &&
+    typeof p.worktreesByRoot === 'object' &&
+    typeof p.usageByAgent === 'object'
   );
 }
 
