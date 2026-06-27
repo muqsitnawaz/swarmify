@@ -112,14 +112,31 @@ async function createSymlink(sourcePath: string, targetPath: string): Promise<st
   }
 }
 
+// In-flight guard + short TTL cache for findFiles. Each findFiles spawns VS
+// Code's bundled ripgrep; without this, concurrent or rapid-fire passes (one per
+// workspace folder x mapping, fired by the .agents watcher) stack ripgrep
+// processes for the same glob. Storing the promise dedupes in-flight calls; the
+// TTL lets a burst of passes within the same window reuse one result.
+const FIND_FILES_TTL_MS = 1000;
+const findFilesCache = new Map<string, { at: number; result: Promise<string[]> }>();
+
 // Find all source files recursively in a directory
 async function findSourceFilesRecursively(
   rootPath: string,
   sourceFileName: string
 ): Promise<string[]> {
+  const key = JSON.stringify([rootPath, sourceFileName]);
+  const cached = findFilesCache.get(key);
+  if (cached && Date.now() - cached.at < FIND_FILES_TTL_MS) {
+    return cached.result;
+  }
+
   const pattern = new vscode.RelativePattern(rootPath, `**/${sourceFileName}`);
-  const files = await vscode.workspace.findFiles(pattern, '**/node_modules/**');
-  return files.map(f => f.fsPath);
+  const result = Promise.resolve(
+    vscode.workspace.findFiles(pattern, '**/node_modules/**')
+  ).then(files => files.map(f => f.fsPath));
+  findFilesCache.set(key, { at: Date.now(), result });
+  return result;
 }
 
 // Create symlinks for a single source file in its directory
