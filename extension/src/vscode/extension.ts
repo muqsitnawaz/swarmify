@@ -4152,10 +4152,17 @@ function initMonitorLeader(context: vscode.ExtensionContext): void {
 function initMonitorHost(context: vscode.ExtensionContext): void {
   const { runOnLeaderOnly } = require('../monitor/gate') as typeof import('../monitor/gate');
   const { MonitorHost } = require('../monitor/host') as typeof import('../monitor/host');
+  const { listTeamsForCwd } = require('./foreman.sources') as typeof import('./foreman.sources');
   const gate = runOnLeaderOnly(() => {
-    // detectors:{} enables the centralized readiness probes (#68) and the
-    // machine-wide session watcher (#69) on the leader only.
-    const host = new MonitorHost({ detectors: {} });
+    // detectors enables the centralized readiness probes (#68), the machine-wide
+    // session watcher (#69), the watchdog detector (#70), and the panel/floor
+    // snapshot detector (#71) on the leader only. The snapshot detector's teams
+    // fetch is vscode-coupled, so it's injected here (host.ts stays vscode-free).
+    const host = new MonitorHost({
+      detectors: {
+        snapshotFetchTeams: (cwd) => listTeamsForCwd(cwd) as Promise<unknown[]>,
+      },
+    });
     void host.start().catch((err) => console.error('[MONITOR] host start failed:', err));
     return { dispose: () => { void host.stop().catch(() => {}); } };
   });
@@ -4235,6 +4242,10 @@ function initMonitorFollower(context: vscode.ExtensionContext): void {
   // window arms its sessions and delivers the nudge/rotate locally.
   setWatchdogMonitorConnectivity(connected);
   setWatchdogArmSink((watches) => { void follower.setWatchdogWatches(watches); });
+  // Snapshot (#71): the leader computes git/worktrees/usage/teams once and
+  // broadcasts; the panel/floor render from the fact and arm their watch slice.
+  terminals.setSnapshotMonitorConnectivity(connected);
+  terminals.setSnapshotArmSink((watches) => { void follower.setSnapshotWatches(watches); });
 
   const proto = require('../monitor/protocol') as typeof import('../monitor/protocol');
   const factSub = follower.onMonitorEvent((event) => {
@@ -4255,6 +4266,8 @@ function initMonitorFollower(context: vscode.ExtensionContext): void {
       ingestWatchdogStallFact(event.payload);
     } else if (proto.isWatchdogVersions(event)) {
       ingestWatchdogVersionsFact(event.payload);
+    } else if (proto.isPanelSnapshot(event)) {
+      terminals.ingestPanelSnapshotFact(event.payload);
     }
   });
   context.subscriptions.push({ dispose: factSub });
