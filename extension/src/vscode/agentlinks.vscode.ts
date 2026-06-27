@@ -15,9 +15,9 @@ import { loadWorkspaceConfig, hasEffectiveConfig } from './swarmifyConfig.vscode
 const PROMPT_ACTION_CREATE = 'Create symlinks';
 const PROMPT_ACTION_NOT_NOW = 'Not now';
 
-function pathExists(filePath: string): boolean {
+async function pathExists(filePath: string): Promise<boolean> {
   try {
-    fs.lstatSync(filePath);
+    await fs.promises.lstat(filePath);
     return true;
   } catch {
     return false;
@@ -42,10 +42,13 @@ export async function maybePromptForAgentSymlinks(
   }
 
   const folderPath = workspaceFolder.uri.fsPath;
-  const existingTargets = targets.filter(target => {
+  const existingTargets: string[] = [];
+  for (const target of targets) {
     const targetPath = path.join(folderPath, target);
-    return pathExists(targetPath);
-  });
+    if (await pathExists(targetPath)) {
+      existingTargets.push(target);
+    }
+  }
 
   const missingTargets = getMissingTargets(targets, existingTargets);
   if (missingTargets.length === 0) return;
@@ -70,13 +73,13 @@ export async function maybePromptForAgentSymlinks(
 
   for (const target of missingTargets) {
     const targetPath = path.join(folderPath, target);
-    if (pathExists(targetPath)) {
+    if (await pathExists(targetPath)) {
       continue;
     }
 
     try {
       const relativeSource = path.relative(path.dirname(targetPath), sourcePath);
-      fs.symlinkSync(relativeSource, targetPath, 'file');
+      await fs.promises.symlink(relativeSource, targetPath, 'file');
     } catch (err) {
       const error = err as Error;
       errors.push(`${target}: ${error.message}`);
@@ -94,14 +97,14 @@ export async function maybePromptForAgentSymlinks(
 }
 
 // Create symlink at a specific path
-function createSymlink(sourcePath: string, targetPath: string): string | null {
-  if (pathExists(targetPath)) {
+async function createSymlink(sourcePath: string, targetPath: string): Promise<string | null> {
+  if (await pathExists(targetPath)) {
     return null; // Target exists, skip (safety: don't overwrite)
   }
 
   try {
     const relativeSource = path.relative(path.dirname(targetPath), sourcePath);
-    fs.symlinkSync(relativeSource, targetPath, 'file');
+    await fs.promises.symlink(relativeSource, targetPath, 'file');
     return null;
   } catch (err) {
     const error = err as Error;
@@ -120,20 +123,20 @@ async function findSourceFilesRecursively(
 }
 
 // Create symlinks for a single source file in its directory
-function createSymlinksInDirectory(
+async function createSymlinksInDirectory(
   sourcePath: string,
   aliases: string[]
-): { created: number; errors: string[] } {
+): Promise<{ created: number; errors: string[] }> {
   const dirPath = path.dirname(sourcePath);
   const errors: string[] = [];
   let created = 0;
 
   for (const target of aliases) {
     const targetPath = path.join(dirPath, target);
-    const error = createSymlink(sourcePath, targetPath);
+    const error = await createSymlink(sourcePath, targetPath);
     if (error) {
       errors.push(`${targetPath}: ${error}`);
-    } else if (!pathExists(targetPath)) {
+    } else if (!(await pathExists(targetPath))) {
       // Symlink was not created because target already existed
     } else {
       created++;
@@ -163,7 +166,7 @@ export async function createSymlinksCodebaseWide(
     );
 
     for (const sourcePath of sourceFiles) {
-      const { created, errors } = createSymlinksInDirectory(sourcePath, mapping.aliases);
+      const { created, errors } = await createSymlinksInDirectory(sourcePath, mapping.aliases);
       totalCreated += created;
       allErrors.push(...errors);
     }
