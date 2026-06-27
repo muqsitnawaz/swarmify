@@ -19,7 +19,8 @@ import {
 } from '../core/swarmifyConfig';
 
 // Re-export legacy names for backward compatibility
-export { SwarmifyConfig, parseSwarmifyConfig, serializeSwarmifyConfig };
+export type { SwarmifyConfig };
+export { parseSwarmifyConfig, serializeSwarmifyConfig };
 
 // Cache for loaded configs per workspace
 const configCache = new Map<string, AgentsConfig>();
