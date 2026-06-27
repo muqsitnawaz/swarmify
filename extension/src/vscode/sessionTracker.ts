@@ -9,6 +9,7 @@ import {
   sessionIdFromFile,
   workspaceHash,
 } from '../monitor/sessionParse';
+import { SessionFactPayload } from '../monitor/protocol';
 
 const execAsync = promisify(exec);
 
@@ -72,6 +73,21 @@ function getCodexCwd(file: string, mtimeMs: number): Promise<string | undefined>
 // bound the map grows for the entire extension-host lifetime — over a long
 // day it accumulates thousands of stale paths.
 const LAST_WRITE_MAX = 5000;
+
+// --- Monitor follower routing (#69) ---------------------------------------
+//
+// When connected to the centralized monitor, the leader runs ONE machine-wide
+// fs.watch per session root and broadcasts parsed session + warmth facts; this
+// window resolves each to its own terminal via the SAME correlation it runs
+// locally (ingestSessionFact / ingestSessionWarmth). Local watcher mounting is
+// therefore suppressed while connected. The one-shot adoption read on register
+// stays local. When disconnected everything falls back to local watching.
+let monitorConnected: () => boolean = () => false;
+
+/** Wire the predicate that decides local-vs-broadcast session watching. */
+export function setMonitorConnectivity(fn: () => boolean): void {
+  monitorConnected = fn;
+}
 
 let initialized = false;
 let listeners: SessionChangeListener[] = [];
@@ -256,6 +272,9 @@ function recordWrite(filePath: string): void {
 }
 
 function mountWatcher(dir: string, agentType: TrackedAgentType): void {
+  // Connected: the monitor owns the single machine-wide watcher per root; this
+  // window consumes broadcast facts instead of mounting its own fs.watch.
+  if (monitorConnected()) return;
   if (watchersByDir.has(dir)) {
     watchersByDir.get(dir)!.refCount++;
     return;
@@ -331,8 +350,19 @@ function onRename(dir: string, filename: string, agentType: TrackedAgentType): v
 }
 
 async function processNewFile(file: string, agentType: TrackedAgentType): Promise<void> {
-  let newId = sessionIdFromFile(file);
   const parsed = await parseSessionHead(file, agentType);
+  await applyParsedCorrelation(file, agentType, parsed);
+}
+
+// The correlation half of processNewFile, split out so a broadcast session fact
+// (already parsed by the monitor's watcher) drives the identical, window-local
+// terminal<->sessionId mapping without re-reading the file.
+async function applyParsedCorrelation(
+  file: string,
+  agentType: TrackedAgentType,
+  parsed: SessionFactPayload | { forkedFromId?: string; codexCwd?: string; geminiProjectHash?: string; geminiSessionId?: string; opencodeDirectory?: string; opencodeSessionId?: string },
+): Promise<void> {
+  let newId = sessionIdFromFile(file);
 
   if (agentType === 'claude' && parsed.forkedFromId) {
     const match = findTrackedBySessionId(parsed.forkedFromId, 'claude');
@@ -386,6 +416,18 @@ async function processNewFile(file: string, agentType: TrackedAgentType): Promis
   }
 
   await correlateKillRestart(file, newId, agentType);
+}
+
+// Apply a broadcast session fact (#69): same correlation as the local watcher,
+// but the file was already parsed by the monitor.
+export function ingestSessionFact(payload: SessionFactPayload): void {
+  void applyParsedCorrelation(payload.filePath, payload.agentType, payload).catch(() => {});
+}
+
+// Apply a broadcast warmth fact: keep this window's dormancy clock current so
+// kill/restart correlation still works while the local watcher is suppressed.
+export function ingestSessionWarmth(filePath: string): void {
+  recordWrite(filePath);
 }
 
 function findTrackedBySessionId(
@@ -855,6 +897,7 @@ export function __reset(): void {
   listeners = [];
   initialized = false;
   cachedClaudeVersions = undefined;
+  monitorConnected = () => false;
 }
 
 export function __testRegister(
