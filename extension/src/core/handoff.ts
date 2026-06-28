@@ -122,39 +122,103 @@ export async function getSessionMessagesViaAgentsCli(
 const FILE_EDIT_TOOLS = new Set(['Edit', 'Write', 'NotebookEdit', 'apply_diff', 'write_file', 'edit_file']);
 const FILE_READ_TOOLS = new Set(['Read', 'read_file', 'ReadFile']);
 
-export async function getSessionToolStatsViaAgentsCli(
+async function computeSessionToolStats(
   sessionId: string,
   cwd?: string
 ): Promise<SessionToolStats> {
-  try {
-    const stdout = await runAgentsSessions(
-      ['sessions', sessionId, '--json', '--include', 'tools'],
-      cwd
-    );
-    const events: Array<{ type: string; tool?: string; args?: Record<string, unknown> }> = JSON.parse(stdout);
-    const toolUses = events.filter(ev => ev.type === 'tool_use');
-    const editedFiles = new Set<string>();
-    const readFiles = new Set<string>();
-    const recentFiles: string[] = [];
+  const stdout = await runAgentsSessions(
+    ['sessions', sessionId, '--json', '--include', 'tools'],
+    cwd
+  );
+  const events: Array<{ type: string; tool?: string; args?: Record<string, unknown> }> = JSON.parse(stdout);
+  const toolUses = events.filter(ev => ev.type === 'tool_use');
+  const editedFiles = new Set<string>();
+  const readFiles = new Set<string>();
+  const recentFiles: string[] = [];
 
-    for (const ev of toolUses) {
-      if (!ev.tool || !ev.args) continue;
-      const filePath = (ev.args.file_path ?? ev.args.path ?? ev.args.filePath) as string | undefined;
-      if (typeof filePath !== 'string') continue;
-      if (FILE_EDIT_TOOLS.has(ev.tool)) {
-        editedFiles.add(filePath);
-      } else if (FILE_READ_TOOLS.has(ev.tool)) {
-        readFiles.add(filePath);
-      }
-      if (!recentFiles.includes(filePath)) recentFiles.push(filePath);
+  for (const ev of toolUses) {
+    if (!ev.tool || !ev.args) continue;
+    const filePath = (ev.args.file_path ?? ev.args.path ?? ev.args.filePath) as string | undefined;
+    if (typeof filePath !== 'string') continue;
+    if (FILE_EDIT_TOOLS.has(ev.tool)) {
+      editedFiles.add(filePath);
+    } else if (FILE_READ_TOOLS.has(ev.tool)) {
+      readFiles.add(filePath);
     }
+    if (!recentFiles.includes(filePath)) recentFiles.push(filePath);
+  }
 
-    return {
-      toolCalls: toolUses.length,
-      filesEdited: editedFiles.size,
-      filesRead: readFiles.size,
-      recentFiles: recentFiles.slice(-20),
-    };
+  return {
+    toolCalls: toolUses.length,
+    filesEdited: editedFiles.size,
+    filesRead: readFiles.size,
+    recentFiles: recentFiles.slice(-20),
+  };
+}
+
+interface ToolStatsCacheEntry {
+  mtimeMs: number;
+  size: number;
+  stats: SessionToolStats;
+}
+
+// Tool-stats are read by the agentPanel 4s poll, per window. The session
+// transcript only grows when the agent acts, so cache the result keyed by the
+// session file's mtime+size and re-shell out only when it actually changed.
+// An in-flight guard coalesces concurrent callers onto one subprocess so a slow
+// `agents sessions` call can't stack across ticks (#94).
+const toolStatsCache = new Map<string, ToolStatsCacheEntry>();
+const toolStatsInFlight = new Map<string, Promise<SessionToolStats>>();
+
+// Exported for tests. `compute` is the real work (shelling out to the agents
+// CLI in production); the cache and in-flight machinery are exercised directly.
+export async function getCachedToolStats(
+  sessionId: string,
+  sessionFilePath: string | undefined,
+  compute: () => Promise<SessionToolStats>,
+): Promise<SessionToolStats> {
+  let key: { mtimeMs: number; size: number } | undefined;
+  if (sessionFilePath) {
+    try {
+      const st = await fs.stat(sessionFilePath);
+      key = { mtimeMs: st.mtimeMs, size: st.size };
+    } catch {
+      key = undefined;
+    }
+    if (key) {
+      const cached = toolStatsCache.get(sessionId);
+      if (cached && cached.mtimeMs === key.mtimeMs && cached.size === key.size) {
+        return cached.stats;
+      }
+    }
+  }
+
+  const inflight = toolStatsInFlight.get(sessionId);
+  if (inflight) return inflight;
+
+  const p = compute()
+    .then((stats) => {
+      if (key) toolStatsCache.set(sessionId, { ...key, stats });
+      return stats;
+    })
+    .finally(() => {
+      if (toolStatsInFlight.get(sessionId) === p) toolStatsInFlight.delete(sessionId);
+    });
+  toolStatsInFlight.set(sessionId, p);
+  return p;
+}
+
+export async function getSessionToolStatsViaAgentsCli(
+  sessionId: string,
+  cwd?: string,
+  sessionFilePath?: string,
+): Promise<SessionToolStats> {
+  try {
+    return await getCachedToolStats(
+      sessionId,
+      sessionFilePath,
+      () => computeSessionToolStats(sessionId, cwd),
+    );
   } catch {
     return { toolCalls: 0, filesEdited: 0, filesRead: 0, recentFiles: [] };
   }
