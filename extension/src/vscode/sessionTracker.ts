@@ -891,6 +891,13 @@ export function __reset(): void {
   monitorConnected = () => false;
 }
 
+// Read the start time captured at registration (#97). Test-only: lets a real
+// registerTerminal + real `ps` round-trip be asserted without exposing the
+// private tracked map.
+export function __testGetStartTime(terminal: vscode.Terminal): number | undefined {
+  return tracked.get(terminal)?.startTimeMs;
+}
+
 export function __testRegister(
   terminal: vscode.Terminal,
   agentType: TrackedAgentType,

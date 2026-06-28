@@ -1,4 +1,5 @@
 import { describe, test, expect } from 'bun:test';
+import { spawn } from 'child_process';
 import {
   parseLstart,
   captureProcessStartTime,
@@ -31,6 +32,33 @@ describe('captureProcessStartTime (real ps subprocess)', () => {
     // PID 0 has no `ps` row on macOS/Linux for `-p 0`.
     const start = await captureProcessStartTime(2_147_483_646);
     expect(start).toBeUndefined();
+  });
+
+  test('orders two real processes by start time and pickNewestStartTime selects the newer', async () => {
+    // The whole #97 mechanism: capture each terminal's process start time via a
+    // real `ps`, then pick the newest. ps lstart resolves to whole seconds, so
+    // a >1s gap guarantees the second process reads strictly later. This catches
+    // a regression in parsing, ordering, or selection end to end.
+    const a = spawn('sleep', ['30'], { stdio: 'ignore' });
+    await new Promise(r => setTimeout(r, 1100));
+    const b = spawn('sleep', ['30'], { stdio: 'ignore' });
+    try {
+      const aStart = await captureProcessStartTime(a.pid!);
+      const bStart = await captureProcessStartTime(b.pid!);
+      expect(typeof aStart).toBe('number');
+      expect(typeof bStart).toBe('number');
+      // b spawned >1s after a, so its whole-second lstart is strictly greater.
+      expect(bStart!).toBeGreaterThan(aStart!);
+
+      const items = [
+        { id: 'a', startTimeMs: aStart },
+        { id: 'b', startTimeMs: bStart },
+      ];
+      expect(pickNewestStartTime(items)?.id).toBe('b');
+    } finally {
+      a.kill('SIGKILL');
+      b.kill('SIGKILL');
+    }
   });
 });
 
