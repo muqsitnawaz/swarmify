@@ -2,6 +2,7 @@ import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { spawn } from 'child_process';
 import { createHash } from 'crypto';
 import type * as vscode from 'vscode';
 
@@ -13,6 +14,7 @@ mock.module('vscode', () => ({
 const {
   __reset,
   __testRegister,
+  __testGetStartTime,
   onSessionChanged,
   registerTerminal,
   unregisterTerminal,
@@ -20,6 +22,10 @@ const {
 
 function fakeTerminal(name: string): vscode.Terminal {
   return { name, processId: Promise.resolve(undefined) } as unknown as vscode.Terminal;
+}
+
+function terminalWithPid(name: string, pid: number): vscode.Terminal {
+  return { name, processId: Promise.resolve(pid) } as unknown as vscode.Terminal;
 }
 
 function waitMs(ms: number): Promise<void> {
@@ -597,5 +603,42 @@ describe('BUG: Codex — yesterday\'s session directory not watched', () => {
     unregisterTerminal(term);
     fs.rmSync(todayDir, { recursive: true, force: true });
     fs.rmSync(yesterdayDir, { recursive: true, force: true });
+  });
+});
+
+describe('sessionTracker — start-time capture on registration (#97)', () => {
+  test('captures the shell process start time via real ps when a terminal registers', async () => {
+    // A real child process gives registerTerminal a live pid to resolve and run
+    // `ps -p <pid> -o lstart=` against, exercising the capture wiring end to end
+    // (terminal.processId -> captureProcessStartTime -> entry.startTimeMs).
+    const child = spawn('sleep', ['30'], { stdio: 'ignore' });
+    const term = terminalWithPid('CC-startcapture', child.pid!);
+    try {
+      registerTerminal(term, 'claude', '/__test__', undefined);
+      // captureStartTime is fire-and-forget (awaits processId then ps); give the
+      // single ps round-trip time to resolve before asserting.
+      await waitMs(400);
+
+      const start = __testGetStartTime(term);
+      expect(typeof start).toBe('number');
+      const now = Date.now();
+      expect(start!).toBeLessThanOrEqual(now);
+      expect(start!).toBeGreaterThan(now - 24 * 60 * 60 * 1000);
+    } finally {
+      unregisterTerminal(term);
+      child.kill('SIGKILL');
+    }
+  });
+
+  test('leaves start time undefined when the terminal has no pid', async () => {
+    const term = fakeTerminal('CC-nopid');
+    try {
+      registerTerminal(term, 'claude', '/__test__', undefined);
+      await waitMs(200);
+      // processId resolves to undefined -> capture bails, selection skips it.
+      expect(__testGetStartTime(term)).toBeUndefined();
+    } finally {
+      unregisterTerminal(term);
+    }
   });
 });

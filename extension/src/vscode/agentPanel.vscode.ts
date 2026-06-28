@@ -457,9 +457,12 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
 
     // Conversation summary + recent activity + linked artifacts come from
     // the session JSONL. All best-effort; never block the panel on them.
+    // Resolved once and reused for the tool-stats mtime cache below (#94).
+    let sessionFilePath: string | undefined;
     if (sessionId && entry.agentType) {
       try {
-        const filePath = await getSessionPathBySessionId(sessionId, entry.agentType);
+        sessionFilePath = await getSessionPathBySessionId(sessionId, entry.agentType);
+        const filePath = sessionFilePath;
         if (filePath) {
           const preview: SessionPreviewInfo = await getSessionPreviewInfo(filePath);
           snapshot.conversation = {
@@ -493,7 +496,7 @@ class AgentPanelProvider implements vscode.WebviewViewProvider {
     // `agents sessions <id> --json --include tools`. Never block on this.
     if (sessionId && cwd) {
       try {
-        const stats = await getSessionToolStatsViaAgentsCli(sessionId, cwd);
+        const stats = await getSessionToolStatsViaAgentsCli(sessionId, cwd, sessionFilePath);
         // recentFiles from the helper is chronological; the last entry is the
         // newest edit. Reverse so the panel shows newest-first, then enrich
         // with mtime where the file still exists.

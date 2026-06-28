@@ -25,6 +25,7 @@ import {
 // Re-export for consumers that need the union type
 export type { AgentCli } from '../core/swarm.detect';
 export type { PromptPackAgent } from '../core/swarm.detect';
+import { readRushTokenCached } from '../core/rushToken';
 
 const execAsync = promisify(exec);
 
@@ -1009,13 +1010,37 @@ export async function fetchTasks(limit?: number, filterCwd?: string): Promise<Ta
 const RUSH_USER_YAML = path.join(os.homedir(), '.rush', 'user.yaml');
 const PRIX_API_URL = 'https://api.prix.dev';
 
-async function fetchCloudRuns(): Promise<TaskSummary[]> {
-  if (!fs.existsSync(RUSH_USER_YAML)) return [];
+// Bound the cloud-runs HTTP call: the floor poll (10s) and terminal open/close
+// bursts (debounced 500ms) all funnel through fetchTasks -> fetchCloudRuns. A
+// short TTL collapses bursts onto one request, and an in-flight guard prevents
+// overlapping requests when the API is slow (#95). The token itself is read +
+// parsed at most once until ~/.rush/user.yaml changes (see readRushTokenCached).
+const CLOUD_RUNS_TTL_MS = 5000;
+let cloudRunsCache: { at: number; tasks: TaskSummary[] } | undefined;
+let cloudRunsInFlight: Promise<TaskSummary[]> | undefined;
 
-  const content = fs.readFileSync(RUSH_USER_YAML, 'utf-8');
-  const tokenMatch = content.match(/access_token:\s*(.+)/);
-  if (!tokenMatch) return [];
-  const token = tokenMatch[1].trim();
+async function fetchCloudRuns(): Promise<TaskSummary[]> {
+  const now = Date.now();
+  if (cloudRunsCache && now - cloudRunsCache.at < CLOUD_RUNS_TTL_MS) {
+    return cloudRunsCache.tasks;
+  }
+  if (cloudRunsInFlight) return cloudRunsInFlight;
+
+  const p = computeCloudRuns()
+    .then((tasks) => {
+      cloudRunsCache = { at: Date.now(), tasks };
+      return tasks;
+    })
+    .finally(() => {
+      if (cloudRunsInFlight === p) cloudRunsInFlight = undefined;
+    });
+  cloudRunsInFlight = p;
+  return p;
+}
+
+async function computeCloudRuns(): Promise<TaskSummary[]> {
+  const token = await readRushTokenCached(RUSH_USER_YAML);
+  if (!token) return [];
 
   const resp = await fetch(`${PRIX_API_URL}/api/v1/cloud-runs`, {
     headers: { Authorization: `Bearer ${token}` },

@@ -2,16 +2,13 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import {
   parseSessionHead,
   sessionIdFromFile,
   workspaceHash,
 } from '../monitor/sessionParse';
 import { SessionFactPayload } from '../monitor/protocol';
-
-const execAsync = promisify(exec);
+import { captureProcessStartTime, pickNewestStartTime } from '../core/processStartTime';
 
 export type TrackedAgentType = 'claude' | 'codex' | 'gemini' | 'opencode';
 
@@ -35,6 +32,10 @@ interface TrackedTerminal {
   // setTimeout handles for the deferred adoption retries (450ms, 1200ms), so
   // they can be cancelled if the terminal closes before they fire.
   adoptionRetryTimers?: NodeJS.Timeout[];
+  // Shell process start time (epoch ms), captured once at registration via a
+  // single `ps`. Lets kill/restart correlation pick the newest dormant terminal
+  // without spawning pgrep + ps per session-file event (#97).
+  startTimeMs?: number;
 }
 
 interface SharedWatcher {
@@ -459,36 +460,25 @@ async function correlateKillRestart(
     return;
   }
 
-  const picked = await newestDormantTerminal(dormant);
+  const picked = pickNewestStartTime(dormant);
   if (picked) applyChange(picked, newId, file);
 }
 
-async function newestDormantTerminal(
-  terms: TrackedTerminal[],
-): Promise<TrackedTerminal | undefined> {
-  let newest: { terminal: TrackedTerminal; start: number } | undefined;
-  for (const t of terms) {
-    try {
-      const shellPid = await t.terminal.processId;
-      if (!shellPid) continue;
-      const { stdout } = await execAsync(`pgrep -P ${shellPid}`);
-      const pids = stdout.trim().split(/\s+/).filter(Boolean).map(Number);
-      for (const pid of pids) {
-        try {
-          const { stdout: lstart } = await execAsync(`ps -p ${pid} -o lstart=`);
-          const start = Date.parse(lstart.trim());
-          if (!isNaN(start) && (!newest || start > newest.start)) {
-            newest = { terminal: t, start };
-          }
-        } catch {
-          /* ignore */
-        }
-      }
-    } catch {
-      /* ignore */
+// Capture the shell's process start time once at registration so kill/restart
+// correlation can compare cached values instead of spawning pgrep + ps per
+// dormant terminal on every session-file rename (#97).
+async function captureStartTime(entry: TrackedTerminal): Promise<void> {
+  try {
+    const pid = await entry.terminal.processId;
+    if (!pid) return;
+    if (tracked.get(entry.terminal) !== entry) return;
+    const start = await captureProcessStartTime(pid);
+    if (start !== undefined && tracked.get(entry.terminal) === entry) {
+      entry.startTimeMs = start;
     }
+  } catch {
+    /* best-effort: start time stays undefined and is skipped in selection */
   }
-  return newest?.terminal;
 }
 
 function applyChange(t: TrackedTerminal, newId: string, file: string): void {
@@ -812,6 +802,7 @@ export function registerTerminal(
     sessionId: currentSessionId,
   };
   tracked.set(terminal, entry);
+  void captureStartTime(entry);
   const initialRoots = rootsFor(entry);
   entry.mountedRoots = [...initialRoots];
   for (const root of initialRoots) {
@@ -898,6 +889,13 @@ export function __reset(): void {
   initialized = false;
   cachedClaudeVersions = undefined;
   monitorConnected = () => false;
+}
+
+// Read the start time captured at registration (#97). Test-only: lets a real
+// registerTerminal + real `ps` round-trip be asserted without exposing the
+// private tracked map.
+export function __testGetStartTime(terminal: vscode.Terminal): number | undefined {
+  return tracked.get(terminal)?.startTimeMs;
 }
 
 export function __testRegister(

@@ -28,6 +28,15 @@ import {
 } from '../core/utils';
 import { registerTerminal as registerSessionTracker } from './sessionTracker';
 
+// getTerminalsByAgentType runs 5x (one per agent type) on every 10s floor poll
+// and again on every terminal open/close. Its per-terminal/per-session debug
+// lines flooded the console at steady state, so gate them behind an env flag
+// (#96). Genuine warn/error logs and one-shot lifecycle logs are left intact.
+const TERMINAL_DEBUG = process.env.SWARMIFY_DEBUG_TERMINALS === '1';
+function debugLog(...args: unknown[]): void {
+  if (TERMINAL_DEBUG) console.log(...args);
+}
+
 /**
  * Extract identification options from a VS Code terminal.
  * Used to gather all inputs for getTerminalDisplayInfo.
@@ -1011,7 +1020,7 @@ export async function getTerminalsByAgentType(
   }> = [];
   let index = 0;
 
-  console.log(`[getTerminalsByAgentType] Looking for agentType="${agentType}", expectedPrefix="${expectedPrefix}", total terminals=${vscode.window.terminals.length}`);
+  debugLog(`[getTerminalsByAgentType] Looking for agentType="${agentType}", expectedPrefix="${expectedPrefix}", total terminals=${vscode.window.terminals.length}`);
 
   for (const terminal of vscode.window.terminals) {
     // Skip terminals whose process has exited (tab may still be open)
@@ -1019,7 +1028,7 @@ export async function getTerminalsByAgentType(
 
     const identOpts = extractTerminalIdentificationOptions(terminal);
     const info = getTerminalDisplayInfo(identOpts);
-    console.log(`[getTerminalsByAgentType] Terminal "${terminal.name}": info.prefix="${info.prefix}", info.isAgent=${info.isAgent}`);
+    debugLog(`[getTerminalsByAgentType] Terminal "${terminal.name}": info.prefix="${info.prefix}", info.isAgent=${info.isAgent}`);
     if (!info.isAgent || !info.prefix) continue;
 
     // Match by prefix for built-in agents, or by exact name for custom agents
@@ -1035,7 +1044,7 @@ export async function getTerminalsByAgentType(
     const entry = getByTerminal(terminal);
     const resultIndex = results.length;
 
-    console.log(`[getTerminalsByAgentType] Terminal "${terminal.name}": entry=${entry ? 'found' : 'not found'}, sessionId=${entry?.sessionId || 'null'}, agentType=${entry?.agentType || 'null'}`);
+    debugLog(`[getTerminalsByAgentType] Terminal "${terminal.name}": entry=${entry ? 'found' : 'not found'}, sessionId=${entry?.sessionId || 'null'}, agentType=${entry?.agentType || 'null'}`);
 
     results.push({
       id: entry?.id || `unregistered-${index}`,
@@ -1073,7 +1082,7 @@ export async function getTerminalsByAgentType(
   // Now fetch preview info and activity in parallel for each session
   const dataPromises = sessionPromises.map(async (p, i) => {
     const sessionPath = sessionPaths[i];
-    console.log(`[getTerminalsByAgentType] Session ${i}: path=${sessionPath || 'NOT FOUND'}, agentType=${p.agentType}`);
+    debugLog(`[getTerminalsByAgentType] Session ${i}: path=${sessionPath || 'NOT FOUND'}, agentType=${p.agentType}`);
     if (!sessionPath) return {
       index: p.index,
       preview: null,
