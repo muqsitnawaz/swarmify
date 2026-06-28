@@ -23,6 +23,14 @@ const existenceCache = new Map<string, { signature: string; paths: Map<string, b
 // the whole glob + symlink pass is skipped (#98, #99).
 const lastProcessedSignature = new Map<string, string>();
 
+// In-flight pass per workspace. ensureSymlinksOnWorkspaceOpen is fired from
+// several sites at once (activation loop + the .agents and user-config
+// watchers). Without this, two concurrent calls both clear the signature guard
+// before either sets it, run the full pass twice against a shared existence
+// cache, and the loser's symlink() races to EEXIST. Registering the promise
+// synchronously on entry collapses concurrent calls onto one pass.
+const inFlightEnsure = new Map<string, Promise<void>>();
+
 function mappingSignature(config: AgentsConfig): string {
   return JSON.stringify(
     getContextMappings(config).map(m => [m.source, [...m.aliases].sort()])
@@ -171,6 +179,13 @@ async function findSourceFilesRecursively(
   const result = Promise.resolve(
     vscode.workspace.findFiles(pattern, '**/node_modules/**')
   ).then(files => files.map(f => f.fsPath));
+  // Don't let a rejected glob stick in the cache for the whole TTL; drop it so
+  // the next caller retries instead of inheriting the failure.
+  result.catch(() => {
+    if (findFilesCache.get(key)?.result === result) {
+      findFilesCache.delete(key);
+    }
+  });
   findFilesCache.set(key, { at: Date.now(), result });
   return result;
 }
@@ -234,6 +249,30 @@ export async function createSymlinksCodebaseWide(
 export async function ensureSymlinksOnWorkspaceOpen(
   workspaceFolder: vscode.WorkspaceFolder
 ): Promise<void> {
+  const workspaceKey = workspaceFolder.uri.toString();
+
+  // Coalesce concurrent calls for the same workspace onto a single pass. The
+  // promise is registered synchronously below, before any await yields, so a
+  // second caller that arrives while the first is awaiting findFiles/config
+  // sees it here and reuses it instead of racing a duplicate pass.
+  const existing = inFlightEnsure.get(workspaceKey);
+  if (existing) {
+    return existing;
+  }
+
+  const run = ensureSymlinksOnWorkspaceOpenInner(workspaceFolder, workspaceKey);
+  inFlightEnsure.set(workspaceKey, run);
+  try {
+    await run;
+  } finally {
+    inFlightEnsure.delete(workspaceKey);
+  }
+}
+
+async function ensureSymlinksOnWorkspaceOpenInner(
+  workspaceFolder: vscode.WorkspaceFolder,
+  workspaceKey: string
+): Promise<void> {
   if (!hasEffectiveConfig(workspaceFolder)) {
     return;
   }
@@ -243,7 +282,6 @@ export async function ensureSymlinksOnWorkspaceOpen(
     return;
   }
 
-  const workspaceKey = workspaceFolder.uri.toString();
   const signature = mappingSignature(config);
 
   // Skip the entire glob + symlink pass when the mapping set is unchanged since
