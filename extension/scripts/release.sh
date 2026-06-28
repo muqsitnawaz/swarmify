@@ -226,6 +226,40 @@ echo "Released $EXT_FQN@$VERSION"
 echo "  VS Code Marketplace: https://marketplace.visualstudio.com/items?itemName=$EXT_FQN"
 [ -n "$PUBLISHED_OVSX" ] && echo "  Open VSX:            https://open-vsx.org/extension/$PUBLISHER_ID/$EXT_NAME"
 
+# --- Confirm live on the public channel ----------------------------------
+# `vsce publish` exiting 0 means the upload was accepted, not that the registry
+# serves it. Poll both public APIs until they report $VERSION (propagation lag
+# is normal — up to a couple minutes). Source of truth = users can fetch it.
+
+marketplace_live_version() {
+    curl -s -X POST "https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery" \
+        -H "Content-Type: application/json" \
+        -H "Accept: application/json;api-version=3.0-preview.1" \
+        -d "{\"filters\":[{\"criteria\":[{\"filterType\":7,\"value\":\"$EXT_FQN\"}]}],\"flags\":914}" 2>/dev/null \
+        | python3 -c "import json,sys; d=json.load(sys.stdin); e=d.get('results',[{}])[0].get('extensions',[]); print(e[0]['versions'][0]['version'] if e else '')" 2>/dev/null || true
+}
+ovsx_live_version() {
+    curl -s "https://open-vsx.org/api/$PUBLISHER_ID/$EXT_NAME" 2>/dev/null \
+        | python3 -c "import json,sys; print(json.load(sys.stdin).get('version',''))" 2>/dev/null || true
+}
+
+echo
+echo "Confirming $VERSION is live on the registries (propagation can lag ~2 min)..."
+VSCE_LIVE=0
+OVSX_LIVE=0
+for _ in $(seq 1 18); do   # ~3 min at 10s
+    [ "$VSCE_LIVE" -eq 0 ] && [ "$(marketplace_live_version)" = "$VERSION" ] && { VSCE_LIVE=1; echo "  VS Code Marketplace: live ($VERSION)"; }
+    if [ -n "$PUBLISHED_OVSX" ]; then
+        [ "$OVSX_LIVE" -eq 0 ] && [ "$(ovsx_live_version)" = "$VERSION" ] && { OVSX_LIVE=1; echo "  Open VSX: live ($VERSION)"; }
+    else
+        OVSX_LIVE=1
+    fi
+    [ "$VSCE_LIVE" -eq 1 ] && [ "$OVSX_LIVE" -eq 1 ] && break
+    sleep 10
+done
+[ "$VSCE_LIVE" -eq 0 ] && echo "  Warning: VS Code Marketplace not yet serving $VERSION after ~3 min — check the listing." >&2
+[ -n "$PUBLISHED_OVSX" ] && [ "$OVSX_LIVE" -eq 0 ] && echo "  Warning: Open VSX not yet serving $VERSION after ~3 min — check the listing." >&2
+
 # Install the just-published vsix into any local editor CLIs (code, codium,
 # cursor). Marketplace propagation can take minutes; we install from the local
 # artifact directly so the active IDE picks up the new version immediately.
@@ -243,5 +277,8 @@ done
 if [ "$INSTALLED" -eq 0 ]; then
     echo "Warning: no editor CLI found (tried cursor, code, codium). Skipping local install." >&2
 else
-    echo "Installed to $INSTALLED editor(s). Reload the Factory webview to pick up the new version."
+    echo "Installed to $INSTALLED editor(s)."
+    # Installed to disk != active in a running editor. Reload running windows
+    # and verify activation from exthost.log.
+    bash "$(dirname "${BASH_SOURCE[0]}")/activate.sh" "$EXT_FQN"
 fi

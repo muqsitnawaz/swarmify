@@ -45,4 +45,7 @@ if [ "$INSTALLED" -eq 0 ]; then
 fi
 
 echo "Extension installed to $INSTALLED editor(s)."
-echo "Restart your editors to activate."
+
+# Installed to disk != active in a running editor. Reload running windows and
+# verify activation from exthost.log (best-effort reload, authoritative verify).
+bash "$(dirname "${BASH_SOURCE[0]}")/activate.sh" "swarmify.swarm-ext"
