@@ -65,19 +65,22 @@ newest_logdir() {
 
 # Reload every window of a running editor (best-effort). Returns 1 if no AX
 # windows could be enumerated (e.g. Accessibility not granted to the terminal).
+# Windows are addressed by index, not by name: `get name of windows` returns a
+# comma-joined list, and editor titles routinely contain commas (filenames,
+# branches), which split a single title into bogus entries and target the wrong
+# (or a non-existent) window. Indexing also disambiguates duplicate titles.
 reload_editor_windows() {
-    local app="$1" proc="$2" titles t
-    titles="$(osascript -e "tell application \"System Events\" to tell process \"$proc\" to get name of windows" 2>/dev/null)"
-    [ -z "$titles" ] && return 1
-    local IFS=','
-    for t in $titles; do
-        t="$(echo "$t" | sed 's/^ *//;s/ *$//')"
-        [ -z "$t" ] && continue
+    local app="$1" proc="$2" count i
+    count="$(osascript -e "tell application \"System Events\" to tell process \"$proc\" to count windows" 2>/dev/null)"
+    # Empty/non-numeric => couldn't enumerate (Accessibility not granted).
+    [[ "$count" =~ ^[0-9]+$ ]] || return 1
+    [ "$count" -eq 0 ] && return 1
+    for (( i=1; i<=count; i++ )); do
         osascript >/dev/null 2>&1 <<EOF
 tell application "$app" to activate
 delay 0.5
 tell application "System Events" to tell process "$proc"
-  perform action "AXRaise" of window "$t"
+  perform action "AXRaise" of window $i
   delay 0.8
   keystroke "p" using {command down, shift down}
   delay 0.8
