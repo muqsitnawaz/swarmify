@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.9.252] - 2026-06-28
+
+### Performance
+- **Symlink-on-open no longer storms ripgrep + lstat.** The `.agents` context-file symlinker now debounces watcher events, runs fully async, caches the recursive `findFiles` glob behind a short TTL + in-flight guard, and skips the whole pass when the mapping set is unchanged. Concurrent passes (activation loop + watchers) are coalesced onto one run, closing an `EEXIST` race where two passes fought over the same symlink (#98, #99, #100).
+- **Steady-state hot paths cached/gated.** Per-session tool-stats subprocess is cached by session-file mtime+size with in-flight coalescing; cloud-runs fetch gets a 5s TTL + async token read (no sync FS read on the main thread); per-iteration terminal debug logs are gated behind `SWARMIFY_DEBUG_TERMINALS`; kill/restart correlation caches each terminal's process start time at registration instead of spawning `pgrep` + `ps` per dormant terminal on every session-file event (#94, #95, #96, #97).
+
+### Added
+- **Activation verification + registry liveness** in the release/install scripts: detect editor windows still running stale extension code, and poll the marketplace/Open VSX until the just-published version is actually being served (#93).
+
 ## [0.9.250] - 2026-06-24
 
 ### Fixed
