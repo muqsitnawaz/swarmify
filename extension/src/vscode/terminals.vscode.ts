@@ -205,7 +205,7 @@ export function persistNow(): void {
 export function getByTerminal(t: vscode.Terminal): EditorTerminal | undefined {
   const id = terminalToId.get(t);
   const entry = id ? editorTerminals.get(id) : undefined;
-  console.log(`[DEBUG getByTerminal] terminal="${t.name}" -> id=${id}, entry.label="${entry?.label}"`);
+  debugLog(`[DEBUG getByTerminal] terminal="${t.name}" -> id=${id}, entry.label="${entry?.label}"`);
   return entry;
 }
 

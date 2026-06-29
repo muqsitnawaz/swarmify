@@ -638,7 +638,7 @@ async function subscribeToAgentSessions(agentType: string, workspacePath?: strin
         // Debounce updates - wait 500ms after last change
         if (sessionUpdateTimeout) clearTimeout(sessionUpdateTimeout);
         sessionUpdateTimeout = setTimeout(async () => {
-          if (!settingsPanel || currentlySubscribedAgentType !== agentType) return;
+          if (!settingsPanel || !settingsPanel.visible || currentlySubscribedAgentType !== agentType) return;
 
           // Re-fetch terminal data and push to webview
           const updatedTerminals = await terminals.getTerminalsByAgentType(agentType, workspacePath);
