@@ -593,7 +593,13 @@ let currentlySubscribedAgentType: string | null = null;
 // Cache for getFloorThroughput, keyed by session file path. Skip the read+
 // parse when the file's mtime+size are unchanged since the previous poll —
 // the webview polls every 2.5s and most polls hit unchanged files.
-const throughputCache = new Map<string, { mtimeMs: number; size: number; tokensPerSec: number }>();
+const throughputCache = new Map<string, { mtimeMs: number; size: number; tokensPerSec: number; at: number }>();
+// Gemini stores the whole session as one JSON document (no append/tail), so any
+// change forces a full multi-MB read+parse. An active Gemini agent rewrites its
+// file every tick, which would make the 2.5s throughput poll re-read megabytes
+// each time. Rate-limit that recompute; throughput is a smoothed 60s metric, so
+// brief staleness is fine. (claude/codex tail-read 256KB and don't need this.)
+const GEMINI_THROUGHPUT_TTL_MS = 8000;
 
 // Notify settings panel when integration status changes
 export function notifyIntegrationStatus(provider: string, connected: boolean): void {
@@ -1497,6 +1503,12 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
               total += cached.tokensPerSec;
               return;
             }
+            // Gemini can't tail-read (whole-file JSON); cap how often we pay the
+            // full re-read for an actively-rewriting session.
+            if (agentType === 'gemini' && cached && Date.now() - cached.at < GEMINI_THROUGHPUT_TTL_MS) {
+              total += cached.tokensPerSec;
+              return;
+            }
             const fh = await fs.promises.open(sessionPath, 'r');
             try {
               const readStart = agentType === 'gemini' ? 0 : Math.max(0, size - 256 * 1024);
@@ -1505,7 +1517,7 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
               const content = buf.toString('utf-8');
               const tps = computeOutputTokensPerSec(content, agentType, 60);
               total += tps;
-              throughputCache.set(sessionPath, { mtimeMs: stat.mtimeMs, size, tokensPerSec: tps });
+              throughputCache.set(sessionPath, { mtimeMs: stat.mtimeMs, size, tokensPerSec: tps, at: Date.now() });
             } finally {
               await fh.close();
             }
