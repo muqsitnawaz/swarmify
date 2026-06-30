@@ -1,12 +1,14 @@
-import React, { useMemo, useState } from 'react'
+import React, { useMemo, useRef, useState } from 'react'
 import { Icon, type IconName } from './icons'
 import { renderTodoDescription } from '../../utils/markdown'
 import { AgentAvatar } from './AgentAvatar'
 import {
-  parseCloudSummary,
+  parseCloudSummaryIncremental,
+  emptyCloudParseCache,
   toolHeadline,
   simpleDiff,
   type CloudEvent,
+  type CloudParseCache,
   type PreambleMeta,
   type ToolUseEvent,
   type ToolResultEvent,
@@ -73,7 +75,10 @@ function groupEvents(events: CloudEvent[]): Row[] {
 }
 
 export function CloudActivityFeed({ summary, maxHeight = 480 }: CloudActivityFeedProps) {
-  const events = useMemo(() => parseCloudSummary(summary), [summary])
+  // Parse only the bytes appended since last render instead of re-scanning the
+  // whole (growing) NDJSON buffer on every streamed token.
+  const cacheRef = useRef<CloudParseCache>(emptyCloudParseCache())
+  const events = useMemo(() => parseCloudSummaryIncremental(summary, cacheRef.current), [summary])
   const rows = useMemo(() => groupEvents(events), [events])
 
   if (rows.length === 0) {
