@@ -87,26 +87,75 @@ export type CloudEvent =
   | UserMessageEvent
   | ResultEvent;
 
+function parseOneLine(trimmed: string, events: CloudEvent[]): void {
+  if (!trimmed) return;
+  if (trimmed[0] !== '{') {
+    events.push(parsePreambleLine(trimmed));
+    return;
+  }
+  let raw: unknown;
+  try {
+    raw = JSON.parse(trimmed);
+  } catch {
+    return;
+  }
+  appendClaudeEvent(events, raw);
+}
+
 export function parseCloudSummary(summary: string | null | undefined): CloudEvent[] {
   if (!summary) return [];
   const events: CloudEvent[] = [];
-  const lines = summary.split(/\r\n|\n/);
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    if (trimmed[0] !== '{') {
-      events.push(parsePreambleLine(trimmed));
-      continue;
-    }
-    let raw: unknown;
-    try {
-      raw = JSON.parse(trimmed);
-    } catch {
-      continue;
-    }
-    appendClaudeEvent(events, raw);
+  for (const line of summary.split(/\r\n|\n/)) {
+    parseOneLine(line.trim(), events);
   }
   return events;
+}
+
+// Incremental parser for the live streaming feed. cloud_summary is append-only
+// NDJSON and appendClaudeEvent only ever pushes (never mutates earlier events),
+// so already-parsed complete lines never need re-parsing. We commit complete
+// lines (up to the last '\n') into the cache and only parse the bytes appended
+// since last time; the trailing partial line (no '\n' yet) is parsed fresh each
+// call onto a copy, so a half-written record is picked up once it completes.
+// Result is identical to parseCloudSummary at every step (see test).
+export interface CloudParseCache {
+  committedChars: number;
+  events: CloudEvent[];
+}
+
+export function emptyCloudParseCache(): CloudParseCache {
+  return { committedChars: 0, events: [] };
+}
+
+export function parseCloudSummaryIncremental(
+  summary: string | null | undefined,
+  cache: CloudParseCache,
+): CloudEvent[] {
+  const s = summary ?? '';
+  const committedEnd = s.lastIndexOf('\n') + 1; // [0, committedEnd) are complete lines
+
+  // Reuse the cache only if it's still a prefix of the current complete region
+  // (append-only). Boundary sentinel: the cached cut must still sit right after
+  // a newline. Otherwise the buffer was replaced/truncated -> full reparse.
+  const reusable =
+    cache.committedChars <= committedEnd &&
+    (cache.committedChars === 0 || s.charCodeAt(cache.committedChars - 1) === 0x0a);
+  if (!reusable) {
+    cache.committedChars = 0;
+    cache.events = [];
+  }
+
+  if (committedEnd > cache.committedChars) {
+    const chunk = s.slice(cache.committedChars, committedEnd);
+    for (const line of chunk.split('\n')) parseOneLine(line.trim(), cache.events);
+    cache.committedChars = committedEnd;
+  }
+
+  const tail = s.slice(committedEnd).trim();
+  if (!tail) return cache.events;
+  const withTail = cache.events.slice();
+  parseOneLine(tail, withTail);
+  return withTail;
 }
 
 const PREAMBLE_AGENTS = new Set(['claude', 'codex', 'gemini', 'cursor', 'opencode']);

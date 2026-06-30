@@ -411,6 +411,26 @@ interface UnifiedAgentsPaneProps {
   watchdogEvents?: WatchdogEventUI[]
 }
 
+// Preserve object identity for unchanged agents across renders so memoized
+// AgentCards don't all re-render when one agent's data changes. An item's
+// signature is a full JSON serialization, so identity is reused ONLY when every
+// rendered field is byte-identical — stale data is impossible.
+function useStableList(items: UnifiedAgent[]): UnifiedAgent[] {
+  const prevRef = useRef<Map<string, { sig: string; item: UnifiedAgent }>>(new Map())
+  return useMemo(() => {
+    const next = new Map<string, { sig: string; item: UnifiedAgent }>()
+    const out = items.map((item) => {
+      const sig = JSON.stringify(item)
+      const prev = prevRef.current.get(item.id)
+      const stable = prev && prev.sig === sig ? prev.item : item
+      next.set(item.id, { sig, item: stable })
+      return stable
+    })
+    prevRef.current = next
+    return out
+  }, [items])
+}
+
 export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks, unifiedTasksLoading, onDispatch, onNavigate, onOpenInBench, openDispatchTrigger, quickSpawnTrigger, openDetailTaskId, onDetailTaskConsumed, onThroughputChange, githubRepo, watchdogEnabled = false, watchdogEvents = [] }: UnifiedAgentsPaneProps) {
   const panelVisible = usePanelVisibility()
   const [newMenuOpen, setNewMenuOpen] = useState(false)
@@ -656,7 +676,8 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     setPendingDispatches((prev) => prev.filter((p) => p.id !== id))
   }
 
-  const items = useMemo(() => [...optimisticItems, ...baseItems], [optimisticItems, baseItems])
+  const rawItems = useMemo(() => [...optimisticItems, ...baseItems], [optimisticItems, baseItems])
+  const items = useStableList(rawItems)
   const activeItems = useMemo(() => items.filter((i) => i.active), [items])
   const recentItems = useMemo(() => items.filter((i) => !i.active), [items])
 
@@ -887,9 +908,11 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     postMessage({ type: 'focusTerminal', terminalId: t.id })
   }
 
-  const handleRetry = (taskName: string) => {
+  const handleSelectAgent = useCallback((id: string) => setExpandedAgentId(id), [])
+
+  const handleRetry = useCallback((taskName: string) => {
     postMessage({ type: 'retrySwarm', taskName })
-  }
+  }, [])
 
   const handleKill = (taskName: string) => {
     postMessage({ type: 'killSwarm', taskName })
@@ -1153,7 +1176,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
                       key={item.id}
                       item={item}
                       selected={selected?.id === item.id}
-                      onSelect={(id) => setExpandedAgentId(id)}
+                      onSelect={handleSelectAgent}
                     />
                   ))}
                   {activeItems.length > 0 && visibleActive.length === 0 && (
@@ -1169,7 +1192,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
                           key={item.id}
                           item={item}
                           selected={selected?.id === item.id}
-                          onSelect={(id) => setExpandedAgentId(id)}
+                          onSelect={handleSelectAgent}
                           dimmed
                           onRetry={handleRetry}
                         />
@@ -2235,7 +2258,11 @@ function WatchdogDetail({ events }: { events: WatchdogEventUI[] }) {
   )
 }
 
-function AgentCard({ item, selected, onSelect, dimmed, onRetry }: {
+// Memoized: with identity-stable `item` refs (see useStableList) and stable
+// onSelect/onRetry callbacks, a token streamed by one agent re-renders ONLY
+// that agent's card instead of all of them. Default shallow prop compare is
+// correct here because every field change rebuilds that agent's item object.
+const AgentCard = React.memo(function AgentCard({ item, selected, onSelect, dimmed, onRetry }: {
   item: UnifiedAgent
   selected: boolean
   onSelect: (id: string) => void
@@ -2310,7 +2337,7 @@ function AgentCard({ item, selected, onSelect, dimmed, onRetry }: {
       )}
     </button>
   )
-}
+})
 
 const IDLE_AFTER_MS = 2 * 60 * 1000
 

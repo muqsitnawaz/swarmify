@@ -868,9 +868,8 @@ export async function getCursorSessionPreviewInfo(dbPath: string): Promise<Sessi
       return { messageCount: 0 };
     }
 
-    // Read the database file
-    const fsSync = await import('fs');
-    const fileBuffer = fsSync.readFileSync(dbPath);
+    // Read the database file (async so it doesn't block the extension host)
+    const fileBuffer = await fs.readFile(dbPath);
     const db = new SQL.Database(fileBuffer);
 
     try {
