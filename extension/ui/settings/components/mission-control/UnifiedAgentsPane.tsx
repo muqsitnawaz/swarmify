@@ -76,6 +76,25 @@ interface UnifiedAgent {
   watchdogEvents?: WatchdogEventUI[]
 }
 
+// Cross-host Floor: shape mirrors src/core/remoteSessions.ts (kept local so the
+// webview bundle has no cross-tree import).
+interface RemoteSession {
+  host: string
+  agentType: string
+  status: string
+  title: string
+  cwd?: string
+  context: string
+  sessionId?: string
+}
+interface HostGroup {
+  host: string
+  online: boolean
+  error?: string
+  sessions: RemoteSession[]
+  running: number
+}
+
 function buildUnifiedList(terminals: TerminalInfo[], tasks: TaskSummary[]): UnifiedAgent[] {
   const items: UnifiedAgent[] = []
 
@@ -433,6 +452,12 @@ function useStableList(items: UnifiedAgent[]): UnifiedAgent[] {
 
 export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks, unifiedTasksLoading, onDispatch, onNavigate, onOpenInBench, openDispatchTrigger, quickSpawnTrigger, openDetailTaskId, onDetailTaskConsumed, onThroughputChange, githubRepo, watchdogEnabled = false, watchdogEvents = [] }: UnifiedAgentsPaneProps) {
   const panelVisible = usePanelVisibility()
+  // Cross-host Floor state.
+  const [availableHosts, setAvailableHosts] = useState<string[]>([])
+  const [selectedHosts, setSelectedHosts] = useState<string[]>([])
+  const [hostGroups, setHostGroups] = useState<HostGroup[]>([])
+  const [hostPickerOpen, setHostPickerOpen] = useState(false)
+  const [collapsedHosts, setCollapsedHosts] = useState<Set<string>>(new Set())
   const [newMenuOpen, setNewMenuOpen] = useState(false)
   const [statPopover, setStatPopover] = useState<'shipped' | 'open' | 'running' | 'nextup' | 'files' | null>(null)
   const [dispatchOpen, setDispatchOpen] = useState(false)
@@ -910,6 +935,44 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
 
   const handleSelectAgent = useCallback((id: string) => setExpandedAgentId(id), [])
 
+  // Cross-host Floor: load candidate hosts once, listen for host data, and poll
+  // the selected hosts' active sessions while the Floor is visible.
+  useEffect(() => { postMessage({ type: 'getFloorHosts' }) }, [])
+  useEffect(() => {
+    const onMsg = (e: MessageEvent) => {
+      const m = e.data
+      if (m?.type === 'floorHostsData') {
+        setAvailableHosts(Array.isArray(m.available) ? m.available : [])
+        setSelectedHosts(Array.isArray(m.selected) ? m.selected : [])
+      } else if (m?.type === 'floorHostSessionsData') {
+        setHostGroups(Array.isArray(m.groups) ? m.groups : [])
+      }
+    }
+    window.addEventListener('message', onMsg)
+    return () => window.removeEventListener('message', onMsg)
+  }, [])
+  useEffect(() => {
+    if (!panelVisible || selectedHosts.length === 0) return
+    postMessage({ type: 'fetchHostSessions' })
+    const id = setInterval(() => postMessage({ type: 'fetchHostSessions' }), 8000)
+    return () => clearInterval(id)
+  }, [panelVisible, selectedHosts])
+
+  const toggleHost = useCallback((host: string) => {
+    setSelectedHosts((prev) => {
+      const next = prev.includes(host) ? prev.filter((h) => h !== host) : [...prev, host]
+      postMessage({ type: 'setFloorHosts', hosts: next })
+      return next
+    })
+  }, [])
+  const toggleHostCollapsed = useCallback((host: string) => {
+    setCollapsedHosts((prev) => {
+      const n = new Set(prev)
+      if (n.has(host)) n.delete(host); else n.add(host)
+      return n
+    })
+  }, [])
+
   const handleRetry = useCallback((taskName: string) => {
     postMessage({ type: 'retrySwarm', taskName })
   }, [])
@@ -1159,6 +1222,65 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
               ))}
             </div>
           )}
+
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 2px' }}>
+              <span style={{ fontSize: 10, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--vscode-descriptionForeground)' }}>Hosts</span>
+              <button className="sw-btn ghost sm" onClick={() => setHostPickerOpen((o) => !o)} title="Choose hosts to show on the floor">
+                <Icon name="plus" size={11} /> {selectedHosts.length ? `${selectedHosts.length} selected` : 'Add host'}
+              </button>
+              {selectedHosts.length > 0 && (
+                <button className="sw-btn ghost sm" onClick={() => postMessage({ type: 'fetchHostSessions' })} title="Refresh host sessions">
+                  <Icon name="refresh" size={11} />
+                </button>
+              )}
+            </div>
+            {hostPickerOpen && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '6px 2px', borderBottom: '1px solid var(--vscode-panel-border)' }}>
+                {availableHosts.length === 0 && (
+                  <span style={{ fontSize: 11, color: 'var(--vscode-descriptionForeground)' }}>No ssh hosts or tailnet peers found.</span>
+                )}
+                {availableHosts.map((h) => {
+                  const on = selectedHosts.includes(h)
+                  return (
+                    <button key={h} onClick={() => toggleHost(h)} style={{
+                      fontSize: 11, padding: '2px 8px', borderRadius: 10, cursor: 'pointer',
+                      border: '1px solid var(--vscode-panel-border)',
+                      background: on ? 'var(--vscode-button-background)' : 'transparent',
+                      color: on ? 'var(--vscode-button-foreground)' : 'var(--vscode-foreground)',
+                    }}>{h}</button>
+                  )
+                })}
+              </div>
+            )}
+            {hostGroups.map((g) => {
+              const collapsed = collapsedHosts.has(g.host)
+              return (
+                <div key={g.host} style={{ marginTop: 6 }}>
+                  <button onClick={() => toggleHostCollapsed(g.host)} style={{
+                    display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left',
+                    background: 'transparent', border: 'none', cursor: 'pointer', padding: '3px 2px', color: 'var(--vscode-foreground)',
+                  }}>
+                    <span style={{ display: 'inline-flex', transform: collapsed ? 'rotate(-90deg)' : 'none', transition: 'transform .1s' }}><Icon name="chevD" size={12} /></span>
+                    <span style={{ fontWeight: 600, fontSize: 12 }}>{g.host}</span>
+                    <span style={{ marginLeft: 'auto', fontSize: 11, color: g.online ? 'var(--vscode-descriptionForeground)' : 'var(--vscode-errorForeground)' }}>
+                      {g.online ? `${g.running} running · ${g.sessions.length} active` : `offline — ${g.error || 'unreachable'}`}
+                    </span>
+                  </button>
+                  {!collapsed && g.online && g.sessions.map((s, i) => (
+                    <div key={s.sessionId || i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 2px 3px 18px' }}>
+                      <AgentAvatar id={s.agentType} size={16} />
+                      <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 6, background: 'var(--vscode-badge-background)', color: 'var(--vscode-badge-foreground)', flexShrink: 0 }}>{s.status}</span>
+                      <span style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={s.cwd}>{s.title}</span>
+                    </div>
+                  ))}
+                  {!collapsed && g.online && g.sessions.length === 0 && (
+                    <div style={{ fontSize: 11, color: 'var(--vscode-descriptionForeground)', padding: '2px 18px' }}>No active sessions.</div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
 
           {(() => {
             const visibleActive = activeItems.filter((item) => activeFilter === 'all' || (activeFilter === 'cloud' ? item.kind === 'cloud' : item.kind !== 'cloud'))

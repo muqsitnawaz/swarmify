@@ -18,6 +18,8 @@ import { CLAUDE_TITLE } from '../core/utils';
 import { discoverRecentSessions, getSessionPathBySessionId } from './sessions.vscode';
 import { formatTerminalTitle, parseTerminalName, getSessionChunk } from '../core/utils';
 import { getBuiltInByKey } from '../core/agents';
+import { parseSshConfigHosts, mergeHostCandidates } from '../core/sshHosts';
+import { buildHostGroups, type HostFetchResult, type HostGroup } from '../core/remoteSessions';
 import { resolveForemanTarget, candidateName } from '../core/foreman.target';
 import { parseEvents } from '../core/watchdogLog';
 import {
@@ -752,6 +754,69 @@ async function pushFloorUpdate(workspacePath?: string): Promise<void> {
   await watchFloorSessions(workspacePath);
 }
 
+// ---- Cross-host Factory Floor: aggregate `agents sessions --active` across
+// SSH hosts. Candidate hosts come from ~/.ssh/config + online Tailscale peers;
+// the user's selection persists in globalState. ----
+const execFileHosts = promisify(execFile);
+
+async function listTailscalePeers(): Promise<string[]> {
+  for (const bin of ['tailscale', '/Applications/Tailscale.app/Contents/MacOS/Tailscale']) {
+    try {
+      const { stdout } = await execFileHosts(bin, ['status'], { timeout: 4000 });
+      // Columns: <ip> <hostname> <user> <os> <status...>
+      return stdout.split('\n')
+        .map((l) => l.trim().split(/\s+/))
+        .filter((c) => c.length >= 2 && /^\d+\.\d+\.\d+\.\d+$/.test(c[0]))
+        .map((c) => c[1])
+        .filter(Boolean);
+    } catch { /* try next */ }
+  }
+  return [];
+}
+
+async function getAvailableFloorHosts(): Promise<string[]> {
+  let sshHosts: string[] = [];
+  try {
+    sshHosts = parseSshConfigHosts(await fs.promises.readFile(path.join(homedir(), '.ssh', 'config'), 'utf-8'));
+  } catch { /* no ssh config */ }
+  const peers = await listTailscalePeers();
+  let self: string | undefined;
+  try { self = require('os').hostname().split('.')[0]; } catch { /* ignore */ }
+  return mergeHostCandidates(sshHosts, peers, self);
+}
+
+interface HostGroupsCacheEntry { at: number; groups: HostGroup[]; }
+let hostGroupsCache: HostGroupsCacheEntry | undefined;
+let hostFetchInFlight: Promise<HostGroup[]> | undefined;
+const HOST_FETCH_TTL_MS = 6000;
+
+async function fetchHostGroups(hosts: string[]): Promise<HostGroup[]> {
+  if (hosts.length === 0) return [];
+  if (hostGroupsCache && Date.now() - hostGroupsCache.at < HOST_FETCH_TTL_MS) return hostGroupsCache.groups;
+  if (hostFetchInFlight) return hostFetchInFlight;
+  hostFetchInFlight = (async () => {
+    const results: HostFetchResult[] = await Promise.all(hosts.map(async (host) => {
+      try {
+        const { stdout } = await execFileHosts('agents', ['sessions', '--active', '--json', '--host', host],
+          { timeout: 9000, maxBuffer: 8 * 1024 * 1024 });
+        return { host, ok: true, stdout };
+      } catch (err: unknown) {
+        const e = err as { stdout?: string; stderr?: string; message?: string };
+        // The CLI may exit non-zero but still print a valid JSON array; salvage it.
+        if (e.stdout && e.stdout.includes('[')) return { host, ok: true, stdout: e.stdout };
+        const msg = (e.stderr || e.message || 'unreachable')
+          .split('\n').map((l) => l.trim())
+          .find((l) => l && !/^Warning: Permanently added/.test(l)) || 'unreachable';
+        return { host, ok: false, error: msg.slice(0, 100) };
+      }
+    }));
+    const groups = buildHostGroups(results);
+    hostGroupsCache = { at: Date.now(), groups };
+    return groups;
+  })();
+  try { return await hostFetchInFlight; } finally { hostFetchInFlight = undefined; }
+}
+
 async function subscribeFloor(workspacePath?: string): Promise<void> {
   floorSubscribed = true;
   await watchFloorSessions(workspacePath);
@@ -1345,6 +1410,26 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
       case 'unsubscribeFloor':
         cleanupFloorWatchers();
         break;
+      case 'getFloorHosts': {
+        const available = await getAvailableFloorHosts();
+        const selected = context.globalState.get<string[]>('floorSelectedHosts', []);
+        settingsPanel?.webview.postMessage({ type: 'floorHostsData', available, selected });
+        break;
+      }
+      case 'setFloorHosts': {
+        const selected = Array.isArray(message.hosts) ? message.hosts.filter((h: unknown) => typeof h === 'string') : [];
+        await context.globalState.update('floorSelectedHosts', selected);
+        hostGroupsCache = undefined; // force a fresh fetch for the new selection
+        const groups = await fetchHostGroups(selected);
+        settingsPanel?.webview.postMessage({ type: 'floorHostSessionsData', groups });
+        break;
+      }
+      case 'fetchHostSessions': {
+        const selected = context.globalState.get<string[]>('floorSelectedHosts', []);
+        const groups = await fetchHostGroups(selected);
+        settingsPanel?.webview.postMessage({ type: 'floorHostSessionsData', groups });
+        break;
+      }
       case 'openGuide':
         openGuide(context, message.guide);
         break;
