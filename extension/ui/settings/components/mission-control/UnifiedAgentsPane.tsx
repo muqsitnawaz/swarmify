@@ -1269,6 +1269,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
       sort={ticketSort}
       srcFilter={ticketSrc}
       projFilter={projFilter}
+      search={floorSearch}
       selectedTicketId={selectedTicketId}
       onGroup={setTicketGroup}
       onSort={setTicketSort}
@@ -1733,7 +1734,7 @@ function DispatchModal({ tasks, loading, onClose, onDispatch, onDispatchBatch, o
     return todoTasks
       .filter((t) => {
         if (priorityFilter === 'urgent' && t.priority !== 'urgent') return false
-        if (priorityFilter === 'high' && t.priority !== 'high' && t.priority !== 'urgent') return false
+        if (priorityFilter === 'high' && t.priority !== 'high') return false
         if (!q) return true
         return (
           t.title.toLowerCase().includes(q) ||

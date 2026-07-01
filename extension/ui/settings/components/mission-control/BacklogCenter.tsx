@@ -29,6 +29,8 @@ interface BacklogCenterProps {
   srcFilter: Record<TicketSource, boolean>
   /** null = all projects; a project name scopes the list. */
   projFilter: string | null
+  /** Free-text query from the top bar (matches id / title / labels). */
+  search: string
   selectedTicketId: string | null
   onGroup: (by: TicketGroupBy) => void
   onSort: (by: TicketSort) => void
@@ -60,10 +62,21 @@ function TicketRow({ ticket: t, selected, onSelect }: {
 }
 
 export function BacklogCenter({
-  tickets, group, sort, srcFilter, projFilter, selectedTicketId,
+  tickets, group, sort, srcFilter, projFilter, search, selectedTicketId,
   onGroup, onSort, onToggleSrc, onSelectTicket, onBackToAgents,
 }: BacklogCenterProps) {
-  const list = tickets.filter((t) => (projFilter === null || t.project === projFilter) && srcFilter[t.source])
+  // Backlog = work you can still dispatch onto, so completed tickets are excluded.
+  const q = search.trim().toLowerCase()
+  const list = tickets.filter(
+    (t) =>
+      t.status !== 'done' &&
+      (projFilter === null || t.project === projFilter) &&
+      srcFilter[t.source] &&
+      (!q ||
+        t.id.toLowerCase().includes(q) ||
+        t.title.toLowerCase().includes(q) ||
+        (t.labels || []).some((l) => l.toLowerCase().includes(q))),
+  )
   const sorted = sortTickets(list, sort)
   const groups = groupTickets(sorted, group)
 
