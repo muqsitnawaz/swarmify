@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { BUILT_IN_AGENTS, getBuiltInByKey, getBuiltInDefByTitle, getBuiltInByPrefix, pickLatestVersion, STRATEGY_LAUNCH_AGENTS, modeFlagForAgent, AgentLaunchMode } from '../core/agents';
+import { parseSpawnRequest, SpawnRequest } from '../core/spawn';
 import {
   AgentConfig,
   buildIconPath,
@@ -812,6 +813,16 @@ export async function activate(context: vscode.ExtensionContext) {
           const entry = terminalId ? terminals.getById(terminalId) : undefined;
           if (entry) {
             entry.terminal.show();
+          }
+        }
+
+        // /spawn — open an agent terminal in an editor tab running the supplied
+        // command (e.g. `claude --resume <id>`). Used by the agents-cli terminal
+        // engine's `vscodium-agent` backend to resume sessions into this editor.
+        if (uri.path === '/spawn') {
+          const req = parseSpawnRequest(uri.query);
+          if (req) {
+            await spawnCommandTerminal(context, req);
           }
         }
       }
@@ -1687,6 +1698,68 @@ async function openSingleAgent(
   if (agentKey === 'opencode' && opencodeSessionsBefore !== null) {
     detectOpencodeSessionId(terminal, terminalId, cwd, opencodeSessionsBefore, context);
   }
+}
+
+// Tracks the most recent /spawn terminal so a follow-up split lands beside it
+// (the engine's two-per-tab packing: tab, then split, then tab, …).
+let lastSpawnedTerminal: vscode.Terminal | undefined;
+
+// The parent terminal for a split: the last /spawn terminal if it is still
+// open, else the active terminal, else none (caller falls back to a new tab).
+function aliveSpawnParent(): vscode.Terminal | undefined {
+  if (lastSpawnedTerminal && vscode.window.terminals.includes(lastSpawnedTerminal)) {
+    return lastSpawnedTerminal;
+  }
+  return vscode.window.activeTerminal ?? undefined;
+}
+
+// Open an editor-tab terminal running an arbitrary command (the /spawn verb).
+// Mirrors openSingleAgent's non-tmux editor-terminal path but for a caller-
+// supplied command: it is registered as a shell terminal with shell adoption
+// armed, so a resume command like `claude --resume <id>` is auto-promoted to
+// the Claude chip + session tracking. When req.split is set, the terminal
+// splits beside the previous /spawn pane instead of opening a new tab.
+async function spawnCommandTerminal(
+  context: vscode.ExtensionContext,
+  req: SpawnRequest
+): Promise<void> {
+  const shellDef = getBuiltInByKey('shell');
+  if (!shellDef) return;
+  const agentConfig = createAgentConfig(
+    context.extensionPath,
+    shellDef.title,
+    shellDef.command,
+    shellDef.icon,
+    shellDef.prefix
+  );
+
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
+  const cwd = req.cwd || workspaceFolder;
+  const terminalId = terminals.nextId(agentConfig.prefix);
+
+  const parent = req.split ? aliveSpawnParent() : undefined;
+  const location: vscode.TerminalEditorLocationOptions | vscode.TerminalSplitLocationOptions =
+    parent
+      ? { parentTerminal: parent }
+      : { viewColumn: vscode.ViewColumn.Active, preserveFocus: false };
+
+  const terminal = vscode.window.createTerminal({
+    iconPath: agentConfig.iconPath,
+    location,
+    name: buildTerminalTitle(agentConfig.title, undefined, context, null),
+    env: buildAgentTerminalEnv(terminalId, null, cwd, undefined, { scrubSensitive: false }),
+    cwd,
+    isTransient: true
+  });
+
+  const pid = await terminal.processId;
+  terminals.register(terminal, terminalId, agentConfig, pid, context);
+  readiness.registerTerminal(terminal);
+  armShellAdoptionForTerminal(terminal, context);
+
+  await sendCommandWhenReady(terminal, req.command);
+  terminal.show();
+  lastSpawnedTerminal = terminal;
 }
 
 async function newTaskWithContext(context: vscode.ExtensionContext) {
