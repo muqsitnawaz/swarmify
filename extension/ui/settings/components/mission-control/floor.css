@@ -1,0 +1,301 @@
+/* Factory Floor — ported from the prototype <style> block
+ * (docs/prototypes/factory-floor.html:7-256). Class names are kept 1:1 so the
+ * React port (COMPONENTS) renders the same markup the prototype does.
+ *
+ * The prototype defined its own local palette in :root / html[data-theme]. Here
+ * every one of those locals is remapped to the LOCKED design tokens in
+ * design-system.css (do not edit that file). Mapping:
+ *   --brand      -> var(--brand)               (#a3e635, selection/accent only)
+ *   --brand-600  -> var(--brand-600)
+ *   --brand-ring -> var(--brand-ring)
+ *   --run  -> var(--status-running)   --run-bg  -> var(--status-running-bg)
+ *   --idle -> var(--status-idle)      --idle-bg -> var(--status-idle-bg)
+ *   --fail -> var(--status-failed)    --fail-bg -> var(--status-failed-bg)
+ *   --wait -> var(--status-pending)   --wait-bg -> var(--status-pending-bg)
+ *   --bg   -> var(--ds-bg)            --panel   -> var(--ds-bg-panel)
+ *   --sunken -> var(--ds-bg-sunken)   --recessed-> var(--ds-bg-recessed)
+ *   --bd -> var(--ds-border)  --bd-strong -> var(--ds-border-strong)
+ *   --bd-sub -> var(--ds-border-subtle)
+ *   --tx -> var(--ds-text)  --tx-mut -> var(--ds-text-muted)
+ *   --tx-dim -> var(--ds-text-dim)  --tx-faint -> var(--ds-text-faint)
+ * The *-bg status tokens and the ds-* tokens are already theme-swapped by
+ * .theme-light / .theme-dark in design-system.css, so light + dark both work
+ * without any per-theme rule here.
+ *
+ * Everything is scoped under .swarmify-root (the app shell root, App.tsx) so
+ * these generic names cannot leak into or collide with the rest of the webview.
+ *
+ * Two-greens fix (DESIGN.md open item): running (--status-running #22C55E) sits
+ * near brand (--brand #a3e635). Status is only ever a *dot fill / glow*; brand is
+ * only ever *selection* (an inset ring `inset 3px 0 0 var(--brand)` or a
+ * `0 0 0 2px var(--brand)` outline) — the two never share a treatment.
+ *
+ * Not ported (reported deliberately):
+ *  - `.mono`   : design-system.css:116 already defines `.swarmify-root .mono`.
+ *  - `.hidden` : collides with Tailwind's `.hidden` used elsewhere in the webview
+ *                (RunningAgentsSection.tsx); the React port toggles visibility by
+ *                conditional render, not a class.
+ * The terminal readout surface (`.prog .now`) has no design-system token, so it
+ * uses a floor-local var defined below.
+ */
+
+.swarmify-root {
+  --floor-term-bg: #1c1a17;
+  --floor-term-tx: #d8cfc2;
+}
+.swarmify-root.theme-dark {
+  --floor-term-bg: #000;
+  --floor-term-tx: #bfb9ae;
+}
+
+/* ---- shell ---- */
+.swarmify-root .top { display: flex; align-items: center; gap: 14px; padding: 10px 16px; background: var(--ds-bg-panel); border-bottom: 1px solid var(--ds-border); }
+.swarmify-root .logo { display: flex; align-items: center; gap: 8px; font-weight: 700; letter-spacing: .06em; }
+.swarmify-root .logo .bolt { color: var(--brand); }
+/* Finder-style icon view-switcher */
+.swarmify-root .viewbar { display: flex; gap: 2px; background: var(--ds-bg-sunken); padding: 3px; border-radius: var(--r-lg); }
+.swarmify-root .viewbar button { border: none; background: transparent; width: 32px; height: 26px; border-radius: var(--r-md); color: var(--ds-text-dim); display: inline-flex; align-items: center; justify-content: center; }
+.swarmify-root .viewbar button:hover { color: var(--ds-text-muted); }
+.swarmify-root .viewbar button.on { background: var(--ds-bg-panel); color: var(--ds-text); box-shadow: 0 1px 2px rgba(0,0,0,.15); }
+.swarmify-root .viewbar svg { display: block; }
+/* Finder-style Arrange/Group dropdown */
+.swarmify-root .arrange { display: inline-flex; align-items: center; gap: 6px; background: var(--ds-bg-panel); border: 1px solid var(--ds-border); border-radius: var(--r-lg); padding: 3px 8px 3px 9px; color: var(--ds-text-muted); }
+.swarmify-root .arrange select { border: none; background: transparent; color: var(--ds-text); font-weight: 600; font-size: 12px; outline: none; }
+.swarmify-root .grow { flex: 1; }
+.swarmify-root .stat { display: flex; align-items: center; gap: 6px; color: var(--ds-text-muted); font-size: 12px; }
+.swarmify-root .stat b { color: var(--ds-text); }
+.swarmify-root .tok { color: var(--brand-600); font-weight: 600; }
+.swarmify-root .themebtn { border: 1px solid var(--ds-border); background: var(--ds-bg-panel); border-radius: var(--r-md); padding: 5px 9px; font-size: 12px; }
+
+/* ---- filter bar ---- */
+.swarmify-root .fbar { display: flex; align-items: center; gap: 10px; padding: 8px 16px; background: var(--ds-bg); border-bottom: 1px solid var(--ds-border-subtle); flex-wrap: wrap; }
+.swarmify-root .ctl { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ds-text-muted); }
+.swarmify-root .sel { background: var(--ds-bg-panel); border: 1px solid var(--ds-border); border-radius: var(--r-md); padding: 4px 8px; font-size: 12px; color: var(--ds-text); font-weight: 600; }
+.swarmify-root .chip { border: 1px solid var(--ds-border); background: var(--ds-bg-panel); border-radius: 999px; padding: 3px 10px; font-size: 11px; font-weight: 600; color: var(--ds-text-muted); }
+.swarmify-root .chip.on { background: var(--brand); border-color: var(--brand); color: #1a1a1a; }
+.swarmify-root .chip.needs.on { background: var(--status-pending); border-color: var(--status-pending); color: #1a1a1a; }
+.swarmify-root .search { flex: 1; min-width: 120px; max-width: 340px; background: var(--ds-bg-panel); border: 1px solid var(--ds-border); border-radius: var(--r-md); padding: 5px 10px; color: var(--ds-text); font-size: 12px; }
+.swarmify-root .disp { display: inline-flex; align-items: center; gap: 6px; background: var(--brand); color: #1a1a1a; border: none; font-weight: 700; padding: 6px 12px; border-radius: var(--r-md); font-size: 12px; }
+
+/* ---- generic dot / badges ---- */
+.swarmify-root .dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; display: inline-block; }
+.swarmify-root .dot.running { background: var(--status-running); box-shadow: 0 0 0 3px var(--status-running-bg); }
+.swarmify-root .dot.idle { background: transparent; border: 1.5px solid var(--status-idle); }
+.swarmify-root .dot.failed { background: var(--status-failed); box-shadow: 0 0 0 3px var(--status-failed-bg); }
+.swarmify-root .dot.waiting { background: var(--status-pending); box-shadow: 0 0 0 3px var(--status-pending-bg); }
+.swarmify-root .dot.done { background: var(--status-idle); }
+.swarmify-root .av { width: 20px; height: 20px; border-radius: 5px; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; flex: 0 0 auto; }
+.swarmify-root .av.CC { background: var(--brand); color: #1a1a1a; }
+.swarmify-root .av.CX { background: #5B7CE0; color: #fff; }
+.swarmify-root .av.GX { background: #8b5cf6; color: #fff; }
+.swarmify-root .tag { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: var(--r-sm); background: var(--ds-bg-sunken); color: var(--ds-text-dim); }
+.swarmify-root .needsflag { font-size: 9.5px; font-weight: 800; letter-spacing: .04em; padding: 1px 6px; border-radius: var(--r-sm); background: var(--status-pending); color: #1a1a1a; }
+.swarmify-root .needsflag.fail { background: var(--status-failed); color: #fff; }
+.swarmify-root .spark { display: inline-flex; align-items: flex-end; gap: 1px; height: 12px; }
+.swarmify-root .spark i { width: 2px; background: var(--brand-600); border-radius: 1px; display: block; opacity: .85; }
+.swarmify-root .since { color: var(--ds-text-dim); font-size: 11px; font-variant-numeric: tabular-nums; }
+.swarmify-root .tps { color: var(--brand-600); font-weight: 600; font-size: 11px; font-variant-numeric: tabular-nums; }
+
+/* ============ LAYOUT: RAIL ============ */
+.swarmify-root .rail-wrap { display: grid; grid-template-columns: 320px 1fr; height: 100%; min-height: 0; }
+.swarmify-root .rail { border-right: 1px solid var(--ds-border); overflow: auto; background: var(--ds-bg); }
+.swarmify-root .ghead { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 8px; padding: 7px 12px; background: var(--ds-bg); border-bottom: 1px solid var(--ds-border-subtle); font-size: 11px; font-weight: 700; letter-spacing: .03em; color: var(--ds-text-muted); backdrop-filter: blur(4px); }
+.swarmify-root .ghead .gcount { margin-left: auto; display: flex; gap: 8px; font-weight: 600; }
+.swarmify-root .ghead.attn { color: var(--status-pending); }
+.swarmify-root .ghead.pin { color: var(--brand-600); }
+.swarmify-root .ghead .edge { position: absolute; left: 0; top: 0; bottom: 0; width: 3px; }
+.swarmify-root .arow { display: flex; align-items: center; gap: 9px; padding: 7px 12px 7px 14px; border-bottom: 1px solid var(--ds-border-subtle); cursor: pointer; }
+.swarmify-root .arow:hover { background: var(--ds-bg-panel); }
+.swarmify-root .arow.sel { background: var(--ds-bg-panel); box-shadow: inset 3px 0 0 var(--brand); }
+.swarmify-root .arow .nm { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px; }
+.swarmify-root .arow .act { color: var(--ds-text-muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+.swarmify-root .arow .act b { color: var(--ds-text); font-weight: 600; }
+.swarmify-root .arow .meta { display: flex; align-items: center; gap: 7px; margin-left: auto; flex: 0 0 auto; }
+.swarmify-root .grow0 { flex: 1; min-width: 0; }
+
+/* detail pane */
+.swarmify-root .detail { overflow: auto; background: var(--ds-bg-panel); }
+.swarmify-root .dhead { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--ds-border); }
+.swarmify-root .dhead .title { font-size: 15px; font-weight: 700; }
+.swarmify-root .dhead .sub { color: var(--ds-text-dim); font-size: 11px; }
+.swarmify-root .dbody { padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; }
+.swarmify-root .prog { background: var(--ds-bg); border: 1px solid var(--ds-border-subtle); border-radius: var(--r-lg); padding: 12px 14px; }
+.swarmify-root .prog .now { font-family: "Geist Mono", monospace; font-size: 12px; background: var(--floor-term-bg); color: var(--floor-term-tx); padding: 8px 10px; border-radius: var(--r-md); margin: 8px 0; }
+.swarmify-root .prog .stats { display: flex; gap: 14px; color: var(--ds-text-muted); font-size: 12px; }
+.swarmify-root .lbl { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ds-text-dim); margin-bottom: 6px; }
+.swarmify-root .filerow { display: flex; align-items: center; gap: 10px; padding: 4px 0; font-size: 12px; }
+.swarmify-root .filerow .mono { flex: 1; color: var(--ds-text); }
+.swarmify-root .heat { width: 120px; height: 6px; border-radius: 3px; background: var(--ds-bg-sunken); overflow: hidden; position: relative; }
+.swarmify-root .heat i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--brand-600); }
+.swarmify-root .diff .add { color: var(--status-running); }
+.swarmify-root .diff .del { color: var(--status-failed); }
+.swarmify-root .toolrow { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 12px; color: var(--ds-text-muted); }
+.swarmify-root .toolrow .ok { color: var(--status-running); }
+.swarmify-root .actions { display: flex; gap: 8px; }
+.swarmify-root .abtn { border: 1px solid var(--ds-border); background: var(--ds-bg); border-radius: var(--r-md); padding: 6px 12px; font-size: 12px; font-weight: 600; }
+.swarmify-root .abtn.pri { background: var(--brand); border-color: var(--brand); color: #1a1a1a; }
+.swarmify-root .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--ds-border); padding: 0 18px; }
+.swarmify-root .tabs button { border: none; background: transparent; padding: 8px 12px; font-size: 12px; font-weight: 600; color: var(--ds-text-muted); border-bottom: 2px solid transparent; }
+.swarmify-root .tabs button.on { color: var(--ds-text); border-bottom-color: var(--brand); }
+
+/* ============ LAYOUT: TRIPLE ============ */
+.swarmify-root .tri-wrap { display: grid; grid-template-columns: 190px 300px 1fr; height: 100%; min-height: 0; }
+.swarmify-root .nav { border-right: 1px solid var(--ds-border); overflow: auto; padding: 8px 0; background: var(--ds-bg); }
+.swarmify-root .navsec { font-size: 10px; font-weight: 700; letter-spacing: .05em; color: var(--ds-text-faint); padding: 10px 14px 4px; }
+.swarmify-root .navitem { display: flex; align-items: center; gap: 8px; padding: 6px 14px; font-size: 12.5px; cursor: pointer; color: var(--ds-text-muted); }
+.swarmify-root .navitem:hover { background: var(--ds-bg-panel); }
+.swarmify-root .navitem.on { background: var(--ds-bg-panel); color: var(--ds-text); font-weight: 600; box-shadow: inset 3px 0 0 var(--brand); }
+.swarmify-root .navitem .c { margin-left: auto; font-size: 11px; color: var(--ds-text-dim); font-variant-numeric: tabular-nums; }
+.swarmify-root .navitem .c.warn { color: var(--status-pending); font-weight: 700; }
+.swarmify-root .midlist { border-right: 1px solid var(--ds-border); overflow: auto; background: var(--ds-bg); }
+
+/* ============ LAYOUT: BOARD ============ */
+.swarmify-root .board { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; padding: 14px 16px; height: 100%; min-height: 0; overflow: hidden; }
+.swarmify-root .col { background: var(--ds-bg); border: 1px solid var(--ds-border-subtle); border-radius: var(--r-lg); display: flex; flex-direction: column; min-height: 0; }
+.swarmify-root .colhead { display: flex; align-items: center; gap: 8px; padding: 10px 12px; font-weight: 700; font-size: 12px; border-bottom: 1px solid var(--ds-border-subtle); }
+.swarmify-root .colhead .c { margin-left: auto; background: var(--ds-bg-sunken); border-radius: 999px; padding: 1px 8px; font-size: 11px; color: var(--ds-text-dim); }
+.swarmify-root .colbody { overflow: auto; padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+.swarmify-root .bcard { background: var(--ds-bg-panel); border: 1px solid var(--ds-border-subtle); border-radius: var(--r-md); padding: 9px 10px; cursor: pointer; }
+.swarmify-root .bcard:hover { border-color: var(--ds-border-strong); }
+.swarmify-root .bcard .r1 { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; }
+.swarmify-root .bcard .r1 .nm { font-weight: 600; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.swarmify-root .bcard .act { font-family: "Geist Mono", monospace; font-size: 11px; color: var(--ds-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.swarmify-root .bcard .r3 { display: flex; align-items: center; gap: 8px; margin-top: 6px; color: var(--ds-text-dim); font-size: 10.5px; }
+.swarmify-root .colhead.needs { color: var(--status-pending); }
+.swarmify-root .colhead.run { color: var(--status-running); }
+.swarmify-root .colhead.idle { color: var(--status-idle); }
+.swarmify-root .colhead.done { color: var(--ds-text-muted); }
+
+/* ============ LAYOUT: TABLE ============ */
+.swarmify-root .tbl-wrap { height: 100%; min-height: 0; overflow: auto; }
+.swarmify-root table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.swarmify-root thead th { position: sticky; top: 0; background: var(--ds-bg-panel); text-align: left; padding: 8px 12px; font-size: 10.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ds-text-dim); border-bottom: 1px solid var(--ds-border); cursor: pointer; white-space: nowrap; }
+.swarmify-root thead th.sorted { color: var(--ds-text); }
+.swarmify-root tbody td { padding: 7px 12px; border-bottom: 1px solid var(--ds-border-subtle); white-space: nowrap; }
+.swarmify-root tbody tr:hover { background: var(--ds-bg-panel); }
+.swarmify-root tbody tr.grouphdr td { background: var(--ds-bg); font-weight: 700; font-size: 11px; letter-spacing: .03em; color: var(--ds-text-muted); position: sticky; }
+.swarmify-root .td-act { font-family: "Geist Mono", monospace; color: var(--ds-text-muted); max-width: 340px; overflow: hidden; text-overflow: ellipsis; }
+.swarmify-root .td-act b { color: var(--ds-text); }
+.swarmify-root td .nm { font-weight: 600; }
+
+/* ============ LAYOUT: FEED (3-pane: scope . feed . detail) ============ */
+.swarmify-root .feed-col { flex: 1; min-width: 0; overflow: auto; display: flex; justify-content: center; }
+.swarmify-root .feed { width: 100%; max-width: 820px; padding: 14px 18px 60px; }
+.swarmify-root .detail-col { flex: 0 0 430px; border-left: 1px solid var(--ds-border); overflow: auto; background: var(--ds-bg-panel); }
+.swarmify-root .detail-empty { height: 100%; display: flex; align-items: center; justify-content: center; color: var(--ds-text-faint); font-size: 12px; padding: 20px; text-align: center; }
+/* decision block at top of the right detail when an agent needs you */
+.swarmify-root .decide { background: var(--status-pending-bg); border: 1px solid var(--status-pending); border-radius: var(--r-lg); padding: 12px 14px; margin-bottom: 14px; }
+.swarmify-root .decide .ql { font-size: 10px; font-weight: 800; letter-spacing: .05em; color: var(--status-pending); margin-bottom: 6px; }
+.swarmify-root .decide .qt { font-size: 13.5px; font-weight: 600; margin-bottom: 10px; }
+.swarmify-root .feed-sec { font-size: 11px; font-weight: 800; letter-spacing: .05em; color: var(--ds-text-dim); margin: 18px 4px 8px; display: flex; align-items: center; gap: 8px; }
+.swarmify-root .feed-sec.attn { color: var(--status-pending); }
+.swarmify-root .feed-sec .ln { flex: 1; height: 1px; background: var(--ds-border-subtle); }
+.swarmify-root .fitem { background: var(--ds-bg-panel); border: 1px solid var(--ds-border-subtle); border-radius: var(--r-lg); padding: 12px 14px; margin-bottom: 10px; cursor: pointer; }
+.swarmify-root .fitem.selsel { box-shadow: 0 0 0 2px var(--brand); }
+.swarmify-root .fitem.attn { border-color: var(--status-pending); box-shadow: 0 0 0 1px var(--status-pending-bg); }
+.swarmify-root .fitem.fail { border-color: var(--status-failed); box-shadow: 0 0 0 1px var(--status-failed-bg); }
+.swarmify-root .fitem .head { display: flex; align-items: center; gap: 9px; margin-bottom: 8px; }
+.swarmify-root .fitem .who { font-weight: 700; font-size: 13px; }
+.swarmify-root .fitem .path { color: var(--ds-text-dim); font-size: 11px; }
+.swarmify-root .fitem .when { margin-left: auto; color: var(--ds-text-dim); font-size: 11px; display: flex; align-items: center; gap: 8px; }
+.swarmify-root .fitem .resp { font-size: 12.5px; color: var(--ds-text); line-height: 1.5; margin: 2px 0 8px; border-left: 2px solid var(--ds-border); padding-left: 10px; }
+.swarmify-root .fitem .resp .q { color: var(--status-pending); font-weight: 600; }
+.swarmify-root .fitem .nowline { font-family: "Geist Mono", monospace; font-size: 11px; color: var(--ds-text-muted); display: flex; align-items: center; gap: 8px; }
+.swarmify-root .fitem .nowline .v { color: var(--brand-600); }
+.swarmify-root .pill { font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 999px; }
+.swarmify-root .pill.pr { background: var(--brand); color: #1a1a1a; }
+.swarmify-root .pill.run { background: var(--status-running-bg); color: var(--status-running); }
+.swarmify-root .pill.done { background: var(--status-idle-bg); color: var(--ds-text-muted); }
+.swarmify-root .reply { display: flex; gap: 8px; margin-top: 10px; }
+.swarmify-root .reply input { flex: 1; background: var(--ds-bg); border: 1px solid var(--ds-border); border-radius: var(--r-md); padding: 7px 10px; font-size: 12px; color: var(--ds-text); }
+.swarmify-root .reply .approve { background: var(--status-running); color: #fff; border: none; border-radius: var(--r-md); padding: 7px 12px; font-weight: 700; font-size: 12px; }
+.swarmify-root .reply .send { background: var(--brand); color: #1a1a1a; border: none; border-radius: var(--r-md); padding: 7px 12px; font-weight: 700; font-size: 12px; }
+.swarmify-root .iconbtn { border: 1px solid var(--ds-border); background: var(--ds-bg-panel); border-radius: var(--r-md); width: 30px; height: 28px; display: inline-flex; align-items: center; justify-content: center; color: var(--ds-text-muted); }
+.swarmify-root .iconbtn.on { background: var(--brand); border-color: var(--brand); color: #1a1a1a; }
+
+/* page with optional project sidebar */
+.swarmify-root .page { display: flex; height: 100%; min-height: 0; }
+.swarmify-root .sidebar { width: 210px; flex: 0 0 210px; border-right: 1px solid var(--ds-border); overflow: auto; padding: 8px 0; background: var(--ds-bg); }
+.swarmify-root .sb-sec { font-size: 10px; font-weight: 800; letter-spacing: .05em; color: var(--ds-text-faint); padding: 12px 14px 4px; }
+.swarmify-root .sb-item { display: flex; align-items: center; gap: 8px; padding: 6px 14px; font-size: 12.5px; cursor: pointer; color: var(--ds-text-muted); }
+.swarmify-root .sb-item:hover { background: var(--ds-bg-panel); }
+.swarmify-root .sb-item.on { background: var(--ds-bg-panel); color: var(--ds-text); font-weight: 600; box-shadow: inset 3px 0 0 var(--brand); }
+.swarmify-root .sb-item .c { margin-left: auto; font-size: 11px; color: var(--ds-text-dim); font-variant-numeric: tabular-nums; display: flex; gap: 6px; }
+.swarmify-root .sb-item .c .w { color: var(--status-pending); font-weight: 700; }
+.swarmify-root .sb-item .hd { width: 7px; height: 7px; border-radius: 50%; background: var(--status-running); }
+.swarmify-root .sb-item .hd.off { background: var(--status-failed); }
+
+/* backlog strip */
+.swarmify-root .backlog { border: 1px dashed var(--ds-border-strong); border-radius: var(--r-lg); padding: 8px 10px; margin-bottom: 14px; background: var(--ds-bg); }
+.swarmify-root .backlog .bh { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 800; letter-spacing: .04em; color: var(--ds-text-muted); cursor: pointer; }
+.swarmify-root .backlog .bh .c { margin-left: auto; color: var(--ds-text-dim); font-weight: 600; }
+.swarmify-root .trow { display: flex; align-items: center; gap: 9px; padding: 6px 4px; border-top: 1px solid var(--ds-border-subtle); }
+.swarmify-root .src { font-size: 9px; font-weight: 800; padding: 1px 5px; border-radius: var(--r-sm); }
+.swarmify-root .src.LN { background: #5e6ad2; color: #fff; }
+.swarmify-root .src.GH { background: #2d2d2d; color: #fff; }
+.swarmify-root .pri { width: 7px; height: 7px; border-radius: 50%; }
+.swarmify-root .pri.urgent { background: var(--status-failed); }
+.swarmify-root .pri.high { background: var(--status-pending); }
+.swarmify-root .pri.med { background: var(--status-idle); }
+.swarmify-root .pri.low { background: var(--ds-border-strong); }
+.swarmify-root .trow .tt { flex: 1; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.swarmify-root .trow .tid { font-size: 11px; color: var(--ds-text-dim); font-weight: 600; }
+.swarmify-root .dispatch-sm { border: 1px solid var(--brand); background: transparent; color: var(--brand-600); font-weight: 700; font-size: 11px; padding: 3px 9px; border-radius: var(--r-md); }
+.swarmify-root .seeall { color: var(--brand-600); cursor: pointer; font-weight: 700; font-size: 11px; }
+
+/* backlog (tickets) view */
+.swarmify-root .bktoolbar { display: flex; align-items: center; gap: 10px; padding: 2px 2px 10px; border-bottom: 1px solid var(--ds-border-subtle); margin-bottom: 6px; }
+.swarmify-root .bh2 { font-size: 11px; font-weight: 800; letter-spacing: .04em; color: var(--ds-text-muted); }
+.swarmify-root .bksel { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--ds-text-dim); }
+.swarmify-root .bksel select { background: var(--ds-bg-panel); border: 1px solid var(--ds-border); border-radius: var(--r-md); padding: 3px 6px; font-size: 11px; color: var(--ds-text); font-weight: 600; }
+.swarmify-root .trow2 { display: flex; align-items: center; gap: 9px; padding: 8px 8px; border-bottom: 1px solid var(--ds-border-subtle); cursor: pointer; border-radius: var(--r-sm); }
+.swarmify-root .trow2:hover { background: var(--ds-bg-panel); }
+.swarmify-root .trow2.selsel { background: var(--ds-bg-panel); box-shadow: inset 3px 0 0 var(--brand); }
+.swarmify-root .trow2 .tt { flex: 1; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.swarmify-root .tlbl { font-size: 9.5px; font-weight: 600; color: var(--ds-text-dim); background: var(--ds-bg-sunken); border-radius: var(--r-sm); padding: 1px 5px; }
+.swarmify-root .tlabels { display: flex; gap: 4px; flex: 0 0 auto; }
+.swarmify-root .tstat { font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 999px; flex: 0 0 auto; text-transform: capitalize; }
+.swarmify-root .tstat.todo { background: var(--status-idle-bg); color: var(--ds-text-muted); }
+.swarmify-root .tstat.in-progress { background: var(--status-running-bg); color: var(--status-running); }
+.swarmify-root .tstat.blocked { background: var(--status-failed-bg); color: var(--status-failed); }
+.swarmify-root .tproj { font-size: 11px; color: var(--ds-text-dim); flex: 0 0 auto; width: 96px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.swarmify-root .dispatch-panel { background: var(--ds-bg); border: 1px solid var(--ds-border-subtle); border-radius: var(--r-lg); padding: 12px 14px; }
+.swarmify-root .dp-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.swarmify-root .dp-k { width: 48px; font-size: 11px; color: var(--ds-text-dim); font-weight: 600; }
+
+/* question-shape cluster (batch triage) */
+.swarmify-root .cluster { background: var(--ds-bg-panel); border: 1px solid var(--status-pending); box-shadow: 0 0 0 1px var(--status-pending-bg); border-radius: var(--r-lg); padding: 11px 13px; margin-bottom: 10px; cursor: pointer; }
+.swarmify-root .cluster .ch { display: flex; align-items: center; gap: 9px; margin-bottom: 8px; }
+.swarmify-root .cluster .ch .n { background: var(--status-pending); color: #1a1a1a; font-weight: 800; font-size: 11px; border-radius: 999px; padding: 1px 8px; }
+.swarmify-root .cluster .qq { font-size: 13px; font-weight: 600; flex: 1; }
+.swarmify-root .cluster .avs { display: flex; margin-right: 4px; }
+.swarmify-root .cluster .avs .av { margin-left: -6px; border: 1.5px solid var(--ds-bg-panel); }
+.swarmify-root .cluster .batchline { font-size: 11px; color: var(--ds-text-dim); margin-bottom: 8px; }
+.swarmify-root .opts { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.swarmify-root .opt { border: 1px solid var(--ds-border-strong); background: var(--ds-bg); border-radius: var(--r-md); padding: 6px 14px; font-weight: 600; font-size: 12px; }
+.swarmify-root .opt.primary { background: var(--brand); border-color: var(--brand); color: #1a1a1a; }
+.swarmify-root .opt.danger { background: var(--status-failed); border-color: var(--status-failed); color: #fff; }
+.swarmify-root .opt.batch { margin-left: auto; background: var(--status-pending); border-color: var(--status-pending); color: #1a1a1a; font-weight: 800; }
+.swarmify-root .opt.ghost { color: var(--ds-text-muted); }
+.swarmify-root .applyrow { display: flex; align-items: center; gap: 8px; margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--ds-border-subtle); font-size: 11px; color: var(--ds-text-dim); }
+.swarmify-root .attach { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--ds-border); background: var(--ds-bg); border-radius: var(--r-md); padding: 5px 9px; font-size: 11px; color: var(--ds-text-muted); }
+.swarmify-root .reply2 { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.swarmify-root .reply2 input { flex: 1; background: var(--ds-bg); border: 1px solid var(--ds-border); border-radius: var(--r-md); padding: 7px 10px; font-size: 12px; color: var(--ds-text); }
+.swarmify-root .legend { display: flex; gap: 14px; padding: 6px 16px; font-size: 10.5px; color: var(--ds-text-dim); background: var(--ds-bg-panel); border-top: 1px solid var(--ds-border); }
+.swarmify-root .legend span { display: inline-flex; align-items: center; gap: 5px; }
+
+/* ---- narrow-width degradation (webview panel can be ~400-600px) ----
+ * DESIGN.md open item: at narrow width drop to a single pane. The detail-col
+ * (430px) and the scope sidebar (210px) are the first to go; the feed goes
+ * full-bleed. The other layouts collapse to a single readable column. */
+@media (max-width: 640px) {
+  .swarmify-root .page .detail-col,
+  .swarmify-root .page .sidebar { display: none; }
+  .swarmify-root .feed { max-width: none; padding: 12px 14px 48px; }
+  .swarmify-root .rail-wrap,
+  .swarmify-root .tri-wrap { grid-template-columns: 1fr; }
+  .swarmify-root .rail-wrap .detail,
+  .swarmify-root .tri-wrap .nav,
+  .swarmify-root .tri-wrap .midlist { display: none; }
+  .swarmify-root .board { grid-template-columns: 1fr; overflow: auto; }
+}
