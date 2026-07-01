@@ -195,12 +195,12 @@ function buildAgentLaunchCommand(
   if (defaultModel && (!additionalFlags || !additionalFlags.includes('--model'))) {
     command += ` --model ${defaultModel}`;
   }
-  // Dispatch mode -> per-agent permission flag, next to --model/--strategy.
-  // Skip when the caller already threaded an explicit --permission-mode via
-  // additionalFlags so we never emit it twice.
+  // Dispatch mode -> `agents run --mode plan|auto|edit`, next to --model/--strategy.
+  // Skip when the caller already threaded an explicit --mode via additionalFlags
+  // so we never emit it twice.
   if (mode) {
     const modeFlag = modeFlagForAgent(agentKey, mode);
-    if (modeFlag && (!additionalFlags || !additionalFlags.includes('--permission-mode'))) {
+    if (modeFlag && (!additionalFlags || !additionalFlags.includes('--mode'))) {
       command += ` ${modeFlag}`;
     }
   }

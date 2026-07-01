@@ -173,17 +173,17 @@ describe('pickLatestVersion', () => {
 });
 
 describe('modeFlagForAgent', () => {
-  test('maps Claude modes to the right --permission-mode flag', () => {
-    expect(modeFlagForAgent('claude', 'plan')).toBe('--permission-mode plan');
-    expect(modeFlagForAgent('claude', 'auto')).toBe('--permission-mode default');
-    expect(modeFlagForAgent('claude', 'edit')).toBe('--permission-mode acceptEdits');
-  });
-
-  test('returns undefined for an agent with no known mode flag', () => {
-    // codex/gemini/etc. have no permission-mode mapping yet -> no flag emitted.
-    expect(modeFlagForAgent('codex', 'plan')).toBeUndefined();
-    expect(modeFlagForAgent('gemini', 'edit')).toBeUndefined();
-    expect(modeFlagForAgent('unknown', 'auto')).toBeUndefined();
+  // We launch via `agents run <agent>`, which owns `--mode plan|auto|edit` and
+  // translates it per CLI. So the flag is agent-agnostic — NOT the raw
+  // `--permission-mode`, which agents run would not forward.
+  test('maps every mode to agents run --mode, for any agent', () => {
+    expect(modeFlagForAgent('claude', 'plan')).toBe('--mode plan');
+    expect(modeFlagForAgent('claude', 'auto')).toBe('--mode auto');
+    expect(modeFlagForAgent('claude', 'edit')).toBe('--mode edit');
+    // agent-agnostic: codex/gemini/unknown get the same universal flag.
+    expect(modeFlagForAgent('codex', 'plan')).toBe('--mode plan');
+    expect(modeFlagForAgent('gemini', 'edit')).toBe('--mode edit');
+    expect(modeFlagForAgent('unknown', 'auto')).toBe('--mode auto');
   });
 });
 

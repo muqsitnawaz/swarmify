@@ -48,28 +48,22 @@ export function getBuiltInDefByTitle(title: string): BuiltInAgentDef | undefined
   return BUILT_IN_AGENTS.find(a => a.title === title);
 }
 
-// Dispatch "mode" the panel offers per agent: Plan (read-only), Auto (the safe
-// default — asks before anything risky), Edit (accepts edits without asking).
-// Each CLI spells the permission flag differently, so the mapping lives here as
-// pure data. 'auto' maps to each agent's default posture. An agent with no
-// entry — or a mode the agent doesn't model — yields no flag (caller emits
-// nothing), so unknown agents launch exactly as before.
+// Dispatch "mode" the panel offers: Plan (read-only), Auto (the safe default —
+// asks before anything risky), Edit (accepts edits without asking). We launch
+// every agent through `agents run <agent>`, which has its OWN `--mode plan|auto|
+// edit` flag and translates it to each CLI's native permission posture. So the
+// flag is agent-AGNOSTIC — emitting the underlying `--permission-mode` directly
+// would NOT reach the CLI (agents run only forwards raw native flags after a `--`
+// separator), so Plan mode would silently fail to gate. `--mode <mode>` is the
+// correct, supported flag for all agents.
 export type AgentLaunchMode = 'plan' | 'auto' | 'edit';
 
-const AGENT_MODE_FLAGS: Record<string, Record<AgentLaunchMode, string>> = {
-  // Claude Code: --permission-mode plan|acceptEdits|default (auto = default).
-  claude: {
-    plan: '--permission-mode plan',
-    auto: '--permission-mode default',
-    edit: '--permission-mode acceptEdits',
-  },
-};
+const AGENTS_RUN_MODES: readonly AgentLaunchMode[] = ['plan', 'auto', 'edit'];
 
-// Resolve the launch flag that puts `agentKey` into `mode`. Returns undefined
-// when the agent has no known permission-mode flag; callers append nothing in
-// that case rather than guessing an unsupported flag.
-export function modeFlagForAgent(agentKey: string, mode: AgentLaunchMode): string | undefined {
-  return AGENT_MODE_FLAGS[agentKey]?.[mode];
+// Resolve the launch flag that puts an agent into `mode`. `agentKey` is accepted
+// for call-site stability but not needed — `agents run --mode` is universal.
+export function modeFlagForAgent(_agentKey: string, mode: AgentLaunchMode): string | undefined {
+  return AGENTS_RUN_MODES.includes(mode) ? `--mode ${mode}` : undefined;
 }
 
 // ---- Plan detection (a Plan-mode Claude agent emits a plan) ----------------
