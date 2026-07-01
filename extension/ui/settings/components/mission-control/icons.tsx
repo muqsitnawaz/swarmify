@@ -1,15 +1,17 @@
 import React from 'react'
 
 type IconName =
-  | 'radar' | 'terminal' | 'plus' | 'chevD' | 'search' | 'moon' | 'sun' | 'cog'
+  | 'radar' | 'terminal' | 'plus' | 'chevD' | 'chevR' | 'chevL' | 'search' | 'moon' | 'sun' | 'cog'
   | 'check' | 'x' | 'copy' | 'refresh' | 'play' | 'pause' | 'gitBranch' | 'folder'
-  | 'dispatch' | 'inbox' | 'zap' | 'clipboard' | 'external'
+  | 'dispatch' | 'inbox' | 'zap' | 'clipboard' | 'external' | 'alert' | 'paperclip' | 'clock'
 
 const PATHS: Record<IconName, React.ReactNode> = {
   radar: <><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1.5" /></>,
   terminal: <><polyline points="4 17 10 11 4 5" /><line x1="12" y1="19" x2="20" y2="19" /></>,
   plus: <><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></>,
   chevD: <polyline points="6 9 12 15 18 9" />,
+  chevR: <polyline points="9 18 15 12 9 6" />,
+  chevL: <polyline points="15 18 9 12 15 6" />,
   search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></>,
   moon: <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />,
   sun: <><circle cx="12" cy="12" r="4" /><line x1="12" y1="2" x2="12" y2="5" /><line x1="12" y1="19" x2="12" y2="22" /><line x1="2" y1="12" x2="5" y2="12" /><line x1="19" y1="12" x2="22" y2="12" /><line x1="4.5" y1="4.5" x2="6.5" y2="6.5" /><line x1="17.5" y1="17.5" x2="19.5" y2="19.5" /><line x1="4.5" y1="19.5" x2="6.5" y2="17.5" /><line x1="17.5" y1="6.5" x2="19.5" y2="4.5" /></>,
@@ -27,6 +29,9 @@ const PATHS: Record<IconName, React.ReactNode> = {
   zap: <polygon points="13 2 3 14 11 14 10 22 20 10 12 10 13 2" />,
   clipboard: <><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" /><rect x="8" y="2" width="8" height="4" rx="1" /></>,
   external: <><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></>,
+  alert: <><path d="m10.29 3.86-8.19 14.2A2 2 0 0 0 3.83 21h16.34a2 2 0 0 0 1.73-3l-8.19-14.2a2 2 0 0 0-3.46 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></>,
+  paperclip: <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />,
+  clock: <><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></>,
 }
 
 export function Icon({ name, size = 14, className, style }: {
