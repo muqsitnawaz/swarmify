@@ -43,6 +43,11 @@ describe('parseHostAgents', () => {
     expect(parseHostAgents('not json')).toEqual([]);
     expect(parseHostAgents('{}')).toEqual([]);
   });
+
+  test('a null/garbage element inside a versions array is skipped, not thrown', () => {
+    const out = parseHostAgents('[{"agent":"claude","versions":[null,42,{"version":"1.0.0"}]}]');
+    expect(out[0].versions.map((v) => v.version)).toEqual(['1.0.0']);
+  });
 });
 
 describe('summarizeResources drift', () => {
@@ -90,6 +95,12 @@ describe('input guards', () => {
     expect(isSafeHostToken('a; rm -rf /')).toBe(false);
     expect(isSafeHostToken('a$(touch pwned)')).toBe(false);
     expect(isSafeHostToken('')).toBe(false);
+  });
+
+  test('rejects a leading dash so a value cannot be parsed as a CLI flag', () => {
+    expect(isSafeHostToken('-x')).toBe(false);
+    expect(isSafeHostToken('--force')).toBe(false);
+    expect(isSafeCap('-rf')).toBe(false);
   });
 
   test('caps are alnum/dash only', () => {
