@@ -129,6 +129,23 @@ describe('toFloorAgentFromUnified', () => {
     expect(a.abbr).toBe('CC')
   })
 
+  test('local agent keeps host this-mac (routing) but takes hostLabel from localHostName (display)', () => {
+    const withName = toFloorAgentFromUnified(
+      baseUnified({}),
+      { pinned: new Set(), workspaceRepo: null, nowMs: NOW, localHostName: 'zion' },
+    )
+    // host stays the routing key so reply/nudge/reassign still target the local machine.
+    expect(withName.host).toBe('this-mac')
+    // hostLabel is the real device name every Floor surface renders.
+    expect(withName.hostLabel).toBe('zion')
+
+    // Before the fleet list resolves (no localHostName), hostLabel is undefined and
+    // callers fall back to host.
+    const noName = toFloorAgentFromUnified(baseUnified({}), { pinned: new Set(), workspaceRepo: null, nowMs: NOW })
+    expect(noName.host).toBe('this-mac')
+    expect(noName.hostLabel).toBeUndefined()
+  })
+
   test('a failed agent needs you and gets a retry question', () => {
     const a = toFloorAgentFromUnified(
       baseUnified({ status: 'failed', active: false, activity: 'build broke' }),

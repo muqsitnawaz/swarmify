@@ -34,7 +34,7 @@ export function FeedItem({ agent: a, selected, plain, onSelect, onOption, onFree
   const liveSince = beats ? sinceFromMs(ageMs) : a.since
 
   const tok = plainTok(a.tok, plain)
-  const meta = plain ? a.project : `${a.project} · ${a.host}${a.ticket ? ` · ${a.ticket}` : ''}`
+  const meta = plain ? a.project : `${a.project} · ${a.hostLabel ?? a.host}${a.ticket ? ` · ${a.ticket}` : ''}`
   const destructive = a.question?.kind === 'destructive'
   const attn = a.phase === 'failed' ? 'fail' : stalled ? 'stall' : a.needs ? 'attn' : ''
 

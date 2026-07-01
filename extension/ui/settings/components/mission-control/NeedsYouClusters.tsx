@@ -25,7 +25,7 @@ export function NeedsYouClusters({ clusters, onBatchReply, onReplyOne }: NeedsYo
         const danger = c.question?.kind === 'destructive'
         const options = c.question?.options ?? []
         const who =
-          arr.slice(0, 3).map((a) => `${a.name} · ${a.host}`).join('   ·   ') +
+          arr.slice(0, 3).map((a) => `${a.name} · ${a.hostLabel ?? a.host}`).join('   ·   ') +
           (arr.length > 3 ? `   +${arr.length - 3} more` : '')
 
         return (

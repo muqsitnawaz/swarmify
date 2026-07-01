@@ -167,7 +167,7 @@ export function floorPrLabel(url: string | null | undefined): string | null {
  */
 export function toFloorAgentFromUnified(
   u: UnifiedAgentLike,
-  opts: { pinned: Set<string>; workspaceRepo?: string | null; nowMs: number },
+  opts: { pinned: Set<string>; workspaceRepo?: string | null; nowMs: number; localHostName?: string },
 ): FloorAgent {
   const waitingForInput = u.terminal?.waitingForInput === true || u.agent?.status === 'input_required'
   const prOpenUnreviewed = !!u.prUrl
@@ -186,6 +186,9 @@ export function toFloorAgentFromUnified(
   return {
     id: u.id,
     host: 'this-mac',
+    // Display the machine's real device name (e.g. 'zion') instead of the
+    // internal 'this-mac' routing key. Undefined until the fleet list resolves.
+    hostLabel: opts.localHostName || undefined,
     project,
     name: u.displayName,
     abbr: abbrFor(u.agentType),
@@ -254,7 +257,7 @@ export function toFloorAgentFromRemote(r: RemoteSessionLike, pinned: Set<string>
 /** Map local UnifiedAgents (watchdog rows should be filtered out by the caller). */
 export function adaptUnified(
   agents: UnifiedAgentLike[],
-  opts: { pinned: Set<string>; workspaceRepo?: string | null; nowMs: number },
+  opts: { pinned: Set<string>; workspaceRepo?: string | null; nowMs: number; localHostName?: string },
 ): FloorAgent[] {
   return agents.map((a) => toFloorAgentFromUnified(a, opts))
 }

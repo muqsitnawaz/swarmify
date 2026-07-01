@@ -29,7 +29,11 @@ export function FloorSidebar({ agents, tickets, projFilter, offlineHosts = [], d
   const projWait: Record<string, number> = {}
   for (const a of agents) {
     byProj[a.project] = (byProj[a.project] || 0) + 1
-    byHost[a.host] = (byHost[a.host] || 0) + 1
+    // Key by the DISPLAY name so the local machine's session bucket (host
+    // 'this-mac') folds into its real device name (e.g. 'zion') and merges with
+    // the registry entry below instead of rendering as a second, duplicate row.
+    const hostKey = a.hostLabel ?? a.host
+    byHost[hostKey] = (byHost[hostKey] || 0) + 1
     if (a.needs) projWait[a.project] = (projWait[a.project] || 0) + 1
   }
   const needs = agents.filter((a) => a.needs).length
@@ -66,8 +70,9 @@ export function FloorSidebar({ agents, tickets, projFilter, offlineHosts = [], d
 
       <div className="sb-sec">HOSTS</div>
       {(() => {
-        // Merge active-session hosts (byHost, includes this-mac) with the online
-        // device fleet from `agents devices` so hosts show even with 0 agents.
+        // Merge active-session hosts (byHost, local folded to its real device
+        // name) with the online device fleet from `agents devices` so hosts show
+        // even with 0 agents. Keys now agree, so the local machine renders once.
         const deviceByName = new Map(devices.map((d) => [d.name, d]))
         const names = new Set<string>(Object.keys(byHost))
         for (const d of devices) if (d.online) names.add(d.name)

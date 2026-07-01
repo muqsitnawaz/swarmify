@@ -56,7 +56,8 @@ export interface StructuredQuestion {
  */
 export interface FloorAgent {
   id: string
-  host: string          // 'this-mac' for local; remote hostname otherwise
+  host: string          // 'this-mac' for local; remote hostname otherwise. ROUTING key — reply/nudge/reassign target it.
+  hostLabel?: string    // DISPLAY name for host: the local machine's real device name (e.g. 'zion') so it isn't shown as 'this-mac'. Falls back to host.
   project: string       // repo or cwd basename (worktrees folded to their repo)
   name: string          // displayName / branch-derived label
   abbr: AgentAbbr       // agentType -> CC/CX/GX/...

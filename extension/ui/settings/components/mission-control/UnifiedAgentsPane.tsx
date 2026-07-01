@@ -513,6 +513,9 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   // Lightweight fleet list (agents devices list --json, no SSH) for the sidebar
   // HOSTS section — populated on mount so hosts show even before the panel opens.
   const [fleetDevices, setFleetDevices] = useState<{ name: string; online: boolean }[]>([])
+  // This machine's real canonical device name (e.g. 'zion'), from the fleet fetch.
+  // Local agents keep host==='this-mac' for routing but display under this name.
+  const [localHostName, setLocalHostName] = useState<string>('')
   // Floor after-dispatch: plans awaiting review, one per sessionId (from `planReady`).
   const [pendingPlans, setPendingPlans] = useState<PendingPlan[]>([])
   const [cardDragActive, setCardDragActive] = useState(false)
@@ -623,6 +626,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     const onMsg = (event: MessageEvent) => {
       const msg = event.data
       if (msg?.type === 'devicesData' && Array.isArray(msg.devices)) {
+        if (typeof msg.local === 'string' && msg.local) setLocalHostName(msg.local)
         setFleetDevices(
           (msg.devices as Array<{ name: string; online?: boolean }>).map((d) => ({
             name: d.name,
@@ -1146,8 +1150,8 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   // Local agents (drop the synthetic watchdog row) + genuinely-remote sessions
   // (host !== 'this-mac' so we don't double count this machine's own agents).
   const floorLocalAgents = useMemo(
-    () => adaptUnified(items.filter((i) => i.kind !== 'watchdog'), { pinned, workspaceRepo: workspaceRepoName, nowMs }),
-    [items, pinned, workspaceRepoName, nowMs]
+    () => adaptUnified(items.filter((i) => i.kind !== 'watchdog'), { pinned, workspaceRepo: workspaceRepoName, nowMs, localHostName }),
+    [items, pinned, workspaceRepoName, nowMs, localHostName]
   )
   // Session UUIDs already open as a terminal tab in THIS window (the rich, local
   // source). Used to avoid double-listing an agent that the machine-wide fetch also
@@ -1193,7 +1197,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     if (statusChips.length) list = list.filter((a) => statusChips.some((c) => (c === 'needs' ? a.needs : a.phase === c)))
     if (abbrChips.length) list = list.filter((a) => abbrChips.includes(a.abbr))
     const q = floorSearch.trim().toLowerCase()
-    if (q) list = list.filter((a) => `${a.name} ${a.branch} ${a.verb} ${a.target} ${a.project} ${a.host}`.toLowerCase().includes(q))
+    if (q) list = list.filter((a) => `${a.name} ${a.branch} ${a.verb} ${a.target} ${a.project} ${a.host} ${a.hostLabel ?? ''}`.toLowerCase().includes(q))
     return list
   }, [floorAgents, projFilter, statusChips, abbrChips, floorSearch])
 
@@ -1354,7 +1358,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
         ) : (
           <div className="dhead" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
             <div className="title">{a.project} / {a.name}</div>
-            <div className="sub">host <b>{a.host}</b>{a.branch ? ` · ${a.branch}` : ''} · {a.phase}{a.tok ? ` · ${a.tok} tok/s` : ''}</div>
+            <div className="sub">host <b>{a.hostLabel ?? a.host}</b>{a.branch ? ` · ${a.branch}` : ''} · {a.phase}{a.tok ? ` · ${a.tok} tok/s` : ''}</div>
             {a.resp && <div className="resp" style={{ marginTop: 8 }}>{a.resp}</div>}
             {(a.verb || a.target) && <div className="nowline" style={{ marginTop: 8 }}><Icon name="chevR" size={11} /> <span className="v">{a.verb}</span> {a.target}</div>}
           </div>
