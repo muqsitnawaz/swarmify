@@ -1,6 +1,6 @@
 import React from 'react'
 import { Icon } from './icons'
-import type { FloorAgent, FloorTicket } from './floorModel'
+import { computeHostRows, type FloorAgent, type FloorTicket } from './floorModel'
 
 // Left scope sidebar. Prototype buildSidebar(): factory-floor.html:563-579,
 // wiring wireSidebar():580-588. Smart (All / Needs you), Queue (Backlog),
@@ -25,19 +25,15 @@ interface FloorSidebarProps {
 
 export function FloorSidebar({ agents, tickets, projFilter, offlineHosts = [], devices = [], onScope }: FloorSidebarProps) {
   const byProj: Record<string, number> = {}
-  const byHost: Record<string, number> = {}
   const projWait: Record<string, number> = {}
   for (const a of agents) {
     byProj[a.project] = (byProj[a.project] || 0) + 1
-    // Key by the DISPLAY name so the local machine's session bucket (host
-    // 'this-mac') folds into its real device name (e.g. 'zion') and merges with
-    // the registry entry below instead of rendering as a second, duplicate row.
-    const hostKey = a.hostLabel ?? a.host
-    byHost[hostKey] = (byHost[hostKey] || 0) + 1
     if (a.needs) projWait[a.project] = (projWait[a.project] || 0) + 1
   }
   const needs = agents.filter((a) => a.needs).length
-  const offline = new Set(offlineHosts)
+  // HOSTS rows: local machine folded to its real device name, merged with the
+  // online device fleet. Pure + unit-tested in floorModel.ts (computeHostRows).
+  const hostRows = computeHostRows(agents, devices, offlineHosts)
 
   return (
     <div className="sidebar">
@@ -69,31 +65,13 @@ export function FloorSidebar({ agents, tickets, projFilter, offlineHosts = [], d
       ))}
 
       <div className="sb-sec">HOSTS</div>
-      {(() => {
-        // Merge active-session hosts (byHost, local folded to its real device
-        // name) with the online device fleet from `agents devices` so hosts show
-        // even with 0 agents. Keys now agree, so the local machine renders once.
-        const deviceByName = new Map(devices.map((d) => [d.name, d]))
-        const names = new Set<string>(Object.keys(byHost))
-        for (const d of devices) if (d.online) names.add(d.name)
-        return [...names].sort().map((ho) => {
-          const dev = deviceByName.get(ho)
-          // Device-registry reachability (tailscale.online) is authoritative when a
-          // fleet entry exists — a host can be online yet fail the session-fetch
-          // (Windows shell, slow SSH, agents-cli hiccup), which must zero the count,
-          // not flip the host to offline. Session-fetch reachability only decides
-          // hosts with no device entry (SSH-config-only).
-          const isOff = dev ? !dev.online : offline.has(ho)
-          const count = byHost[ho] ?? dev?.agents ?? 0
-          return (
-            <div key={ho} className="sb-item" onClick={() => onScope('')}>
-              <span className={`hd ${isOff ? 'off' : ''}`} />
-              <span>{ho}</span>
-              <span className="c">{isOff ? <span style={{ color: 'var(--fail)' }}>offline</span> : count}</span>
-            </div>
-          )
-        })
-      })()}
+      {hostRows.map((h) => (
+        <div key={h.name} className="sb-item" onClick={() => onScope('')}>
+          <span className={`hd ${h.offline ? 'off' : ''}`} />
+          <span>{h.name}</span>
+          <span className="c">{h.offline ? <span style={{ color: 'var(--fail)' }}>offline</span> : h.count}</span>
+        </div>
+      ))}
     </div>
   )
 }

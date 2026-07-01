@@ -9,6 +9,7 @@ import {
   groupAgents,
   sortAgents,
   clusterByQuestion,
+  computeHostRows,
   toFloorTicket,
   groupTickets,
   sortTickets,
@@ -355,5 +356,56 @@ describe('groupTickets / sortTickets', () => {
     const g = groupTickets(tickets, 'project')
     expect(g.get('web')!.map((t) => t.id)).toEqual(['RUSH-2', 'RUSH-3'])
     expect(g.get('swarmify')!.map((t) => t.id)).toEqual(['#1'])
+  })
+})
+
+describe('computeHostRows', () => {
+  const devices = [
+    { name: 'zion', online: true, agents: 0 },
+    { name: 'yosemite-s0', online: true, agents: 0 },
+    { name: 'mac-mini', online: true, agents: 0 },
+  ]
+
+  test('folds the local machine into ONE row under its real name (the reported bug)', () => {
+    // Local agents arrive from two paths, both labelled hostLabel='zion':
+    //   - in-window (adaptUnified): host 'this-mac'
+    //   - out-of-window / tmux (adaptRemote): host 'this-mac'
+    // plus a genuinely-remote agent on yosemite-s0.
+    const rows = computeHostRows(
+      [
+        makeAgent({ id: 'a', host: 'this-mac', hostLabel: 'zion' }),
+        makeAgent({ id: 'b', host: 'this-mac', hostLabel: 'zion' }),
+        makeAgent({ id: 'c', host: 'yosemite-s0' }),
+      ],
+      devices,
+      [],
+    )
+    const names = rows.map((r) => r.name)
+    // The machine shows exactly once, as 'zion' — never also as 'this-mac'.
+    expect(names).toEqual(['mac-mini', 'yosemite-s0', 'zion'])
+    expect(names).not.toContain('this-mac')
+    const zion = rows.find((r) => r.name === 'zion')!
+    expect(zion.count).toBe(2) // both local agents counted under the real name
+    expect(zion.offline).toBe(false)
+    expect(rows.find((r) => r.name === 'yosemite-s0')!.count).toBe(1)
+    expect(rows.find((r) => r.name === 'mac-mini')!.count).toBe(0) // registry-only, 0 agents
+  })
+
+  test('without a resolved hostLabel the local bucket stays this-mac (pre-fold transient)', () => {
+    // Before the fleet list resolves, hostLabel is undefined; documents that the
+    // fold depends on the real name being threaded in.
+    const rows = computeHostRows([makeAgent({ id: 'a', host: 'this-mac' })], devices, [])
+    expect(rows.map((r) => r.name)).toContain('this-mac')
+  })
+
+  test('a host with agents whose device is offline lists, marked offline', () => {
+    // Device-registry reachability is authoritative: an agent bucket on an offline
+    // device still renders (from byHost) but shows offline, not its count.
+    const rows = computeHostRows(
+      [makeAgent({ id: 'a', host: 'win-mini' })],
+      [{ name: 'win-mini', online: false, agents: 0 }],
+      [],
+    )
+    expect(rows).toEqual([{ name: 'win-mini', count: 1, offline: true }])
   })
 })

@@ -216,7 +216,7 @@ export function toFloorAgentFromUnified(
  * phase + activity + throughput, so we trust those and only re-derive needs + the
  * structured question (both pure). Host stays the remote machine name.
  */
-export function toFloorAgentFromRemote(r: RemoteSessionLike, pinned: Set<string>): FloorAgent {
+export function toFloorAgentFromRemote(r: RemoteSessionLike, pinned: Set<string>, localHostName?: string): FloorAgent {
   const phase = r.phase
   const prOpenUnreviewed = !!r.prUrl
   const needs = deriveNeeds(phase, prOpenUnreviewed)
@@ -230,6 +230,10 @@ export function toFloorAgentFromRemote(r: RemoteSessionLike, pinned: Set<string>
   return {
     id,
     host: r.host,
+    // This machine's own sessions reported by the machine-wide fetch carry the
+    // synthetic 'this-mac'; give them the real device name so they fold into the
+    // same HOSTS row as in-window local agents instead of a second bucket.
+    hostLabel: r.host === 'this-mac' ? localHostName || undefined : undefined,
     project: deriveProject(r.cwd, r.project, r.project || '—'),
     name,
     abbr: abbrFor(r.agentType),
@@ -263,8 +267,8 @@ export function adaptUnified(
 }
 
 /** Map genuinely-remote sessions (caller drops host === 'this-mac' to avoid double count). */
-export function adaptRemote(sessions: RemoteSessionLike[], pinned: Set<string>): FloorAgent[] {
-  return sessions.map((s) => toFloorAgentFromRemote(s, pinned))
+export function adaptRemote(sessions: RemoteSessionLike[], pinned: Set<string>, localHostName?: string): FloorAgent[] {
+  return sessions.map((s) => toFloorAgentFromRemote(s, pinned, localHostName))
 }
 
 /** UnifiedTask[] -> FloorTicket[] (delegates to floorModel.toFloorTicket). */

@@ -235,6 +235,34 @@ describe('toFloorAgentFromRemote', () => {
     expect(a.question?.kind).toBe('confirm')
     // remote carries only session-start; heartbeat anchors to it until backend adds a stamp.
     expect(a.lastActivityMs).toBe(NOW - 42_000)
+    // a genuinely-remote host is already its real name — no display override.
+    expect(a.hostLabel).toBeUndefined()
+  })
+
+  test("this machine's out-of-window sessions (host 'this-mac') take the real name as hostLabel so they fold, not duplicate", () => {
+    const base: RemoteSessionLike = {
+      host: 'this-mac',
+      sessionId: 'localsess1',
+      agentType: 'claude',
+      cwd: '/home/u/src/web',
+      project: 'web',
+      phase: 'running',
+      activity: 'Editing App.tsx',
+      tokPerSec: 10,
+      waitingForInput: false,
+      lastResponse: '',
+      prUrl: null,
+      ticket: null,
+      branch: 'feat-z',
+      sinceMs: 1_000,
+      startedAtMs: NOW - 1_000,
+      topic: '',
+      context: 'terminal',
+    }
+    const a = toFloorAgentFromRemote(base, new Set(), 'zion')
+    // host stays the routing key; only the display name resolves to the real device.
+    expect(a.host).toBe('this-mac')
+    expect(a.hostLabel).toBe('zion')
   })
 
   test('a remote session with an unknown start (0) disables the heartbeat rather than false-stalling', () => {

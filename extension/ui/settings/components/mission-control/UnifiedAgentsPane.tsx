@@ -1172,9 +1172,10 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
             s.host !== 'this-mac' ||
             (s.context !== 'cloud' && !localTabSessionIds.has(s.sessionId))
         ),
-        pinned
+        pinned,
+        localHostName
       ),
-    [remoteSessions, localTabSessionIds, pinned]
+    [remoteSessions, localTabSessionIds, pinned, localHostName]
   )
   const floorAgents = useMemo(
     () => [...floorLocalAgents, ...floorRemoteAgents],

@@ -78,6 +78,46 @@ export interface FloorAgent {
   question: StructuredQuestion | null
 }
 
+// ---------- HOSTS sidebar rows ----------
+
+/** One row in the HOSTS sidebar: a machine, its active-agent count, reachability. */
+export interface HostRow {
+  name: string
+  count: number
+  offline: boolean
+}
+
+/**
+ * Build the HOSTS rows: fold each agent into its DISPLAY host (`hostLabel ?? host`,
+ * so the local machine's 'this-mac' bucket collapses onto its real device name),
+ * then union with the online device fleet so hosts show even with 0 agents. The
+ * local machine therefore appears exactly once, under its real name — never as both
+ * 'this-mac' and its registry name. Device-registry reachability is authoritative
+ * when a fleet entry exists; session-fetch offlineHosts only decide SSH-config-only
+ * hosts.
+ */
+export function computeHostRows(
+  agents: FloorAgent[],
+  devices: { name: string; online: boolean; agents: number }[],
+  offlineHosts: string[],
+): HostRow[] {
+  const byHost: Record<string, number> = {}
+  for (const a of agents) {
+    const key = a.hostLabel ?? a.host
+    byHost[key] = (byHost[key] || 0) + 1
+  }
+  const offline = new Set(offlineHosts)
+  const deviceByName = new Map(devices.map((d) => [d.name, d]))
+  const names = new Set<string>(Object.keys(byHost))
+  for (const d of devices) if (d.online) names.add(d.name)
+  return [...names].sort().map((name) => {
+    const dev = deviceByName.get(name)
+    const offlineRow = dev ? !dev.online : offline.has(name)
+    const count = byHost[name] ?? dev?.agents ?? 0
+    return { name, count, offline: offlineRow }
+  })
+}
+
 // ---------- ticket view-model (Backlog) ----------
 
 export type TicketSource = 'LN' | 'GH'
