@@ -142,6 +142,41 @@ function initialState(prefill?: string, prefillTicketId?: string): PanelState {
   }
 }
 
+// Draft persistence so an accidental close (or webview reload) never loses the
+// user's selections. Everything except `attachments` (potentially large binary
+// blobs) is saved; the draft is cleared once a dispatch actually fires.
+const DRAFT_KEY = 'swarmify.dispatch.draft.v1'
+function loadDraft(): Partial<PanelState> | null {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY)
+    return raw ? (JSON.parse(raw) as Partial<PanelState>) : null
+  } catch { return null }
+}
+function saveDraft(s: PanelState): void {
+  try {
+    const { attachments: _omit, ...rest } = s
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(rest))
+  } catch { /* quota / unavailable — non-fatal */ }
+}
+function clearDraft(): void {
+  try { localStorage.removeItem(DRAFT_KEY) } catch { /* non-fatal */ }
+}
+
+// Seed the panel: restore the saved draft if present, otherwise defaults. When
+// opened for a specific ticket, ensure that ticket is attached and seeds the
+// prompt even on top of a restored draft.
+function seededState(prefill?: string, prefillTicketId?: string): PanelState {
+  const base = initialState(prefill, prefillTicketId)
+  const draft = loadDraft()
+  if (!draft) return base
+  const merged: PanelState = { ...base, ...draft, attachments: base.attachments }
+  if (prefillTicketId && !merged.attached.includes(prefillTicketId)) {
+    merged.attached = [...merged.attached, prefillTicketId]
+  }
+  if (prefill && !merged.prompt.trim()) merged.prompt = prefill
+  return merged
+}
+
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 /** Local projects carry a `path`; cloud repos don't (dispatch.types contract). */
@@ -152,21 +187,26 @@ export function DispatchPanel(props: DispatchPanelProps) {
     open, tasks, agents, hosts, targets, prefill, prefillTicketId, onClose, onDispatch,
     devices, deviceRepos, deviceSync, onRequestRepoSync, onManageDevices, onDeviceDispatch,
   } = props
-  const [S, setS] = useState<PanelState>(() => initialState(prefill, prefillTicketId))
+  const [S, setS] = useState<PanelState>(() => seededState(prefill, prefillTicketId))
   const [bellOpen, setBellOpen] = useState(false)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const bellRef = useRef<HTMLSpanElement>(null)
   useClickAway(bellRef, () => setBellOpen(false), bellOpen)
 
-  // Re-seed + autofocus each time the panel opens.
+  // Restore the saved draft + autofocus each time the panel opens (never wipe).
   useEffect(() => {
     if (!open) return
-    setS(initialState(prefill, prefillTicketId))
+    setS(seededState(prefill, prefillTicketId))
     setBellOpen(false)
     const id = setTimeout(() => inputRef.current?.focus(), 50)
     return () => clearTimeout(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
+
+  // Persist the draft on every change so a close/reopen (or reload) keeps it.
+  useEffect(() => {
+    if (open) saveDraft(S)
+  }, [S, open])
 
   if (!open) return null
 
@@ -225,6 +265,7 @@ export function DispatchPanel(props: DispatchPanelProps) {
         notify: S.notify,
         batch: S.batch,
       })
+      clearDraft()
       return
     }
     if (!effHost) return
@@ -243,6 +284,7 @@ export function DispatchPanel(props: DispatchPanelProps) {
       batch: S.batch,
     }
     onDispatch(req)
+    clearDraft()
   }
 
   // ---- device repo -> project resolution ----
