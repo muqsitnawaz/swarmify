@@ -4,6 +4,7 @@ import {
   splitActivity,
   deriveProject,
   sinceFromMs,
+  isoToMs,
   floorPrLabel,
   toFloorAgentFromUnified,
   toFloorAgentFromRemote,
@@ -66,6 +67,16 @@ describe('sinceFromMs', () => {
     expect(sinceFromMs(3 * 3600_000)).toBe('3h')
     expect(sinceFromMs(2 * 86_400_000)).toBe('2d')
     expect(sinceFromMs(-1)).toBe('')
+  })
+})
+
+describe('isoToMs', () => {
+  test('parses an ISO stamp to epoch ms', () => {
+    expect(isoToMs(new Date(NOW).toISOString())).toBe(NOW)
+  })
+  test('unparseable input reads as 0 (unknown)', () => {
+    expect(isoToMs('not-a-date')).toBe(0)
+    expect(isoToMs('')).toBe(0)
   })
 })
 
@@ -134,6 +145,8 @@ describe('toFloorAgentFromUnified', () => {
     expect(a.needs).toBe(false)
     expect(a.files).toBe(2)
     expect(a.tools).toBe(7)
+    // u.timestamp is the last-activity stamp -> exact heartbeat anchor locally.
+    expect(a.lastActivityMs).toBe(NOW - 5000)
   })
 
   test('a completed agent with an open PR is done + unreviewed (needs you)', () => {
@@ -190,6 +203,8 @@ describe('toFloorAgentFromRemote', () => {
       branch: 'feat-x',
       sinceMs: 42_000,
       startedAtMs: NOW - 42_000,
+      topic: 'Wire the rate limiter',
+      context: 'terminal',
     }
     const a = toFloorAgentFromRemote(r, new Set())
     expect(a.host).toBe('yosemite-s0')
@@ -201,6 +216,31 @@ describe('toFloorAgentFromRemote', () => {
     expect(a.pr).toBe('#50')
     expect(a.ticket).toBe('RUSH-812')
     expect(a.question?.kind).toBe('confirm')
+    // remote carries only session-start; heartbeat anchors to it until backend adds a stamp.
+    expect(a.lastActivityMs).toBe(NOW - 42_000)
+  })
+
+  test('a remote session with an unknown start (0) disables the heartbeat rather than false-stalling', () => {
+    const r: RemoteSessionLike = {
+      host: 'zion',
+      sessionId: 'deadbeef',
+      agentType: 'claude',
+      cwd: '/home/u/src/web',
+      project: 'web',
+      phase: 'running',
+      activity: 'Editing App.tsx',
+      tokPerSec: 40,
+      waitingForInput: false,
+      lastResponse: '',
+      prUrl: null,
+      ticket: null,
+      branch: 'feat-y',
+      sinceMs: 0,
+      startedAtMs: 0,
+      topic: 'Dark mode',
+      context: 'terminal',
+    }
+    expect(toFloorAgentFromRemote(r, new Set()).lastActivityMs).toBe(0)
   })
 })
 

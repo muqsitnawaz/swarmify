@@ -143,6 +143,12 @@ export function sinceFromIso(iso: string, nowMs: number): string {
   return sinceFromMs(nowMs - started)
 }
 
+/** Epoch ms of an ISO timestamp, or 0 when it can't be parsed (heartbeat treats 0 as unknown). */
+export function isoToMs(iso: string): number {
+  const ms = new Date(iso).getTime()
+  return isFinite(ms) ? ms : 0
+}
+
 /** "#142" from a GitHub PR url, or null when it isn't a recognizable PR link. */
 export function floorPrLabel(url: string | null | undefined): string | null {
   if (!url) return null
@@ -188,6 +194,8 @@ export function toFloorAgentFromUnified(
     target,
     tok: 0, // per-agent local tok/s isn't measured; the top bar shows the aggregate poll.
     since: sinceFromIso(u.timestamp, opts.nowMs),
+    // u.timestamp is the session's last-activity stamp, so the heartbeat is exact locally.
+    lastActivityMs: isoToMs(u.timestamp),
     files: u.files.length,
     tools: u.toolCalls,
     needs,
@@ -227,6 +235,10 @@ export function toFloorAgentFromRemote(r: RemoteSessionLike, pinned: Set<string>
     target,
     tok: r.tokPerSec,
     since: sinceFromMs(r.sinceMs),
+    // Remote sessions only carry a wall-clock START (startedAtMs); there is no distinct
+    // last-activity epoch yet, so the heartbeat anchors to start until backend-data adds
+    // one. 0 (unknown) disables the heartbeat rather than raising a false stall.
+    lastActivityMs: r.startedAtMs > 0 ? r.startedAtMs : 0,
     files: 0,
     tools: 0,
     needs,
