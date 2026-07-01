@@ -107,7 +107,10 @@ export function parseHostAgents(rawJson: string): HostAgentInfo[] {
     if (!entry || typeof entry !== 'object') continue;
     const e = entry as Record<string, unknown>;
     if (typeof e.agent !== 'string' || !Array.isArray(e.versions)) continue;
-    const versions: HostAgentVersion[] = (e.versions as Array<Record<string, unknown>>).map((v) => ({
+    const rawVersions = (e.versions as unknown[]).filter(
+      (v): v is Record<string, unknown> => !!v && typeof v === 'object',
+    );
+    const versions: HostAgentVersion[] = rawVersions.map((v) => ({
       version: String(v.version ?? ''),
       isDefault: v.isDefault === true,
       signedIn: v.signedIn === true,
@@ -157,11 +160,13 @@ function shellArg(value: string): string {
 
 /** Reject host/cap values that could smuggle shell/flags before they reach the CLI. */
 export function isSafeHostToken(value: string): boolean {
-  // Host names, ssh aliases, and user@host targets — no spaces, quotes, or shell metachars.
-  return /^[A-Za-z0-9_.@:-]+$/.test(value) && value.length > 0 && value.length <= 128;
+  // Host names, ssh aliases, and user@host targets — no spaces, quotes, or shell
+  // metachars. A leading char must be alphanumeric so a value like "-x" can't be
+  // parsed as a flag by the CLI (argument injection).
+  return /^[A-Za-z0-9][A-Za-z0-9_.@:-]*$/.test(value) && value.length <= 128;
 }
 export function isSafeCap(value: string): boolean {
-  return /^[A-Za-z0-9_-]+$/.test(value) && value.length > 0 && value.length <= 40;
+  return /^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(value) && value.length <= 40;
 }
 
 const hostCache = new Map<string, { data: HostInventory; fetchedAt: number }>();
@@ -177,8 +182,11 @@ export async function fetchHostInventory(host: string, force = false): Promise<H
   const now = Date.now();
   const cached = hostCache.get(host);
   if (!force && cached && now - cached.fetchedAt < HOST_INVENTORY_TTL_MS) return cached.data;
-  const existing = hostInflight.get(host);
-  if (existing) return existing;
+  // A forced refresh always re-probes; only non-forced fetches share an in-flight one.
+  if (!force) {
+    const existing = hostInflight.get(host);
+    if (existing) return existing;
+  }
 
   const run = (async (): Promise<HostInventory> => {
     // Registry metadata is a fast local read — best-effort, never fails the fetch.
@@ -206,13 +214,13 @@ export async function fetchHostInventory(host: string, force = false): Promise<H
     }
   })();
 
-  hostInflight.set(host, run);
+  if (!force) hostInflight.set(host, run);
   try {
     const result = await run;
     hostCache.set(host, { data: result, fetchedAt: Date.now() });
     return result;
   } finally {
-    hostInflight.delete(host);
+    if (!force) hostInflight.delete(host);
   }
 }
 
