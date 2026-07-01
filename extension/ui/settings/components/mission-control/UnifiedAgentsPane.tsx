@@ -1486,7 +1486,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
         onToggleAbbr={(ab) => setAbbrChips((prev) => (prev.includes(ab) ? prev.filter((c) => c !== ab) : [...prev, ab]))}
         search={floorSearch}
         onSearch={setFloorSearch}
-        onDispatch={() => setDispatchOpen(true)}
+        onDispatch={() => openDispatch(selectedTicketId ? { ticketId: selectedTicketId } : undefined)}
       />
 
       <div className="page" style={{ flex: 1, minHeight: 0, height: 'auto' }}>
