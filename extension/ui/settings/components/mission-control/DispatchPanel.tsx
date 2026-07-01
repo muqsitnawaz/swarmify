@@ -260,9 +260,9 @@ export function DispatchPanel(props: DispatchPanelProps) {
   const selectDevice = (name: string) => {
     const dev = deviceList.find(d => d.name === name)
     if (dev && selectedRepo) {
+      // Default to the repo root; a subdirectory is optional.
       const root = pickHostPath(selectedRepo, dev)
-      const rel = selectedRepo.projects[0]?.relPath ?? '.'
-      patch({ deviceName: name, projectPath: root ? joinPath(root, rel) : S.projectPath })
+      patch({ deviceName: name, projectPath: root || S.projectPath })
       if (root && onRequestRepoSync) onRequestRepoSync(dev.name, root)
     } else {
       patch({ deviceName: name })
@@ -272,9 +272,9 @@ export function DispatchPanel(props: DispatchPanelProps) {
   const selectRepo = (slug: string) => {
     const repo = (deviceRepos ?? []).find(r => r.slug === slug)
     if (!repo) { patch({ repoSlug: slug }); return }
+    // Default the project path to the repo root — no subdirectory required.
     const root = pickHostPath(repo, effDevice)
-    const rel = repo.projects[0]?.relPath ?? '.'
-    patch({ repoSlug: slug, projectPath: root ? joinPath(root, rel) : '' })
+    patch({ repoSlug: slug, projectPath: root || '' })
     if (root && effDevice && onRequestRepoSync) onRequestRepoSync(effDevice.name, root)
   }
 
@@ -304,7 +304,7 @@ export function DispatchPanel(props: DispatchPanelProps) {
       : `Dispatch ${effAgent?.name ?? 'agent'} → ${projectLabel}${S.mode !== 'auto' ? ' · ' + cap(S.mode) : ''}`
 
   return (
-    <div className="dispatch-overlay" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
+    <div className="dispatch-overlay">
     <div className={`panel${bellOpen ? ' bell' : ''}`} onKeyDown={e => { if (e.key === 'Escape') onClose() }}>
       <div className="ph">
         <span className="t">DISPATCH</span>
@@ -664,16 +664,23 @@ function DeviceProjectSelect({ projects, root, value, onChange }: {
   const ref = useRef<HTMLDivElement>(null)
   useClickAway(ref, () => setOpen(false), open)
 
-  const selName = projects.find(p => joinPath(root, p.relPath) === value)?.name
+  // The repo root is the default; picking a subdirectory is optional.
+  const atRoot = value === root
+  const selName = atRoot ? 'whole repo' : (projects.find(p => joinPath(root, p.relPath) === value)?.name ?? 'whole repo')
+  const subdirs = projects.filter(p => p.relPath !== '.' && p.relPath !== '')
 
   return (
     <div ref={ref} className={`dd ${open ? 'open' : ''}`} style={{ marginTop: 6 }}>
       <button className="dd-btn" onClick={e => { e.stopPropagation(); setOpen(o => !o) }}>
-        <span>{selName ?? 'Pick a project'}</span>
+        <span>Subdirectory (optional): {selName}</span>
         <span className="caret" style={{ marginLeft: 'auto' }}><Icon name="chevD" size={13} /></span>
       </button>
       <div className="dd-menu">
-        {projects.map(p => (
+        <div className={`opt ${atRoot ? 'sel' : ''}`} onClick={() => { onChange('.'); setOpen(false) }}>
+          <span className="nm">whole repo</span>
+          <span className="right"><span className="use">root</span></span>
+        </div>
+        {subdirs.map(p => (
           <div
             key={p.relPath}
             className={`opt ${joinPath(root, p.relPath) === value ? 'sel' : ''}`}

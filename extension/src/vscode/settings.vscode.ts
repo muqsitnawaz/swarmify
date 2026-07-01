@@ -1284,7 +1284,7 @@ export function openPanelAndFocusQuickSpawn(context: vscode.ExtensionContext): v
 // vendor APIs for usage stats. Within the TTL, repeat calls are instant.
 // Strategy mutations bust the cache so the UI reflects the new state.
 const INVENTORY_CACHE_TTL_MS = 60_000;
-const INVENTORY_AGENT_KEYS = ['claude', 'codex', 'gemini', 'opencode', 'cursor'];
+const INVENTORY_AGENT_KEYS = ['claude', 'codex', 'gemini', 'opencode', 'cursor', 'kimi', 'grok', 'droid', 'antigravity', 'copilot', 'amp'];
 let cachedInventories: { data: Record<string, AgentInventory>; fetchedAt: number } | null = null;
 let inventoryFetchInflight: Promise<Record<string, AgentInventory>> | null = null;
 
@@ -1641,7 +1641,11 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
           const defaultTitle = context.globalState.get<string>('agents.defaultAgentTitle', 'CC');
           const defaultAgentId = getBuiltInDefByTitle(defaultTitle)?.key ?? 'claude';
           const agents = mapInventoriesToInstalledAgents(inventories, defaultAgentId);
-          const hosts = buildDispatchHosts(hostResult.hosts, LOCAL_LABEL);
+          // RUN ON = this machine + cloud only. The remote fleet lives in the
+          // device selector (sourced from `agents devices` with correct online
+          // status) — keeping remotes out of here avoids a duplicate, stale,
+          // all-offline host roster.
+          const hosts = buildDispatchHosts(hostResult.hosts, LOCAL_LABEL).filter((h) => h.kind !== 'remote');
           const targets = rankTargets(hostResult.sessions);
           settingsPanel?.webview.postMessage({ type: 'dispatchData', agents, hosts, targets });
         } catch (err) {
