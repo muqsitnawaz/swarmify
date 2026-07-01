@@ -1,7 +1,9 @@
 import React from 'react'
 import { Icon } from './icons'
 import { StructuredReply, type ReplyCallbacks } from './StructuredReply'
-import type { FloorAgent, FloorTicket } from './floorModel'
+import { heartbeatLevel, type FloorAgent, type FloorTicket } from './floorModel'
+import { sinceFromMs } from './floorAdapter'
+import { useNow } from './useNow'
 
 // One agent row in the feed (feedItem: factory-floor.html:608-620) + the Next-Up
 // ticketStrip teaser row (:621-623). Pure presentation; selection + replies raised
@@ -22,13 +24,23 @@ interface FeedItemProps extends ReplyCallbacks {
 }
 
 export function FeedItem({ agent: a, selected, plain, onSelect, onOption, onFreeText, onAttach }: FeedItemProps) {
+  // Live heartbeat: only a running / stalled agent with a known last-activity stamp ticks.
+  // The shared 1s ticker re-renders just this leaf, never the parent list.
+  const now = useNow(1000)
+  const beats = a.lastActivityMs > 0 && (a.phase === 'running' || a.phase === 'stalled')
+  const ageMs = beats ? Math.max(0, now - a.lastActivityMs) : NaN
+  const level = beats ? heartbeatLevel(ageMs) : 'live'
+  const stalled = a.phase === 'stalled' || level !== 'live'
+  const liveSince = beats ? sinceFromMs(ageMs) : a.since
+
   const tok = plainTok(a.tok, plain)
   const meta = plain ? a.project : `${a.project} · ${a.host}${a.ticket ? ` · ${a.ticket}` : ''}`
   const destructive = a.question?.kind === 'destructive'
-  const attn = a.needs ? (a.phase === 'failed' ? 'fail' : 'attn') : ''
+  const attn = a.phase === 'failed' ? 'fail' : stalled ? 'stall' : a.needs ? 'attn' : ''
 
   const marker =
     a.pr ? <span className="pill pr">PR {a.pr}</span> :
+    stalled ? <span className="pill stall">stalled</span> :
     a.phase === 'running' ? <span className="pill run">running</span> :
     a.phase === 'done' ? <span className="pill done">done</span> : null
 
@@ -48,12 +60,14 @@ export function FeedItem({ agent: a, selected, plain, onSelect, onOption, onFree
           {tok && (
             <span className="tps">{!plain && <Icon name="zap" size={11} />}{tok}</span>
           )}
-          <span>{a.since} ago</span>
+          <span className={`hb ${level}`}>
+            {beats && <Icon name="clock" size={10} />}{liveSince} ago
+          </span>
         </span>
       </div>
       <div className="resp">{destructive ? <span className="q">{a.resp}</span> : a.resp}</div>
       {!plain && (
-        <div className="nowline">
+        <div className={`nowline ${stalled ? 'stall' : ''}`}>
           <Icon name="chevR" size={11} /> <span className="v">{a.verb}</span> {a.target}
         </div>
       )}
