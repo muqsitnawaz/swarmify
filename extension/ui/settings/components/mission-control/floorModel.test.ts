@@ -1,0 +1,311 @@
+import { describe, test, expect } from 'bun:test'
+import type { UnifiedTask } from '../../types'
+import {
+  derivePhase,
+  deriveNeeds,
+  parseStructuredQuestion,
+  groupAgents,
+  sortAgents,
+  clusterByQuestion,
+  toFloorTicket,
+  groupTickets,
+  sortTickets,
+  PHASE_RANK,
+  type FloorAgent,
+  type FloorPhase,
+  type StructuredQuestion,
+} from './floorModel'
+
+function makeAgent(overrides: Partial<FloorAgent> = {}): FloorAgent {
+  return {
+    id: 'a1',
+    host: 'this-mac',
+    project: 'swarmify',
+    name: 'auth-refactor',
+    abbr: 'CC',
+    phase: 'running',
+    verb: 'Editing',
+    target: 'src/core/tasks.ts',
+    tok: 0,
+    since: '2s',
+    files: 0,
+    tools: 0,
+    needs: false,
+    pinned: false,
+    pr: null,
+    ticket: null,
+    branch: 'feat-auth',
+    resp: '',
+    question: null,
+    ...overrides,
+  }
+}
+
+function makeTask(overrides: Partial<UnifiedTask> = {}): UnifiedTask {
+  return {
+    id: 'raw-id',
+    source: 'linear',
+    title: 'Some ticket',
+    status: 'todo',
+    metadata: {},
+    ...overrides,
+  }
+}
+
+describe('derivePhase — precedence waiting > failed > running > done > idle', () => {
+  test('waitingForInput wins over a failed status', () => {
+    expect(
+      derivePhase({ status: 'failed', waitingForInput: true, active: true, prOpenUnreviewed: false }),
+    ).toBe('waiting')
+  })
+
+  test('failed wins over a running status', () => {
+    expect(
+      derivePhase({ status: 'failed', waitingForInput: false, active: true, prOpenUnreviewed: false }),
+    ).toBe('failed')
+  })
+
+  test('running requires the process to be active', () => {
+    expect(
+      derivePhase({ status: 'running', waitingForInput: false, active: true, prOpenUnreviewed: false }),
+    ).toBe('running')
+  })
+
+  test('a stale running (process gone) settles to idle', () => {
+    expect(
+      derivePhase({ status: 'running', waitingForInput: false, active: false, prOpenUnreviewed: false }),
+    ).toBe('idle')
+  })
+
+  test('completed maps to done', () => {
+    expect(
+      derivePhase({ status: 'completed', waitingForInput: false, active: false, prOpenUnreviewed: true }),
+    ).toBe('done')
+  })
+
+  test('stopped and idle both settle to idle', () => {
+    expect(
+      derivePhase({ status: 'stopped', waitingForInput: false, active: false, prOpenUnreviewed: false }),
+    ).toBe('idle')
+    expect(
+      derivePhase({ status: 'idle', waitingForInput: false, active: true, prOpenUnreviewed: false }),
+    ).toBe('idle')
+  })
+})
+
+describe('deriveNeeds', () => {
+  test('waiting and failed always need attention', () => {
+    expect(deriveNeeds('waiting', false)).toBe(true)
+    expect(deriveNeeds('failed', false)).toBe(true)
+  })
+
+  test('done needs attention only when its PR is unreviewed', () => {
+    expect(deriveNeeds('done', true)).toBe(true)
+    expect(deriveNeeds('done', false)).toBe(false)
+  })
+
+  test('running and idle never need attention', () => {
+    expect(deriveNeeds('running', true)).toBe(false)
+    expect(deriveNeeds('idle', true)).toBe(false)
+  })
+})
+
+describe('parseStructuredQuestion — one kind per shape', () => {
+  test('failed phase yields a retry, question mark or not', () => {
+    const q = parseStructuredQuestion('bun test exited 1 — 2 tests fail. Stopping so you can look.', 'failed')
+    expect(q).not.toBeNull()
+    expect(q!.kind).toBe('retry')
+    expect(q!.options).toEqual([])
+    expect(q!.clusterKey).toBe('retry')
+  })
+
+  test('running chatter (no question) returns null', () => {
+    expect(
+      parseStructuredQuestion('Editing the incremental counter now; running the suite.', 'running'),
+    ).toBeNull()
+  })
+
+  test('destructive keyword + question -> destructive with Confirm/Cancel', () => {
+    const q = parseStructuredQuestion('This will DROP the legacy_tokens column on prod. Confirm?', 'waiting')
+    expect(q!.kind).toBe('destructive')
+    expect(q!.options).toEqual(['Confirm', 'Cancel'])
+  })
+
+  test('"X or Y?" -> choice with both alternatives extracted', () => {
+    const q = parseStructuredQuestion('Token bucket per-user, or a sliding window?', 'waiting')
+    expect(q!.kind).toBe('choice')
+    expect(q!.options).toEqual(['Token bucket per-user', 'Sliding window'])
+  })
+
+  test('"X vs Y?" -> choice', () => {
+    const q = parseStructuredQuestion('Postgres vs SQLite?', 'waiting')
+    expect(q!.kind).toBe('choice')
+    expect(q!.options).toEqual(['Postgres', 'SQLite'])
+  })
+
+  test('lettered options -> choice', () => {
+    const q = parseStructuredQuestion('Which path: A) Rollback B) Fix forward?', 'waiting')
+    expect(q!.kind).toBe('choice')
+    expect(q!.options).toEqual(['Rollback', 'Fix forward'])
+  })
+
+  test('plain yes/no question -> confirm with Confirm/Hold', () => {
+    const q = parseStructuredQuestion('Tests pass and the PR is green — merge it?', 'waiting')
+    expect(q!.kind).toBe('confirm')
+    expect(q!.options).toEqual(['Confirm', 'Hold'])
+  })
+
+  test('identical questions produce identical clusterKeys; different ones differ', () => {
+    const a = parseStructuredQuestion('Token bucket per-user, or a sliding window?', 'waiting')!
+    const b = parseStructuredQuestion('Token bucket per-user, or a sliding window?', 'waiting')!
+    const c = parseStructuredQuestion('Tests pass and the PR is green — merge it?', 'waiting')!
+    expect(a.clusterKey).toBe(b.clusterKey)
+    expect(a.clusterKey).not.toBe(c.clusterKey)
+    expect(a.clusterKey.length).toBeGreaterThan(0)
+  })
+})
+
+describe('groupAgents', () => {
+  const agents = [
+    makeAgent({ id: 'a', host: 'this-mac', project: 'swarmify', abbr: 'CC', phase: 'running' }),
+    makeAgent({ id: 'b', host: 'yosemite-s0', project: 'prix-api', abbr: 'CX', phase: 'waiting' }),
+    makeAgent({ id: 'c', host: 'this-mac', project: 'prix-api', abbr: 'CC', phase: 'running' }),
+  ]
+
+  test('groups by host, preserving first-seen key order', () => {
+    const g = groupAgents(agents, 'host')
+    expect([...g.keys()]).toEqual(['this-mac', 'yosemite-s0'])
+    expect(g.get('this-mac')!.map((a) => a.id)).toEqual(['a', 'c'])
+  })
+
+  test('groups by project / status / agent dimensions', () => {
+    expect([...groupAgents(agents, 'project').keys()]).toEqual(['swarmify', 'prix-api'])
+    expect([...groupAgents(agents, 'status').keys()]).toEqual(['running', 'waiting'])
+    expect([...groupAgents(agents, 'agent').keys()]).toEqual(['CC', 'CX'])
+  })
+})
+
+describe('sortAgents', () => {
+  test("'needs' orders by PHASE_RANK (waiting < failed < running < done < idle)", () => {
+    const agents = [
+      makeAgent({ id: 'idle', phase: 'idle' }),
+      makeAgent({ id: 'done', phase: 'done' }),
+      makeAgent({ id: 'running', phase: 'running' }),
+      makeAgent({ id: 'failed', phase: 'failed' }),
+      makeAgent({ id: 'waiting', phase: 'waiting' }),
+    ]
+    const ordered = sortAgents(agents, 'needs').map((a) => a.id)
+    expect(ordered).toEqual(['waiting', 'failed', 'running', 'done', 'idle'])
+    const ranks = sortAgents(agents, 'needs').map((a) => PHASE_RANK[a.phase])
+    expect(ranks).toEqual([...ranks].sort((x, y) => x - y))
+  })
+
+  test("'tok' orders by throughput descending", () => {
+    const agents = [makeAgent({ id: 'lo', tok: 10 }), makeAgent({ id: 'hi', tok: 200 }), makeAgent({ id: 'mid', tok: 90 })]
+    expect(sortAgents(agents, 'tok').map((a) => a.id)).toEqual(['hi', 'mid', 'lo'])
+  })
+
+  test("'recent' orders by elapsed time ascending (freshest first)", () => {
+    const agents = [makeAgent({ id: 'h', since: '3h' }), makeAgent({ id: 's', since: '2s' }), makeAgent({ id: 'm', since: '14m' })]
+    expect(sortAgents(agents, 'recent').map((a) => a.id)).toEqual(['s', 'm', 'h'])
+  })
+
+  test("'name' orders alphabetically and does not mutate input", () => {
+    const agents = [makeAgent({ id: '1', name: 'zeta' }), makeAgent({ id: '2', name: 'alpha' })]
+    expect(sortAgents(agents, 'name').map((a) => a.name)).toEqual(['alpha', 'zeta'])
+    expect(agents.map((a) => a.name)).toEqual(['zeta', 'alpha'])
+  })
+})
+
+describe('clusterByQuestion', () => {
+  function waitingAgent(id: string, clusterKey: string | null): FloorAgent {
+    const question: StructuredQuestion | null = clusterKey
+      ? { kind: 'choice', text: 'q', options: ['A', 'B'], clusterKey }
+      : null
+    return makeAgent({ id, phase: 'waiting', question })
+  }
+
+  test('collapses agents sharing a clusterKey into one card, keeps singletons as [agent]', () => {
+    const waiting = [
+      waitingAgent('a', 'ratelimit'),
+      waitingAgent('b', 'ratelimit'),
+      waitingAgent('c', 'mergegreen'),
+    ]
+    const clusters = clusterByQuestion(waiting)
+    expect(clusters.length).toBe(2)
+    expect(clusters[0].map((a) => a.id)).toEqual(['a', 'b'])
+    expect(clusters[1].map((a) => a.id)).toEqual(['c'])
+  })
+
+  test('agents without a parsed question never batch together', () => {
+    const clusters = clusterByQuestion([waitingAgent('x', null), waitingAgent('y', null)])
+    expect(clusters.length).toBe(2)
+    expect(clusters.every((c) => c.length === 1)).toBe(true)
+  })
+})
+
+describe('toFloorTicket — field mapping', () => {
+  test('medium priority remaps to med', () => {
+    expect(toFloorTicket(makeTask({ priority: 'medium' })).pri).toBe('med')
+  })
+
+  test('missing priority defaults to med; urgent/high/low pass through', () => {
+    expect(toFloorTicket(makeTask({ priority: undefined })).pri).toBe('med')
+    expect(toFloorTicket(makeTask({ priority: 'urgent' })).pri).toBe('urgent')
+    expect(toFloorTicket(makeTask({ priority: 'high' })).pri).toBe('high')
+    expect(toFloorTicket(makeTask({ priority: 'low' })).pri).toBe('low')
+  })
+
+  test('source remaps linear->LN, github->GH', () => {
+    expect(toFloorTicket(makeTask({ source: 'linear' })).source).toBe('LN')
+    expect(toFloorTicket(makeTask({ source: 'github' })).source).toBe('GH')
+  })
+
+  test('status remaps in_progress->in-progress, done->done, else todo', () => {
+    expect(toFloorTicket(makeTask({ status: 'in_progress' })).status).toBe('in-progress')
+    expect(toFloorTicket(makeTask({ status: 'done' })).status).toBe('done')
+    expect(toFloorTicket(makeTask({ status: 'todo' })).status).toBe('todo')
+  })
+
+  test('id prefers metadata.identifier, falls back to id; project from repo; labels/desc defaulted', () => {
+    const withId = toFloorTicket(
+      makeTask({ id: 'raw', metadata: { identifier: 'RUSH-812', repo: 'prix-api', labels: ['bug'] }, description: 'd' }),
+    )
+    expect(withId.id).toBe('RUSH-812')
+    expect(withId.project).toBe('prix-api')
+    expect(withId.labels).toEqual(['bug'])
+    expect(withId.desc).toBe('d')
+
+    const bare = toFloorTicket(makeTask({ id: 'raw', metadata: {} }))
+    expect(bare.id).toBe('raw')
+    expect(bare.project).toBe('')
+    expect(bare.labels).toEqual([])
+    expect(bare.desc).toBe('')
+  })
+})
+
+describe('groupTickets / sortTickets', () => {
+  const tickets = [
+    toFloorTicket(makeTask({ id: 'RUSH-2', source: 'linear', priority: 'low', metadata: { repo: 'web' } })),
+    toFloorTicket(makeTask({ id: '#1', source: 'github', priority: 'urgent', metadata: { repo: 'swarmify' } })),
+    toFloorTicket(makeTask({ id: 'RUSH-3', source: 'linear', priority: 'high', metadata: { repo: 'web' } })),
+  ]
+
+  test('sortTickets by priority uses PRI_RANK', () => {
+    expect(sortTickets(tickets, 'priority').map((t) => t.pri)).toEqual(['urgent', 'high', 'low'])
+  })
+
+  test('sortTickets by id uses localeCompare', () => {
+    expect(sortTickets(tickets, 'id').map((t) => t.id)).toEqual(['#1', 'RUSH-2', 'RUSH-3'])
+  })
+
+  test('groupTickets by source renders human labels', () => {
+    expect([...groupTickets(tickets, 'source').keys()].sort()).toEqual(['GitHub', 'Linear'])
+  })
+
+  test('groupTickets by project buckets by repo', () => {
+    const g = groupTickets(tickets, 'project')
+    expect(g.get('web')!.map((t) => t.id)).toEqual(['RUSH-2', 'RUSH-3'])
+    expect(g.get('swarmify')!.map((t) => t.id)).toEqual(['#1'])
+  })
+})
