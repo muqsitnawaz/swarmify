@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 
-export type SyncState = 'in-sync' | 'behind' | 'ahead' | 'diverged' | 'dirty' | 'unknown';
+export type SyncState = 'in-sync' | 'behind' | 'ahead' | 'diverged' | 'dirty' | 'missing' | 'unknown';
 
 export interface RepoSyncStatus {
   root: string;

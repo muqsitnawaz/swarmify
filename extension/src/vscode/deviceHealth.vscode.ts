@@ -5,6 +5,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { DeviceStats, parseUptime, parseVmStat, parseLinuxMemInfo } from '../core/deviceHealth';
 import { Device } from '../core/deviceRegistry';
+import { RepoSyncStatus, classifySync } from '../core/repoSync';
 import { resolveAgentsBin, bootstrapPath } from '../core/agentsBin';
 
 const execFileAsync = promisify(execFile);
@@ -245,4 +246,62 @@ function materializeKey(value: string): string {
   const tmpPath = path.join(tmpDir, `ssh-key-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   fs.writeFileSync(tmpPath, value, { mode: 0o600 });
   return tmpPath;
+}
+
+function sq(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+// Assign the project path to $P on the remote, expanding a leading ~ against
+// the remote $HOME (which the extension can't know locally).
+function pathAssign(projectPath: string): string {
+  if (projectPath === '~') return 'P="$HOME"';
+  if (projectPath.startsWith('~/')) return `P="$HOME/"${sq(projectPath.slice(2))}`;
+  return `P=${sq(projectPath)}`;
+}
+
+// Sync status for a repo AS IT EXISTS ON THE DEVICE (not the local mac). A repo
+// that isn't cloned there is a first-class state ('missing') — the dispatch
+// policy clones it. Runs a single shell snippet locally or over SSH.
+export async function getDeviceSyncStatus(
+  host: string,
+  projectPath: string,
+  opts: { isLocal: boolean; identityFile?: string; user?: string },
+): Promise<RepoSyncStatus> {
+  const empty: RepoSyncStatus = { root: projectPath, state: 'unknown', ahead: 0, behind: 0, dirty: false, defaultBranch: '' };
+  if (!projectPath) return empty;
+  const snippet =
+    `${pathAssign(projectPath)}; ` +
+    `if [ ! -d "$P/.git" ]; then echo MISSING; exit 0; fi; ` +
+    `cd "$P" || { echo MISSING; exit 0; }; ` +
+    `git fetch origin -q 2>/dev/null || true; ` +
+    `DEF=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##'); ` +
+    `if [ -z "$DEF" ]; then echo UNKNOWN; exit 0; fi; ` +
+    `D=0; [ -n "$(git status --porcelain)" ] && D=1; ` +
+    `set -- $(git rev-list --left-right --count "origin/$DEF...HEAD" 2>/dev/null); ` +
+    `echo "OK $DEF \${1:-0} \${2:-0} $D"`;
+  try {
+    let stdout: string;
+    if (opts.isLocal) {
+      ({ stdout } = await execFileAsync('/bin/sh', ['-lc', snippet], { timeout: 20_000 }));
+    } else {
+      const target = opts.user ? `${opts.user}@${host}` : host;
+      const args = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8', '-o', 'StrictHostKeyChecking=accept-new'];
+      if (opts.identityFile) args.push('-i', opts.identityFile);
+      args.push(target, snippet);
+      ({ stdout } = await execFileAsync('ssh', args, { timeout: 25_000 }));
+    }
+    const line = stdout.trim().split('\n').pop() ?? '';
+    if (line.startsWith('MISSING')) return { ...empty, state: 'missing' };
+    if (line.startsWith('OK')) {
+      const [, def, behindStr, aheadStr, dirtyStr] = line.split(/\s+/);
+      const behind = parseInt(behindStr, 10) || 0;
+      const ahead = parseInt(aheadStr, 10) || 0;
+      const dirty = dirtyStr === '1';
+      return { root: projectPath, state: classifySync({ ahead, behind, dirty }), ahead, behind, dirty, defaultBranch: def || '' };
+    }
+    return empty;
+  } catch {
+    return empty;
+  }
 }

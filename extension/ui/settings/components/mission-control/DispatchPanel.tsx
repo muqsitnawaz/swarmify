@@ -52,7 +52,7 @@ export interface DispatchDeviceRepo {
 
 export interface DispatchDeviceSync {
   root: string
-  state: 'in-sync' | 'behind' | 'ahead' | 'diverged' | 'dirty' | 'unknown'
+  state: 'in-sync' | 'behind' | 'ahead' | 'diverged' | 'dirty' | 'missing' | 'unknown'
   ahead: number
   behind: number
   dirty: boolean
@@ -691,19 +691,20 @@ function DeviceProjectSelect({ projects, root, value, onChange }: {
 function SyncLine({ sync, hasRepo }: { sync: DispatchDeviceSync | null; hasRepo: boolean }) {
   if (!hasRepo) return <div className="sub2">pick a repo to check sync status</div>
   if (!sync) return <div className="sub2">checking sync…</div>
-  const willFetch = sync.state === 'behind' || sync.state === 'diverged'
   let label: string
+  let suffix = ''
   switch (sync.state) {
     case 'in-sync': label = 'in sync'; break
     case 'ahead': label = `${sync.ahead} ahead`; break
-    case 'behind': label = `${sync.behind} behind`; break
-    case 'diverged': label = `diverged (${sync.ahead} ahead, ${sync.behind} behind)`; break
+    case 'behind': label = `${sync.behind} behind`; suffix = ' — will fetch first'; break
+    case 'diverged': label = `diverged (${sync.ahead} ahead, ${sync.behind} behind)`; suffix = ' — will fetch first'; break
     case 'dirty': label = 'uncommitted changes'; break
+    case 'missing': label = 'not cloned on this device'; suffix = ' — will clone first'; break
     default: label = 'unknown'
   }
   return (
     <div className="sub2">
-      {label}{willFetch ? ' — will fetch first' : ''}
+      {label}{suffix}
     </div>
   )
 }

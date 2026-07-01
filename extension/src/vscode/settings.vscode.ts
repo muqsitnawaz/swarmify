@@ -45,7 +45,7 @@ import { buildAgentTerminalEnv } from '../core/terminals';
 import * as foreman from './foreman.vscode';
 import { startForemanAudio, ForemanAudioSession } from './foreman.audio';
 import { buildTaskDispatchPrompt } from '../core/tasks';
-import { listRegisteredDevices, fetchDeviceStats, countRunningAgents, resolveSecret } from './deviceHealth.vscode';
+import { listRegisteredDevices, fetchDeviceStats, countRunningAgents, resolveSecret, getDeviceSyncStatus } from './deviceHealth.vscode';
 import { inferProjectCandidates } from '../core/projectIndex';
 import { rankRepos } from '../core/repoIndex';
 import { detectProjects } from '../core/projectDetect';
@@ -323,23 +323,30 @@ async function dispatchToDevice(input: {
   host: string;
   secretRef?: string;
   projectPath: string;
+  repoSlug?: string;
   syncPolicy: 'off' | 'safe' | 'aggressive';
   mode: DispatchModeMsg;
   prompt: string;
 }): Promise<string | null> {
-  const { agentType, host, secretRef, projectPath, syncPolicy, mode, prompt } = input;
+  const { agentType, host, secretRef, projectPath, repoSlug, syncPolicy, mode, prompt } = input;
   if (!projectPath) return 'Device dispatch: no project path resolved — pick a repo/project first.';
 
   const creds = secretRef ? await resolveSecret(secretRef) : {};
   const syncShell = buildDeviceSyncShell(syncPolicy);
   const runCmd = `agents run ${agentType} --mode ${mode} -p ${shq(prompt)}`;
-  // Tilde must expand on the remote, so it can't be inside single quotes.
-  const cdCmd =
-    projectPath === '~' ? 'cd "$HOME"'
-      : projectPath.startsWith('~/') ? `cd "$HOME"/${shq(projectPath.slice(2))}`
-        : `cd ${shq(projectPath)}`;
+  // Resolve $P on the remote (tilde expands against the remote $HOME), clone the
+  // repo there if it isn't present (a missing clone is just a sync state), then
+  // run the auto-sync policy and start the agent.
+  const pAssign =
+    projectPath === '~' ? 'P="$HOME"'
+      : projectPath.startsWith('~/') ? `P="$HOME/"${shq(projectPath.slice(2))}`
+        : `P=${shq(projectPath)}`;
+  const cloneUrl = repoSlug ? `git@github.com:${repoSlug}.git` : '';
+  const ensureClone = cloneUrl
+    ? `if [ ! -d "$P/.git" ]; then mkdir -p "$(dirname "$P")" && git clone ${shq(cloneUrl)} "$P"; fi && `
+    : '';
   const remote =
-    `${cdCmd} && ` +
+    `mkdir -p "$HOME/.agents/.tmp"; ${pAssign}; ${ensureClone}cd "$P" && ` +
     (syncShell ? `${syncShell} && ` : '') +
     `nohup ${runCmd} > "$HOME/.agents/.tmp/dispatch-$(date +%s).log" 2>&1 &`;
 
@@ -1701,12 +1708,22 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
       }
       case 'repoSync': {
         const root = typeof message.root === 'string' ? message.root : '';
+        const syncHost = typeof message.host === 'string' ? message.host : '';
+        const syncSecretRef = typeof message.secretRef === 'string' ? message.secretRef : undefined;
         if (!root) {
           settingsPanel?.webview.postMessage({ type: 'repoSyncData', root: '', status: null });
           break;
         }
         try {
-          const status = await getSyncStatus(root, { fetch: true });
+          // Check sync AS IT EXISTS ON THE SELECTED DEVICE (incl. not-cloned),
+          // not on the local mac. Falls back to the local repo for this-mac.
+          let status;
+          if (syncHost && !isLocalDeviceHost(syncHost)) {
+            const creds = syncSecretRef ? await resolveSecret(syncSecretRef) : {};
+            status = await getDeviceSyncStatus(syncHost, root, { isLocal: false, identityFile: creds.identityFile, user: creds.user });
+          } else {
+            status = await getSyncStatus(root, { fetch: true });
+          }
           settingsPanel?.webview.postMessage({ type: 'repoSyncData', root, status });
         } catch (err) {
           console.error('[SETTINGS] Error checking repo sync:', err);
@@ -1945,6 +1962,7 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
             host: deviceHost,
             secretRef,
             projectPath,
+            repoSlug: typeof message.repoSlug === 'string' ? message.repoSlug : undefined,
             syncPolicy,
             mode: deviceMode,
             prompt: devicePrompt,

@@ -657,7 +657,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   const onRequestRepoSync = useCallback((deviceName: string, root: string) => {
     setDeviceSync(null)
     const dev = dispatchDevices.find((d) => d.name === deviceName)
-    postMessage({ type: 'repoSync', root, host: dev?.host })
+    postMessage({ type: 'repoSync', root, host: dev?.host, secretRef: dev?.secretRef })
   }, [dispatchDevices])
 
   const onManageDevices = useCallback(() => {
