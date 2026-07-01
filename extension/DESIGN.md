@@ -193,6 +193,7 @@ Corners are tight and mechanical, on a `3 / 4 / 6 / 8 / 10px` radius scale — s
 - `rounded-sm` (4px) — buttons, inputs, list rows.
 - `rounded-md` (6px) — panels, menus, tab groups.
 - `rounded-lg` (8px) — larger cards and popovers.
+- `rounded-xl` (10px) — the largest containers; used sparingly.
 - `rounded-full` — LED status dots and avatars only.
 
 Avatars and agent chips are near-square (2–4px radius), riveted with an inner highlight — badges, not bubbles.
