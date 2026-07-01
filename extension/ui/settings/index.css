@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "./components/mission-control/design-system.css";
 @import "./components/mission-control/floor.css";
+@import "./components/mission-control/dispatch.css";
 @import "./components/bench/bench.css";
 @import "./components/panel/panel.css";
 

@@ -22,8 +22,12 @@ import type { UnifiedTask } from '../../types'
  *   waiting > failed > running > done(unreviewed) > done(settled) > idle
  * (waiting outranks failed: a waiting agent is reversible by the user right now.)
  * Prototype: factory-floor.html:330,363-364.
+ *
+ * 'stalled' is a running agent that has gone quiet past STALL_THRESHOLD_MS — the
+ * process may be wedged, so it surfaces in Needs-You. Derived live from a heartbeat
+ * (deriveStalled), not reported by the CLI.
  */
-export type FloorPhase = 'running' | 'idle' | 'waiting' | 'failed' | 'done'
+export type FloorPhase = 'running' | 'idle' | 'waiting' | 'failed' | 'done' | 'stalled'
 
 /** Terminal-tab prefix per agent CLI (ui utils is the reference map). */
 export type AgentAbbr = 'CC' | 'CX' | 'GX' | 'CR' | 'AG' | 'GK' | 'OC' | 'SH'
@@ -61,6 +65,7 @@ export interface FloorAgent {
   target: string        // activity object, e.g. "src/core/tasks.ts"
   tok: number           // output tok/s; 0 when not streaming
   since: string          // human elapsed, e.g. "2s", "14m", "3h"
+  lastActivityMs: number // epoch ms of last observed activity; drives the live heartbeat. 0 when unknown.
   files: number
   tools: number
   needs: boolean         // waiting || failed || (done && unreviewed)
@@ -100,14 +105,20 @@ export type TicketSort = 'priority' | 'id'
 
 // ---------- stable rank constants (data — final, not stubs) ----------
 
-/** Needs-you first ordering. Prototype: factory-floor.html:364. */
+/** Needs-you first ordering. Prototype: factory-floor.html:364.
+ *  'stalled' sits just below failed: a wedged agent needs you, but a hard failure or an
+ *  explicit question outranks it. */
 export const PHASE_RANK: Record<FloorPhase, number> = {
   waiting: 0,
   failed: 1,
-  running: 2,
-  done: 3,
-  idle: 4,
+  stalled: 2,
+  running: 3,
+  done: 4,
+  idle: 5,
 }
+
+/** A running agent silent this long is treated as stalled (amber). 2x -> dead (red). */
+export const STALL_THRESHOLD_MS = 90_000
 
 /** Prototype: factory-floor.html:396. */
 export const PRI_RANK: Record<TicketPriority, number> = {
@@ -136,9 +147,35 @@ export function derivePhase(input: {
   return 'idle'
 }
 
-/** waiting || failed || (done && unreviewed). */
+/** waiting || failed || stalled || (done && unreviewed). */
 export function deriveNeeds(phase: FloorPhase, prOpenUnreviewed: boolean): boolean {
-  return phase === 'waiting' || phase === 'failed' || (phase === 'done' && prOpenUnreviewed)
+  return (
+    phase === 'waiting' ||
+    phase === 'failed' ||
+    phase === 'stalled' ||
+    (phase === 'done' && prOpenUnreviewed)
+  )
+}
+
+/**
+ * Is a running agent stalled? True when it has been silent past STALL_THRESHOLD_MS.
+ * Only a running (or already-stalled) agent can stall — a waiting/failed/done/idle
+ * agent is already categorized, and an idle agent is quiet on purpose. lastActivityMs
+ * of 0 (unknown) never stalls, so a missing heartbeat can't raise a false alarm.
+ * Pure so both the adapter (promote phase at poll time) and the live card agree.
+ */
+export function deriveStalled(lastActivityMs: number, phase: FloorPhase, now: number): boolean {
+  if (phase !== 'running' && phase !== 'stalled') return false
+  if (!Number.isFinite(lastActivityMs) || lastActivityMs <= 0) return false
+  return now - lastActivityMs >= STALL_THRESHOLD_MS
+}
+
+/** Heartbeat severity from a silence age: live < threshold <= stale (amber) < 2x <= dead (red). */
+export type HeartbeatLevel = 'live' | 'stale' | 'dead'
+export function heartbeatLevel(ageMs: number): HeartbeatLevel {
+  if (!Number.isFinite(ageMs) || ageMs < STALL_THRESHOLD_MS) return 'live'
+  if (ageMs >= 2 * STALL_THRESHOLD_MS) return 'dead'
+  return 'stale'
 }
 
 /**

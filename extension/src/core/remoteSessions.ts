@@ -69,10 +69,24 @@ export interface HostGroup {
   sessions: RemoteSession[];
 }
 
-/** Reachability of a discovered host. */
+/** Live load bucket for a host. Mirrors dispatch.types.ts HostLoad (webview
+ *  contract) — kept in sync by hand; the two are NOT shared across the boundary. */
+export type HostLoad = 'idle' | 'free' | 'busy' | 'hot' | 'off';
+
+/** Reachability + live load of a discovered host. `agents`/`load`/`uses` are the
+ *  live-load fields the Dispatch panel reads; they ride the existing hostSessions
+ *  message. During discovery (before the host is probed) they hold their pre-probe
+ *  values (agents 0, load idle/off, uses 0); fetchHostSessions overwrites them with
+ *  measured values before the payload leaves the extension host. */
 export interface HostInfo {
   name: string;
   online: boolean;
+  /** Active agent sessions on this host (HostGroup.sessions.length). */
+  agents: number;
+  /** Load bucket derived from CPU load + agent count; 'off' when offline. */
+  load: HostLoad;
+  /** Usage weight for the ranking tiebreak (active-session count). */
+  uses: number;
 }
 
 /**

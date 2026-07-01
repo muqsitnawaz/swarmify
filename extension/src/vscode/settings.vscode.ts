@@ -4,7 +4,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { homedir } from 'os';
+import { homedir, hostname } from 'os';
 import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
 import { AgentSettings, getDefaultSettings, CustomAgentConfig, SwarmAgentType, ALL_SWARM_AGENTS, PromptEntry, DEFAULT_DISPLAY_PREFERENCES, DEFAULT_NOTIFICATION_SETTINGS, DEFAULT_TASK_SOURCE_SETTINGS, DEFAULT_QUICK_LAUNCH, QuickLaunchSlot, migrateStaleClaudeQuickLaunch, migrateLegacyQuickLaunchSlots } from '../core/settings';
@@ -14,10 +14,18 @@ import * as swarm from './swarm.vscode';
 import { fetchAllTasks, detectAvailableSources } from './tasks.vscode';
 import { getBuiltInByTitle, configFromDef } from './agents.vscode';
 import { openSingleAgentWithQueue } from './extension';
+import { generateClaudeSessionId } from '../core/prewarm.simple';
+import { nudgeSession } from '../mcp/watchdog-bridge';
+import { AgentLaunchMode, parsePlanFromClaudeJsonl, planTextToSteps } from '../core/agents';
 import { CLAUDE_TITLE } from '../core/utils';
 import { discoverRecentSessions, getSessionPathBySessionId } from './sessions.vscode';
 import { formatTerminalTitle, parseTerminalName, getSessionChunk } from '../core/utils';
-import { getBuiltInByKey } from '../core/agents';
+import { getBuiltInByKey, getBuiltInDefByTitle } from '../core/agents';
+import {
+  mapInventoriesToInstalledAgents,
+  buildDispatchHosts,
+  rankTargets,
+} from '../core/dispatchRanking';
 import { resolveForemanTarget, candidateName } from '../core/foreman.target';
 import { parseEvents } from '../core/watchdogLog';
 import {
@@ -186,6 +194,149 @@ async function getOrCreateRushCloudTerminal(
   );
   rushCloudTerminal = terminal;
   return terminal;
+}
+
+// ---------------------------------------------------------------------------
+// Unified Dispatch (the consolidated panel). The two build roots are isolated
+// (src/ cannot import ui/), so the webview contract in
+// ui/settings/components/mission-control/dispatch.types.ts is mirrored here by
+// hand. These shapes MUST stay in sync with that file.
+// ---------------------------------------------------------------------------
+type DispatchModeMsg = AgentLaunchMode; // 'plan' | 'auto' | 'edit'
+type WatchdogPolicyMsg = 'off' | 'keep' | 'handsoff';
+
+interface NotifyPrefsMsg {
+  events: { stall: boolean; question: boolean; plan: boolean; finish: boolean; fail: boolean };
+  channel: 'imessage' | 'slack' | 'desktop';
+  dnd: boolean;
+}
+
+interface DispatchAttachmentMsg { type: 'image' | 'file'; name: string; ref?: string }
+
+interface DispatchRequestMsg {
+  prompt: string;
+  ticketIds: string[];
+  attachments: DispatchAttachmentMsg[];
+  agent: string;
+  runOn: string;
+  project?: string;
+  repo?: string;
+  branch?: string;
+  mode: DispatchModeMsg;
+  watchdog: WatchdogPolicyMsg;
+  notify: NotifyPrefsMsg;
+  batch: 'all' | 'per';
+}
+
+interface PendingPlanMsg {
+  sessionId: string;
+  agentId: string;
+  steps: { n: number; text: string }[];
+}
+
+type DispatchHostResolution =
+  | { kind: 'cloud'; provider: 'rush' | 'codex' | 'factory' }
+  | { kind: 'local' }
+  | { kind: 'remote'; host: string };
+
+// Map a DispatchHost.id to where it actually runs. Cloud ids (matching the
+// prototype HOSTS) carry an explicit provider; the local machine is 'this-mac'
+// or the real hostname; everything else is a remote SSH machine — which has no
+// agent-spawn path in this lane yet (backend-data owns remoteSessions), so it
+// surfaces as 'remote' for an honest inline error rather than a silent
+// local fallback.
+function classifyDispatchHost(runOn: string): DispatchHostResolution {
+  if (runOn === 'rush') return { kind: 'cloud', provider: 'rush' };
+  if (runOn === 'codex' || runOn === 'codex-cloud') return { kind: 'cloud', provider: 'codex' };
+  if (runOn === 'factory') return { kind: 'cloud', provider: 'factory' };
+  const host = hostname();
+  if (runOn === '' || runOn === 'this-mac' || runOn === host || runOn === host.split('.')[0]) {
+    return { kind: 'local' };
+  }
+  return { kind: 'remote', host: runOn };
+}
+
+// Cloud CLI (`agents cloud run --mode`) accepts plan|edit|full. The panel's
+// Auto ("asks before risky") has no cloud analog — cloud runs are
+// non-interactive — so it maps to full autonomy.
+function cloudModeForDispatch(mode: DispatchModeMsg): 'plan' | 'edit' | 'full' {
+  return mode === 'plan' ? 'plan' : mode === 'edit' ? 'edit' : 'full';
+}
+
+// The typed prompt is the source of truth; attached ticket ids and attachment
+// refs ride along as context lines the agent can act on.
+function composeDispatchPrompt(
+  userPrompt: string,
+  ticketIds: string[],
+  attachments: DispatchAttachmentMsg[],
+): string {
+  const parts: string[] = [];
+  const p = userPrompt.trim();
+  if (p) parts.push(p);
+  if (ticketIds.length) parts.push(`Attached tickets: ${ticketIds.join(', ')}`);
+  if (attachments.length) {
+    parts.push(`Attachments: ${attachments.map(a => a.ref ? `${a.name} (${a.ref})` : a.name).join(', ')}`);
+  }
+  return parts.join('\n\n');
+}
+
+// Per-session policy captured at dispatch time. The Floor / notification layer
+// and the watchdog consult this to honor the user's watchdog + notify choices
+// after the agent is running. Exported so cross-lane consumers (the existing
+// watchdog stall detector, the integrator) can read a session's policy.
+interface DispatchSessionPolicy {
+  watchdog: WatchdogPolicyMsg;
+  notify: NotifyPrefsMsg;
+  agentId: string;    // terminal id of the running agent
+  prompt: string;     // original composed prompt (reused by reassignAgent)
+  cwd?: string;       // resolved local cwd, if any
+  mode: DispatchModeMsg;
+}
+const dispatchSessionPolicies = new Map<string, DispatchSessionPolicy>();
+export function getDispatchSessionPolicy(sessionId: string): DispatchSessionPolicy | undefined {
+  return dispatchSessionPolicies.get(sessionId);
+}
+
+// Watch a plan-mode Claude session's .jsonl for an ExitPlanMode tool call and
+// post `planReady` to the webview once, so the Floor can show the plan for
+// approval. Polls (no fs.watch: the file may not exist yet at spawn) until the
+// plan appears or the budget elapses.
+function watchForPlan(
+  sessionId: string,
+  agentId: string,
+  cwd: string,
+  notify: NotifyPrefsMsg,
+): void {
+  const POLL_MS = 2000;
+  const MAX_ATTEMPTS = 600; // ~20 min
+  let attempts = 0;
+  let done = false;
+  const tick = async () => {
+    if (done) return;
+    attempts++;
+    try {
+      const filePath = await getSessionPathBySessionId(sessionId, 'claude', cwd);
+      if (filePath) {
+        const jsonl = await fs.promises.readFile(filePath, 'utf8');
+        const planText = parsePlanFromClaudeJsonl(jsonl);
+        if (planText) {
+          done = true;
+          const plan: PendingPlanMsg = { sessionId, agentId, steps: planTextToSteps(planText) };
+          settingsPanel?.webview.postMessage({ type: 'planReady', plan });
+          // notify.events.plan gates whether this also escalates to an external
+          // channel; the in-app Floor surface always receives it.
+          if (notify.events.plan && !notify.dnd) {
+            console.log(`[DISPATCH] plan ready for ${sessionId} — notify via ${notify.channel}`);
+          }
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('[DISPATCH] plan watch read failed:', err);
+    }
+    if (attempts < MAX_ATTEMPTS) setTimeout(tick, POLL_MS);
+  };
+  setTimeout(tick, POLL_MS);
 }
 
 // Headless lookup used by Foreman's task_details tool. Finds a task by
@@ -1377,6 +1528,30 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
         });
         break;
       }
+      case 'fetchDispatchData': {
+        // Data the consolidated Dispatch panel needs: installed agents (reusing the
+        // cached `agents view --json` inventory — no re-exec), the unified host
+        // roster with live per-host load, and projects ranked by session-index
+        // usage. Host live-load also rides the separate 'hostSessions' message; this
+        // one seeds the panel on open.
+        try {
+          const { fetchHostSessions, LOCAL_LABEL } = await import('./remoteSessions.vscode');
+          const [inventories, hostResult] = await Promise.all([
+            getCachedAgentInventories(),
+            fetchHostSessions(),
+          ]);
+          const defaultTitle = context.globalState.get<string>('agents.defaultAgentTitle', 'CC');
+          const defaultAgentId = getBuiltInDefByTitle(defaultTitle)?.key ?? 'claude';
+          const agents = mapInventoriesToInstalledAgents(inventories, defaultAgentId);
+          const hosts = buildDispatchHosts(hostResult.hosts, LOCAL_LABEL);
+          const targets = rankTargets(hostResult.sessions);
+          settingsPanel?.webview.postMessage({ type: 'dispatchData', agents, hosts, targets });
+        } catch (err) {
+          console.error('[SETTINGS] Error fetching dispatch data:', err);
+          settingsPanel?.webview.postMessage({ type: 'dispatchData', agents: [], hosts: [], targets: [] });
+        }
+        break;
+      }
       case 'fetchAgentResources': {
         const force = message?.force === true;
         if (force) invalidateAgentResourcesCache();
@@ -1743,6 +1918,198 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
           : resolveReposFromLabels(labels, localOwner);
         const localCwd = localSlugs.length === 1 ? await resolveLocalRepoPath(localSlugs[0]) : null;
         await openSingleAgentWithQueue(context, agentConfig, [prompt], localCwd ? { cwd: localCwd } : undefined);
+        break;
+      }
+      // Unified dispatch from the consolidated Dispatch panel. Consumes the full
+      // DispatchRequest (agent, host, project/repo, branch, mode, watchdog,
+      // notify, batch) — replacing the field-by-field `dispatchTask` above.
+      case 'dispatch': {
+        const req = message.request as DispatchRequestMsg | undefined;
+        if (!req || typeof req.prompt !== 'string' || typeof req.agent !== 'string') {
+          vscode.window.showErrorMessage('Dispatch: malformed request');
+          break;
+        }
+        const ticketIds = Array.isArray(req.ticketIds)
+          ? req.ticketIds.filter((t: unknown): t is string => typeof t === 'string')
+          : [];
+        const attachments: DispatchAttachmentMsg[] = Array.isArray(req.attachments) ? req.attachments : [];
+        const notify = req.notify;
+        const watchdog: WatchdogPolicyMsg = req.watchdog === 'keep' || req.watchdog === 'handsoff' ? req.watchdog : 'off';
+        const mode: DispatchModeMsg = req.mode === 'plan' || req.mode === 'edit' ? req.mode : 'auto';
+
+        if (!req.prompt.trim() && ticketIds.length === 0) {
+          vscode.window.showErrorMessage('Dispatch: nothing to do — add a prompt or attach a ticket');
+          break;
+        }
+
+        // batch 'per' (with >=2 tickets) fans out one dispatch per ticket;
+        // otherwise a single dispatch carries the prompt + all tickets.
+        const units: { prompt: string }[] =
+          req.batch === 'per' && ticketIds.length >= 2
+            ? ticketIds.map((id) => ({ prompt: composeDispatchPrompt(req.prompt, [id], attachments) }))
+            : [{ prompt: composeDispatchPrompt(req.prompt, ticketIds, attachments) }];
+
+        const resolution = classifyDispatchHost(req.runOn);
+
+        if (resolution.kind === 'remote') {
+          vscode.window.showErrorMessage(
+            `Dispatch: remote host "${resolution.host}" has no spawn path yet (SSH dispatch pending). Pick this machine or a cloud host.`,
+          );
+          break;
+        }
+
+        if (resolution.kind === 'cloud') {
+          const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+          const repo = typeof req.repo === 'string' ? req.repo : '';
+          if (!/^[^/]+\/[^/]+$/.test(repo)) {
+            vscode.window.showErrorMessage('Cloud dispatch: pick a repo (owner/name) first.');
+            break;
+          }
+          const term = await getOrCreateRushCloudTerminal(context, workspacePath || process.cwd());
+          const cloudMode = cloudModeForDispatch(mode);
+          const branch = typeof req.branch === 'string' ? req.branch.trim() : '';
+          // The panel's default "auto (new branch)" means let the cloud create
+          // one — only pass --branch for a real, explicit branch name.
+          const branchFlag = branch && !branch.toLowerCase().startsWith('auto') ? ` --branch ${branch}` : '';
+          for (const unit of units) {
+            const safePrompt = unit.prompt.replace(/'/g, `'\\''`);
+            term.sendText(
+              `agents cloud run --provider ${resolution.provider} --agent ${req.agent} --repo ${repo}${branchFlag} --mode ${cloudMode} -p '${safePrompt}'`,
+            );
+          }
+          term.show(true);
+          break;
+        }
+
+        // Local machine: spawn a terminal agent per unit with the real mode flag.
+        const def = getBuiltInByKey(req.agent);
+        if (!def) {
+          vscode.window.showErrorMessage(`Dispatch: unknown agent "${req.agent}"`);
+          break;
+        }
+        const agentConfig = configFromDef(context.extensionPath, def);
+        const projectId = typeof req.project === 'string' ? req.project : '';
+        // A slug carrying an owner ("owner/repo") resolves to a local clone;
+        // a bare project id falls through to the workspace folder (never $HOME,
+        // which openSingleAgentWithQueue guarantees when no cwd is passed).
+        const cwd = projectId.includes('/') ? await resolveLocalRepoPath(projectId) : null;
+        for (const unit of units) {
+          // Pre-mint the session id for plan-mode Claude so we can watch that
+          // exact session file for the ExitPlanMode plan afterwards.
+          const preSessionId = req.agent === 'claude' && mode === 'plan' ? generateClaudeSessionId() : undefined;
+          const result = await openSingleAgentWithQueue(context, agentConfig, [unit.prompt], {
+            ...(cwd ? { cwd } : {}),
+            mode,
+            ...(preSessionId ? { sessionId: preSessionId } : {}),
+          });
+          if (result.sessionId) {
+            dispatchSessionPolicies.set(result.sessionId, {
+              watchdog,
+              notify,
+              agentId: result.terminalId,
+              prompt: unit.prompt,
+              cwd: cwd ?? undefined,
+              mode,
+            });
+            if (req.agent === 'claude' && mode === 'plan') {
+              watchForPlan(
+                result.sessionId,
+                result.terminalId,
+                cwd || (vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd()),
+                notify,
+              );
+            }
+          }
+        }
+        break;
+      }
+      // Plan-review: approve the pending plan. Resumes the plan-mode agent by
+      // accepting the ExitPlanMode prompt in its terminal; optional `edited`
+      // steps are sent as a follow-up so the agent proceeds with the revision.
+      case 'approvePlan': {
+        const sessionId = typeof message.sessionId === 'string' ? message.sessionId : '';
+        const entry = terminals.getAllTerminals().find((t) => t.sessionId === sessionId);
+        if (!entry) {
+          vscode.window.showErrorMessage(`Approve plan: no live agent for session ${sessionId}`);
+          break;
+        }
+        // Accept the highlighted "proceed" option in Claude's plan prompt.
+        entry.terminal.sendText('\r', false);
+        const edited = Array.isArray(message.edited) ? message.edited : null;
+        if (edited && edited.length) {
+          const revised = 'Use this revised plan:\n' +
+            edited.map((s: { n: number; text: string }) => `${s.n}. ${s.text}`).join('\n');
+          setTimeout(() => {
+            entry.terminal.sendText(revised, false);
+            entry.terminal.sendText('\r', false);
+          }, 600);
+        }
+        break;
+      }
+      // Plan-review: send the plan back with a note (keep planning).
+      case 'sendBackPlan': {
+        const sessionId = typeof message.sessionId === 'string' ? message.sessionId : '';
+        const note = typeof message.note === 'string' ? message.note.trim() : '';
+        const entry = terminals.getAllTerminals().find((t) => t.sessionId === sessionId);
+        if (!entry) {
+          vscode.window.showErrorMessage(`Send back plan: no live agent for session ${sessionId}`);
+          break;
+        }
+        const text = note || 'Keep planning — revise the plan before proceeding.';
+        entry.terminal.sendText(text, false);
+        entry.terminal.sendText('\r', false);
+        break;
+      }
+      // Reassign: spawn `toAgent` with the same task context the original was
+      // dispatched with (reused from the captured dispatch policy).
+      case 'reassignAgent': {
+        const sessionId = typeof message.sessionId === 'string' ? message.sessionId : '';
+        const toAgent = typeof message.toAgent === 'string' ? message.toAgent : '';
+        const policy = dispatchSessionPolicies.get(sessionId);
+        if (!policy) {
+          vscode.window.showErrorMessage(`Reassign: no captured task context for session ${sessionId}`);
+          break;
+        }
+        const def = getBuiltInByKey(toAgent);
+        if (!def) {
+          vscode.window.showErrorMessage(`Reassign: unknown agent "${toAgent}"`);
+          break;
+        }
+        const agentConfig = configFromDef(context.extensionPath, def);
+        const preSessionId = toAgent === 'claude' && policy.mode === 'plan' ? generateClaudeSessionId() : undefined;
+        const result = await openSingleAgentWithQueue(context, agentConfig, [policy.prompt], {
+          ...(policy.cwd ? { cwd: policy.cwd } : {}),
+          mode: policy.mode,
+          ...(preSessionId ? { sessionId: preSessionId } : {}),
+        });
+        if (result.sessionId) {
+          dispatchSessionPolicies.set(result.sessionId, { ...policy, agentId: result.terminalId });
+          if (toAgent === 'claude' && policy.mode === 'plan') {
+            watchForPlan(
+              result.sessionId,
+              result.terminalId,
+              policy.cwd || (vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd()),
+              policy.notify,
+            );
+          }
+        }
+        break;
+      }
+      // Nudge a running agent to keep going (manual Floor action).
+      case 'nudgeAgent': {
+        const sessionId = typeof message.sessionId === 'string' ? message.sessionId : '';
+        if (!sessionId) {
+          vscode.window.showErrorMessage('Nudge: missing session id');
+          break;
+        }
+        const res = await nudgeSession(
+          sessionId,
+          'Continue — what is the current status? If you are stuck, say why.',
+          'dispatch-nudge',
+        );
+        if (!res.success) {
+          vscode.window.showErrorMessage(`Nudge failed: ${res.error ?? 'unknown error'}`);
+        }
         break;
       }
       case 'spawnAgentForTask': {

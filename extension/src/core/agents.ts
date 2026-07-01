@@ -48,6 +48,82 @@ export function getBuiltInDefByTitle(title: string): BuiltInAgentDef | undefined
   return BUILT_IN_AGENTS.find(a => a.title === title);
 }
 
+// Dispatch "mode" the panel offers per agent: Plan (read-only), Auto (the safe
+// default — asks before anything risky), Edit (accepts edits without asking).
+// Each CLI spells the permission flag differently, so the mapping lives here as
+// pure data. 'auto' maps to each agent's default posture. An agent with no
+// entry — or a mode the agent doesn't model — yields no flag (caller emits
+// nothing), so unknown agents launch exactly as before.
+export type AgentLaunchMode = 'plan' | 'auto' | 'edit';
+
+const AGENT_MODE_FLAGS: Record<string, Record<AgentLaunchMode, string>> = {
+  // Claude Code: --permission-mode plan|acceptEdits|default (auto = default).
+  claude: {
+    plan: '--permission-mode plan',
+    auto: '--permission-mode default',
+    edit: '--permission-mode acceptEdits',
+  },
+};
+
+// Resolve the launch flag that puts `agentKey` into `mode`. Returns undefined
+// when the agent has no known permission-mode flag; callers append nothing in
+// that case rather than guessing an unsupported flag.
+export function modeFlagForAgent(agentKey: string, mode: AgentLaunchMode): string | undefined {
+  return AGENT_MODE_FLAGS[agentKey]?.[mode];
+}
+
+// ---- Plan detection (a Plan-mode Claude agent emits a plan) ----------------
+// When a plan-mode agent finishes planning it calls Claude's ExitPlanMode tool,
+// whose input carries the plan markdown. These pure helpers turn the raw
+// session JSONL into the PendingPlan the Floor renders. Kept here (not in the
+// VS Code layer) so they're unit-testable without a live session.
+
+export interface PlanStepData { n: number; text: string }
+
+// Scan a Claude session .jsonl (one JSON object per line) and return the plan
+// markdown from the LAST ExitPlanMode tool call, or null if none present. The
+// last one wins so a re-planned agent surfaces its most recent plan.
+export function parsePlanFromClaudeJsonl(jsonl: string): string | null {
+  let latest: string | null = null;
+  for (const line of jsonl.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed[0] !== '{') continue;
+    let obj: any;
+    try { obj = JSON.parse(trimmed); } catch { continue; }
+    if (obj?.type !== 'assistant') continue;
+    const blocks = obj?.message?.content;
+    if (!Array.isArray(blocks)) continue;
+    for (const b of blocks) {
+      if (b?.type === 'tool_use' && b?.name === 'ExitPlanMode') {
+        const plan = b?.input?.plan;
+        if (typeof plan === 'string' && plan.trim()) latest = plan;
+      }
+    }
+  }
+  return latest;
+}
+
+// Split plan markdown into ordered steps. Prefers explicit list items
+// (numbered `1.` / bulleted `-` / `*`), stripping the marker and any bold
+// heading wrapper; falls back to non-empty, non-heading lines so a prose plan
+// still yields steps. Renumbers sequentially so the Floor shows 1..N.
+export function planTextToSteps(plan: string): PlanStepData[] {
+  const lines = plan.split('\n').map(l => l.trim()).filter(Boolean);
+  const listItems: string[] = [];
+  for (const line of lines) {
+    const m = line.match(/^(?:\d+[.)]|[-*+])\s+(.*)$/);
+    if (m && m[1].trim()) listItems.push(m[1].trim());
+  }
+  const source = listItems.length > 0
+    ? listItems
+    : lines.filter(l => !l.startsWith('#'));
+  return source.map((text, i) => ({
+    n: i + 1,
+    // Drop surrounding markdown bold so a "**Step**: do x" reads cleanly.
+    text: text.replace(/\*\*/g, '').trim(),
+  }));
+}
+
 // Agents that expose the per-strategy launch trio (Latest / Balanced / Pinned).
 // These are the version- and account-managed agents that route through
 // `agents run <agent>` so the agents-cli can apply a version pin or strategy.

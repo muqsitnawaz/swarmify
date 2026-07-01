@@ -299,3 +299,54 @@
   .swarmify-root .tri-wrap .midlist { display: none; }
   .swarmify-root .board { grid-template-columns: 1fr; overflow: auto; }
 }
+
+/* ============================================================================
+ * AFTER-DISPATCH trust signals (STYLES owns these; FLOOR-UI renders the markup).
+ * Class-name contract for FLOOR-UI (FeedItem.tsx / PlanReview.tsx / FailureCard.tsx):
+ *   heartbeat  : <span class="heartbeat [stale|stale2]"><i class="beat"/>{age}</span>
+ *                normal -> dim, `stale` -> amber (past stall threshold),
+ *                `stale2` -> red (past 2x). The `.beat` dot pulses while fresh.
+ *   stalled    : <div class="fitem stalled"> card variant (pulsing amber outline).
+ *   plan-review: <div class="planreview"> with `.pr-h` eyebrow, `.pr-steps`/`.pr-step`
+ *                (`.n` step number; step `input`/`textarea` for Approve+edit),
+ *                optional `.pr-note` send-back textarea. Action row reuses `.opts`
+ *                + `.opt.primary` (Approve) / `.opt` (Approve+edit) / `.opt.ghost`
+ *                (Send back).
+ *   failure    : <div class="failcard"> with `.fc-h` eyebrow, `.fc-reason` (mono).
+ *                Action row reuses `.opts` + `.opt.primary` (Retry) + a
+ *                `select.reassign` (Reassign to a different agent).
+ * ========================================================================= */
+
+/* live heartbeat — ticking last-activity age in .fitem .when */
+.swarmify-root .heartbeat { display: inline-flex; align-items: center; gap: 5px; color: var(--ds-text-dim); font-variant-numeric: tabular-nums; }
+.swarmify-root .heartbeat .beat { width: 6px; height: 6px; border-radius: 50%; background: var(--status-running); animation: sw-beat 1.6s ease-out infinite; }
+.swarmify-root .heartbeat.stale { color: var(--status-pending); }
+.swarmify-root .heartbeat.stale .beat { background: var(--status-pending); animation: none; }
+.swarmify-root .heartbeat.stale2 { color: var(--status-failed); }
+.swarmify-root .heartbeat.stale2 .beat { background: var(--status-failed); animation: none; }
+@keyframes sw-beat { 0% { box-shadow: 0 0 0 0 var(--status-running-bg); } 70% { box-shadow: 0 0 0 5px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+
+/* stalled card — distinct from static .attn: a slow amber outline pulse says "no heartbeat" */
+.swarmify-root .fitem.stalled { border-color: var(--status-pending); box-shadow: 0 0 0 1px var(--status-pending-bg); animation: sw-stall 2.4s ease-in-out infinite; }
+@keyframes sw-stall { 0%, 100% { box-shadow: 0 0 0 1px var(--status-pending-bg); } 50% { box-shadow: 0 0 0 3px var(--status-pending-bg); } }
+
+/* plan-review block — brand-accented decision surface (a plan is ready to approve) */
+.swarmify-root .planreview { background: var(--ds-bg-panel); border: 1px solid var(--brand); box-shadow: 0 0 0 1px var(--brand-ring); border-radius: var(--r-lg); padding: 12px 14px; margin-bottom: 14px; }
+.swarmify-root .planreview .pr-h { font-size: 10px; font-weight: 800; letter-spacing: .05em; color: var(--brand-600); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+.swarmify-root .planreview .pr-steps { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.swarmify-root .planreview .pr-step { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; color: var(--ds-text); line-height: 1.45; }
+.swarmify-root .planreview .pr-step .n { flex: 0 0 auto; width: 18px; height: 18px; border-radius: 50%; background: var(--ds-bg-sunken); color: var(--ds-text-muted); font-size: 10px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; font-variant-numeric: tabular-nums; margin-top: 1px; }
+.swarmify-root .planreview .pr-step input, .swarmify-root .planreview .pr-step textarea { flex: 1; background: var(--ds-bg-sunken); border: 1px solid var(--ds-border); border-radius: var(--r-md); color: var(--ds-text); font: inherit; font-size: 12.5px; padding: 4px 8px; resize: vertical; }
+.swarmify-root .planreview .pr-note { width: 100%; background: var(--ds-bg-sunken); border: 1px solid var(--ds-border); border-radius: var(--r-md); color: var(--ds-text); font: inherit; font-size: 12px; padding: 7px 10px; margin-bottom: 8px; resize: vertical; min-height: 34px; }
+.swarmify-root .planreview .pr-note::placeholder { color: var(--ds-text-dim); }
+
+/* failure card — failed agent + reason + retry / reassign */
+.swarmify-root .failcard { background: var(--status-failed-bg); border: 1px solid var(--status-failed); border-radius: var(--r-lg); padding: 12px 14px; margin-bottom: 14px; }
+.swarmify-root .failcard .fc-h { font-size: 10px; font-weight: 800; letter-spacing: .05em; color: var(--status-failed); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+.swarmify-root .failcard .fc-reason { font-family: "Geist Mono", monospace; font-size: 11.5px; color: var(--ds-text); background: var(--ds-bg-sunken); border-radius: var(--r-md); padding: 8px 10px; margin-bottom: 10px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+.swarmify-root .failcard .reassign { border: 1px solid var(--ds-border-strong); background: var(--ds-bg); color: var(--ds-text); border-radius: var(--r-md); padding: 6px 10px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+
+@media (prefers-reduced-motion: reduce) {
+  .swarmify-root .heartbeat .beat,
+  .swarmify-root .fitem.stalled { animation: none; }
+}
