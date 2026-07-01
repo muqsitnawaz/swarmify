@@ -24,6 +24,7 @@ import { FloorControls, type FloorView, type StatusChip } from './FloorControls'
 import { FloorSidebar } from './FloorSidebar'
 import { BacklogCenter } from './BacklogCenter'
 import { TicketDetail } from './TicketDetail'
+import { HostDetail } from './HostDetail'
 import { FeedItem, TicketStrip } from './FeedItem'
 import { NeedsYouClusters } from './NeedsYouClusters'
 import { StructuredReply } from './StructuredReply'
@@ -32,6 +33,7 @@ import {
   sortAgents,
   type FloorAgent,
   type CenterMode,
+  type HostInventory,
   type FloorGroupBy,
   type FloorSort,
   type TicketGroupBy,
@@ -548,6 +550,9 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   const [ticketSrc, setTicketSrc] = useState<Record<TicketSource, boolean>>({ LN: true, GH: true })
   const [remoteSessions, setRemoteSessions] = useState<RemoteSessionLike[]>([])
   const [offlineHosts, setOfflineHosts] = useState<string[]>([])
+  const [selectedHostId, setSelectedHostId] = useState<string | null>(null)
+  const [hostInventories, setHostInventories] = useState<Record<string, HostInventory>>({})
+  const [hostConfigError, setHostConfigError] = useState<string | null>(null)
 
   // Persist the durable Floor prefs (pinned set, plain/sidebar/right toggles, group-by).
   useEffect(() => {
@@ -566,6 +571,21 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
         ? (msg.hosts as Array<{ name: string; online: boolean }>).filter((h) => h && !h.online).map((h) => h.name)
         : []
       setOfflineHosts(offline)
+    }
+    window.addEventListener('message', onMsg)
+    return () => window.removeEventListener('message', onMsg)
+  }, [])
+
+  // Host detail pane: receive fetched inventories + config-action errors.
+  useEffect(() => {
+    const onMsg = (event: MessageEvent) => {
+      const msg = event.data
+      if (msg?.type === 'hostInventory' && msg.inventory && typeof msg.host === 'string') {
+        setHostInventories((prev) => ({ ...prev, [msg.host]: msg.inventory as HostInventory }))
+        setHostConfigError(null)
+      } else if (msg?.type === 'hostConfigError' && typeof msg.error === 'string') {
+        setHostConfigError(msg.error)
+      }
     }
     window.addEventListener('message', onMsg)
     return () => window.removeEventListener('message', onMsg)
@@ -1193,6 +1213,27 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     setSelectedTicketId(id)
   }, [])
 
+  // Host detail pane: clicking a host in the sidebar opens its detail/config on
+  // the right and fetches its inventory (cached backend-side).
+  const onSelectHost = useCallback((hostName: string) => {
+    setCenter('host')
+    setSelectedHostId(hostName)
+    setHostConfigError(null)
+    setRightOpen(true)
+    postMessage({ type: 'fetchHostInventory', host: hostName })
+  }, [])
+  const refreshHost = useCallback((hostName: string) => {
+    postMessage({ type: 'fetchHostInventory', host: hostName, force: true })
+  }, [])
+  const enrollHostAction = useCallback((hostName: string, caps: string[]) => {
+    setHostConfigError(null)
+    postMessage({ type: 'enrollHost', host: hostName, caps })
+  }, [])
+  const removeHostAction = useCallback((hostName: string) => {
+    setHostConfigError(null)
+    postMessage({ type: 'removeHost', host: hostName })
+  }, [])
+
   // Right-pane detail for the selected agent: a decision block when it needs you, then
   // the reused rich DetailPane (local) or a light remote summary (cross-host).
   const renderAgentDetail = () => {
@@ -1339,7 +1380,19 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     </div>
   )
 
-  const rightContent = center === 'backlog'
+  const rightContent = center === 'host'
+    ? (selectedHostId
+      ? <HostDetail
+          host={selectedHostId}
+          inventory={hostInventories[selectedHostId] ?? null}
+          configError={hostConfigError}
+          onRefresh={() => refreshHost(selectedHostId)}
+          onEnroll={(caps) => enrollHostAction(selectedHostId, caps)}
+          onRemove={() => removeHostAction(selectedHostId)}
+          onDispatch={() => setDispatchOpen(true)}
+        />
+      : <div className="detail-empty">Select a host to see its installed agents and configuration.</div>)
+    : center === 'backlog'
     ? (selectedFloorTicket
       ? <TicketDetail ticket={selectedFloorTicket} hosts={floorHosts} onDispatch={() => openDispatch({ ticketId: selectedFloorTicket.id })} />
       : <div className="detail-empty">Select a ticket to see its details and dispatch an agent onto it.</div>)
@@ -1381,6 +1434,8 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
             projFilter={projFilter}
             offlineHosts={offlineHosts}
             onScope={onScope}
+            onSelectHost={onSelectHost}
+            selectedHost={center === 'host' ? selectedHostId : null}
           />
         )}
         <div className="feed-col">{centerContent}</div>
