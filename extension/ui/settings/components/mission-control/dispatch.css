@@ -91,7 +91,9 @@
 .swarmify-root .panel .rows { margin-top: 6px; }
 .swarmify-root .panel .row { display: flex; align-items: flex-start; gap: 10px; padding: 9px 0; border-top: 1px solid var(--ds-border); }
 .swarmify-root .panel .row .lbl { width: 60px; flex: 0 0 60px; color: var(--ds-text-muted); font-size: 11.5px; font-weight: 600; padding-top: 5px; }
-.swarmify-root .panel .row .ctl { flex: 1; min-width: 0; }
+/* display:block overrides the global `.swarmify-root .ctl { display:flex }` in
+   floor.css — without it the dropdown, sub-text and busy-nudge lay out sideways. */
+.swarmify-root .panel .row .ctl { flex: 1; min-width: 0; display: block; }
 .swarmify-root .panel .sub2 { color: var(--ds-text-dim); font-size: 10.5px; margin-top: 4px; }
 .swarmify-root .panel .collapse { color: var(--brand-600); font-size: 11px; cursor: pointer; margin-top: 8px; display: inline-flex; gap: 4px; align-items: center; }
 
