@@ -74,3 +74,90 @@ Each step ships as its own PR, verified live in VSCodium.
 
 ## Screenshots
 `screenshots/` — v3 feed (dev + plain + narrow), v4 3-pane, v5 backlog/dispatch.
+
+---
+
+# Dispatch panel — the consolidated "Dispatch" surface
+
+The interactive spec is `dispatch.html` (self-contained; toolbar toggles demo the
+states). Screenshots: `screenshots/dispatch-v2-*.png`. Saved 2026-07-01.
+
+## The problem
+The extension had **five** divergent dispatch surfaces (the big list modal, the ⌘K
+composer, the Next-Up strip, the rich TaskDetail modal, and the right-pane
+TicketDetail) — inconsistent controls, four meanings of "Dispatch", and a leaky
+pipeline that dropped mode/branch/notify. One goal reframes it: **make dispatching a
+task effortless.** This is ONE compact, single-column webview panel that replaces all
+five.
+
+## Locked decisions (v2)
+**A launcher, not a form.**
+- **Express by default** — just the task box + a one-line summary
+  (`Claude · swarmify on this-mac · Auto`) + Dispatch. "Configure ▾" reveals the full
+  controls; "⌃ Hide config" collapses. First-timer dispatches in seconds.
+- **`⌘↵` dispatches** (chord printed on the button); the context box **autofocuses**.
+- **Mode defaults to Auto** (safe: runs itself, asks before risky) — never Edit.
+
+**Capturing intent — one input, ticket + context always coexist.**
+- A unified box: attached **ticket chips** + an always-present **context textarea**.
+  No ticket-vs-prompt toggle.
+- **`⚡ Auto-pick urgent`** grabs the top ticket (rank: urgent-bugs first); ranked
+  suggestions filter live as you type.
+- The box is a **paste + drag-drop target** with an **attachment tray** — paste a
+  screenshot → thumbnail chip; drop files/folders → chips; `@`-mention code. (The old
+  duplicate "Comments" box is cut — exactly one place to tell the agent what to do.)
+
+**Agent — real, from `agents view --json`.**
+- Only **installed** agents, with sign-in state (Claude/Codex/Kimi signed in;
+  OpenCode/Antigravity/Grok/Droid dimmed with "sign in"). Never a hardcoded stale set
+  — Gemini/Cursor aren't installed, so they don't show.
+
+**Run on — machine-aware, unified local · remote · cloud.**
+- One ranked selector spanning `this-mac` → remote SSH hosts → Rush/Codex Cloud.
+- **Live load column** (not lifetime usage): agents-running-per-host + `idle/free/busy`
+  + load bar. `MOST USED` is demoted; a **`SUGGESTED` = least-busy** badge drives
+  selection. Busy machine → inline nudge to the free host in one click. Cloud rows show
+  **cost** (`~$0.40/run`); offline hosts are disabled (no silent dispatch into a dead
+  host).
+- **Project is required** (ranked by usage) — no directory means the agent runs in
+  `$HOME` (insecure). Cloud swaps Project → **Repo** (+ Branch) and warns it's a fresh
+  clone (local uncommitted changes excluded).
+
+**Mode — Plan · Auto · Edit**, honest hints (Plan = read-only until approved; Auto =
+safe steps, asks before risky; Edit = full access). Ports to real per-agent CLI
+permission flags.
+
+**Trust the agent is alive (the silent-stall problem).**
+- **Watchdog** row at dispatch: `Off · Keep moving (default) · Hands-off`. "Keep moving"
+  auto-nudges on stall and pings you if stuck after 2 tries (wires the existing watchdog).
+- **Notify bell** in the header (out of "More options"): events (**Stalled, Plan-ready,
+  Failed** emphasized, + Needs-input, Finished), channels (iMessage / Slack / Desktop),
+  DND + quiet hours.
+
+**Batch.** Attach 2+ tickets → toggle `1 agent, all N` vs `1 agent per ticket` (fan-out).
+
+## At-dispatch vs after-dispatch (scope boundary)
+This panel *sets policy* at dispatch. The **live signals live in the Floor**, not here:
+the running-card **heartbeat** (ticking last-activity age → amber/red + current action),
+the **Plan-review** approve surface (Plan mode promises approval — the Floor delivers it),
+and the **Failure** card (distinct from stall; offers retry / reassign-to-another-agent).
+Those are the next Floor iteration.
+
+## Multi-model review (4 agents, 2026-07-01)
+Reviewed by four Claude reviewers with distinct lenses (intent capture · machine health ·
+control/notifications/stalls · overall friction). Convergent verdicts, all folded into v2:
+launcher not form (⌘↵, express-collapse, Auto default); paste/drop/screenshot attach;
+live machine-load in Run-on (MOST-USED steers toward overloading the Mac — surface load
++ SUGGESTED least-busy); silent-stall heartbeat + watchdog policy + header notify-bell
+(stall/plan-ready/failed events); cut the duplicate context box. Full seed gaps from the
+product owner: clipboard/drag-drop, machine utilization, plan-review, notifications,
+silent stalls.
+
+## Port notes
+- Agents: `agents view --json` (installed + sign-in). Host/project ranking + per-host
+  live agent-count: the session index (already machine-wide). Host CPU/load: local
+  `os.loadavg()`/`vm_stat`, remote over the same SSH transport, cloud via provider API —
+  agent-count is the cheapest honest signal, ship it first.
+- Mode → per-agent permission flags (`claude --permission-mode plan|acceptEdits`, etc.).
+- Watchdog policy → the existing watchdog nudge/escalate bridge.
+- Notify events/channels → the OpenClaw/iMessage/Slack notification path.
