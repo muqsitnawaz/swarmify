@@ -40,6 +40,13 @@ import {
   type AgentAbbr,
 } from './floorModel'
 import { adaptUnified, adaptRemote, adaptTickets, type RemoteSessionLike } from './floorAdapter'
+import { DispatchPanel } from './DispatchPanel'
+import { PlanReview } from './PlanReview'
+import { FailureCard } from './FailureCard'
+import { ticketKey } from './dispatchInput'
+import type {
+  InstalledAgent, DispatchHost, DispatchTarget, DispatchRequest, PendingPlan, PlanStep,
+} from './dispatch.types'
 
 // ---------- Floor shell persisted prefs ----------
 
@@ -486,57 +493,40 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   const [newMenuOpen, setNewMenuOpen] = useState(false)
   const [statPopover, setStatPopover] = useState<'shipped' | 'open' | 'running' | 'nextup' | 'files' | null>(null)
   const [dispatchOpen, setDispatchOpen] = useState(false)
-  const [quickSpawnOpen, setQuickSpawnOpen] = useState(false)
-  const [quickSpawnPrefill, setQuickSpawnPrefill] = useState('')
+  const [dispatchPrefill, setDispatchPrefill] = useState('')
+  const [dispatchPrefillTicketId, setDispatchPrefillTicketId] = useState<string | undefined>(undefined)
+  // Consolidated dispatch data feeding the single DispatchPanel (from `dispatchData`).
+  const [dispatchAgents, setDispatchAgents] = useState<InstalledAgent[]>([])
+  const [dispatchHosts, setDispatchHosts] = useState<DispatchHost[]>([])
+  const [dispatchTargets, setDispatchTargets] = useState<DispatchTarget[]>([])
+  // Floor after-dispatch: plans awaiting review, one per sessionId (from `planReady`).
+  const [pendingPlans, setPendingPlans] = useState<PendingPlan[]>([])
   const [cardDragActive, setCardDragActive] = useState(false)
+  // The single open-the-Dispatch-panel entry point. Every legacy trigger (top-bar
+  // button, cmd-K, cmd-palette, ticket rows, drag-drop) routes here, carrying an
+  // optional prefill prompt and/or a ticket to pre-attach.
+  const openDispatch = useCallback((opts?: { prefill?: string; ticketId?: string }) => {
+    setDispatchPrefill(opts?.prefill ?? '')
+    setDispatchPrefillTicketId(opts?.ticketId)
+    setDispatchOpen(true)
+  }, [])
   useEffect(() => {
-    if (openDispatchTrigger !== undefined && openDispatchTrigger > 0) setDispatchOpen(true)
-  }, [openDispatchTrigger])
+    if (openDispatchTrigger !== undefined && openDispatchTrigger > 0) openDispatch()
+  }, [openDispatchTrigger, openDispatch])
   useEffect(() => {
-    if (quickSpawnTrigger !== undefined && quickSpawnTrigger > 0) {
-      setQuickSpawnPrefill('')
-      setQuickSpawnOpen(true)
-    }
-  }, [quickSpawnTrigger])
+    if (quickSpawnTrigger !== undefined && quickSpawnTrigger > 0) openDispatch()
+  }, [quickSpawnTrigger, openDispatch])
   useEffect(() => {
     if (!openDetailTaskId) return
     const task = unifiedTasks.find(t => t.id === openDetailTaskId)
     if (!task) return
-    setDetailSiblings([])
-    setDetailTask(task)
+    openDispatch({ ticketId: ticketKey(task) })
     onDetailTaskConsumed?.()
-  }, [openDetailTaskId, unifiedTasks, onDetailTaskConsumed])
+  }, [openDetailTaskId, unifiedTasks, onDetailTaskConsumed, openDispatch])
   const [activeFilter, setActiveFilter] = useState<'all' | 'local' | 'cloud'>('all')
   const [expandedAgentId, setExpandedAgentId] = useState<string | null>(null)
   const [pendingDispatches, setPendingDispatches] = useState<PendingDispatch[]>([])
   const [tick, setTick] = useState(0)
-  const [repoPicker, setRepoPicker] = useState<{
-    taskId: string
-    agentType: string
-    repos: string[]
-    preSelected: string[]
-    title: string
-    description: string
-    identifier: string
-    url: string
-    extraComments: string
-  } | null>(null)
-  const [ownerPicker, setOwnerPicker] = useState<{
-    taskId: string
-    agentType: string
-    title: string
-    description: string
-    identifier: string
-    url: string
-    extraComments: string
-    labels: string[]
-  } | null>(null)
-  const [detailTask, setDetailTask] = useState<UnifiedTask | null>(null)
-  // Sibling tasks for TaskDetailModal's in-header switcher. Populated when
-  // the user hands off from DispatchModal; empty otherwise (direct task
-  // click from queue cards doesn't carry a sibling set).
-  const [detailSiblings, setDetailSiblings] = useState<UnifiedTask[]>([])
-
   // ---------- Floor 3-pane shell state ----------
   const floorPrefs0 = useRef(loadFloorPrefs()).current
   const [center, setCenter] = useState<CenterMode>('agents')
@@ -581,6 +571,27 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     return () => window.removeEventListener('message', onMsg)
   }, [])
 
+  // Consolidated dispatch data (installed agents / hosts / ranked targets) for the
+  // single DispatchPanel, plus the Floor after-dispatch `planReady` signal. Both are
+  // ext->webview, so one listener serves both. Panel still opens if data never arrives.
+  useEffect(() => {
+    postMessage({ type: 'fetchDispatchData' })
+    const onMsg = (event: MessageEvent) => {
+      const msg = event.data
+      if (msg?.type === 'dispatchData') {
+        if (Array.isArray(msg.agents)) setDispatchAgents(msg.agents as InstalledAgent[])
+        if (Array.isArray(msg.hosts)) setDispatchHosts(msg.hosts as DispatchHost[])
+        if (Array.isArray(msg.targets)) setDispatchTargets(msg.targets as DispatchTarget[])
+      } else if (msg?.type === 'planReady' && msg.plan) {
+        const plan = msg.plan as PendingPlan
+        // De-dupe by sessionId so a re-emitted plan replaces the stale one.
+        setPendingPlans((prev) => [...prev.filter((p) => p.sessionId !== plan.sessionId), plan])
+      }
+    }
+    window.addEventListener('message', onMsg)
+    return () => window.removeEventListener('message', onMsg)
+  }, [])
+
   const newMenuRef = useRef<HTMLDivElement>(null)
   const statPopoverRef = useRef<HTMLDivElement>(null)
   const nextUpSectionRef = useRef<HTMLDivElement>(null)
@@ -609,48 +620,6 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     })
   }, [tick, pendingDispatches, tasks])
 
-  // Listen for backend dispatch follow-ups (repo picker / owner picker prompts)
-  useEffect(() => {
-    const onMsg = (event: MessageEvent) => {
-      const msg = event.data
-      if (!msg || typeof msg !== 'object') return
-      if (msg.type === 'pickRepos') {
-        const repos = Array.isArray(msg.repos) ? msg.repos.filter((r: unknown) => typeof r === 'string') : []
-        // Fall back to pre-selecting all repos when `preSelected` is absent,
-        // matching the prior multi-repo-narrowing behavior. Empty array
-        // means "no pre-selection" — used when the Linear task has no
-        // repo: label and the user must pick from the owner's full list.
-        const preSelected = Array.isArray(msg.preSelected)
-          ? msg.preSelected.filter((r: unknown) => typeof r === 'string')
-          : repos
-        setRepoPicker({
-          taskId: String(msg.taskId || ''),
-          agentType: String(msg.agentType || 'claude'),
-          repos,
-          preSelected,
-          title: String(msg.title || ''),
-          description: String(msg.description || ''),
-          identifier: String(msg.identifier || ''),
-          url: String(msg.url || ''),
-          extraComments: String(msg.extraComments || ''),
-        })
-      } else if (msg.type === 'needGithubOwner') {
-        setOwnerPicker({
-          taskId: String(msg.taskId || ''),
-          agentType: String(msg.agentType || 'claude'),
-          title: String(msg.title || ''),
-          description: String(msg.description || ''),
-          identifier: String(msg.identifier || ''),
-          url: String(msg.url || ''),
-          extraComments: String(msg.extraComments || ''),
-          labels: Array.isArray(msg.labels) ? msg.labels.filter((l: unknown) => typeof l === 'string') : [],
-        })
-      }
-    }
-    window.addEventListener('message', onMsg)
-    return () => window.removeEventListener('message', onMsg)
-  }, [])
-
   useEffect(() => {
     if (!newMenuOpen) return
     const handler = (e: MouseEvent) => {
@@ -669,10 +638,9 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     return () => window.removeEventListener('mousedown', handler)
   }, [statPopover])
 
-  // Listen for command-palette-dispatched events. We can't call into
-  // App.tsx's state from here, and we don't want to lift detailTask
-  // state up a level just for the palette — so the palette fires
-  // window-level CustomEvents and we pick them up here.
+  // Listen for command-palette-dispatched events. We can't call into App.tsx's
+  // state from here, so the palette fires window-level CustomEvents we pick up.
+  // Opening a task routes to the single DispatchPanel with that ticket attached.
   useEffect(() => {
     const onOpenTask = (e: Event) => {
       const ev = e as CustomEvent<{ taskId: string }>
@@ -680,8 +648,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
       if (!taskId) return
       const task = unifiedTasks.find((t) => t.id === taskId)
       if (!task) return
-      setDetailSiblings([])
-      setDetailTask(task)
+      openDispatch({ ticketId: ticketKey(task) })
     }
     const onFocusTerm = (e: Event) => {
       const ev = e as CustomEvent<{ terminalId: string }>
@@ -695,7 +662,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
       window.removeEventListener(CMD_PALETTE_EVENTS.openTaskDetail, onOpenTask)
       window.removeEventListener(CMD_PALETTE_EVENTS.focusTerminal, onFocusTerm)
     }
-  }, [unifiedTasks])
+  }, [unifiedTasks, openDispatch])
 
   const baseItems = useMemo(() => {
     const list = buildUnifiedList(terminals, tasks)
@@ -1013,69 +980,49 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     postMessage({ type: 'killSwarm', taskName })
   }
 
-  const handleQuickSpawn = useCallback((prompt: string, agent: string, target: 'local' | 'cloud', repos: string[]) => {
-    setQuickSpawnOpen(false)
-    postMessage({ type: 'quickSpawn', prompt, agent, target, repos })
-    const now = Date.now()
-    const truncated = prompt.length > 60 ? prompt.slice(0, 60) + '…' : prompt
-    const pending: PendingDispatch = {
-      id: `pending-quick-${now}`,
-      agentType: agent,
-      target,
-      taskId: `quick-${now}`,
-      taskIdentifier: '',
-      title: truncated,
-      createdAt: now,
-    }
-    setPendingDispatches((prev) => [...prev, pending])
-  }, [])
-
-  const handleDispatchTask = (
-    task: UnifiedTask,
-    agentType: string,
-    target: 'local' | 'cloud' = 'local',
-    targetRepos?: string[],
-    cloudProvider: 'rush' | 'codex' | 'factory' = 'rush',
-    notifyPrefs?: { onQuestion: boolean; onFinish: boolean; channel: string },
-    branch?: string,
-    codexEnv?: string,
-    extraComments?: string,
-  ) => {
-    postMessage({
-      type: 'dispatchTask',
-      taskId: task.id,
-      agentType,
-      target,
-      cloudProvider,
-      title: task.title,
-      description: task.description || '',
-      identifier: task.metadata.identifier || '',
-      url: task.metadata.url || '',
-      labels: task.metadata.labels || [],
-      targetRepos: targetRepos || [],
-      branch: branch || '',
-      codexEnv: codexEnv || '',
-      extraComments: extraComments || '',
-      notify: notifyPrefs || { onQuestion: false, onFinish: false, channel: '' },
+  // Panel hosts: the ranked host list from `dispatchData`, folded with LIVE load —
+  // online-ness from the hostSessions offline set + current agent counts per host from
+  // the cross-host session index. This is the "Run on" list the DispatchPanel ranks.
+  const panelHosts = useMemo<DispatchHost[]>(() => {
+    if (dispatchHosts.length === 0) return []
+    const offline = new Set(offlineHosts)
+    const agentsByHost = new Map<string, number>()
+    for (const s of remoteSessions) agentsByHost.set(s.host, (agentsByHost.get(s.host) ?? 0) + 1)
+    return dispatchHosts.map((h) => {
+      const online = h.kind === 'cloud' ? h.online : !offline.has(h.id)
+      const liveAgents = agentsByHost.get(h.id)
+      return { ...h, online, agents: liveAgents ?? h.agents }
     })
+  }, [dispatchHosts, offlineHosts, remoteSessions])
+
+  // The single dispatch entry point. The consolidated panel emits ONE DispatchRequest;
+  // we hand it to the backend (`dispatch`) and drop optimistic pending cards so the Floor
+  // shows the agent(s) coming up immediately (trust-it's-working). Replaces the scattered
+  // dispatchTask / quickSpawn senders.
+  const onDispatchRequest = useCallback((req: DispatchRequest) => {
+    setDispatchOpen(false)
+    postMessage({ type: 'dispatch', request: req })
+    const host = panelHosts.find((h) => h.id === req.runOn)
+    const isCloud = host?.kind === 'cloud'
     const now = Date.now()
-    const repoList = targetRepos && targetRepos.length > 0 ? targetRepos : [undefined]
-    const pendings: PendingDispatch[] = repoList.map((repo, i) => ({
-      id: `pending-${task.id}-${now}-${i}`,
-      agentType,
-      target,
-      taskId: task.id,
-      taskIdentifier: task.metadata.identifier || '',
-      title: task.title,
+    const perTicket = req.batch === 'per' && req.ticketIds.length > 1
+    const seeds: (string | undefined)[] = perTicket ? req.ticketIds : [req.ticketIds[0]]
+    const promptTitle = req.prompt.trim().slice(0, 60) || req.ticketIds[0] || 'New agent'
+    const pendings: PendingDispatch[] = seeds.map((tid, i) => ({
+      id: `pending-dispatch-${now}-${i}`,
+      agentType: req.agent,
+      target: isCloud ? 'cloud' : 'local',
+      taskId: `dispatch-${now}-${i}`,
+      taskIdentifier: tid ?? '',
+      title: perTicket && tid ? tid : promptTitle,
       createdAt: now + i,
-      targetRepo: repo,
     }))
     setPendingDispatches((prev) => [...prev, ...pendings])
     setTimeout(() => {
       postMessage({ type: 'fetchAllTerminals' })
       postMessage({ type: 'fetchTasks' })
     }, 800)
-  }
+  }, [panelHosts])
 
   // ---------- Floor view-model derivation ----------
   const nowMs = Date.now()
@@ -1204,18 +1151,30 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     for (const a of cluster) replyToAgent(a, option)
   }, [replyToAgent])
 
-  // Dispatch a Floor ticket: resolve back to its UnifiedTask, then reuse the existing
-  // dispatch pipeline. A remote host maps to a cloud run; 'this-mac' stays local.
-  const dispatchFloorTicket = useCallback((ticketId: string, agent: string, host: string) => {
-    const task = unifiedTasks.find((t) => (t.metadata.identifier ?? t.id) === ticketId)
-    if (!task) return
-    handleDispatchTask(task, agent, host === 'this-mac' ? 'local' : 'cloud')
-  }, [unifiedTasks])
+  // Reassign a failed agent's work to a different installed agent (FailureCard action).
+  const reassignFloorAgent = useCallback((a: FloorAgent, toAgent: string) => {
+    postMessage({ type: 'reassignAgent', sessionId: a.id, host: a.host, toAgent })
+  }, [])
 
+  // Nudge a stalled (wedged) agent to wake it back up.
+  const nudgeFloorAgent = useCallback((a: FloorAgent) => {
+    postMessage({ type: 'nudgeAgent', sessionId: a.id, host: a.host })
+  }, [])
+
+  // Plan-review actions (Floor after-dispatch): approve as-is/edited, or send back a note.
+  const approvePlan = useCallback((sessionId: string, edited?: PlanStep[]) => {
+    postMessage({ type: 'approvePlan', sessionId, edited })
+    setPendingPlans((prev) => prev.filter((p) => p.sessionId !== sessionId))
+  }, [])
+  const sendBackPlan = useCallback((sessionId: string, note: string) => {
+    postMessage({ type: 'sendBackPlan', sessionId, note })
+    setPendingPlans((prev) => prev.filter((p) => p.sessionId !== sessionId))
+  }, [])
+
+  // Open a Floor ticket in the consolidated Dispatch panel with it pre-attached.
   const openTicketDetail = useCallback((ticketId: string) => {
-    const task = unifiedTasks.find((t) => (t.metadata.identifier ?? t.id) === ticketId)
-    if (task) { setDetailSiblings([]); setDetailTask(task) }
-  }, [unifiedTasks])
+    openDispatch({ ticketId })
+  }, [openDispatch])
 
   const onScope = useCallback((value: string) => {
     if (value === '__queue') { setCenter('backlog'); return }
@@ -1243,9 +1202,16 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     }
     const decision = a.needs ? (
       <div style={{ padding: '14px 16px 0' }}>
-        <div className="decide">
-          <div className="ql">{a.phase === 'failed' ? 'FAILED — NEEDS YOU' : 'WAITING ON YOU'}</div>
+        <div className={`decide${a.phase === 'stalled' ? ' stall' : ''}`}>
+          <div className="ql">{a.phase === 'failed' ? 'FAILED — NEEDS YOU' : a.phase === 'stalled' ? 'STALLED — NEEDS YOU' : 'WAITING ON YOU'}</div>
           <div className="qt">{a.question?.text ?? a.resp}</div>
+          {a.phase === 'stalled' && (
+            <div className="opts">
+              <button className="opt primary" onClick={() => nudgeFloorAgent(a)}>
+                <Icon name="refresh" size={12} /> Nudge
+              </button>
+            </div>
+          )}
           <StructuredReply
             question={a.question}
             phase={a.phase}
@@ -1314,12 +1280,20 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
         </div>
       )}
 
-      {needsAgents.length > 0 && (
+      {(needsAgents.length > 0 || pendingPlans.length > 0) && (
         <>
           <div className="feed-sec attn">
-            <Icon name="alert" size={11} /> NEEDS YOU · {needsAgents.length}{projFilter ? ` · ${projFilter}` : ''}
+            <Icon name="alert" size={11} /> NEEDS YOU · {needsAgents.length + pendingPlans.length}{projFilter ? ` · ${projFilter}` : ''}
             <span className="ln" />
           </div>
+          {pendingPlans.map((plan) => (
+            <PlanReview
+              key={plan.sessionId}
+              plan={plan}
+              onApprove={(edited) => approvePlan(plan.sessionId, edited)}
+              onSendBack={(note) => sendBackPlan(plan.sessionId, note)}
+            />
+          ))}
           <NeedsYouClusters
             clusters={questionClusters.filter((c) => c.length > 1)}
             onBatchReply={onBatchReply}
@@ -1338,15 +1312,12 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
             />
           ))}
           {failedAgents.map((a) => (
-            <FeedItem
+            <FailureCard
               key={a.id}
               agent={a}
-              selected={selectedFloorAgent?.id === a.id}
-              plain={plain}
-              onSelect={selectFloorAgent}
-              onOption={(o) => onAgentOption(a, o)}
-              onFreeText={(t) => replyToAgent(a, t)}
-              onAttach={() => onAttachScreenshot(a)}
+              agents={dispatchAgents}
+              onRetry={() => retryFloorAgent(a)}
+              onReassign={(toAgent) => reassignFloorAgent(a, toAgent)}
             />
           ))}
         </>
@@ -1370,7 +1341,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
 
   const rightContent = center === 'backlog'
     ? (selectedFloorTicket
-      ? <TicketDetail ticket={selectedFloorTicket} hosts={floorHosts} onDispatch={(choice) => dispatchFloorTicket(selectedFloorTicket.id, choice.agent, choice.host)} />
+      ? <TicketDetail ticket={selectedFloorTicket} hosts={floorHosts} onDispatch={() => openDispatch({ ticketId: selectedFloorTicket.id })} />
       : <div className="detail-empty">Select a ticket to see its details and dispatch an agent onto it.</div>)
     : renderAgentDetail()
 
@@ -1424,23 +1395,11 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
             e.preventDefault()
             const text = e.dataTransfer.getData('text/plain')
             setCardDragActive(false)
-            if (text) {
-              setQuickSpawnPrefill(text)
-              setQuickSpawnOpen(true)
-            }
+            if (text) openDispatch({ prefill: text })
           }}
         >
           Drop to start an agent with this issue
         </div>
-      )}
-
-      {quickSpawnOpen && (
-        <QuickDispatch
-          onSpawn={handleQuickSpawn}
-          onClose={() => setQuickSpawnOpen(false)}
-          prefill={quickSpawnPrefill}
-          tasks={composerTasks}
-        />
       )}
 
       {/* Intake Q&A -- teammates waiting on a human answer */}
@@ -1452,673 +1411,24 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
         </div>
       )}
 
-      {dispatchOpen && (
-        <DispatchModal
-          tasks={unifiedTasks}
-          loading={unifiedTasksLoading}
-          onClose={() => setDispatchOpen(false)}
-          onDispatch={(task, agentType, target) => {
-            handleDispatchTask(task, agentType, target)
-          }}
-          onDispatchBatch={(tasksToDispatch, agentType, target) => {
-            tasksToDispatch.forEach((task, idx) => {
-              setTimeout(() => handleDispatchTask(task, agentType, target), idx * 120)
-            })
-          }}
-          onComplete={() => setDispatchOpen(false)}
-          onOpenDetail={(task, siblings) => {
-            setDispatchOpen(false)
-            setDetailSiblings(siblings)
-            setDetailTask(task)
-          }}
-        />
-      )}
-      {repoPicker && (
-        <RepoPickerModal
-          repos={repoPicker.repos}
-          preSelected={repoPicker.preSelected}
-          taskIdentifier={repoPicker.identifier}
-          taskTitle={repoPicker.title}
-          onClose={() => setRepoPicker(null)}
-          onConfirm={(selected) => {
-            const pseudoTask: UnifiedTask = {
-              id: repoPicker.taskId,
-              source: 'linear',
-              title: repoPicker.title,
-              description: repoPicker.description,
-              status: 'todo',
-              metadata: { identifier: repoPicker.identifier, url: repoPicker.url },
-            } as UnifiedTask
-            handleDispatchTask(pseudoTask, repoPicker.agentType, 'cloud', selected, 'rush', undefined, undefined, undefined, repoPicker.extraComments)
-            setRepoPicker(null)
-          }}
-        />
-      )}
-      {detailTask && (
-        <TaskDetailModal
-          task={detailTask}
-          tasks={detailSiblings.length > 0 ? detailSiblings : undefined}
-          onClose={() => { setDetailTask(null); setDetailSiblings([]) }}
-          onBack={detailSiblings.length > 0
-            ? () => { setDetailTask(null); setDetailSiblings([]); setDispatchOpen(true) }
-            : undefined}
-          onTaskSwitch={(next) => setDetailTask(next)}
-          onDispatch={({ agent, target, cloudProvider, branch, codexEnv, notify, extraComments }) => {
-            handleDispatchTask(detailTask, agent, target, undefined, cloudProvider, notify, branch, codexEnv, extraComments)
-            setDetailTask(null)
-            setDetailSiblings([])
-          }}
-        />
-      )}
-      {ownerPicker && (
-        <GithubOwnerModal
-          onClose={() => setOwnerPicker(null)}
-          onSave={(owner) => {
-            postMessage({ type: 'setGithubOwner', owner })
-            const pseudoTask: UnifiedTask = {
-              id: ownerPicker.taskId,
-              source: 'linear',
-              title: ownerPicker.title,
-              description: ownerPicker.description,
-              status: 'todo',
-              metadata: { identifier: ownerPicker.identifier, url: ownerPicker.url, labels: ownerPicker.labels },
-            } as UnifiedTask
-            setOwnerPicker(null)
-            // Re-fire the dispatch; backend will now succeed with the saved owner.
-            setTimeout(() => handleDispatchTask(pseudoTask, ownerPicker.agentType, 'cloud', undefined, 'rush', undefined, undefined, undefined, ownerPicker.extraComments), 200)
-          }}
-        />
-      )}
-    </div>
-  )
-}
-
-function RepoPickerModal({ repos, preSelected, taskIdentifier, taskTitle, onClose, onConfirm }: {
-  repos: string[]
-  preSelected: string[]
-  taskIdentifier: string
-  taskTitle: string
-  onClose: () => void
-  onConfirm: (selected: string[]) => void
-}) {
-  const [checked, setChecked] = useState<Set<string>>(() => new Set(preSelected))
-  const [filter, setFilter] = useState('')
-  // Empty pre-selection signals the "Linear task has no repo: label, pick
-  // one from the owner's full list" flow. Switch the title + subcopy so the
-  // user understands they must make a choice vs. narrow from multiple.
-  const isEmptyPick = preSelected.length === 0
-  // Filter only shows value when there are many rows to scroll — show it
-  // when there are more than 8 repos (roughly one screen of the list).
-  const showFilter = repos.length > 8
-  const filterRef = useRef<HTMLInputElement | null>(null)
-  const filteredRepos = useMemo(() => {
-    const q = filter.trim().toLowerCase()
-    if (!q) return repos
-    return repos.filter((r) => r.toLowerCase().includes(q))
-  }, [repos, filter])
-  const confirm = () => {
-    const selected = repos.filter((r) => checked.has(r))
-    if (selected.length === 0) return
-    onConfirm(selected)
-  }
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { onClose(); return }
-      // Enter confirms the current selection. Skip when focus is in the
-      // filter input (typing + Enter in a text field shouldn't submit) —
-      // that case is handled inline below.
-      if (e.key === 'Enter' && !(e.target instanceof HTMLInputElement && e.target.type === 'text')) {
-        if (checked.size > 0) { e.preventDefault(); confirm() }
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose, checked, repos])
-  useEffect(() => {
-    if (showFilter) filterRef.current?.focus()
-  }, [showFilter])
-  const toggle = (r: string) => {
-    setChecked((prev) => {
-      const next = new Set(prev)
-      if (next.has(r)) next.delete(r); else next.add(r)
-      return next
-    })
-  }
-  return (
-    <div className="sw-dispatch-modal-overlay" onMouseDown={onClose} role="dialog" aria-modal="true">
-      <div className="sw-dispatch-modal" onMouseDown={(e) => e.stopPropagation()} style={{ maxWidth: 520 }}>
-        <div className="sw-dispatch-modal-head">
-          <span className="sw-dispatch-modal-title">
-            {isEmptyPick
-              ? (taskIdentifier ? `${taskIdentifier} has no repo: label` : 'Pick a target repo')
-              : (taskIdentifier ? `${taskIdentifier} targets multiple repos` : 'Pick target repos')}
-          </span>
-          <span className="sw-dispatch-modal-sub">{taskTitle.slice(0, 80)}</span>
-          <button className="sw-dispatch-modal-close" onClick={onClose} aria-label="Close">
-            <Icon name="x" size={12} />
-          </button>
-        </div>
-        <div className="sw-dispatch-modal-body">
-          {showFilter && (
-            <input
-              ref={filterRef}
-              type="text"
-              className="sw-dispatch-modal-search-input"
-              placeholder={`Filter ${repos.length} repos...`}
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && checked.size > 0) {
-                  e.preventDefault()
-                  confirm()
-                }
-              }}
-              style={{ width: '100%', marginBottom: 8 }}
-            />
-          )}
-          <ul className="sw-dispatch-modal-list">
-            {filteredRepos.map((r) => (
-              <li key={r}>
-                <div
-                  className={`sw-dispatch-modal-row ${checked.has(r) ? 'checked' : ''}`}
-                  onClick={() => toggle(r)}
-                  role="button"
-                >
-                  <input
-                    type="checkbox"
-                    className="sw-dispatch-modal-check"
-                    checked={checked.has(r)}
-                    onChange={() => toggle(r)}
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                  <span className="sw-dispatch-modal-title-text">{r}</span>
-                </div>
-              </li>
-            ))}
-            {filteredRepos.length === 0 && (
-              <li className="sw-dispatch-modal-row" style={{ opacity: 0.6, fontSize: 12, padding: '8px 12px' }}>
-                No repos match "{filter}"
-              </li>
-            )}
-          </ul>
-        </div>
-        <div className="sw-dispatch-modal-foot">
-          <div className="sw-dispatch-modal-foot-info">
-            <div className="sw-dispatch-modal-foot-desc">
-              {isEmptyPick
-                ? `Selected ${checked.size} of ${repos.length}. Add a repo: label in Linear to skip this next time.`
-                : `Selected ${checked.size} of ${repos.length}. One cloud dispatch per selected repo.`}
-            </div>
-          </div>
-          <div className="sw-dispatch-modal-foot-actions">
-            <button className="sw-btn secondary sm" onClick={onClose}>Cancel</button>
-            <button className="sw-btn primary sm" disabled={checked.size === 0} onClick={confirm}>
-              Dispatch {checked.size > 0 ? checked.size : ''}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function GithubOwnerModal({ onClose, onSave }: {
-  onClose: () => void
-  onSave: (owner: string) => void
-}) {
-  const [value, setValue] = useState('')
-  const inputRef = useRef<HTMLInputElement>(null)
-  useEffect(() => {
-    inputRef.current?.focus()
-    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', esc)
-    return () => window.removeEventListener('keydown', esc)
-  }, [onClose])
-  const save = () => {
-    const owner = value.trim()
-    if (!owner) return
-    onSave(owner)
-  }
-  return (
-    <div className="sw-dispatch-modal-overlay" onMouseDown={onClose} role="dialog" aria-modal="true">
-      <div className="sw-dispatch-modal" onMouseDown={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
-        <div className="sw-dispatch-modal-head">
-          <span className="sw-dispatch-modal-title">GitHub owner needed</span>
-          <button className="sw-dispatch-modal-close" onClick={onClose} aria-label="Close">
-            <Icon name="x" size={12} />
-          </button>
-        </div>
-        <div className="sw-dispatch-modal-body" style={{ padding: 16 }}>
-          <div style={{ marginBottom: 10, fontSize: 12, opacity: 0.75 }}>
-            We couldn't infer your GitHub username from the workspace remote or `gh` CLI.
-            Set it once and it will be saved.
-          </div>
-          <input
-            ref={inputRef}
-            type="text"
-            placeholder="muqsitnawaz"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') save() }}
-            className="sw-dispatch-modal-search-input"
-            style={{ width: '100%', padding: '6px 8px' }}
-          />
-        </div>
-        <div className="sw-dispatch-modal-foot">
-          <div className="sw-dispatch-modal-foot-actions" style={{ marginLeft: 'auto' }}>
-            <button className="sw-btn secondary sm" onClick={onClose}>Cancel</button>
-            <button className="sw-btn primary sm" disabled={!value.trim()} onClick={save}>
-              Save & retry
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// In-webview dispatch modal -- replaces VS Code's native quick pick.
-// Supports single-row dispatch and multi-select batch dispatch.
-function DispatchModal({ tasks, loading, onClose, onDispatch, onDispatchBatch, onComplete, onOpenDetail }: {
-  tasks: UnifiedTask[]
-  loading: boolean
-  onClose: () => void
-  onDispatch: (task: UnifiedTask, agentType: string, target: 'local' | 'cloud') => void
-  onDispatchBatch: (tasks: UnifiedTask[], agentType: string, target: 'local' | 'cloud') => void
-  onComplete: () => void
-  // Called when the user clicks a single task row (not a checkbox). Parent
-  // closes this list modal and opens TaskDetailModal with the full config
-  // form + task-switcher so navigation between tasks stays fluid.
-  onOpenDetail: (task: UnifiedTask, siblings: UnifiedTask[]) => void
-}) {
-  const [query, setQuery] = useState('')
-  const [priorityFilter, setPriorityFilter] = useState<'all' | 'urgent' | 'high'>('all')
-  const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null)
-  const [checkedIds, setCheckedIds] = useState<Set<string>>(() => new Set())
-  const [target, setTarget] = useState<'local' | 'cloud'>('local')
-  const inputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    inputRef.current?.focus()
-  }, [])
-
-  const todoTasks = useMemo(
-    () => tasks.filter((t) => t.status === 'todo' || t.status === 'in_progress'),
-    [tasks]
-  )
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    const priorityRank: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 }
-    return todoTasks
-      .filter((t) => {
-        if (priorityFilter === 'urgent' && t.priority !== 'urgent') return false
-        if (priorityFilter === 'high' && t.priority !== 'high') return false
-        if (!q) return true
-        return (
-          t.title.toLowerCase().includes(q) ||
-          (t.metadata.identifier || '').toLowerCase().includes(q) ||
-          (t.description || '').toLowerCase().includes(q)
-        )
-      })
-      .sort((a, b) => {
-        const ra = a.priority ? priorityRank[a.priority] ?? 99 : 99
-        const rb = b.priority ? priorityRank[b.priority] ?? 99 : 99
-        return ra - rb
-      })
-  }, [todoTasks, query, priorityFilter])
-
-  const focusedTask = filtered.find((t) => t.id === focusedTaskId) || filtered[0]
-  const batchMode = checkedIds.size > 0
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { onClose(); return }
-      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-        if (filtered.length === 0) return
-        e.preventDefault()
-        const currentIdx = filtered.findIndex((t) => t.id === (focusedTask?.id || ''))
-        const step = e.key === 'ArrowDown' ? 1 : -1
-        const nextIdx = currentIdx < 0 ? 0 : (currentIdx + step + filtered.length) % filtered.length
-        setFocusedTaskId(filtered[nextIdx].id)
-        return
-      }
-      if (e.key === 'Enter' && focusedTask && !batchMode) {
-        e.preventDefault()
-        onOpenDetail(focusedTask, filtered)
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose, filtered, focusedTask, batchMode, onOpenDetail])
-
-  const toggleChecked = (id: string) => {
-    setCheckedIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-
-  const selectAllVisible = () => {
-    setCheckedIds((prev) => {
-      const next = new Set(prev)
-      for (const t of filtered) next.add(t.id)
-      return next
-    })
-  }
-
-  const clearSelection = () => setCheckedIds(new Set())
-
-  const handleSingleDispatch = (agentType: string) => {
-    if (!focusedTask) return
-    onDispatch(focusedTask, agentType, target)
-    onComplete()
-  }
-
-  const handleBatchDispatch = (agentType: string) => {
-    const picked = filtered.filter((t) => checkedIds.has(t.id))
-    if (picked.length === 0) return
-    onDispatchBatch(picked, agentType, target)
-    onComplete()
-  }
-
-  const agentButtons = [
-    { id: 'claude', abbr: 'CC' },
-    { id: 'codex', abbr: 'CX' },
-    { id: 'gemini', abbr: 'GX' },
-  ]
-
-  return (
-    <div className="sw-dispatch-modal-overlay" onMouseDown={onClose} role="dialog" aria-modal="true">
-      <div className="sw-dispatch-modal" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="sw-dispatch-modal-head">
-          <span className="sw-dispatch-modal-title">
-            {batchMode ? `Dispatch ${checkedIds.size} tasks` : 'Dispatch a task'}
-          </span>
-          <span className="sw-dispatch-modal-sub">{filtered.length} of {todoTasks.length} tasks</span>
-          <button className="sw-dispatch-modal-close" onClick={onClose} aria-label="Close">
-            <Icon name="x" size={14} />
-          </button>
-        </div>
-        <div className="sw-dispatch-modal-search">
-          <Icon name="search" size={13} />
-          <input
-            ref={inputRef}
-            type="text"
-            placeholder="Search tasks..."
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-          <div className="sw-dispatch-modal-filters">
-            {(['all', 'urgent', 'high'] as const).map((p) => (
-              <button
-                key={p}
-                className={`sw-dispatch-modal-filter ${priorityFilter === p ? 'active' : ''}`}
-                onClick={() => setPriorityFilter(p)}
-              >
-                {p[0].toUpperCase() + p.slice(1)}
-              </button>
-            ))}
-          </div>
-        </div>
-        {filtered.length > 0 && (
-          <div className="sw-dispatch-modal-bulkbar">
-            <button className="sw-dispatch-modal-bulk-link" onClick={selectAllVisible}>
-              Select all visible
-            </button>
-            {checkedIds.size > 0 && (
-              <>
-                <span className="sw-stat-sep">·</span>
-                <button className="sw-dispatch-modal-bulk-link" onClick={clearSelection}>
-                  Clear ({checkedIds.size})
-                </button>
-              </>
-            )}
-          </div>
-        )}
-        <div className="sw-dispatch-modal-body">
-          {loading ? (
-            <div className="sw-dispatch-modal-empty">Loading tasks...</div>
-          ) : filtered.length === 0 ? (
-            <div className="sw-dispatch-modal-empty">
-              {todoTasks.length === 0 ? 'No open tasks. Add one in Linear or the Bench tab.' : 'No tasks match your search.'}
-            </div>
-          ) : (
-            <ul className="sw-dispatch-modal-list">
-              {filtered.map((task) => {
-                const pcls = task.priority === 'urgent' ? 'urgent' : task.priority === 'high' ? 'high' : 'medium'
-                const isFocused = task.id === (focusedTask?.id || '')
-                const isChecked = checkedIds.has(task.id)
-                return (
-                  <li key={task.id}>
-                    <div
-                      ref={isFocused ? (el) => el?.scrollIntoView({ block: 'nearest' }) : undefined}
-                      className={`sw-dispatch-modal-row ${isFocused ? 'selected' : ''} ${isChecked ? 'checked' : ''}`}
-                      onClick={() => {
-                        setFocusedTaskId(task.id)
-                        // Hand off to parent: close this list modal and open
-                        // the rich TaskDetailModal with sibling tasks so the
-                        // switcher in its header is pre-populated.
-                        onOpenDetail(task, filtered)
-                      }}
-                    >
-                      <label
-                        className="sw-dispatch-modal-check"
-                        onClick={(e) => e.stopPropagation()}
-                        title="Select for batch dispatch"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={() => toggleChecked(task.id)}
-                        />
-                      </label>
-                      <span className={`sw-dispatch-modal-led ${pcls}`} />
-                      {task.metadata.identifier && (
-                        <span className="sw-dispatch-modal-id">{task.metadata.identifier}</span>
-                      )}
-                      <span className="sw-dispatch-modal-title-text">{task.title}</span>
-                      {task.priority && (
-                        <span className={`sw-dispatch-modal-priority ${pcls}`}>
-                          {task.priority.toUpperCase()}
-                        </span>
-                      )}
-                    </div>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
-        </div>
-        {(batchMode || focusedTask) && (
-          <div className="sw-dispatch-modal-foot">
-            <div className="sw-dispatch-modal-foot-info">
-              {batchMode ? (
-                <div className="sw-dispatch-modal-foot-title">
-                  {checkedIds.size} selected &middot; staggered 120ms
-                </div>
-              ) : focusedTask && focusedTask.metadata.identifier && (
-                <div className="sw-dispatch-modal-foot-title sw-dispatch-modal-foot-id">
-                  {focusedTask.metadata.identifier}
-                </div>
-              )}
-            </div>
-            <div className="sw-dispatch-modal-foot-actions">
-              <div className="sw-dispatch-target" title="Where to run the task">
-                <button
-                  type="button"
-                  className={`sw-dispatch-target-btn ${target === 'local' ? 'active' : ''}`}
-                  onClick={() => setTarget('local')}
-                >
-                  Local
-                </button>
-                <button
-                  type="button"
-                  className={`sw-dispatch-target-btn ${target === 'cloud' ? 'active' : ''}`}
-                  onClick={() => setTarget('cloud')}
-                  title="Rush Cloud -- run on GitHub repo"
-                >
-                  Cloud
-                </button>
-              </div>
-              <span className="sw-dispatch-modal-foot-label">
-                {batchMode ? `Dispatch ${checkedIds.size} to` : 'Dispatch to'}
-              </span>
-              {agentButtons.map((a) => (
-                <button
-                  key={a.id}
-                  className={`sw-dispatch-modal-agent ${a.id}`}
-                  onClick={() => batchMode ? handleBatchDispatch(a.id) : handleSingleDispatch(a.id)}
-                  title={`Dispatch to ${a.id} (${target})`}
-                >
-                  {a.abbr}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// New-agent composer. Opened via ⌘K (webview listener or the contributed
-// agents.focusQuickSpawn keybinding) or by dropping a Next Up card; mounts
-// fresh on every open so `prefill` seeding via useState is safe.
-function QuickDispatch({ onSpawn, onClose, prefill, tasks }: {
-  onSpawn: (prompt: string, agent: string, target: 'local' | 'cloud', repos: string[]) => void
-  onClose: () => void
-  prefill: string
-  tasks: UnifiedTask[]
-}) {
-  const [prompt, setPrompt] = useState(prefill)
-  const [agent, setAgent] = useState<'claude' | 'codex' | 'gemini'>('claude')
-  const [target, setTarget] = useState<'local' | 'cloud'>('local')
-  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set())
-  const inputRef = useRef<HTMLTextAreaElement>(null)
-
-  useEffect(() => {
-    inputRef.current?.focus()
-    inputRef.current?.setSelectionRange(prompt.length, prompt.length)
-  }, [])
-
-  const toggleTask = (id: string) => {
-    setSelectedTaskIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-
-  const submit = () => {
-    const text = prompt.trim()
-    const attached = tasks.filter((t) => selectedTaskIds.has(t.id))
-    if (!text && attached.length === 0) return
-    const lines = attached.map((t) =>
-      t.metadata.identifier ? `${t.metadata.identifier}: ${t.title}` : t.title
-    )
-    const repos = [...new Set(attached.map((t) => t.metadata.repo).filter((r): r is string => !!r))]
-    onSpawn([text, ...lines].filter(Boolean).join('\n\n'), agent, target, repos)
-    setPrompt('')
-    setSelectedTaskIds(new Set())
-  }
-
-  return (
-    <div className="sw-dispatch-modal-overlay" onMouseDown={onClose} role="dialog" aria-modal="true">
-      <div className="sw-quick-dispatch sw-quick-dispatch-modal" onMouseDown={(e) => e.stopPropagation()}>
-      <div className="sw-quick-dispatch-header">
-        <span className="sw-section-label">New agent</span>
-        <span className="sw-section-hint">Enter to start · Esc to close</span>
-      </div>
-      <textarea
-        ref={inputRef}
-        className="sw-quick-dispatch-input"
-        value={prompt}
-        onChange={(e) => setPrompt(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault()
-            submit()
-          }
-          if (e.key === 'Escape') {
-            e.preventDefault()
-            onClose()
-          }
-        }}
-        placeholder={tasks.length > 0 ? 'Describe the task, or attach tasks below' : 'Describe the task for the agent'}
-        rows={4}
+      {/* The single consolidated Dispatch panel — replaces the 5 legacy dispatch
+          surfaces. Self-manages its open state via the `open` prop (returns null when
+          closed) and re-seeds prefill/ticket each time it opens. */}
+      <DispatchPanel
+        open={dispatchOpen}
+        tasks={unifiedTasks}
+        agents={dispatchAgents}
+        hosts={panelHosts}
+        targets={dispatchTargets}
+        prefill={dispatchPrefill}
+        prefillTicketId={dispatchPrefillTicketId}
+        onClose={() => setDispatchOpen(false)}
+        onDispatch={onDispatchRequest}
       />
-      {tasks.length > 0 && (
-        <>
-          <div className="sw-quick-dispatch-header">
-            <span className="sw-section-label">Attach tasks</span>
-            <span className="sw-section-hint">
-              {selectedTaskIds.size > 0 ? `${selectedTaskIds.size} attached` : 'Click to attach'}
-            </span>
-          </div>
-          <div className="sw-quick-dispatch-tasks">
-            {tasks.map((t) => {
-              const attached = selectedTaskIds.has(t.id)
-              return (
-                <button
-                  key={t.id}
-                  type="button"
-                  className={`sw-quick-dispatch-task ${attached ? 'attached' : ''}`}
-                  aria-pressed={attached}
-                  onClick={() => toggleTask(t.id)}
-                >
-                  <span className="sw-queue-badge">{t.metadata.identifier || t.id.slice(0, 8)}</span>
-                  <span className="sw-quick-dispatch-task-title">{t.title}</span>
-                  {t.metadata.repo && (
-                    <span className="sw-queue-repo-chip mono">{t.metadata.repo.split('/').pop()}</span>
-                  )}
-                </button>
-              )
-            })}
-          </div>
-        </>
-      )}
-      <div className="sw-quick-dispatch-controls">
-        <div className="sw-active-filter">
-          {(['claude', 'codex', 'gemini'] as const).map((a) => (
-            <button
-              key={a}
-              type="button"
-              className={`sw-active-filter-btn ${agent === a ? 'active' : ''}`}
-              onClick={() => setAgent(a)}
-            >
-              {a === 'claude' ? 'Claude' : a === 'codex' ? 'Codex' : 'Gemini'}
-            </button>
-          ))}
-        </div>
-        <div className="sw-active-filter">
-          {(['local', 'cloud'] as const).map((t) => (
-            <button
-              key={t}
-              type="button"
-              className={`sw-active-filter-btn ${target === t ? 'active' : ''}`}
-              onClick={() => setTarget(t)}
-            >
-              {t === 'local' ? 'Local' : 'Cloud'}
-            </button>
-          ))}
-        </div>
-        <button
-          type="button"
-          className="sw-btn primary sm"
-          onClick={submit}
-          disabled={!prompt.trim() && selectedTaskIds.size === 0}
-        >
-          Start
-        </button>
-      </div>
-      </div>
     </div>
   )
 }
+
 
 /**
  * Inline banner for teammates waiting on human input.
