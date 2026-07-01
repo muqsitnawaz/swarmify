@@ -1,6 +1,6 @@
 // Inline SVGs for the marks the shared `Icon` set doesn't carry (bell / image /
-// file). The prototype renders these as literal emoji (🔔 🖼 📄); the hard rule is
-// no literal emoji in TSX, so they render as stroked SVG matching the lucide look.
+// file). The prototype renders these as literal emoji (bell / image / file); the
+// hard rule is no literal emoji in TSX, so they render as stroked SVG (lucide look).
 import React from 'react'
 import { useEffect } from 'react'
 

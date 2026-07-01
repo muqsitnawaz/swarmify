@@ -1,7 +1,7 @@
 // The unified "what should the agent do?" box. Ports the prototype's whatHtml() +
 // suggestionsHtml() + the input wiring in render() (dispatch.html):
 //   attached ticket chips + attachment chips + always-present context textarea,
-//   paste/drop attachment tray, @-mention affordance, ⚡ Auto-pick urgent, and the
+//   paste/drop attachment tray, @-mention affordance, Auto-pick urgent, and the
 //   live-filtered ranked ticket suggestions.
 // Real backlog is UnifiedTask; we adapt each to the prototype's ticket view-model.
 import React from 'react'
