@@ -19,9 +19,13 @@ interface FloorSidebarProps {
    * otherwise a project name. Mirrors wireSidebar()'s data-proj values.
    */
   onScope: (value: string) => void
+  /** Open the host detail/config pane for a host (clicking its name). */
+  onSelectHost?: (host: string) => void
+  /** Host currently shown in the detail pane, for highlight. */
+  selectedHost?: string | null
 }
 
-export function FloorSidebar({ agents, tickets, projFilter, offlineHosts = [], onScope }: FloorSidebarProps) {
+export function FloorSidebar({ agents, tickets, projFilter, offlineHosts = [], onScope, onSelectHost, selectedHost = null }: FloorSidebarProps) {
   const byProj: Record<string, number> = {}
   const byHost: Record<string, number> = {}
   const projWait: Record<string, number> = {}
@@ -64,7 +68,11 @@ export function FloorSidebar({ agents, tickets, projFilter, offlineHosts = [], o
 
       <div className="sb-sec">HOSTS</div>
       {Object.keys(byHost).sort().map((ho) => (
-        <div key={ho} className="sb-item" onClick={() => onScope('')}>
+        <div
+          key={ho}
+          className={`sb-item ${selectedHost === ho ? 'on' : ''}`}
+          onClick={() => onSelectHost?.(ho)}
+        >
           <span className={`hd ${offline.has(ho) ? 'off' : ''}`} />
           <span>{ho}</span>
           <span className="c">{offline.has(ho) ? <span style={{ color: 'var(--fail)' }}>offline</span> : byHost[ho]}</span>

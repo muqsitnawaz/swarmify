@@ -97,7 +97,55 @@ export interface FloorTicket {
 
 // ---------- controls state ----------
 
-export type CenterMode = 'agents' | 'backlog'
+export type CenterMode = 'agents' | 'backlog' | 'host'
+
+// Host detail pane payloads. Mirror of extension/src/core/hostInventory.ts —
+// the webview can't import from src/*, so the shape is redeclared here and
+// crosses the boundary as JSON via the `hostInventory` message.
+export interface HostResourceSummary {
+  skills: number
+  plugins: number
+  mcp: number
+  commands: number
+  workflows: number
+  memory: number
+  hooks: number
+  drift: number
+}
+export interface HostAgentVersion {
+  version: string
+  isDefault: boolean
+  signedIn: boolean
+  email: string | null
+  plan: string | null
+  sessionPercent: number | null
+  weekPercent: number | null
+  lastActive: string | null
+  resources: HostResourceSummary | null
+}
+export interface HostAgentInfo {
+  agent: string
+  versions: HostAgentVersion[]
+}
+export interface HostMeta {
+  name: string
+  enrolled: boolean
+  source: string | null
+  target: string | null
+  user: string | null
+  os: string | null
+  caps: string[]
+  addedAt: string | null
+  status: string | null
+}
+export interface HostInventory {
+  host: string
+  reachable: boolean
+  error: string | null
+  meta: HostMeta | null
+  agents: HostAgentInfo[]
+  fetchedAt: number
+}
 export type FloorGroupBy = 'host' | 'project' | 'status' | 'agent'
 export type FloorSort = 'needs' | 'recent' | 'tok' | 'name'
 export type TicketGroupBy = 'project' | 'priority' | 'source' | 'status'
