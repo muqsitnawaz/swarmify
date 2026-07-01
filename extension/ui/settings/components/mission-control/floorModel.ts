@@ -126,12 +126,19 @@ export function derivePhase(input: {
   active: boolean
   prOpenUnreviewed: boolean
 }): FloorPhase {
-  throw new Error('floorModel.derivePhase: implemented by LOGIC')
+  // Precedence: waiting > failed > running > done > idle.
+  if (input.waitingForInput) return 'waiting'
+  if (input.status === 'failed') return 'failed'
+  // A stale 'running' whose process is no longer alive is really idle.
+  if (input.status === 'running') return input.active ? 'running' : 'idle'
+  if (input.status === 'completed') return 'done'
+  // 'stopped' and 'idle' both settle to idle.
+  return 'idle'
 }
 
 /** waiting || failed || (done && unreviewed). */
 export function deriveNeeds(phase: FloorPhase, prOpenUnreviewed: boolean): boolean {
-  throw new Error('floorModel.deriveNeeds: implemented by LOGIC')
+  return phase === 'waiting' || phase === 'failed' || (phase === 'done' && prOpenUnreviewed)
 }
 
 /**
@@ -141,17 +148,120 @@ export function deriveNeeds(phase: FloorPhase, prOpenUnreviewed: boolean): boole
  * clusterKey groups identical questions across agents for batch triage.
  */
 export function parseStructuredQuestion(resp: string, phase: FloorPhase): StructuredQuestion | null {
-  throw new Error('floorModel.parseStructuredQuestion: implemented by LOGIC')
+  const text = resp.trim()
+  // A failed agent always needs a retry decision, question mark or not.
+  if (phase === 'failed') {
+    return { kind: 'retry', text, options: [], clusterKey: 'retry' }
+  }
+  // Everything else must actually be a question.
+  if (!text.includes('?')) return null
+  // Destructive keywords take safety precedence over choice/confirm shaping.
+  if (/\b(DROP|DELETE|destructive|prod(uction)?|overwrite|force)\b/.test(text)) {
+    return { kind: 'destructive', text, options: ['Confirm', 'Cancel'], clusterKey: slugifyQuestion(text) }
+  }
+  // Explicit alternatives -> a multiple-choice reply.
+  const options = extractChoiceOptions(text)
+  if (options.length >= 2) {
+    return { kind: 'choice', text, options, clusterKey: slugifyQuestion(text) }
+  }
+  // Any other question is a yes/no confirmation.
+  return { kind: 'confirm', text, options: ['Confirm', 'Hold'], clusterKey: slugifyQuestion(text) }
+}
+
+/** Normalized slug of the question intent so identical questions across agents collide. */
+function slugifyQuestion(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z\s]+/g, ' ') // strip punctuation and numbers
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 6)
+    .join('-')
+}
+
+/** Pull the choice labels out of "A) .. B) ..", "1. .. 2. ..", "X vs Y", or "X or Y". */
+function extractChoiceOptions(text: string): string[] {
+  const numbered = [...text.matchAll(/\d+[.)]\s*([^?\d][^?]*?)(?=\s*\d+[.)]|\?|$)/g)].map((m) => m[1])
+  if (numbered.length >= 2) return numbered.map(cleanOption).filter(Boolean)
+
+  const lettered = [...text.matchAll(/[A-Za-z][)]\s*([^?]*?)(?=\s*[A-Za-z][)]|\?|$)/g)].map((m) => m[1])
+  if (lettered.length >= 2) return lettered.map(cleanOption).filter(Boolean)
+
+  const core = questionCore(text)
+  if (/\bvs\.?\b|\bversus\b/i.test(core)) {
+    const parts = core.split(/\s+vs\.?\s+|\s+versus\s+/i)
+    if (parts.length >= 2) return parts.map(cleanOption).filter(Boolean)
+  }
+  if (/\bor\b/i.test(core)) {
+    const parts = stripLeadIn(core).split(/,?\s+or\s+/i)
+    if (parts.length >= 2) return parts.map(cleanOption).filter(Boolean)
+  }
+  return []
+}
+
+/** Everything up to the first question mark, trimmed. */
+function questionCore(text: string): string {
+  const q = text.indexOf('?')
+  return (q === -1 ? text : text.slice(0, q)).trim()
+}
+
+/** Drop a leading "context:" preamble so the choice clause stands alone. */
+function stripLeadIn(text: string): string {
+  const i = text.lastIndexOf(':')
+  return (i === -1 ? text : text.slice(i + 1)).trim()
+}
+
+/** Tidy a raw option fragment into a button label. */
+function cleanOption(raw: string): string {
+  const s = raw
+    .replace(/^[\s,.;:]+/, '')
+    .replace(/[\s,.;:?]+$/, '')
+    .replace(/\s+/g, ' ')
+    .replace(/^(a|an|the)\s+/i, '')
+    .trim()
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s
 }
 
 /** Group agents by the chosen dimension. Prototype groupKey: factory-floor.html:412. */
 export function groupAgents(agents: FloorAgent[], by: FloorGroupBy): Map<string, FloorAgent[]> {
-  throw new Error('floorModel.groupAgents: implemented by LOGIC')
+  const accessor: Record<FloorGroupBy, (a: FloorAgent) => string> = {
+    host: (a) => a.host,
+    project: (a) => a.project,
+    status: (a) => a.phase,
+    agent: (a) => a.abbr,
+  }
+  const get = accessor[by]
+  const groups = new Map<string, FloorAgent[]>()
+  for (const a of agents) {
+    const key = get(a)
+    const bucket = groups.get(key)
+    if (bucket) bucket.push(a)
+    else groups.set(key, [a])
+  }
+  return groups
 }
 
 /** Sort within a group. 'needs' uses PHASE_RANK. Prototype: agentsCenter():624-630. */
 export function sortAgents(agents: FloorAgent[], by: FloorSort): FloorAgent[] {
-  throw new Error('floorModel.sortAgents: implemented by LOGIC')
+  const arr = [...agents]
+  switch (by) {
+    case 'needs':
+      return arr.sort((a, b) => PHASE_RANK[a.phase] - PHASE_RANK[b.phase])
+    case 'recent':
+      return arr.sort((a, b) => sinceSeconds(a.since) - sinceSeconds(b.since))
+    case 'tok':
+      return arr.sort((a, b) => b.tok - a.tok)
+    case 'name':
+      return arr.sort((a, b) => a.name.localeCompare(b.name))
+  }
+}
+
+/** Parse a human elapsed label ("2s", "14m", "3h", "1d") to seconds for recency sort. */
+function sinceSeconds(since: string): number {
+  const m = /^(\d+)\s*([smhd])/.exec(since.trim())
+  if (!m) return Number.MAX_SAFE_INTEGER
+  const unit: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86400 }
+  return Number(m[1]) * unit[m[2]]
 }
 
 /**
@@ -160,19 +270,79 @@ export function sortAgents(agents: FloorAgent[], by: FloorSort): FloorAgent[] {
  * (factory-floor.html:629) + clusterCard() (598-607). Singletons return as [agent].
  */
 export function clusterByQuestion(waiting: FloorAgent[]): FloorAgent[][] {
-  throw new Error('floorModel.clusterByQuestion: implemented by LOGIC')
+  const byKey = new Map<string, FloorAgent[]>()
+  for (const a of waiting) {
+    // Agents without a parsed question can never batch with another; key by id.
+    const key = a.question ? a.question.clusterKey : a.id
+    const bucket = byKey.get(key)
+    if (bucket) bucket.push(a)
+    else byKey.set(key, [a])
+  }
+  return [...byKey.values()]
 }
 
 /** UnifiedTask -> FloorTicket. status: todo|in_progress|done -> todo|in-progress|done;
  *  priority: 'medium' -> 'med'; source: 'linear'->'LN','github'->'GH'. */
 export function toFloorTicket(task: UnifiedTask): FloorTicket {
-  throw new Error('floorModel.toFloorTicket: implemented by LOGIC')
+  return {
+    id: task.metadata.identifier ?? task.id,
+    title: task.title,
+    // UnifiedTask.metadata has no `project`; repo is the closest scope we have.
+    project: task.metadata.repo ?? '',
+    source: task.source === 'linear' ? 'LN' : 'GH',
+    pri: toTicketPriority(task.priority),
+    status: toTicketStatus(task.status),
+    desc: task.description ?? '',
+    labels: task.metadata.labels ?? [],
+  }
+}
+
+function toTicketPriority(p: UnifiedTask['priority']): TicketPriority {
+  switch (p) {
+    case 'urgent':
+      return 'urgent'
+    case 'high':
+      return 'high'
+    case 'medium':
+      return 'med'
+    case 'low':
+      return 'low'
+    default:
+      return 'med'
+  }
+}
+
+function toTicketStatus(s: UnifiedTask['status']): TicketStatus {
+  switch (s) {
+    case 'in_progress':
+      return 'in-progress'
+    case 'done':
+      return 'done'
+    default:
+      return 'todo'
+  }
 }
 
 export function groupTickets(tickets: FloorTicket[], by: TicketGroupBy): Map<string, FloorTicket[]> {
-  throw new Error('floorModel.groupTickets: implemented by LOGIC')
+  const accessor: Record<TicketGroupBy, (t: FloorTicket) => string> = {
+    project: (t) => t.project,
+    priority: (t) => t.pri,
+    source: (t) => (t.source === 'LN' ? 'Linear' : 'GitHub'),
+    status: (t) => t.status.replace('-', ' '),
+  }
+  const get = accessor[by]
+  const groups = new Map<string, FloorTicket[]>()
+  for (const t of tickets) {
+    const key = get(t)
+    const bucket = groups.get(key)
+    if (bucket) bucket.push(t)
+    else groups.set(key, [t])
+  }
+  return groups
 }
 
 export function sortTickets(tickets: FloorTicket[], by: TicketSort): FloorTicket[] {
-  throw new Error('floorModel.sortTickets: implemented by LOGIC')
+  const arr = [...tickets]
+  if (by === 'priority') return arr.sort((a, b) => PRI_RANK[a.pri] - PRI_RANK[b.pri])
+  return arr.sort((a, b) => a.id.localeCompare(b.id))
 }
