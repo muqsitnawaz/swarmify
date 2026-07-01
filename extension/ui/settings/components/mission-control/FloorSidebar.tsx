@@ -73,7 +73,12 @@ export function FloorSidebar({ agents, tickets, projFilter, offlineHosts = [], d
         for (const d of devices) if (d.online) names.add(d.name)
         return [...names].sort().map((ho) => {
           const dev = deviceByName.get(ho)
-          const isOff = offline.has(ho) || (dev ? !dev.online : false)
+          // Device-registry reachability (tailscale.online) is authoritative when a
+          // fleet entry exists — a host can be online yet fail the session-fetch
+          // (Windows shell, slow SSH, agents-cli hiccup), which must zero the count,
+          // not flip the host to offline. Session-fetch reachability only decides
+          // hosts with no device entry (SSH-config-only).
+          const isOff = dev ? !dev.online : offline.has(ho)
           const count = byHost[ho] ?? dev?.agents ?? 0
           return (
             <div key={ho} className="sb-item" onClick={() => onScope('')}>
