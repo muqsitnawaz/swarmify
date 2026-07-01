@@ -6,6 +6,7 @@ import {
   projectFromCwd,
   normalizeActiveSession,
   normalizeActiveSessions,
+  dedupeSessions,
   enrichWithSessionContent,
   groupByHost,
   type RemoteSession,
@@ -181,5 +182,61 @@ describe('groupByHost', () => {
     const orphan = normalizeActiveSessions(ACTIVE, 'rogue-host', FETCHED_AT);
     const groups = groupByHost(orphan, [{ name: 'this-mac', online: true }], FETCHED_AT);
     expect(groups.find((g) => g.host === 'rogue-host')?.sessions.length).toBe(ACTIVE.length);
+  });
+});
+
+describe('normalizeActiveSession — topic', () => {
+  test('carries the topic (or falls back to the cloud label) so remote cards are not blank', () => {
+    const term = normalizeActiveSession(
+      { kind: 'claude', status: 'running', sessionFile: '/x/aaaaaaaa.jsonl', topic: 'Add a pre-commit hook' } as RawActiveSession,
+      'zion',
+      FETCHED_AT
+    );
+    expect(term.topic).toBe('Add a pre-commit hook');
+    const cloud = normalizeActiveSession(
+      { kind: 'codex', status: 'queued', cloudTaskId: 'task_e', label: 'Read README and summarize' } as RawActiveSession,
+      'this-mac',
+      FETCHED_AT
+    );
+    expect(cloud.topic).toBe('Read README and summarize');
+  });
+});
+
+describe('dedupeSessions', () => {
+  // Real-world: `agents sessions --active` reports one record per live process,
+  // but many processes (shell, node, agent binary, extra tabs) share one session
+  // file. Nine pids resolving to one session must collapse to one card, or the
+  // header count and the feed diverge.
+  const many = (sessionFile: string, statuses: string[]): RemoteSession[] =>
+    statuses.map((status) =>
+      normalizeActiveSession(
+        { kind: 'claude', status, sessionFile, topic: 'shared session' } as RawActiveSession,
+        'zion',
+        FETCHED_AT
+      )
+    );
+
+  test('collapses processes that share one session file into a single session', () => {
+    const sessions = many('/x/24d7304d.jsonl', ['running', 'running', 'running', 'running']);
+    const unique = dedupeSessions(sessions);
+    expect(unique.length).toBe(1);
+    expect(unique[0].sessionId).toBe('24d7304d');
+  });
+
+  test('keeps the most attention-worthy phase (waiting beats running)', () => {
+    const sessions = many('/x/24d7304d.jsonl', ['running', 'running', 'input_required', 'running']);
+    const unique = dedupeSessions(sessions);
+    expect(unique.length).toBe(1);
+    expect(unique[0].phase).toBe('waiting');
+  });
+
+  test('does not merge distinct sessions, and passes through records with no id', () => {
+    const a = many('/x/aaaaaaaa.jsonl', ['running']);
+    const b = many('/x/bbbbbbbb.jsonl', ['running', 'idle']);
+    const noId = normalizeActiveSession({ kind: 'claude', status: 'running' } as RawActiveSession, 'zion', FETCHED_AT);
+    expect(noId.sessionId).toBe('');
+    const unique = dedupeSessions([...a, ...b, noId]);
+    // 2 distinct session files collapse to 2; the id-less record is kept as-is.
+    expect(unique.length).toBe(3);
   });
 });

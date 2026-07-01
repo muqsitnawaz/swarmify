@@ -17,6 +17,7 @@ import {
   HostInfo,
   HostGroup,
   normalizeActiveSession,
+  dedupeSessions,
   enrichWithSessionContent,
   groupByHost,
 } from '../core/remoteSessions';
@@ -26,6 +27,10 @@ const execAsync = promisify(exec);
 
 /** This machine's name — its local sessions are queried directly (no SSH). */
 export const LOCAL_HOST = os.hostname();
+/** Canonical label the webview uses for this machine. The real os.hostname() is
+ *  kept only for SSH/isLocal detection; every host string that crosses to the UI
+ *  is normalized to this so the 'this-mac' checks there actually match. */
+export const LOCAL_LABEL = 'this-mac';
 
 const ACTIVE_TIMEOUT_LOCAL_MS = 6000;
 const ACTIVE_TIMEOUT_REMOTE_MS = 10000;
@@ -33,20 +38,59 @@ const DETAIL_TIMEOUT_MS = 15000;
 const TAILSCALE_TIMEOUT_MS = 4000;
 const CACHE_TTL_MS = 4000;
 
+// Common CLI install dirs a GUI-launched editor's PATH usually MISSES. A raw
+// exec (no login shell) on macOS often has only /usr/bin:/bin, so `which agents`
+// and `ssh` fail even though a terminal finds them. We prepend these to PATH for
+// every shell-out here. (Homebrew first so the running install wins over the
+// stale ~/.hermes copy that triggers the CLI's "multiple installs" warning.)
+const EXTRA_BIN_DIRS = [
+  '/opt/homebrew/bin',
+  '/usr/local/bin',
+  path.join(homedir(), '.local', 'bin'),
+  path.join(homedir(), '.bun', 'bin'),
+];
+function pathAugmentedEnv(): NodeJS.ProcessEnv {
+  const extra = EXTRA_BIN_DIRS.join(':');
+  return { ...process.env, PATH: `${extra}:${process.env.PATH || ''}` };
+}
+
+/** Resolve `p`, or `fallback` after `ms` — guards against a child that ignores its
+ *  own timeout (a hung ssh) and would otherwise block the whole fan-out forever. */
+function withHardTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
+  ]);
+}
+
 // Resolve the `agents` binary once. The extension-host PATH can differ from an
-// interactive shell's, so `which` beats assuming it is on PATH (mirrors
-// linear.vscode.ts:findLinearCli).
+// interactive shell's, so try `which` with an augmented PATH, then fall back to
+// probing known install dirs directly (mirrors linear.vscode.ts:findLinearCli).
 let cachedAgentsPath: string | null = null;
 async function findAgentsCli(): Promise<string> {
   if (cachedAgentsPath !== null) return cachedAgentsPath || 'agents';
   try {
-    const { stdout } = await execAsync('which agents');
-    cachedAgentsPath = stdout.trim();
-    return cachedAgentsPath || 'agents';
+    const { stdout } = await execAsync('which agents', { env: pathAugmentedEnv() });
+    const p = stdout.trim();
+    if (p) {
+      cachedAgentsPath = p;
+      return p;
+    }
   } catch {
-    cachedAgentsPath = '';
-    return 'agents';
+    // fall through to direct probing
   }
+  for (const dir of EXTRA_BIN_DIRS) {
+    const candidate = path.join(dir, 'agents');
+    try {
+      await fs.promises.access(candidate, fs.constants.X_OK);
+      cachedAgentsPath = candidate;
+      return candidate;
+    } catch {
+      // keep probing
+    }
+  }
+  cachedAgentsPath = '';
+  return 'agents';
 }
 
 // --- Host discovery ---------------------------------------------------------
@@ -78,6 +122,7 @@ async function readTailscaleHosts(): Promise<HostInfo[]> {
     const { stdout } = await execFileAsync('tailscale', ['status', '--json'], {
       timeout: TAILSCALE_TIMEOUT_MS,
       maxBuffer: 8 * 1024 * 1024,
+      env: pathAugmentedEnv(),
     });
     const data = JSON.parse(stdout);
     const out: HostInfo[] = [];
@@ -156,17 +201,23 @@ async function fetchActiveForHost(host: string, isLocal: boolean, fetchedAt: num
     const { stdout } = await execFileAsync(agentsBin, args, {
       timeout: isLocal ? ACTIVE_TIMEOUT_LOCAL_MS : ACTIVE_TIMEOUT_REMOTE_MS,
       maxBuffer: 16 * 1024 * 1024,
+      env: pathAugmentedEnv(),
     });
     const parsed = JSON.parse(stdout);
     const raw: any[] = Array.isArray(parsed) ? parsed : [];
+    const normalized = raw
+      .filter((rec) => rec && typeof rec === 'object')
+      .map((rec) => normalizeActiveSession(rec, host, fetchedAt));
+    // Collapse the many-processes-per-session records to one card BEFORE enriching,
+    // so each session file is read once (not once per duplicate pid) and the header
+    // count matches what the feed renders.
+    const unique = dedupeSessions(normalized);
     const sessions: RemoteSession[] = [];
-    for (const rec of raw) {
-      if (!rec || typeof rec !== 'object') continue;
-      let session = normalizeActiveSession(rec, host, fetchedAt);
+    for (let session of unique) {
       // Only the local host can cheaply read session files to enrich activity,
       // throughput, and waiting. Remote hosts stay status-only until Tier-2.
-      if (isLocal && typeof rec.sessionFile === 'string' && rec.sessionFile) {
-        const content = await readSessionTail(rec.sessionFile, session.agentType);
+      if (isLocal && session.sessionFile) {
+        const content = await readSessionTail(session.sessionFile, session.agentType);
         if (content) session = enrichWithSessionContent(session, content, fetchedAt);
       }
       sessions.push(session);
@@ -203,7 +254,20 @@ export async function fetchHostSessions(fetchedAt: number = Date.now()): Promise
   activeInFlight = (async () => {
     const hosts = await discoverHosts();
     const results = await Promise.all(
-      hosts.map((h) => fetchActiveForHost(h.name, h.name === LOCAL_HOST, fetchedAt))
+      hosts.map((h) => {
+        const isLocal = h.name === LOCAL_HOST;
+        const label = isLocal ? LOCAL_LABEL : h.name;
+        // execFile's own timeout sends SIGTERM, which a hung ssh can ignore (stuck
+        // on connect / host-key / auth). Race every host against a hard wall-clock
+        // timeout that always resolves, so ONE unreachable machine can never block
+        // the batch — which was leaving the whole Floor empty. Label local sessions
+        // 'this-mac' for the UI; still no --host (isLocal).
+        return withHardTimeout(
+          fetchActiveForHost(label, isLocal, fetchedAt),
+          isLocal ? ACTIVE_TIMEOUT_LOCAL_MS + 2000 : ACTIVE_TIMEOUT_REMOTE_MS + 2000,
+          { host: label, online: false, sessions: [] }
+        );
+      })
     );
     const sessions: RemoteSession[] = [];
     const resolvedHosts: HostInfo[] = results.map((r) => {
@@ -242,13 +306,14 @@ export async function fetchHostSessionDetail(
   sessionId: string
 ): Promise<HostSessionDetail> {
   const agentsBin = await findAgentsCli();
-  const isLocal = host === LOCAL_HOST;
+  const isLocal = host === LOCAL_HOST || host === LOCAL_LABEL;
   const args = ['sessions', sessionId, '--markdown', '--include', 'tools'];
   if (!isLocal) args.push('--host', host);
   try {
     const { stdout } = await execFileAsync(agentsBin, args, {
       timeout: DETAIL_TIMEOUT_MS,
       maxBuffer: 16 * 1024 * 1024,
+      env: pathAugmentedEnv(),
     });
     return { host, sessionId, markdown: stdout };
   } catch (err) {

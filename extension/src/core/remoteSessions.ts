@@ -49,6 +49,15 @@ export interface RemoteSession {
   /** Host-reported wall-clock start (epoch ms). Carried verbatim so the UI can
    *  recompute freshness without trusting the remote clock for elapsed. */
   startedAtMs: number;
+  /** The session's task/prompt line from the CLI payload (`topic`/`label`). Shown
+   *  on the card when Tier-1 has no enriched activity yet (remote hosts). */
+  topic: string;
+  /** Absolute session-file path, kept so the fan-out can enrich the deduped
+   *  survivor without re-reading the raw record. */
+  sessionFile: string;
+  /** The CLI record's `context` ('terminal' | 'cloud' | 'teams' | ...). Lets the
+   *  webview treat cloud rows differently from terminal-backed agents. */
+  context: string;
 }
 
 /** One machine's worth of sessions plus its reachability + freshness stamp. */
@@ -186,7 +195,48 @@ export function normalizeActiveSession(
     branch: raw.branch || '',
     sinceMs: startedAtMs > 0 ? Math.max(0, fetchedAt - startedAtMs) : 0,
     startedAtMs,
+    topic: raw.topic || raw.label || '',
+    sessionFile: raw.sessionFile || '',
+    context: raw.context || '',
   };
+}
+
+/** Phase precedence for dedup — the most attention-worthy record wins. */
+const DEDUPE_PHASE_RANK: Record<RemotePhase, number> = {
+  waiting: 0,
+  failed: 1,
+  running: 2,
+  done: 3,
+  idle: 4,
+};
+
+/**
+ * Collapse records that describe the SAME session into one.
+ *
+ * `agents sessions --active` reports one record per live *process*, but many
+ * processes (login shell, node, the agent binary, extra tabs) attach to a single
+ * session file — locally we've seen 9 pids resolve to one session. Left alone,
+ * the header counts every process while the feed (keyed by session id) renders
+ * only the distinct ids, so the count and the list diverge wildly. Dedup by
+ * `sessionId` here so a "session" means a session, and keep the record whose phase
+ * most needs the user (waiting > failed > running > done > idle) — e.g. one
+ * waiting pane among eight running ones surfaces the whole session as waiting.
+ * Records with an empty `sessionId` are passed through untouched (can't key them).
+ */
+export function dedupeSessions(sessions: RemoteSession[]): RemoteSession[] {
+  const byId = new Map<string, RemoteSession>();
+  const passthrough: RemoteSession[] = [];
+  for (const s of sessions) {
+    if (!s.sessionId) {
+      passthrough.push(s);
+      continue;
+    }
+    const existing = byId.get(s.sessionId);
+    if (!existing || DEDUPE_PHASE_RANK[s.phase] < DEDUPE_PHASE_RANK[existing.phase]) {
+      byId.set(s.sessionId, s);
+    }
+  }
+  return [...byId.values(), ...passthrough];
 }
 
 /**
