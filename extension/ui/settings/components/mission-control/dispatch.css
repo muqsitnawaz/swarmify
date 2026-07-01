@@ -28,8 +28,11 @@
  * the switch knob (#fff), and the dark overlay on the lime dispatch button.
  * ========================================================================= */
 
+/* ---- modal overlay: fixed backdrop, centers the panel over the whole Floor ---- */
+.swarmify-root .dispatch-overlay { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: flex-start; justify-content: center; padding: 48px 16px; overflow-y: auto; background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(1.5px); -webkit-backdrop-filter: blur(1.5px); }
+
 /* ---- panel shell + header ---- */
-.swarmify-root .panel { width: 404px; max-width: 100%; background: var(--ds-bg-panel); border: 1px solid var(--ds-border); border-radius: 14px; position: relative; box-shadow: var(--shadow-lg); }
+.swarmify-root .panel { width: 404px; max-width: 100%; flex: 0 0 auto; background: var(--ds-bg-panel); border: 1px solid var(--ds-border); border-radius: 14px; position: relative; box-shadow: var(--shadow-lg); }
 .swarmify-root .panel .ph { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--ds-border); }
 .swarmify-root .panel .ph .t { font-weight: 700; letter-spacing: .06em; font-size: 12px; }
 .swarmify-root .panel .ph .sub { color: var(--ds-text-dim); font-size: 11px; }

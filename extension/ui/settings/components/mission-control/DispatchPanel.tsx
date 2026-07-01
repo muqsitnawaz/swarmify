@@ -157,6 +157,7 @@ export function DispatchPanel(props: DispatchPanelProps) {
     : `Dispatch ${effAgent?.name ?? 'agent'} → ${projectLabel}${S.mode !== 'auto' ? ' · ' + cap(S.mode) : ''}`
 
   return (
+    <div className="dispatch-overlay" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
     <div className={`panel${bellOpen ? ' bell' : ''}`} onKeyDown={e => { if (e.key === 'Escape') onClose() }}>
       <div className="ph">
         <span className="t">DISPATCH</span>
@@ -259,6 +260,7 @@ export function DispatchPanel(props: DispatchPanelProps) {
       </div>
 
       <NotifyBell prefs={S.notify} onChange={n => patch({ notify: n })} />
+    </div>
     </div>
   )
 }
