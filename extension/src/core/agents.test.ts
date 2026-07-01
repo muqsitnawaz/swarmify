@@ -5,7 +5,10 @@ import {
   getBuiltInByPrefix,
   getBuiltInDefByTitle,
   pickLatestVersion,
-  STRATEGY_LAUNCH_AGENTS
+  STRATEGY_LAUNCH_AGENTS,
+  modeFlagForAgent,
+  parsePlanFromClaudeJsonl,
+  planTextToSteps
 } from './agents';
 import { CLAUDE_TITLE, CODEX_TITLE, GEMINI_TITLE, OPENCODE_TITLE, CURSOR_TITLE, SHELL_TITLE } from './utils';
 
@@ -166,6 +169,79 @@ describe('pickLatestVersion', () => {
 
   test('handles single-entry lists', () => {
     expect(pickLatestVersion(['1.0.6'])).toBe('1.0.6');
+  });
+});
+
+describe('modeFlagForAgent', () => {
+  test('maps Claude modes to the right --permission-mode flag', () => {
+    expect(modeFlagForAgent('claude', 'plan')).toBe('--permission-mode plan');
+    expect(modeFlagForAgent('claude', 'auto')).toBe('--permission-mode default');
+    expect(modeFlagForAgent('claude', 'edit')).toBe('--permission-mode acceptEdits');
+  });
+
+  test('returns undefined for an agent with no known mode flag', () => {
+    // codex/gemini/etc. have no permission-mode mapping yet -> no flag emitted.
+    expect(modeFlagForAgent('codex', 'plan')).toBeUndefined();
+    expect(modeFlagForAgent('gemini', 'edit')).toBeUndefined();
+    expect(modeFlagForAgent('unknown', 'auto')).toBeUndefined();
+  });
+});
+
+describe('parsePlanFromClaudeJsonl', () => {
+  const exitPlanLine = JSON.stringify({
+    type: 'assistant',
+    message: { content: [{ type: 'tool_use', name: 'ExitPlanMode', input: { plan: '1. First\n2. Second' } }] },
+  });
+
+  test('extracts plan markdown from an ExitPlanMode tool_use', () => {
+    const jsonl = [
+      JSON.stringify({ type: 'user', message: { content: 'hi' } }),
+      exitPlanLine,
+    ].join('\n');
+    expect(parsePlanFromClaudeJsonl(jsonl)).toBe('1. First\n2. Second');
+  });
+
+  test('returns the LAST plan when the agent re-plans', () => {
+    const second = JSON.stringify({
+      type: 'assistant',
+      message: { content: [{ type: 'tool_use', name: 'ExitPlanMode', input: { plan: 'revised plan' } }] },
+    });
+    expect(parsePlanFromClaudeJsonl([exitPlanLine, second].join('\n'))).toBe('revised plan');
+  });
+
+  test('returns null when there is no plan and ignores malformed lines', () => {
+    const jsonl = [
+      'not json',
+      JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'thinking' }] } }),
+    ].join('\n');
+    expect(parsePlanFromClaudeJsonl(jsonl)).toBeNull();
+  });
+});
+
+describe('planTextToSteps', () => {
+  test('parses a numbered list, stripping markers and bold', () => {
+    const steps = planTextToSteps('1. **Read** the file\n2. Edit it\n3. Test');
+    expect(steps).toEqual([
+      { n: 1, text: 'Read the file' },
+      { n: 2, text: 'Edit it' },
+      { n: 3, text: 'Test' },
+    ]);
+  });
+
+  test('parses a bulleted list', () => {
+    const steps = planTextToSteps('- do A\n- do B');
+    expect(steps).toEqual([
+      { n: 1, text: 'do A' },
+      { n: 2, text: 'do B' },
+    ]);
+  });
+
+  test('falls back to non-heading prose lines when no list markers exist', () => {
+    const steps = planTextToSteps('# Plan\nFirst do this.\nThen do that.');
+    expect(steps).toEqual([
+      { n: 1, text: 'First do this.' },
+      { n: 2, text: 'Then do that.' },
+    ]);
   });
 });
 
