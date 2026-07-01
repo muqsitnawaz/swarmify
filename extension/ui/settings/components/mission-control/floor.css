@@ -350,3 +350,51 @@
   .swarmify-root .heartbeat .beat,
   .swarmify-root .fitem.stalled { animation: none; }
 }
+
+/* ---------- Host detail / configure pane (HostDetail.tsx) ---------- */
+.swarmify-root .host-status { font-size: 11px; font-weight: 600; color: var(--ds-text-dim); text-transform: lowercase; }
+.swarmify-root .host-btn { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 5px 11px; border-radius: var(--r-md); border: 1px solid var(--ds-border); background: var(--ds-bg-panel); color: var(--ds-text-muted); cursor: pointer; }
+.swarmify-root .host-btn:hover { color: var(--ds-text); border-color: var(--ds-border-strong); }
+.swarmify-root .host-btn.primary { background: var(--brand); border-color: transparent; color: #1a1a1a; }
+.swarmify-root .host-btn.primary:hover { background: var(--brand-600); }
+.swarmify-root .host-btn.danger { color: var(--status-failed); border-color: var(--status-failed-bg); }
+.swarmify-root .host-btn.danger:hover { background: var(--status-failed-bg); }
+.swarmify-root .host-btn:disabled { opacity: .5; cursor: default; }
+
+.swarmify-root .host-offline-note { padding: 9px 12px; border-radius: var(--r-md); background: var(--status-failed-bg); border: 1px solid var(--status-failed); color: var(--status-failed); font-size: 12px; }
+
+.swarmify-root .host-meta-grid { display: grid; grid-template-columns: 96px 1fr; gap: 6px 10px; align-items: center; font-size: 12px; margin-bottom: 12px; }
+.swarmify-root .host-meta-k { color: var(--ds-text-dim); font-size: 11px; }
+.swarmify-root .host-meta-v { color: var(--ds-text); }
+.swarmify-root .host-cap { display: inline-block; font-size: 11px; padding: 1px 7px; margin-right: 5px; border-radius: 999px; border: 1px solid var(--ds-border); background: var(--ds-bg-panel); color: var(--ds-text-muted); }
+.swarmify-root .host-dim { color: var(--ds-text-faint); font-size: 12px; }
+
+.swarmify-root .host-config-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.swarmify-root .host-caps-input { flex: 1; min-width: 140px; font-size: 12px; padding: 5px 9px; border-radius: var(--r-md); border: 1px solid var(--ds-border); background: var(--ds-bg); color: var(--ds-text); }
+.swarmify-root .host-config-error { margin-top: 8px; color: var(--status-failed); font-size: 12px; }
+.swarmify-root .host-fetched { color: var(--ds-text-faint); font-weight: 400; letter-spacing: 0; text-transform: none; }
+
+.swarmify-root .host-agent { border: 1px solid var(--ds-border); border-radius: var(--r-lg); margin-bottom: 8px; overflow: hidden; }
+.swarmify-root .host-agent-h { display: flex; align-items: center; gap: 8px; padding: 7px 11px; background: var(--ds-bg); border-bottom: 1px solid var(--ds-border-subtle); }
+.swarmify-root .host-agent-nm { font-weight: 650; font-size: 13px; }
+.swarmify-root .host-agent-c { margin-left: auto; color: var(--ds-text-faint); font-size: 11px; }
+.swarmify-root .host-res-row { display: flex; flex-wrap: wrap; gap: 6px; padding: 7px 11px; background: var(--ds-bg-panel); border-bottom: 1px solid var(--ds-border-subtle); }
+.swarmify-root .host-res { font-size: 11px; color: var(--ds-text-dim); }
+.swarmify-root .host-res b { color: var(--ds-text); font-weight: 650; }
+
+.swarmify-root .host-ver { display: grid; grid-template-columns: 96px 1fr 110px 76px; gap: 8px; align-items: center; padding: 6px 11px; font-size: 12px; border-top: 1px solid var(--ds-border-subtle); }
+.swarmify-root .host-ver:first-child { border-top: none; }
+.swarmify-root .host-ver-v { display: flex; align-items: center; gap: 6px; }
+.swarmify-root .host-tag { font-size: 9px; font-weight: 700; color: #177245; background: var(--status-running-bg); padding: 1px 5px; border-radius: var(--r-sm); }
+.swarmify-root .host-ver-acct { color: var(--ds-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.swarmify-root .host-plan { color: var(--ds-text-faint); font-size: 10px; margin-left: 5px; text-transform: uppercase; }
+.swarmify-root .host-unsigned { color: var(--status-pending); font-weight: 600; }
+.swarmify-root .host-ver-usage { display: flex; gap: 6px; justify-self: end; }
+.swarmify-root .host-bar { display: flex; align-items: center; gap: 3px; font-size: 9px; color: var(--ds-text-dim); }
+.swarmify-root .host-track { width: 40px; height: 5px; border-radius: 3px; background: var(--ds-bg-sunken); overflow: hidden; }
+.swarmify-root .host-fill { display: block; height: 100%; background: var(--brand-600); }
+.swarmify-root .host-fill.hi { background: var(--status-pending); }
+.swarmify-root .host-fill.crit { background: var(--status-failed); }
+.swarmify-root .host-ver-drift { justify-self: end; font-size: 10px; }
+.swarmify-root .host-drift-warn { color: #8a6d16; background: var(--status-pending-bg); padding: 1px 6px; border-radius: var(--r-sm); font-weight: 600; }
+.swarmify-root .host-drift-ok { color: var(--ds-text-faint); }
