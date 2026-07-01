@@ -20,6 +20,56 @@ import {
   PENDING_DISPATCH_TTL_MS,
   type PendingDispatch,
 } from './dispatch'
+import { FloorControls, type FloorView, type StatusChip } from './FloorControls'
+import { FloorSidebar } from './FloorSidebar'
+import { BacklogCenter } from './BacklogCenter'
+import { TicketDetail } from './TicketDetail'
+import { FeedItem, TicketStrip } from './FeedItem'
+import { NeedsYouClusters } from './NeedsYouClusters'
+import { StructuredReply } from './StructuredReply'
+import {
+  clusterByQuestion,
+  sortAgents,
+  type FloorAgent,
+  type CenterMode,
+  type FloorGroupBy,
+  type FloorSort,
+  type TicketGroupBy,
+  type TicketSort,
+  type TicketSource,
+  type AgentAbbr,
+} from './floorModel'
+import { adaptUnified, adaptRemote, adaptTickets, type RemoteSessionLike } from './floorAdapter'
+
+// ---------- Floor shell persisted prefs ----------
+
+const FLOOR_PREFS_KEY = 'swarmify.floorPrefs.v1'
+
+interface FloorPrefs {
+  plain: boolean
+  sidebar: boolean
+  right: boolean
+  groupBy: FloorGroupBy
+  pinned: string[]
+}
+
+function defaultFloorPrefs(): FloorPrefs {
+  return { plain: false, sidebar: true, right: true, groupBy: 'project', pinned: [] }
+}
+
+function loadFloorPrefs(): FloorPrefs {
+  try {
+    const raw = localStorage.getItem(FLOOR_PREFS_KEY)
+    if (!raw) return defaultFloorPrefs()
+    return { ...defaultFloorPrefs(), ...JSON.parse(raw) }
+  } catch {
+    return defaultFloorPrefs()
+  }
+}
+
+function saveFloorPrefs(p: FloorPrefs): void {
+  try { localStorage.setItem(FLOOR_PREFS_KEY, JSON.stringify(p)) } catch { /* ignore */ }
+}
 
 const NEW_AGENT_MENU: Array<{ agent: string; name: string; abbr: string; keys: string[] }> = [
   { agent: 'claude', name: 'Claude', abbr: 'CC', keys: ['Cmd', 'Shift', 'A'] },
@@ -486,6 +536,51 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   // the user hands off from DispatchModal; empty otherwise (direct task
   // click from queue cards doesn't carry a sibling set).
   const [detailSiblings, setDetailSiblings] = useState<UnifiedTask[]>([])
+
+  // ---------- Floor 3-pane shell state ----------
+  const floorPrefs0 = useRef(loadFloorPrefs()).current
+  const [center, setCenter] = useState<CenterMode>('agents')
+  const [floorView, setFloorView] = useState<FloorView>('feed')
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null)
+  const [projFilter, setProjFilter] = useState<string | null>(null)
+  const [floorSort, setFloorSort] = useState<FloorSort>('needs')
+  const [floorGroupBy, setFloorGroupBy] = useState<FloorGroupBy>(floorPrefs0.groupBy)
+  const [plain, setPlain] = useState(floorPrefs0.plain)
+  const [sidebarOpen, setSidebarOpen] = useState(floorPrefs0.sidebar)
+  const [rightOpen, setRightOpen] = useState(floorPrefs0.right)
+  const [pinned, setPinned] = useState<Set<string>>(() => new Set(floorPrefs0.pinned))
+  const [statusChips, setStatusChips] = useState<StatusChip[]>([])
+  const [abbrChips, setAbbrChips] = useState<AgentAbbr[]>([])
+  const [floorSearch, setFloorSearch] = useState('')
+  const [ticketGroup, setTicketGroup] = useState<TicketGroupBy>('project')
+  const [ticketSort, setTicketSort] = useState<TicketSort>('priority')
+  const [ticketSrc, setTicketSrc] = useState<Record<TicketSource, boolean>>({ LN: true, GH: true })
+  const [remoteSessions, setRemoteSessions] = useState<RemoteSessionLike[]>([])
+  const [offlineHosts, setOfflineHosts] = useState<string[]>([])
+
+  // Persist the durable Floor prefs (pinned set, plain/sidebar/right toggles, group-by).
+  useEffect(() => {
+    saveFloorPrefs({ plain, sidebar: sidebarOpen, right: rightOpen, groupBy: floorGroupBy, pinned: [...pinned] })
+  }, [plain, sidebarOpen, rightOpen, floorGroupBy, pinned])
+
+  // Cross-host merge: ask the backend for every reachable host's sessions on mount, fold
+  // the genuinely-remote ones into the Floor. Local-only Floor works if this never arrives.
+  useEffect(() => {
+    postMessage({ type: 'fetchHostSessions' })
+    const onMsg = (event: MessageEvent) => {
+      const msg = event.data
+      if (msg?.type !== 'hostSessions') return
+      setRemoteSessions(Array.isArray(msg.sessions) ? (msg.sessions as RemoteSessionLike[]) : [])
+      const offline = Array.isArray(msg.hosts)
+        ? (msg.hosts as Array<{ name: string; online: boolean }>).filter((h) => h && !h.online).map((h) => h.name)
+        : []
+      setOfflineHosts(offline)
+    }
+    window.addEventListener('message', onMsg)
+    return () => window.removeEventListener('message', onMsg)
+  }, [])
+
   const newMenuRef = useRef<HTMLDivElement>(null)
   const statPopoverRef = useRef<HTMLDivElement>(null)
   const nextUpSectionRef = useRef<HTMLDivElement>(null)
@@ -982,8 +1077,325 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     }, 800)
   }
 
+  // ---------- Floor view-model derivation ----------
+  const nowMs = Date.now()
+
+  // Local agents (drop the synthetic watchdog row) + genuinely-remote sessions
+  // (host !== 'this-mac' so we don't double count this machine's own agents).
+  const floorLocalAgents = useMemo(
+    () => adaptUnified(items.filter((i) => i.kind !== 'watchdog'), { pinned, workspaceRepo: workspaceRepoName, nowMs }),
+    [items, pinned, workspaceRepoName, nowMs]
+  )
+  const floorRemoteAgents = useMemo(
+    () => adaptRemote(remoteSessions.filter((s) => s.host !== 'this-mac'), pinned),
+    [remoteSessions, pinned]
+  )
+  const floorAgents = useMemo(
+    () => [...floorLocalAgents, ...floorRemoteAgents],
+    [floorLocalAgents, floorRemoteAgents]
+  )
+  const floorTickets = useMemo(() => adaptTickets(unifiedTasks), [unifiedTasks])
+  const nextUpTickets = useMemo(() => adaptTickets(queueTasks), [queueTasks])
+
+  // Lookup back to the source UnifiedAgent so the right pane can reuse the rich DetailPane.
+  const unifiedById = useMemo(() => {
+    const m = new Map<string, UnifiedAgent>()
+    for (const i of items) m.set(i.id, i)
+    return m
+  }, [items])
+
+  // Center list scoped by project filter + status/agent chips + search.
+  const scopedAgents = useMemo(() => {
+    let list = floorAgents
+    if (projFilter) list = list.filter((a) => a.project === projFilter)
+    if (statusChips.length) list = list.filter((a) => statusChips.some((c) => (c === 'needs' ? a.needs : a.phase === c)))
+    if (abbrChips.length) list = list.filter((a) => abbrChips.includes(a.abbr))
+    const q = floorSearch.trim().toLowerCase()
+    if (q) list = list.filter((a) => `${a.name} ${a.branch} ${a.verb} ${a.target} ${a.project} ${a.host}`.toLowerCase().includes(q))
+    return list
+  }, [floorAgents, projFilter, statusChips, abbrChips, floorSearch])
+
+  const needsAgents = useMemo(() => scopedAgents.filter((a) => a.needs), [scopedAgents])
+  const waitingAgents = useMemo(() => needsAgents.filter((a) => a.phase === 'waiting'), [needsAgents])
+  const failedAgents = useMemo(() => needsAgents.filter((a) => a.phase === 'failed'), [needsAgents])
+  const questionClusters = useMemo(() => clusterByQuestion(waitingAgents), [waitingAgents])
+  const activeFeed = useMemo(
+    () => sortAgents(scopedAgents.filter((a) => !a.needs && (a.phase === 'running' || a.phase === 'done')), floorSort),
+    [scopedAgents, floorSort]
+  )
+
+  const floorRunning = useMemo(() => floorAgents.filter((a) => a.phase === 'running').length, [floorAgents])
+  const floorTok = useMemo(() => floorAgents.reduce((s, a) => s + a.tok, 0) + liveThroughput, [floorAgents, liveThroughput])
+
+  // Selected agent (defaults to the first waiting, else first live) + its FloorTicket.
+  const selectedFloorAgent: FloorAgent | null = useMemo(() => {
+    if (selectedAgentId) return floorAgents.find((a) => a.id === selectedAgentId) ?? null
+    return waitingAgents[0] ?? activeFeed[0] ?? null
+  }, [selectedAgentId, floorAgents, waitingAgents, activeFeed])
+
+  const selectedFloorTicket = useMemo(
+    () => (selectedTicketId ? floorTickets.find((t) => t.id === selectedTicketId) ?? null : null),
+    [selectedTicketId, floorTickets]
+  )
+
+  // Real hosts for the dispatch panel: this machine + every reachable remote.
+  const floorHosts = useMemo(() => {
+    const set = new Set<string>(['this-mac'])
+    for (const s of remoteSessions) if (s.host && s.host !== 'this-mac') set.add(s.host)
+    return [...set]
+  }, [remoteSessions])
+
+  // ---------- Floor interaction handlers ----------
+  const togglePin = useCallback((id: string) => {
+    setPinned((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  // Reply transport: focus the agent's terminal so the user answers inline (the only
+  // real send path we have for a local agent). We also post a structured replyToAgent
+  // message so a backend reply handler, once present, receives the chosen option/text.
+  // No toast, no fake success — screenshot attach is a deliberate no-op stub below.
+  const replyToAgent = useCallback((a: FloorAgent, text: string) => {
+    const u = unifiedById.get(a.id)
+    if (u?.terminal) postMessage({ type: 'focusTerminal', terminalId: u.terminal.id })
+    postMessage({ type: 'replyToAgent', agentId: a.id, host: a.host, text })
+  }, [unifiedById])
+
+  const retryFloorAgent = useCallback((a: FloorAgent) => {
+    const u = unifiedById.get(a.id)
+    if (u?.swarm) handleRetry(u.swarm.task_name)
+    else if (u?.terminal) postMessage({ type: 'focusTerminal', terminalId: u.terminal.id })
+  }, [unifiedById, handleRetry])
+
+  const onAgentOption = useCallback((a: FloorAgent, option: string) => {
+    if (option === 'Retry') retryFloorAgent(a)
+    else if (option === 'View error') { const u = unifiedById.get(a.id); if (u?.terminal) postMessage({ type: 'focusTerminal', terminalId: u.terminal.id }) }
+    else replyToAgent(a, option)
+  }, [retryFloorAgent, replyToAgent, unifiedById])
+
+  // Screenshot attach: the capture/attach transport isn't wired yet. Intentionally a
+  // no-op (no fake success) rather than pretending it worked. TODO: wire capture path.
+  const onAttachScreenshot = useCallback((_a: FloorAgent) => { /* TODO: screenshot transport pending */ }, [])
+
+  const onBatchReply = useCallback((cluster: FloorAgent[], option: string) => {
+    for (const a of cluster) replyToAgent(a, option)
+  }, [replyToAgent])
+
+  // Dispatch a Floor ticket: resolve back to its UnifiedTask, then reuse the existing
+  // dispatch pipeline. A remote host maps to a cloud run; 'this-mac' stays local.
+  const dispatchFloorTicket = useCallback((ticketId: string, agent: string, host: string) => {
+    const task = unifiedTasks.find((t) => (t.metadata.identifier ?? t.id) === ticketId)
+    if (!task) return
+    handleDispatchTask(task, agent, host === 'this-mac' ? 'local' : 'cloud')
+  }, [unifiedTasks])
+
+  const openTicketDetail = useCallback((ticketId: string) => {
+    const task = unifiedTasks.find((t) => (t.metadata.identifier ?? t.id) === ticketId)
+    if (task) { setDetailSiblings([]); setDetailTask(task) }
+  }, [unifiedTasks])
+
+  const onScope = useCallback((value: string) => {
+    if (value === '__queue') { setCenter('backlog'); return }
+    if (value === '__needs') { setCenter('agents'); setProjFilter(null); return }
+    setCenter('agents')
+    setProjFilter(value || null)
+  }, [])
+
+  const selectFloorAgent = useCallback((id: string) => {
+    setCenter('agents')
+    setSelectedAgentId(id)
+  }, [])
+
+  const selectFloorTicket = useCallback((id: string) => {
+    setCenter('backlog')
+    setSelectedTicketId(id)
+  }, [])
+
+  // Right-pane detail for the selected agent: a decision block when it needs you, then
+  // the reused rich DetailPane (local) or a light remote summary (cross-host).
+  const renderAgentDetail = () => {
+    const a = selectedFloorAgent
+    if (!a) {
+      return <div className="detail-empty">Select an agent or issue to open its conversation and reply here.</div>
+    }
+    const decision = a.needs ? (
+      <div style={{ padding: '14px 16px 0' }}>
+        <div className="decide">
+          <div className="ql">{a.phase === 'failed' ? 'FAILED — NEEDS YOU' : 'WAITING ON YOU'}</div>
+          <div className="qt">{a.question?.text ?? a.resp}</div>
+          <StructuredReply
+            question={a.question}
+            phase={a.phase}
+            onOption={(o) => onAgentOption(a, o)}
+            onFreeText={(t) => replyToAgent(a, t)}
+            onAttach={() => onAttachScreenshot(a)}
+          />
+        </div>
+      </div>
+    ) : null
+
+    const u = unifiedById.get(a.id)
+    return (
+      <>
+        {decision}
+        {u ? (
+          <DetailPane
+            item={u}
+            onClose={() => setSelectedAgentId(null)}
+            onFocusTerminal={handleFocusTerminal}
+            onRetry={handleRetry}
+            onKill={handleKill}
+          />
+        ) : (
+          <div className="dhead" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
+            <div className="title">{a.project} / {a.name}</div>
+            <div className="sub">host <b>{a.host}</b>{a.branch ? ` · ${a.branch}` : ''} · {a.phase}{a.tok ? ` · ${a.tok} tok/s` : ''}</div>
+            {a.resp && <div className="resp" style={{ marginTop: 8 }}>{a.resp}</div>}
+            {(a.verb || a.target) && <div className="nowline" style={{ marginTop: 8 }}><Icon name="chevR" size={11} /> <span className="v">{a.verb}</span> {a.target}</div>}
+          </div>
+        )}
+      </>
+    )
+  }
+
+  const centerContent = center === 'backlog' ? (
+    <BacklogCenter
+      tickets={floorTickets}
+      group={ticketGroup}
+      sort={ticketSort}
+      srcFilter={ticketSrc}
+      projFilter={projFilter}
+      selectedTicketId={selectedTicketId}
+      onGroup={setTicketGroup}
+      onSort={setTicketSort}
+      onToggleSrc={(src) => setTicketSrc((p) => ({ ...p, [src]: !p[src] }))}
+      onSelectTicket={(id) => setSelectedTicketId(id)}
+      onBackToAgents={() => setCenter('agents')}
+    />
+  ) : floorView !== 'feed' ? (
+    <div className="feed">
+      <div className="detail-empty">The {floorView} view is coming soon — Feed is the primary Floor view.</div>
+    </div>
+  ) : (
+    <div className="feed">
+      {nextUpTickets.length > 0 && (
+        <div className="backlog">
+          <div className="bh" onClick={() => setCenter('backlog')}>
+            <span><Icon name="chevD" size={11} /> NEXT UP — ready to dispatch</span>
+            <span className="c"><span className="seeall" onClick={(e) => { e.stopPropagation(); setCenter('backlog') }}>see all {floorTickets.length} <Icon name="chevR" size={10} /></span></span>
+          </div>
+          {nextUpTickets.map((t) => (
+            <TicketStrip key={t.id} ticket={t} onDispatch={openTicketDetail} onSelect={selectFloorTicket} />
+          ))}
+        </div>
+      )}
+
+      {needsAgents.length > 0 && (
+        <>
+          <div className="feed-sec attn">
+            <Icon name="alert" size={11} /> NEEDS YOU · {needsAgents.length}{projFilter ? ` · ${projFilter}` : ''}
+            <span className="ln" />
+          </div>
+          <NeedsYouClusters
+            clusters={questionClusters.filter((c) => c.length > 1)}
+            onBatchReply={onBatchReply}
+            onReplyOne={selectFloorAgent}
+          />
+          {questionClusters.filter((c) => c.length === 1).map((c) => (
+            <FeedItem
+              key={c[0].id}
+              agent={c[0]}
+              selected={selectedFloorAgent?.id === c[0].id}
+              plain={plain}
+              onSelect={selectFloorAgent}
+              onOption={(o) => onAgentOption(c[0], o)}
+              onFreeText={(t) => replyToAgent(c[0], t)}
+              onAttach={() => onAttachScreenshot(c[0])}
+            />
+          ))}
+          {failedAgents.map((a) => (
+            <FeedItem
+              key={a.id}
+              agent={a}
+              selected={selectedFloorAgent?.id === a.id}
+              plain={plain}
+              onSelect={selectFloorAgent}
+              onOption={(o) => onAgentOption(a, o)}
+              onFreeText={(t) => replyToAgent(a, t)}
+              onAttach={() => onAttachScreenshot(a)}
+            />
+          ))}
+        </>
+      )}
+
+      <div className="feed-sec">LIVE ACTIVITY · {activeFeed.length}<span className="ln" /></div>
+      {activeFeed.map((a) => (
+        <FeedItem
+          key={a.id}
+          agent={a}
+          selected={selectedFloorAgent?.id === a.id}
+          plain={plain}
+          onSelect={selectFloorAgent}
+          onOption={(o) => onAgentOption(a, o)}
+          onFreeText={(t) => replyToAgent(a, t)}
+          onAttach={() => onAttachScreenshot(a)}
+        />
+      ))}
+    </div>
+  )
+
+  const rightContent = center === 'backlog'
+    ? (selectedFloorTicket
+      ? <TicketDetail ticket={selectedFloorTicket} hosts={floorHosts} onDispatch={(choice) => dispatchFloorTicket(selectedFloorTicket.id, choice.agent, choice.host)} />
+      : <div className="detail-empty">Select a ticket to see its details and dispatch an agent onto it.</div>)
+    : renderAgentDetail()
+
   return (
-    <div className="sw-floor-dashboard">
+    <div className="sw-floor-dashboard" style={{ padding: 0, overflow: 'hidden' }}>
+      <FloorControls
+        view={floorView}
+        onView={setFloorView}
+        groupBy={floorGroupBy}
+        onGroupBy={setFloorGroupBy}
+        runningCount={floorRunning}
+        totalCount={floorAgents.length}
+        totalTok={floorTok}
+        sidebarOpen={sidebarOpen}
+        onToggleSidebar={() => setSidebarOpen((o) => !o)}
+        rightOpen={rightOpen}
+        onToggleRight={() => setRightOpen((o) => !o)}
+        plain={plain}
+        onTogglePlain={() => setPlain((o) => !o)}
+        onToggleTheme={() => postMessage({ type: 'executeCommand', command: 'workbench.action.toggleLightDarkThemes' })}
+        sort={floorSort}
+        onSort={setFloorSort}
+        activeStatus={statusChips}
+        onToggleStatus={(chip) => setStatusChips((prev) => (prev.includes(chip) ? prev.filter((c) => c !== chip) : [...prev, chip]))}
+        activeAbbrs={abbrChips}
+        onToggleAbbr={(ab) => setAbbrChips((prev) => (prev.includes(ab) ? prev.filter((c) => c !== ab) : [...prev, ab]))}
+        search={floorSearch}
+        onSearch={setFloorSearch}
+        onDispatch={() => setDispatchOpen(true)}
+      />
+
+      <div className="page" style={{ flex: 1, minHeight: 0, height: 'auto' }}>
+        {sidebarOpen && (
+          <FloorSidebar
+            agents={floorAgents}
+            tickets={floorTickets}
+            projFilter={projFilter}
+            offlineHosts={offlineHosts}
+            onScope={onScope}
+          />
+        )}
+        <div className="feed-col">{centerContent}</div>
+        {rightOpen && <div className="detail-col">{rightContent}</div>}
+      </div>
+
       {cardDragActive && (
         <div
           className="sw-quick-dispatch-dropzone"
@@ -1017,230 +1429,6 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
           {intakeTeams.map((team) => (
             <IntakeBanner key={team.team} team={team.team} teammates={team.agents} />
           ))}
-        </div>
-      )}
-
-      {/* Next Up -- scheduled / urgent tasks about to run */}
-      {queueEligible.length > 0 && (
-        <div className="sw-queue-section" ref={nextUpSectionRef}>
-          <div className="sw-section-header-row">
-            <span className="sw-section-label">Next Up</span>
-            <span className="sw-section-count-pill">{queueTasks.length}</span>
-            <span className="sw-section-hint">Click a card to configure · drag to draft · ⌘K new agent</span>
-            <span className="sw-section-line" />
-            {(workspaceRepoName || queueRepos.length >= 2) && (
-              <select
-                className="sw-queue-project-select mono"
-                value={queueRepoFilter}
-                onChange={(e) => {
-                  queueRepoFilterUserSet.current = true
-                  setQueueRepoFilter(e.target.value)
-                }}
-                aria-label="Filter Next Up by repo"
-              >
-                {workspaceRepoName && !queueRepos.includes(workspaceRepoName) && (
-                  <option value={workspaceRepoName}>{workspaceRepoName} (this repo)</option>
-                )}
-                <option value="all">All repos</option>
-                {queueRepos.map((r) => (
-                  <option key={r} value={r}>
-                    {r}{r === workspaceRepoName ? ' (this repo)' : ''}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
-
-          {queueTasks.length > 0 ? (
-            <div className="sw-queue-cards">
-              {queueTasks.map((task) => (
-                <DispatchCard key={task.id} task={task} onOpen={setDetailTask} onOpenInBench={onOpenInBench} onDragStateChange={setCardDragActive} />
-              ))}
-            </div>
-          ) : (
-            <div className="sw-queue-empty">
-              No tasks in repo <b>{queueRepoFilter}</b>.{' '}
-              <button type="button" className="sw-link-btn" onClick={() => setQueueRepoFilter('all')}>
-                Show all repos
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Active Agents */}
-      {(activeItems.length > 0 || tasksLoading) && (
-        <>
-          <div className="sw-section-header-row">
-            <span className="sw-section-label">Active</span>
-            <span className="sw-section-count-pill">{activeItems.length}</span>
-            <div className="sw-active-filter" role="tablist" aria-label="Filter active agents">
-              {(['all', 'local', 'cloud'] as const).map((key) => {
-                const count = key === 'all'
-                  ? activeItems.length
-                  : key === 'cloud'
-                    ? activeItems.filter((i) => i.kind === 'cloud').length
-                    : activeItems.filter((i) => i.kind !== 'cloud').length
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    role="tab"
-                    data-foreman-id={`active-filter-${key}`}
-                    aria-selected={activeFilter === key}
-                    className={`sw-active-filter-btn ${activeFilter === key ? 'active' : ''}`}
-                    onClick={() => setActiveFilter(key)}
-                  >
-                    {key === 'all' ? 'All' : key === 'local' ? 'Local' : 'Cloud'}
-                    <span className="sw-active-filter-count">{count}</span>
-                  </button>
-                )
-              })}
-            </div>
-            <span className="sw-section-line" />
-            <div style={{ position: 'relative' }} ref={newMenuRef}>
-              <button data-foreman-id="new-btn" className="sw-btn secondary sm" onClick={() => setNewMenuOpen((o) => !o)}>
-                <Icon name="plus" size={11} />
-                New
-              </button>
-              {newMenuOpen && (
-                <div className="sw-menu">
-                  {NEW_AGENT_MENU.map((m) => (
-                    <button
-                      key={m.agent}
-                      className="sw-menu-item"
-                      onClick={() => { setNewMenuOpen(false); handleNewAgent(m.agent) }}
-                    >
-                      <AgentAvatar id={m.agent} size={16} />
-                      <span>{m.name}</span>
-                      <span className="spacer" />
-                      <span className="kbd-group">
-                        {m.keys.map((k) => (
-                          <span key={k} className="kbd kbd-inline">{k}</span>
-                        ))}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <button data-foreman-id="dispatch-btn" className="sw-btn primary sm" onClick={() => setDispatchOpen(true)}>
-              <Icon name="dispatch" size={11} />
-              Dispatch
-            </button>
-          </div>
-
-          {timedOutDispatches.length > 0 && (
-            <div className="sw-dispatch-timeout-banner" role="alert">
-              {timedOutDispatches.map((p) => (
-                <div key={p.id} className="sw-dispatch-timeout-row">
-                  <Icon name="zap" size={12} />
-                  <span className="sw-dispatch-timeout-text">
-                    {optimisticActivityLabel(p)}
-                  </span>
-                  <button
-                    className="sw-btn secondary sm"
-                    onClick={() => {
-                      postMessage({ type: 'focusRushCloudTerminal' })
-                    }}
-                    title="Jump to the Rush Cloud terminal for logs"
-                  >
-                    Show terminal
-                  </button>
-                  <button
-                    className="sw-btn ghost sm"
-                    onClick={() => dismissPending(p.id)}
-                    aria-label="Dismiss"
-                    title="Dismiss"
-                  >
-                    <Icon name="x" size={11} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {(() => {
-            const visibleActive = activeItems.filter((item) => activeFilter === 'all' || (activeFilter === 'cloud' ? item.kind === 'cloud' : item.kind !== 'cloud'))
-            const visibleRecent = recentItems.slice(0, 7)
-            const selectable = [...visibleActive, ...visibleRecent]
-            const fallbackSelected = visibleActive[0] ?? null
-            const selected = expandedAgentId
-              ? selectable.find((i) => i.id === expandedAgentId) ?? fallbackSelected
-              : fallbackSelected
-            return (
-              <div className="sw-floor-active">
-                <div className="sw-floor-active-list">
-                  {visibleActive.map((item) => (
-                    <AgentCard
-                      key={item.id}
-                      item={item}
-                      selected={selected?.id === item.id}
-                      onSelect={handleSelectAgent}
-                    />
-                  ))}
-                  {activeItems.length > 0 && visibleActive.length === 0 && (
-                    <div className="sw-active-filter-empty">No {activeFilter} agents running.</div>
-                  )}
-                  {recentItems.length > 0 && (
-                    <>
-                      <div className="sw-floor-recent-divider">
-                        <span>Recent</span>
-                      </div>
-                      {visibleRecent.map((item) => (
-                        <AgentCard
-                          key={item.id}
-                          item={item}
-                          selected={selected?.id === item.id}
-                          onSelect={handleSelectAgent}
-                          dimmed
-                          onRetry={handleRetry}
-                        />
-                      ))}
-                    </>
-                  )}
-                </div>
-                <div className="sw-floor-active-detail">
-                  {selected ? (
-                    <DetailPane
-                      item={selected}
-                      onClose={() => setExpandedAgentId(null)}
-                      onFocusTerminal={handleFocusTerminal}
-                      onRetry={handleRetry}
-                      onKill={handleKill}
-                    />
-                  ) : (
-                    <div className="sw-floor-active-detail-empty">
-                      <Icon name="inbox" size={22} />
-                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ds-text)' }}>
-                        Select an agent to see its activity
-                      </div>
-                      <div style={{ fontSize: 11.5, color: 'var(--ds-text-dim)' }}>
-                        Each card shows current status, recent commands, and the files an agent has touched.
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )
-          })()}
-        </>
-      )}
-
-      {/* Empty state */}
-      {items.length === 0 && !tasksLoading && queueTasks.length === 0 && (
-        <div className="sw-empty" style={{ marginTop: 40 }}>
-          <Icon name="zap" size={20} />
-          <div className="sw-empty-title">No agents running</div>
-          <div className="sw-empty-sub">
-            Press{' '}
-            <span className="kbd-group" style={{ display: 'inline-flex' }}>
-              <span className="kbd kbd-inline">Cmd</span>
-              <span className="kbd kbd-inline">Shift</span>
-              <span className="kbd kbd-inline">A</span>
-            </span>{' '}
-            to open Claude, or dispatch a team.
-          </div>
         </div>
       )}
 
