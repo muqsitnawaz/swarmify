@@ -303,9 +303,9 @@
 /* ============================================================================
  * AFTER-DISPATCH trust signals (STYLES owns these; FLOOR-UI renders the markup).
  * Class-name contract for FLOOR-UI (FeedItem.tsx / PlanReview.tsx / FailureCard.tsx):
- *   heartbeat  : <span class="heartbeat [stale|stale2]"><i class="beat"/>{age}</span>
+ *   heartbeat  : <span class="hb [stale|dead]">{clock icon}{age} ago</span>
  *                normal -> dim, `stale` -> amber (past stall threshold),
- *                `stale2` -> red (past 2x). The `.beat` dot pulses while fresh.
+ *                `dead` -> red (past 2x). The `.beat` dot pulses while fresh.
  *   stalled    : <div class="fitem stalled"> card variant (pulsing amber outline).
  *   plan-review: <div class="planreview"> with `.pr-h` eyebrow, `.pr-steps`/`.pr-step`
  *                (`.n` step number; step `input`/`textarea` for Approve+edit),
@@ -317,14 +317,29 @@
  *                `select.reassign` (Reassign to a different agent).
  * ========================================================================= */
 
-/* live heartbeat — ticking last-activity age in .fitem .when */
-.swarmify-root .heartbeat { display: inline-flex; align-items: center; gap: 5px; color: var(--ds-text-dim); font-variant-numeric: tabular-nums; }
-.swarmify-root .heartbeat .beat { width: 6px; height: 6px; border-radius: 50%; background: var(--status-running); animation: sw-beat 1.6s ease-out infinite; }
-.swarmify-root .heartbeat.stale { color: var(--status-pending); }
-.swarmify-root .heartbeat.stale .beat { background: var(--status-pending); animation: none; }
-.swarmify-root .heartbeat.stale2 { color: var(--status-failed); }
-.swarmify-root .heartbeat.stale2 .beat { background: var(--status-failed); animation: none; }
+/* live heartbeat — ticking last-activity age in .fitem .when. Class names match
+ * FeedItem's markup (`hb live|stale|dead`): dim by default, amber past the stall
+ * threshold, red past 2x. */
+.swarmify-root .hb { display: inline-flex; align-items: center; gap: 5px; color: var(--ds-text-dim); font-variant-numeric: tabular-nums; }
+.swarmify-root .hb .beat { width: 6px; height: 6px; border-radius: 50%; background: var(--status-running); animation: sw-beat 1.6s ease-out infinite; }
+.swarmify-root .hb.stale { color: var(--status-pending); }
+.swarmify-root .hb.stale .beat { background: var(--status-pending); animation: none; }
+.swarmify-root .hb.dead { color: var(--status-failed); }
+.swarmify-root .hb.dead .beat { background: var(--status-failed); animation: none; }
 @keyframes sw-beat { 0% { box-shadow: 0 0 0 0 var(--status-running-bg); } 70% { box-shadow: 0 0 0 5px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+
+/* data-freshness chip — cross-host sweep age in the LIVE ACTIVITY header. Spins while
+ * a sweep is in flight; amber when stale (a host is likely stuck). Click to refresh. */
+.swarmify-root .fresh { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; letter-spacing: 0;
+  color: var(--ds-text-dim); background: var(--ds-bg-inset); border: 1px solid var(--ds-border); border-radius: 20px;
+  padding: 3px 9px 3px 7px; cursor: pointer; user-select: none; white-space: nowrap; transition: color .15s, border-color .15s; }
+.swarmify-root .fresh:hover { border-color: var(--ds-text-dim); color: var(--ds-text-muted); }
+.swarmify-root .fresh .rot { display: inline-flex; color: var(--status-running); }
+.swarmify-root .fresh.syncing { color: var(--status-running); border-color: var(--status-running); }
+.swarmify-root .fresh.syncing .rot { animation: sw-spin .9s linear infinite; }
+.swarmify-root .fresh.stale { color: var(--status-pending); border-color: var(--status-pending); }
+.swarmify-root .fresh.stale .rot { color: var(--status-pending); }
+@keyframes sw-spin { to { transform: rotate(360deg); } }
 
 /* stalled card — distinct from static .attn: a slow amber outline pulse says "no heartbeat" */
 .swarmify-root .fitem.stalled { border-color: var(--status-pending); box-shadow: 0 0 0 1px var(--status-pending-bg); animation: sw-stall 2.4s ease-in-out infinite; }
@@ -347,7 +362,8 @@
 .swarmify-root .failcard .reassign { border: 1px solid var(--ds-border-strong); background: var(--ds-bg); color: var(--ds-text); border-radius: var(--r-md); padding: 6px 10px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
 
 @media (prefers-reduced-motion: reduce) {
-  .swarmify-root .heartbeat .beat,
+  .swarmify-root .hb .beat,
+  .swarmify-root .fresh.syncing .rot,
   .swarmify-root .fitem.stalled { animation: none; }
 }
 
