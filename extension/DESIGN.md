@@ -200,6 +200,10 @@ Avatars and agent chips are near-square (2–4px radius), riveted with an inner 
 
 ## Components
 
+![Component gallery rendered from design-system.css under theme-dark — brand + surface swatches, buttons, status badges, LED indicators, keycaps, chips/pills, agent avatars, and tabs](assets/design/components.png)
+
+*Rendered from the shipped `design-system.css` (`.theme-dark`) — these are the real component classes, not a mockup.*
+
 ### Buttons
 - **Primary** — solid lime, white text, a hard bottom edge (`0 2px 0 brand-700`) so it looks like a physical key. Uppercase mono label. One per context.
 - **Secondary** — panel-fill with a `raised` shadow and strong border.
