@@ -17,6 +17,7 @@ import {
   HostInfo,
   HostGroup,
   normalizeActiveSession,
+  dedupeSessions,
   enrichWithSessionContent,
   groupByHost,
 } from '../core/remoteSessions';
@@ -159,14 +160,19 @@ async function fetchActiveForHost(host: string, isLocal: boolean, fetchedAt: num
     });
     const parsed = JSON.parse(stdout);
     const raw: any[] = Array.isArray(parsed) ? parsed : [];
+    const normalized = raw
+      .filter((rec) => rec && typeof rec === 'object')
+      .map((rec) => normalizeActiveSession(rec, host, fetchedAt));
+    // Collapse the many-processes-per-session records to one card BEFORE enriching,
+    // so each session file is read once (not once per duplicate pid) and the header
+    // count matches what the feed renders.
+    const unique = dedupeSessions(normalized);
     const sessions: RemoteSession[] = [];
-    for (const rec of raw) {
-      if (!rec || typeof rec !== 'object') continue;
-      let session = normalizeActiveSession(rec, host, fetchedAt);
+    for (let session of unique) {
       // Only the local host can cheaply read session files to enrich activity,
       // throughput, and waiting. Remote hosts stay status-only until Tier-2.
-      if (isLocal && typeof rec.sessionFile === 'string' && rec.sessionFile) {
-        const content = await readSessionTail(rec.sessionFile, session.agentType);
+      if (isLocal && session.sessionFile) {
+        const content = await readSessionTail(session.sessionFile, session.agentType);
         if (content) session = enrichWithSessionContent(session, content, fetchedAt);
       }
       sessions.push(session);

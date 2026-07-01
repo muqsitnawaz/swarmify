@@ -71,6 +71,7 @@ export interface RemoteSessionLike {
   branch: string
   sinceMs: number
   startedAtMs: number
+  topic: string
 }
 
 // ---------- primitive helpers ----------
@@ -210,6 +211,9 @@ export function toFloorAgentFromRemote(r: RemoteSessionLike, pinned: Set<string>
   const { verb, target } = splitActivity(r.activity)
   const id = `remote-${r.host}-${r.sessionId}`
   const name = r.branch || r.ticket || r.sessionId.slice(0, 8)
+  // Remote (Tier-1) sessions have no enriched last-response yet — fall back to the
+  // session's task line (topic) so the card shows what it's working on, not blank.
+  const resp = r.lastResponse || r.topic || ''
 
   return {
     id,
@@ -229,8 +233,8 @@ export function toFloorAgentFromRemote(r: RemoteSessionLike, pinned: Set<string>
     pr: floorPrLabel(r.prUrl),
     ticket: r.ticket,
     branch: r.branch,
-    resp: r.lastResponse,
-    question: parseStructuredQuestion(r.lastResponse, phase),
+    resp,
+    question: parseStructuredQuestion(resp, phase),
   }
 }
 
