@@ -333,7 +333,9 @@ async function dispatchToDevice(input: {
 
   const creds = secretRef ? await resolveSecret(secretRef) : {};
   const syncShell = buildDeviceSyncShell(syncPolicy);
-  const runCmd = `agents run ${agentType} --mode ${mode} -p ${shq(prompt)}`;
+  // `agents run <agent> [prompt]` — the prompt is POSITIONAL (no -p flag).
+  // agentType is quoted too (it originates from a webview message).
+  const runCmd = `agents run ${shq(agentType)} --mode ${mode} ${shq(prompt)}`;
   // Resolve $P on the remote (tilde expands against the remote $HOME), clone the
   // repo there if it isn't present (a missing clone is just a sync state), then
   // run the auto-sync policy and start the agent.
@@ -364,7 +366,9 @@ async function dispatchToDevice(input: {
   const target = creds.user ? `${creds.user}@${host}` : host;
   const args = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8', '-o', 'StrictHostKeyChecking=accept-new'];
   if (creds.identityFile) args.push('-i', creds.identityFile);
-  args.push(target, remote);
+  // `--` stops ssh option parsing (host/user could start with '-'); run through a
+  // login shell so agents/git resolve on PATH (ssh's default shell is non-login).
+  args.push('--', target, `bash -lc ${shq(remote)}`);
   try {
     await deviceExecFileAsync('ssh', args, { timeout: 60_000 });
     return null;

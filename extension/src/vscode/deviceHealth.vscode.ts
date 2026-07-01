@@ -1,14 +1,25 @@
 import * as os from 'os';
 import * as fs from 'fs';
 import * as path from 'path';
+import { createHash } from 'crypto';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { DeviceStats, parseUptime, parseVmStat, parseLinuxMemInfo } from '../core/deviceHealth';
-import { Device } from '../core/deviceRegistry';
 import { RepoSyncStatus, classifySync } from '../core/repoSync';
 import { resolveAgentsBin, bootstrapPath } from '../core/agentsBin';
 
 const execFileAsync = promisify(execFile);
+
+// A registered device, sourced live from `agents devices list --json`.
+export interface Device {
+  name: string;
+  host: string;
+  secretRef?: string;
+  user?: string;
+  platform?: string;
+  online?: boolean;
+  registeredAt: number;
+}
 
 interface AgentsDeviceEntry {
   name: string;
@@ -76,7 +87,7 @@ export async function probeReachable(host: string): Promise<boolean> {
   try {
     await execFileAsync(
       'ssh',
-      ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=3', '-o', 'StrictHostKeyChecking=accept-new', host, 'true'],
+      ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=3', '-o', 'StrictHostKeyChecking=accept-new', '--', host, 'true'],
       { timeout: PROBE_TIMEOUT_MS },
     );
     return true;
@@ -123,7 +134,7 @@ async function fetchDeviceStatsOnce(
   const target = opts.user ? `${opts.user}@${host}` : host;
   const args = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=3', '-o', 'StrictHostKeyChecking=accept-new'];
   if (opts.identityFile) args.push('-i', opts.identityFile);
-  args.push(target, 'uptime; echo ---SEP---; (vm_stat || cat /proc/meminfo)');
+  args.push('--', target, 'uptime; echo ---SEP---; (vm_stat || cat /proc/meminfo)');
   try {
     const { stdout } = await execFileAsync('ssh', args, { timeout: PROBE_TIMEOUT_MS });
     const parts = stdout.split('---SEP---');
@@ -243,7 +254,10 @@ function materializeKey(value: string): string {
   }
   const tmpDir = path.join(os.homedir(), '.agents', '.tmp');
   fs.mkdirSync(tmpDir, { recursive: true, mode: 0o700 });
-  const tmpPath = path.join(tmpDir, `ssh-key-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  // Content-addressed name so repeated resolves overwrite one file per key
+  // instead of dropping a fresh plaintext copy on every panel open / dispatch.
+  const digest = createHash('sha256').update(value).digest('hex').slice(0, 16);
+  const tmpPath = path.join(tmpDir, `ssh-key-${digest}`);
   fs.writeFileSync(tmpPath, value, { mode: 0o600 });
   return tmpPath;
 }
@@ -288,7 +302,8 @@ export async function getDeviceSyncStatus(
       const target = opts.user ? `${opts.user}@${host}` : host;
       const args = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8', '-o', 'StrictHostKeyChecking=accept-new'];
       if (opts.identityFile) args.push('-i', opts.identityFile);
-      args.push(target, snippet);
+      // `--` guards a host/user starting with '-'; login shell so git resolves.
+      args.push('--', target, `bash -lc ${sq(snippet)}`);
       ({ stdout } = await execFileAsync('ssh', args, { timeout: 25_000 }));
     }
     const line = stdout.trim().split('\n').pop() ?? '';
