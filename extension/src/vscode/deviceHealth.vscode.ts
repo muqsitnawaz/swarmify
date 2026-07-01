@@ -1,0 +1,210 @@
+import * as os from 'os';
+import * as fs from 'fs';
+import * as path from 'path';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import { DeviceStats, parseUptime, parseVmStat, parseLinuxMemInfo } from '../core/deviceHealth';
+import { resolveAgentsBin, bootstrapPath } from '../core/agentsBin';
+
+const execFileAsync = promisify(execFile);
+
+const CACHE_TTL_MS = 6_000;
+const PROBE_TIMEOUT_MS = 4_000;
+
+const cache = new Map<string, { stats: DeviceStats; fetchedAt: number }>();
+const inFlight = new Map<string, Promise<DeviceStats>>();
+
+type SecretsFormat = 'json' | 'shell' | 'unknown';
+
+interface SecretsReadCmd {
+  base: string[];
+  flags: string[];
+  format: SecretsFormat;
+}
+
+let secretsReadCmdCache: SecretsReadCmd | null | undefined;
+
+function augmentedEnv(binPath: string): NodeJS.ProcessEnv {
+  return { ...process.env, PATH: `${bootstrapPath(binPath)}:${process.env.PATH ?? ''}` };
+}
+
+function isLocalHost(host: string): boolean {
+  return host === 'this-mac' || host === 'localhost' || host === '';
+}
+
+export async function probeReachable(host: string): Promise<boolean> {
+  if (isLocalHost(host)) return true;
+  try {
+    await execFileAsync(
+      'ssh',
+      ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=3', '-o', 'StrictHostKeyChecking=accept-new', host, 'true'],
+      { timeout: PROBE_TIMEOUT_MS },
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function fetchDeviceStats(
+  host: string,
+  opts: { isLocal: boolean; identityFile?: string; user?: string },
+): Promise<DeviceStats> {
+  const now = Date.now();
+  const cached = cache.get(host);
+  if (cached && now - cached.fetchedAt < CACHE_TTL_MS) return cached.stats;
+  const existing = inFlight.get(host);
+  if (existing) return existing;
+  const promise = fetchDeviceStatsOnce(host, opts);
+  inFlight.set(host, promise);
+  try {
+    const stats = await promise;
+    cache.set(host, { stats, fetchedAt: stats.fetchedAt });
+    return stats;
+  } finally {
+    inFlight.delete(host);
+  }
+}
+
+async function fetchDeviceStatsOnce(
+  host: string,
+  opts: { isLocal: boolean; identityFile?: string; user?: string },
+): Promise<DeviceStats> {
+  const fetchedAt = Date.now();
+  if (opts.isLocal) {
+    try {
+      const loadAvg1 = os.loadavg()[0];
+      const { stdout } = await execFileAsync('vm_stat', [], { timeout: 3_000 });
+      const mem = parseVmStat(stdout);
+      return { host, reachable: true, loadAvg1, ...mem, fetchedAt };
+    } catch {
+      return { host, reachable: true, fetchedAt };
+    }
+  }
+  const target = opts.user ? `${opts.user}@${host}` : host;
+  const args = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=3', '-o', 'StrictHostKeyChecking=accept-new'];
+  if (opts.identityFile) args.push('-i', opts.identityFile);
+  args.push(target, 'uptime; echo ---SEP---; (vm_stat || cat /proc/meminfo)');
+  try {
+    const { stdout } = await execFileAsync('ssh', args, { timeout: PROBE_TIMEOUT_MS });
+    const parts = stdout.split('---SEP---');
+    const uptimePart = parts[0] ?? '';
+    const memPart = parts[1] ?? '';
+    const load = parseUptime(uptimePart);
+    let mem = parseVmStat(memPart);
+    if (mem.memPercent === undefined) mem = parseLinuxMemInfo(memPart);
+    return { host, reachable: true, ...load, ...mem, fetchedAt };
+  } catch {
+    return { host, reachable: false, fetchedAt };
+  }
+}
+
+export async function countRunningAgents(host: string, opts: { isLocal: boolean }): Promise<number> {
+  try {
+    const bin = await resolveAgentsBin();
+    const args = ['sessions', '--active', '--json'];
+    if (!opts.isLocal) args.push('--host', host);
+    const { stdout } = await execFileAsync(bin, args, {
+      timeout: opts.isLocal ? 6_000 : 10_000,
+      env: augmentedEnv(bin),
+    });
+    const parsed = JSON.parse(stdout);
+    return Array.isArray(parsed) ? parsed.length : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export async function resolveSecret(secretRef: string): Promise<{ user?: string; identityFile?: string }> {
+  try {
+    const bin = await resolveAgentsBin();
+    const cmd = await discoverSecretsReadCmd();
+    if (!cmd) return {};
+    const args = [...cmd.base, secretRef, ...cmd.flags];
+    const { stdout } = await execFileAsync(bin, args, { timeout: 15_000, env: augmentedEnv(bin) });
+    const entries = parseSecretsOutput(stdout, cmd.format);
+    return extractCredentials(entries);
+  } catch {
+    return {};
+  }
+}
+
+async function discoverSecretsReadCmd(): Promise<SecretsReadCmd | null> {
+  if (secretsReadCmdCache !== undefined) return secretsReadCmdCache ?? null;
+  try {
+    const bin = await resolveAgentsBin();
+    const { stdout } = await execFileAsync(bin, ['secrets', '--help'], {
+      timeout: 5_000,
+      env: augmentedEnv(bin),
+    });
+    const lower = stdout.toLowerCase();
+    if (lower.includes('export')) {
+      const { stdout: exportHelp } = await execFileAsync(bin, ['secrets', 'export', '--help'], {
+        timeout: 5_000,
+        env: augmentedEnv(bin),
+      });
+      const exportLower = exportHelp.toLowerCase();
+      if (exportLower.includes('--plaintext') && exportLower.includes('--format')) {
+        secretsReadCmdCache = { base: ['secrets', 'export'], flags: ['--plaintext', '--format', 'json'], format: 'json' };
+        return secretsReadCmdCache;
+      }
+      if (exportLower.includes('--plaintext')) {
+        secretsReadCmdCache = { base: ['secrets', 'export'], flags: ['--plaintext'], format: 'shell' };
+        return secretsReadCmdCache;
+      }
+    }
+    if (lower.includes('view')) {
+      secretsReadCmdCache = { base: ['secrets', 'view'], flags: ['--reveal', '--plaintext'], format: 'unknown' };
+      return secretsReadCmdCache;
+    }
+    secretsReadCmdCache = null;
+    return null;
+  } catch {
+    secretsReadCmdCache = null;
+    return null;
+  }
+}
+
+function parseSecretsOutput(stdout: string, format: SecretsFormat): Record<string, string> {
+  if (format === 'json') {
+    try {
+      const parsed = JSON.parse(stdout);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, string>;
+    } catch {
+      // fall through to shell-line parsing
+    }
+  }
+  const entries: Record<string, string> = {};
+  for (const line of stdout.split('\n')) {
+    const idx = line.indexOf('=');
+    if (idx > 0) {
+      const key = line.slice(0, idx).trim();
+      const value = line.slice(idx + 1).trim();
+      if (key) entries[key] = value;
+    }
+  }
+  return entries;
+}
+
+function extractCredentials(entries: Record<string, string>): { user?: string; identityFile?: string } {
+  const keys = Object.keys(entries);
+  const userKey = keys.find((k) => /user/i.test(k) && !/key/i.test(k));
+  const keyKey =
+    keys.find((k) => /private.*key|identity.*file|ssh.*key/i.test(k)) ??
+    keys.find((k) => /key/i.test(k) && !/api|token|password/i.test(k));
+  const user = userKey ? entries[userKey] : undefined;
+  let identityFile: string | undefined;
+  if (keyKey) identityFile = materializeKey(entries[keyKey]);
+  return { user, identityFile };
+}
+
+function materializeKey(value: string): string {
+  if ((value.startsWith('/') || value.startsWith('~/')) && !value.includes('-----BEGIN')) {
+    return value.startsWith('~/') ? path.join(os.homedir(), value.slice(2)) : value;
+  }
+  const tmpDir = path.join(os.homedir(), '.agents', '.tmp');
+  fs.mkdirSync(tmpDir, { recursive: true, mode: 0o700 });
+  const tmpPath = path.join(tmpDir, `ssh-key-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  fs.writeFileSync(tmpPath, value, { mode: 0o600 });
+  return tmpPath;
+}
