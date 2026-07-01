@@ -40,7 +40,13 @@ import {
   type AgentAbbr,
 } from './floorModel'
 import { adaptUnified, adaptRemote, adaptTickets, type RemoteSessionLike } from './floorAdapter'
-import { DispatchPanel } from './DispatchPanel'
+import {
+  DispatchPanel,
+  type DispatchDevice,
+  type DispatchDeviceRepo,
+  type DispatchDeviceSync,
+  type DeviceDispatchRequest,
+} from './DispatchPanel'
 import { PlanReview } from './PlanReview'
 import { FailureCard } from './FailureCard'
 import { ticketKey } from './dispatchInput'
@@ -499,6 +505,11 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   const [dispatchAgents, setDispatchAgents] = useState<InstalledAgent[]>([])
   const [dispatchHosts, setDispatchHosts] = useState<DispatchHost[]>([])
   const [dispatchTargets, setDispatchTargets] = useState<DispatchTarget[]>([])
+  // Registered-device dispatch: devices (with live health), ranked repos->projects,
+  // and the sync status for the currently-selected repo. All backend-driven.
+  const [dispatchDevices, setDispatchDevices] = useState<DispatchDevice[]>([])
+  const [deviceRepos, setDeviceRepos] = useState<DispatchDeviceRepo[]>([])
+  const [deviceSync, setDeviceSync] = useState<DispatchDeviceSync | null>(null)
   // Floor after-dispatch: plans awaiting review, one per sessionId (from `planReady`).
   const [pendingPlans, setPendingPlans] = useState<PendingPlan[]>([])
   const [cardDragActive, setCardDragActive] = useState(false)
@@ -590,6 +601,97 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     }
     window.addEventListener('message', onMsg)
     return () => window.removeEventListener('message', onMsg)
+  }, [])
+
+  // Registered-device data for the Dispatch panel's device path. Fetched when the
+  // panel opens (device health SSH-probes every host, so we don't probe on every
+  // mount). deviceHealth returns ALL registered devices folded with live stats
+  // (reachable flag included) so offline devices still list as disabled rows.
+  useEffect(() => {
+    if (!dispatchOpen) return
+    postMessage({ type: 'deviceHealth' })
+    postMessage({ type: 'repos' })
+  }, [dispatchOpen])
+  useEffect(() => {
+    const onMsg = (event: MessageEvent) => {
+      const msg = event.data
+      if (msg?.type === 'deviceHealthData' && Array.isArray(msg.health)) {
+        setDispatchDevices(
+          (msg.health as Array<{ device: { name: string; host: string; secretRef?: string; softLimit?: number }; stats: { reachable?: boolean; runningAgents?: number; memPercent?: number; loadAvg1?: number } }>).map(
+            ({ device, stats }) => ({
+              name: device.name,
+              host: device.host,
+              secretRef: device.secretRef,
+              softLimit: device.softLimit,
+              reachable: !!stats?.reachable,
+              runningAgents: stats?.runningAgents,
+              memPercent: stats?.memPercent,
+              loadAvg1: stats?.loadAvg1,
+            }),
+          ),
+        )
+      } else if (msg?.type === 'reposData' && Array.isArray(msg.repos)) {
+        setDeviceRepos(msg.repos as DispatchDeviceRepo[])
+      } else if (msg?.type === 'repoSyncData') {
+        setDeviceSync((msg.status as DispatchDeviceSync | null) ?? null)
+      }
+    }
+    window.addEventListener('message', onMsg)
+    return () => window.removeEventListener('message', onMsg)
+  }, [])
+
+  const onRequestRepoSync = useCallback((deviceName: string, root: string) => {
+    setDeviceSync(null)
+    const dev = dispatchDevices.find((d) => d.name === deviceName)
+    postMessage({ type: 'repoSync', root, host: dev?.host })
+  }, [dispatchDevices])
+
+  const onManageDevices = useCallback(() => {
+    postMessage({ type: 'manageDevices' })
+  }, [])
+
+  const onDeviceDispatch = useCallback((req: DeviceDispatchRequest) => {
+    setDispatchOpen(false)
+    const now = Date.now()
+    const perTicket = req.batch === 'per' && req.ticketIds.length > 1
+    const seeds: (string | undefined)[] = perTicket ? req.ticketIds : [req.ticketIds[0]]
+    const promptTitle = req.prompt.trim().slice(0, 60) || req.ticketIds[0] || 'New agent'
+    seeds.forEach((tid) => {
+      postMessage({
+        type: 'dispatchTask',
+        target: 'device',
+        agentType: req.agent,
+        deviceName: req.deviceName,
+        host: req.host,
+        secretRef: req.secretRef,
+        projectPath: req.projectPath,
+        repoSlug: req.repoSlug,
+        syncPolicy: req.syncPolicy,
+        mode: req.mode,
+        title: perTicket && tid ? tid : promptTitle,
+        description: req.prompt,
+        identifier: tid ?? '',
+      })
+    })
+    const pendings: PendingDispatch[] = seeds.map((tid, i) => ({
+      id: `pending-dispatch-${now}-${i}`,
+      agentType: req.agent,
+      target: 'device',
+      taskId: `dispatch-${now}-${i}`,
+      taskIdentifier: tid ?? '',
+      title: perTicket && tid ? tid : promptTitle,
+      createdAt: now + i,
+      deviceName: req.deviceName,
+      secretRef: req.secretRef,
+      projectPath: req.projectPath,
+      repoSlug: req.repoSlug,
+      syncPolicy: req.syncPolicy,
+    }))
+    setPendingDispatches((prev) => [...prev, ...pendings])
+    setTimeout(() => {
+      postMessage({ type: 'fetchAllTerminals' })
+      postMessage({ type: 'fetchTasks' })
+    }, 800)
   }, [])
 
   const newMenuRef = useRef<HTMLDivElement>(null)
@@ -1424,6 +1526,12 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
         prefillTicketId={dispatchPrefillTicketId}
         onClose={() => setDispatchOpen(false)}
         onDispatch={onDispatchRequest}
+        devices={dispatchDevices}
+        deviceRepos={deviceRepos}
+        deviceSync={deviceSync}
+        onRequestRepoSync={onRequestRepoSync}
+        onManageDevices={onManageDevices}
+        onDeviceDispatch={onDeviceDispatch}
       />
     </div>
   )

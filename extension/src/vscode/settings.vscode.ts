@@ -45,6 +45,12 @@ import { buildAgentTerminalEnv } from '../core/terminals';
 import * as foreman from './foreman.vscode';
 import { startForemanAudio, ForemanAudioSession } from './foreman.audio';
 import { buildTaskDispatchPrompt } from '../core/tasks';
+import { loadDevices } from '../core/deviceRegistry';
+import { probeReachable, fetchDeviceStats, countRunningAgents, resolveSecret } from './deviceHealth.vscode';
+import { inferProjectCandidates } from '../core/projectIndex';
+import { rankRepos } from '../core/repoIndex';
+import { detectProjects } from '../core/projectDetect';
+import { getSyncStatus } from '../core/repoSync';
 
 let foremanSession: ForemanAudioSession | undefined;
 let foremanSessionGen = 0;
@@ -278,6 +284,83 @@ function composeDispatchPrompt(
     parts.push(`Attachments: ${attachments.map(a => a.ref ? `${a.name} (${a.ref})` : a.name).join(', ')}`);
   }
   return parts.join('\n\n');
+}
+
+// ---------------------------------------------------------------------------
+// Registered-device dispatch (SSH to a real machine). A device is 'local' when
+// its host points at this machine; otherwise the agent is spawned over SSH.
+// ---------------------------------------------------------------------------
+function isLocalDeviceHost(host: string): boolean {
+  const h = hostname();
+  return host === 'this-mac' || host === 'localhost' || host === '' || host === h || host === h.split('.')[0];
+}
+
+// Single-quote a value for safe embedding in a remote /bin/sh command.
+function shq(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+// Build the auto-sync shell snippet run in the project dir before the agent
+// starts. Safe = fetch + fast-forward only (fails loudly on divergence rather
+// than forcing). Aggressive = also rebase, but never force: on a rebase
+// conflict it aborts and exits non-zero so the caller can surface it. Off = ''.
+function buildDeviceSyncShell(policy: 'off' | 'safe' | 'aggressive'): string {
+  if (policy === 'off') return '';
+  const fetch = 'git fetch origin';
+  if (policy === 'safe') {
+    return `${fetch} && git merge --ff-only @{u}`;
+  }
+  return `${fetch} && (git merge --ff-only @{u} || git rebase @{u} || (git rebase --abort; echo "SYNC_CONFLICT: rebase left conflicts — resolve manually" 1>&2; exit 3))`;
+}
+
+const deviceExecFileAsync = promisify(execFile);
+
+// Spawn a coding agent on a registered device over SSH, honoring the resolved
+// credentials (identity file / user) and the auto-sync policy. Fire-and-forget:
+// the remote agent is backgrounded (nohup) so the ssh call returns promptly.
+// Returns an error string to surface inline, or null on success.
+async function dispatchToDevice(input: {
+  agentType: string;
+  host: string;
+  secretRef?: string;
+  projectPath: string;
+  syncPolicy: 'off' | 'safe' | 'aggressive';
+  mode: DispatchModeMsg;
+  prompt: string;
+}): Promise<string | null> {
+  const { agentType, host, secretRef, projectPath, syncPolicy, mode, prompt } = input;
+  if (!projectPath) return 'Device dispatch: no project path resolved — pick a repo/project first.';
+
+  const creds = secretRef ? await resolveSecret(secretRef) : {};
+  const syncShell = buildDeviceSyncShell(syncPolicy);
+  const runCmd = `agents run ${agentType} --mode ${mode} -p ${shq(prompt)}`;
+  const remote =
+    `cd ${shq(projectPath)} && ` +
+    (syncShell ? `${syncShell} && ` : '') +
+    `nohup ${runCmd} > "$HOME/.agents/.tmp/dispatch-$(date +%s).log" 2>&1 &`;
+
+  if (isLocalDeviceHost(host)) {
+    // Local device: run the same snippet through the login shell, no SSH hop.
+    try {
+      await deviceExecFileAsync('/bin/sh', ['-lc', remote], { timeout: 60_000 });
+      return null;
+    } catch (err) {
+      const e = err as { stderr?: string; message?: string };
+      return `Device dispatch failed on ${host}: ${(e.stderr || e.message || 'unknown error').trim()}`;
+    }
+  }
+
+  const target = creds.user ? `${creds.user}@${host}` : host;
+  const args = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8', '-o', 'StrictHostKeyChecking=accept-new'];
+  if (creds.identityFile) args.push('-i', creds.identityFile);
+  args.push(target, remote);
+  try {
+    await deviceExecFileAsync('ssh', args, { timeout: 60_000 });
+    return null;
+  } catch (err) {
+    const e = err as { stderr?: string; message?: string };
+    return `Device dispatch failed on ${host}: ${(e.stderr || e.message || 'unknown error').trim()}`;
+  }
 }
 
 // Per-session policy captured at dispatch time. The Floor / notification layer
@@ -1552,6 +1635,93 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
         }
         break;
       }
+      // ---- registered-device dispatch data (Dispatch panel device path) ----
+      case 'listDevices': {
+        try {
+          const devices = await loadDevices();
+          settingsPanel?.webview.postMessage({ type: 'devicesData', devices });
+        } catch (err) {
+          console.error('[SETTINGS] Error listing devices:', err);
+          settingsPanel?.webview.postMessage({ type: 'devicesData', devices: [] });
+        }
+        break;
+      }
+      case 'deviceHealth': {
+        // For each registered device in parallel: SSH-probe reachability, fetch
+        // live load (loadAvg/mem), and count running agents. Reachability from
+        // fetchDeviceStats (credential-aware) is OR'd with the bare probe.
+        try {
+          const devices = await loadDevices();
+          const health = await Promise.all(
+            devices.map(async (device) => {
+              const isLocal = isLocalDeviceHost(device.host);
+              const creds = device.secretRef ? await resolveSecret(device.secretRef) : {};
+              const [reachable, stats, runningAgents] = await Promise.all([
+                probeReachable(device.host),
+                fetchDeviceStats(device.host, { isLocal, identityFile: creds.identityFile, user: creds.user }),
+                countRunningAgents(device.host, { isLocal }),
+              ]);
+              return {
+                device,
+                stats: { ...stats, reachable: stats.reachable || reachable, runningAgents },
+              };
+            }),
+          );
+          settingsPanel?.webview.postMessage({ type: 'deviceHealthData', health });
+        } catch (err) {
+          console.error('[SETTINGS] Error fetching device health:', err);
+          settingsPanel?.webview.postMessage({ type: 'deviceHealthData', health: [] });
+        }
+        break;
+      }
+      case 'projectCandidates': {
+        try {
+          const candidates = await inferProjectCandidates();
+          settingsPanel?.webview.postMessage({ type: 'projectCandidatesData', candidates });
+        } catch (err) {
+          console.error('[SETTINGS] Error inferring project candidates:', err);
+          settingsPanel?.webview.postMessage({ type: 'projectCandidatesData', candidates: [] });
+        }
+        break;
+      }
+      case 'repos': {
+        try {
+          const candidates = await inferProjectCandidates();
+          const repos = await rankRepos(candidates, detectProjects);
+          settingsPanel?.webview.postMessage({ type: 'reposData', repos });
+        } catch (err) {
+          console.error('[SETTINGS] Error ranking repos:', err);
+          settingsPanel?.webview.postMessage({ type: 'reposData', repos: [] });
+        }
+        break;
+      }
+      case 'repoSync': {
+        const root = typeof message.root === 'string' ? message.root : '';
+        if (!root) {
+          settingsPanel?.webview.postMessage({ type: 'repoSyncData', root: '', status: null });
+          break;
+        }
+        try {
+          const status = await getSyncStatus(root, { fetch: true });
+          settingsPanel?.webview.postMessage({ type: 'repoSyncData', root, status });
+        } catch (err) {
+          console.error('[SETTINGS] Error checking repo sync:', err);
+          settingsPanel?.webview.postMessage({ type: 'repoSyncData', root, status: null });
+        }
+        break;
+      }
+      case 'manageDevices': {
+        const devicesPath = path.join(homedir(), '.agents', 'devices.json');
+        try {
+          const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(devicesPath));
+          await vscode.window.showTextDocument(doc);
+        } catch {
+          vscode.window.showErrorMessage(
+            `No devices file at ${devicesPath}. Register a device with \`agents devices add\` first.`,
+          );
+        }
+        break;
+      }
       case 'fetchAgentResources': {
         const force = message?.force === true;
         if (force) invalidateAgentResourcesCache();
@@ -1747,6 +1917,43 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
       }
       case 'dispatchTask': {
         const agentType = typeof message.agentType === 'string' ? message.agentType : 'claude';
+        // Device target: spawn the agent on a registered machine over SSH, in the
+        // resolved project path, honoring the auto-sync policy + resolved creds.
+        // Kept separate from the local/cloud branches below (which are unchanged).
+        if (message.target === 'device') {
+          const deviceHost = typeof message.host === 'string' ? message.host : '';
+          const projectPath = typeof message.projectPath === 'string' ? message.projectPath : '';
+          const secretRef = typeof message.secretRef === 'string' ? message.secretRef : undefined;
+          const syncPolicy: 'off' | 'safe' | 'aggressive' =
+            message.syncPolicy === 'off' || message.syncPolicy === 'aggressive' ? message.syncPolicy : 'safe';
+          const deviceMode: DispatchModeMsg =
+            message.mode === 'plan' || message.mode === 'edit' ? message.mode : 'auto';
+          const deviceName = typeof message.deviceName === 'string' ? message.deviceName : deviceHost;
+          const promptBody = typeof message.description === 'string' ? message.description : '';
+          const promptIdentifier = typeof message.identifier === 'string' ? message.identifier : '';
+          const devicePrompt = [promptBody.trim(), promptIdentifier ? `Attached ticket: ${promptIdentifier}` : '']
+            .filter(Boolean)
+            .join('\n\n') || (typeof message.title === 'string' ? message.title : '');
+          if (!deviceHost) {
+            vscode.window.showErrorMessage('Device dispatch: no device host provided.');
+            break;
+          }
+          if (!devicePrompt.trim()) {
+            vscode.window.showErrorMessage('Device dispatch: nothing to do — add a prompt or attach a ticket.');
+            break;
+          }
+          const err = await dispatchToDevice({
+            agentType,
+            host: deviceHost,
+            secretRef,
+            projectPath,
+            syncPolicy,
+            mode: deviceMode,
+            prompt: devicePrompt,
+          });
+          if (err) vscode.window.showErrorMessage(`${deviceName}: ${err}`);
+          break;
+        }
         const target = message.target === 'cloud' ? 'cloud' : 'local';
         // Cloud provider picks which backend we shell out to. 'rush' keeps
         // the legacy `rush cloud run` path so existing users see no change.
