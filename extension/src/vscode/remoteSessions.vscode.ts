@@ -46,8 +46,10 @@ const LOAD_PROBE_TIMEOUT_MS = 4000;
 // online set is usually small; the cap just stops a large tailnet from spawning a
 // thundering herd of ssh handshakes at once (the M5-freeze failure mode).
 const FANOUT_CONCURRENCY = 4;
-// Reuse one SSH connection per host across probes instead of a fresh handshake
-// each time. First connect pays the handshake; the rest ride the warm tunnel.
+// SSH multiplexing for the ONE ssh we invoke directly — the CPU-load probe. The
+// main session fetch runs through `agents --host`, whose SSH the CLI owns, so this
+// only warms the CPU-probe connection (reused across repeated probes to the same
+// host); it does not cover the session fetch.
 const SSH_MUX_OPTS = [
   '-o', 'ControlMaster=auto',
   '-o', 'ControlPath=~/.ssh/cm-%r@%h:%p',
