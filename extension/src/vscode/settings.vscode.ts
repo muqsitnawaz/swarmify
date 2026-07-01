@@ -47,6 +47,7 @@ import { startForemanAudio, ForemanAudioSession } from './foreman.audio';
 import { buildTaskDispatchPrompt } from '../core/tasks';
 import { listRegisteredDevices, fetchDeviceStats, countRunningAgents, resolveSecret, getDeviceSyncStatus } from './deviceHealth.vscode';
 import { inferProjectCandidates } from '../core/projectIndex';
+import { normalizeHost } from '../core/remoteSessions';
 import { rankRepos } from '../core/repoIndex';
 import { detectProjects } from '../core/projectDetect';
 import { getSyncStatus } from '../core/repoSync';
@@ -1656,12 +1657,18 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
       }
       // ---- registered-device dispatch data (Dispatch panel device path) ----
       case 'listDevices': {
+        // `local` is this machine's canonical device name (matches an `agents
+        // devices` registry entry when the local hostname is aligned with it, as
+        // agents-cli's own self-detection assumes). The sidebar folds its local
+        // session bucket into this name so the machine shows once under its real
+        // name instead of duplicated as 'this-mac' + the registry name.
+        const local = normalizeHost(hostname());
         try {
           const devices = await listRegisteredDevices();
-          settingsPanel?.webview.postMessage({ type: 'devicesData', devices });
+          settingsPanel?.webview.postMessage({ type: 'devicesData', devices, local });
         } catch (err) {
           console.error('[SETTINGS] Error listing devices:', err);
-          settingsPanel?.webview.postMessage({ type: 'devicesData', devices: [] });
+          settingsPanel?.webview.postMessage({ type: 'devicesData', devices: [], local });
         }
         break;
       }
