@@ -1538,7 +1538,7 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
           const { fetchHostSessions, LOCAL_LABEL } = await import('./remoteSessions.vscode');
           const [inventories, hostResult] = await Promise.all([
             getCachedAgentInventories(),
-            fetchHostSessions(),
+            fetchHostSessions(Date.now(), { probeCpu: true }),
           ]);
           const defaultTitle = context.globalState.get<string>('agents.defaultAgentTitle', 'CC');
           const defaultAgentId = getBuiltInDefByTitle(defaultTitle)?.key ?? 'claude';
@@ -1673,6 +1673,23 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
             groups: [],
             fetchedAt: Date.now(),
           });
+        }
+        break;
+      }
+      case 'fetchLocalSessions': {
+        // Local-only fast path (the 3s feed poll): this machine's sessions with no
+        // SSH and no host discovery. Rides a distinct 'localSessions' message so the
+        // webview replaces only the this-mac rows and leaves remote rows intact.
+        try {
+          const { fetchLocalSessions } = await import('./remoteSessions.vscode');
+          const { sessions: localSessions, fetchedAt } = await fetchLocalSessions();
+          settingsPanel?.webview.postMessage({
+            type: 'localSessions',
+            sessions: localSessions,
+            fetchedAt,
+          });
+        } catch (err) {
+          console.error('[SETTINGS] Error fetching local sessions:', err);
         }
         break;
       }
