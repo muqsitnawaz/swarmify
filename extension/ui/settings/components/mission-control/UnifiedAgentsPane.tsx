@@ -510,6 +510,9 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   const [dispatchDevices, setDispatchDevices] = useState<DispatchDevice[]>([])
   const [deviceRepos, setDeviceRepos] = useState<DispatchDeviceRepo[]>([])
   const [deviceSync, setDeviceSync] = useState<DispatchDeviceSync | null>(null)
+  // Lightweight fleet list (agents devices list --json, no SSH) for the sidebar
+  // HOSTS section — populated on mount so hosts show even before the panel opens.
+  const [fleetDevices, setFleetDevices] = useState<{ name: string; online: boolean }[]>([])
   // Floor after-dispatch: plans awaiting review, one per sessionId (from `planReady`).
   const [pendingPlans, setPendingPlans] = useState<PendingPlan[]>([])
   const [cardDragActive, setCardDragActive] = useState(false)
@@ -612,10 +615,21 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     postMessage({ type: 'deviceHealth' })
     postMessage({ type: 'repos' })
   }, [dispatchOpen])
+  // Cheap fleet fetch on mount (no SSH) so the sidebar HOSTS list is populated.
+  useEffect(() => {
+    postMessage({ type: 'listDevices' })
+  }, [])
   useEffect(() => {
     const onMsg = (event: MessageEvent) => {
       const msg = event.data
-      if (msg?.type === 'deviceHealthData' && Array.isArray(msg.health)) {
+      if (msg?.type === 'devicesData' && Array.isArray(msg.devices)) {
+        setFleetDevices(
+          (msg.devices as Array<{ name: string; online?: boolean }>).map((d) => ({
+            name: d.name,
+            online: !!d.online,
+          })),
+        )
+      } else if (msg?.type === 'deviceHealthData' && Array.isArray(msg.health)) {
         setDispatchDevices(
           (msg.health as Array<{ device: { name: string; host: string; secretRef?: string; softLimit?: number }; stats: { reachable?: boolean; runningAgents?: number; memPercent?: number; loadAvg1?: number } }>).map(
             ({ device, stats }) => ({
@@ -1482,6 +1496,11 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
             tickets={floorTickets}
             projFilter={projFilter}
             offlineHosts={offlineHosts}
+            devices={
+              dispatchDevices.length
+                ? dispatchDevices.map((d) => ({ name: d.name, online: !!d.reachable, agents: d.runningAgents ?? 0 }))
+                : fleetDevices.map((d) => ({ name: d.name, online: d.online, agents: 0 }))
+            }
             onScope={onScope}
           />
         )}

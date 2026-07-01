@@ -333,8 +333,13 @@ async function dispatchToDevice(input: {
   const creds = secretRef ? await resolveSecret(secretRef) : {};
   const syncShell = buildDeviceSyncShell(syncPolicy);
   const runCmd = `agents run ${agentType} --mode ${mode} -p ${shq(prompt)}`;
+  // Tilde must expand on the remote, so it can't be inside single quotes.
+  const cdCmd =
+    projectPath === '~' ? 'cd "$HOME"'
+      : projectPath.startsWith('~/') ? `cd "$HOME"/${shq(projectPath.slice(2))}`
+        : `cd ${shq(projectPath)}`;
   const remote =
-    `cd ${shq(projectPath)} && ` +
+    `${cdCmd} && ` +
     (syncShell ? `${syncShell} && ` : '') +
     `nohup ${runCmd} > "$HOME/.agents/.tmp/dispatch-$(date +%s).log" 2>&1 &`;
 

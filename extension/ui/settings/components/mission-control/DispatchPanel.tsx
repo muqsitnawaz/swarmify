@@ -208,6 +208,7 @@ export function DispatchPanel(props: DispatchPanelProps) {
   const doDispatch = () => {
     if (!effAgent) return
     if (deviceMode && effDevice && onDeviceDispatch) {
+      if (!S.projectPath) return
       onDeviceDispatch({
         prompt: S.prompt,
         ticketIds: S.attached,
@@ -245,11 +246,16 @@ export function DispatchPanel(props: DispatchPanelProps) {
   }
 
   // ---- device repo -> project resolution ----
-  const pickHostPath = (repo: DispatchDeviceRepo, device: DispatchDevice | undefined): string =>
-    (device && repo.perHostPaths[device.host]) ||
-    repo.perHostPaths['this-mac'] ||
-    Object.values(repo.perHostPaths)[0] ||
-    ''
+  // Local host uses the real detected path; a remote device uses its known
+  // per-host path if we have one, else the ~/src/github.com/<owner>/<repo>
+  // convention (tilde expands on the remote — never the local mac path).
+  const pickHostPath = (repo: DispatchDeviceRepo, device: DispatchDevice | undefined): string => {
+    const isLocal = !device || device.host === 'this-mac' || device.host === 'localhost' || device.host === ''
+    if (isLocal) {
+      return repo.perHostPaths['this-mac'] || Object.values(repo.perHostPaths)[0] || `~/src/github.com/${repo.slug}`
+    }
+    return repo.perHostPaths[device.host] || `~/src/github.com/${repo.slug}`
+  }
 
   const selectDevice = (name: string) => {
     const dev = deviceList.find(d => d.name === name)
@@ -286,8 +292,11 @@ export function DispatchPanel(props: DispatchPanelProps) {
   // ---- footer label ----
   const nCount = (S.batch === 'per' && attachedCount >= 2) ? attachedCount : 1
   const deviceTargetLabel = S.repoSlug || (S.projectPath ? shortPath(S.projectPath) : '—')
+  const deviceNeedsRepo = deviceMode && !S.projectPath
   const footLabel = deviceMode && effDevice
-    ? (nCount > 1
+    ? (deviceNeedsRepo
+        ? `Select a repo to run on ${effDevice.name}`
+        : nCount > 1
         ? `Dispatch ${nCount} agents → ${effDevice.name}`
         : `Dispatch ${effAgent?.name ?? 'agent'} → ${deviceTargetLabel} on ${effDevice.name}`)
     : nCount > 1
@@ -442,7 +451,7 @@ export function DispatchPanel(props: DispatchPanelProps) {
       </div>
 
       <div className="foot">
-        <button className="disp" onClick={doDispatch}>
+        <button className="disp" onClick={doDispatch} disabled={deviceNeedsRepo}>
           <Icon name="zap" size={14} /> {footLabel}<span className="kbd">⌘↵</span>
         </button>
         {effAgent && !effAgent.signedIn && (
@@ -559,8 +568,10 @@ function DeviceSelect({ devices, value, onChange, onManage }: {
   const ref = useRef<HTMLDivElement>(null)
   useClickAway(ref, () => setOpen(false), open)
 
+  // Only show reachable devices; offline/pending nodes just clutter the list.
+  const online = devices.filter(d => d.reachable)
   const sel = devices.find(d => d.name === value)
-  const sug = suggestedDevice(devices)
+  const sug = suggestedDevice(online)
 
   const pick = (d: DispatchDevice) => {
     if (!deviceReady(d)) return
@@ -583,7 +594,7 @@ function DeviceSelect({ devices, value, onChange, onManage }: {
             <span className="dot off" />
             <span className="nm">Off — run on host above</span>
           </div>
-          {devices.map(d => (
+          {online.map(d => (
             <div
               key={d.name}
               className={`opt ${d.name === value ? 'sel' : ''} ${!deviceReady(d) ? 'dis' : ''}`}

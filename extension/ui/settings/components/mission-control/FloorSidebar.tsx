@@ -14,6 +14,8 @@ interface FloorSidebarProps {
   projFilter: string | null
   /** Hosts known to be offline (health comes from SHELL, not hardcoded). */
   offlineHosts?: string[]
+  /** Registered device fleet (agents devices) to surface under HOSTS, even with 0 agents. */
+  devices?: { name: string; online: boolean; agents: number }[]
   /**
    * Scope routing. '' = All agents, '__needs' = Needs you, '__queue' = Backlog,
    * otherwise a project name. Mirrors wireSidebar()'s data-proj values.
@@ -21,7 +23,7 @@ interface FloorSidebarProps {
   onScope: (value: string) => void
 }
 
-export function FloorSidebar({ agents, tickets, projFilter, offlineHosts = [], onScope }: FloorSidebarProps) {
+export function FloorSidebar({ agents, tickets, projFilter, offlineHosts = [], devices = [], onScope }: FloorSidebarProps) {
   const byProj: Record<string, number> = {}
   const byHost: Record<string, number> = {}
   const projWait: Record<string, number> = {}
@@ -63,13 +65,25 @@ export function FloorSidebar({ agents, tickets, projFilter, offlineHosts = [], o
       ))}
 
       <div className="sb-sec">HOSTS</div>
-      {Object.keys(byHost).sort().map((ho) => (
-        <div key={ho} className="sb-item" onClick={() => onScope('')}>
-          <span className={`hd ${offline.has(ho) ? 'off' : ''}`} />
-          <span>{ho}</span>
-          <span className="c">{offline.has(ho) ? <span style={{ color: 'var(--fail)' }}>offline</span> : byHost[ho]}</span>
-        </div>
-      ))}
+      {(() => {
+        // Merge active-session hosts (byHost, includes this-mac) with the online
+        // device fleet from `agents devices` so hosts show even with 0 agents.
+        const deviceByName = new Map(devices.map((d) => [d.name, d]))
+        const names = new Set<string>(Object.keys(byHost))
+        for (const d of devices) if (d.online) names.add(d.name)
+        return [...names].sort().map((ho) => {
+          const dev = deviceByName.get(ho)
+          const isOff = offline.has(ho) || (dev ? !dev.online : false)
+          const count = byHost[ho] ?? dev?.agents ?? 0
+          return (
+            <div key={ho} className="sb-item" onClick={() => onScope('')}>
+              <span className={`hd ${isOff ? 'off' : ''}`} />
+              <span>{ho}</span>
+              <span className="c">{isOff ? <span style={{ color: 'var(--fail)' }}>offline</span> : count}</span>
+            </div>
+          )
+        })
+      })()}
     </div>
   )
 }
