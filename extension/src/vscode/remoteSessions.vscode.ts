@@ -21,6 +21,7 @@ import {
   enrichWithSessionContent,
   groupByHost,
 } from '../core/remoteSessions';
+import { deriveHostLoad, parseRemoteCpuRatio } from '../core/dispatchRanking';
 
 const execFileAsync = promisify(execFile);
 const execAsync = promisify(exec);
@@ -37,6 +38,7 @@ const ACTIVE_TIMEOUT_REMOTE_MS = 10000;
 const DETAIL_TIMEOUT_MS = 15000;
 const TAILSCALE_TIMEOUT_MS = 4000;
 const CACHE_TTL_MS = 4000;
+const LOAD_PROBE_TIMEOUT_MS = 4000;
 
 // Common CLI install dirs a GUI-launched editor's PATH usually MISSES. A raw
 // exec (no login shell) on macOS often has only /usr/bin:/bin, so `which agents`
@@ -130,7 +132,9 @@ async function readTailscaleHosts(): Promise<HostInfo[]> {
     for (const peer of peers as any[]) {
       const name = typeof peer?.HostName === 'string' ? peer.HostName : '';
       if (!name) continue;
-      out.push({ name, online: peer?.Online === true });
+      const online = peer?.Online === true;
+      // Pre-probe placeholders; fetchHostSessions overwrites with measured load.
+      out.push({ name, online, agents: 0, load: online ? 'idle' : 'off', uses: 0 });
     }
     return out;
   } catch {
@@ -151,10 +155,12 @@ export async function discoverHosts(): Promise<HostInfo[]> {
   ]);
 
   const byName = new Map<string, HostInfo>();
-  byName.set(LOCAL_HOST, { name: LOCAL_HOST, online: true });
+  // Pre-probe placeholders (agents/load/uses); fetchHostSessions overwrites them
+  // with measured live load before the roster crosses to the webview.
+  byName.set(LOCAL_HOST, { name: LOCAL_HOST, online: true, agents: 0, load: 'idle', uses: 0 });
   for (const h of sshHosts) {
     if (h === LOCAL_HOST || byName.has(h)) continue;
-    byName.set(h, { name: h, online: true });
+    byName.set(h, { name: h, online: true, agents: 0, load: 'idle', uses: 0 });
   }
   for (const h of tsHosts) {
     if (h.name === LOCAL_HOST) continue;
@@ -188,11 +194,38 @@ async function readSessionTail(sessionFile: string, agentType: string): Promise<
   }
 }
 
+/**
+ * Live CPU load ratio (1-min loadavg / cores) for one host. Local reads
+ * os.loadavg()/os.cpus() directly (no shell-out); remote runs a single
+ * `uptime; getconf _NPROCESSORS_ONLN` over the SAME ssh path the session fetch
+ * uses. Returns null when the probe fails or the output can't be parsed — the
+ * caller then derives load from agent count alone. Only called for reachable
+ * hosts, so dead machines are never probed.
+ */
+async function probeCpuRatio(host: string, isLocal: boolean): Promise<number | null> {
+  if (isLocal) {
+    const cores = os.cpus().length;
+    if (cores <= 0) return null;
+    return os.loadavg()[0] / cores;
+  }
+  try {
+    const { stdout } = await execFileAsync(
+      'ssh',
+      ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=4', host, 'uptime; getconf _NPROCESSORS_ONLN'],
+      { timeout: LOAD_PROBE_TIMEOUT_MS, maxBuffer: 1 * 1024 * 1024, env: pathAugmentedEnv() },
+    );
+    return parseRemoteCpuRatio(stdout);
+  } catch {
+    return null;
+  }
+}
+
 /** Run `agents sessions --active --json`, locally or on one remote via --host. */
 async function fetchActiveForHost(host: string, isLocal: boolean, fetchedAt: number): Promise<{
   host: string;
   online: boolean;
   sessions: RemoteSession[];
+  cpuRatio: number | null;
 }> {
   const agentsBin = await findAgentsCli();
   const args = ['sessions', '--active', '--json'];
@@ -222,10 +255,17 @@ async function fetchActiveForHost(host: string, isLocal: boolean, fetchedAt: num
       }
       sessions.push(session);
     }
-    return { host, online: true, sessions };
+    // Host answered, so it is reachable — probe its live CPU load. Guarded by its
+    // own hard timeout so a slow ssh can never extend the fan-out.
+    const cpuRatio = await withHardTimeout(
+      probeCpuRatio(host, isLocal),
+      LOAD_PROBE_TIMEOUT_MS + 1000,
+      null,
+    );
+    return { host, online: true, sessions, cpuRatio };
   } catch {
     // Dead / slow / unreachable host — never throw the whole fan-out.
-    return { host, online: false, sessions: [] };
+    return { host, online: false, sessions: [], cpuRatio: null };
   }
 }
 
@@ -265,14 +305,19 @@ export async function fetchHostSessions(fetchedAt: number = Date.now()): Promise
         return withHardTimeout(
           fetchActiveForHost(label, isLocal, fetchedAt),
           isLocal ? ACTIVE_TIMEOUT_LOCAL_MS + 2000 : ACTIVE_TIMEOUT_REMOTE_MS + 2000,
-          { host: label, online: false, sessions: [] }
+          { host: label, online: false, sessions: [], cpuRatio: null }
         );
       })
     );
     const sessions: RemoteSession[] = [];
     const resolvedHosts: HostInfo[] = results.map((r) => {
       sessions.push(...r.sessions);
-      return { name: r.host, online: r.online };
+      // agents = this host's active-session count (== HostGroup.sessions.length);
+      // load = derived from that plus the live CPU ratio ('off' when offline);
+      // uses = the same active count, the ranking tiebreak we can source today.
+      const agents = r.sessions.length;
+      const load = r.online ? deriveHostLoad(agents, r.cpuRatio) : 'off';
+      return { name: r.host, online: r.online, agents, load, uses: agents };
     });
     const groups = groupByHost(sessions, resolvedHosts, fetchedAt);
     const result: HostSessionsResult = { hosts: resolvedHosts, sessions, groups, fetchedAt };
