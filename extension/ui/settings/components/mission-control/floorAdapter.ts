@@ -72,6 +72,7 @@ export interface RemoteSessionLike {
   sinceMs: number
   startedAtMs: number
   topic: string
+  context: string
 }
 
 // ---------- primitive helpers ----------

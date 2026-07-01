@@ -27,6 +27,10 @@ const execAsync = promisify(exec);
 
 /** This machine's name — its local sessions are queried directly (no SSH). */
 export const LOCAL_HOST = os.hostname();
+/** Canonical label the webview uses for this machine. The real os.hostname() is
+ *  kept only for SSH/isLocal detection; every host string that crosses to the UI
+ *  is normalized to this so the 'this-mac' checks there actually match. */
+export const LOCAL_LABEL = 'this-mac';
 
 const ACTIVE_TIMEOUT_LOCAL_MS = 6000;
 const ACTIVE_TIMEOUT_REMOTE_MS = 10000;
@@ -209,7 +213,11 @@ export async function fetchHostSessions(fetchedAt: number = Date.now()): Promise
   activeInFlight = (async () => {
     const hosts = await discoverHosts();
     const results = await Promise.all(
-      hosts.map((h) => fetchActiveForHost(h.name, h.name === LOCAL_HOST, fetchedAt))
+      hosts.map((h) => {
+        const isLocal = h.name === LOCAL_HOST;
+        // Label local sessions 'this-mac' for the UI; still no --host (isLocal).
+        return fetchActiveForHost(isLocal ? LOCAL_LABEL : h.name, isLocal, fetchedAt);
+      })
     );
     const sessions: RemoteSession[] = [];
     const resolvedHosts: HostInfo[] = results.map((r) => {
@@ -248,7 +256,7 @@ export async function fetchHostSessionDetail(
   sessionId: string
 ): Promise<HostSessionDetail> {
   const agentsBin = await findAgentsCli();
-  const isLocal = host === LOCAL_HOST;
+  const isLocal = host === LOCAL_HOST || host === LOCAL_LABEL;
   const args = ['sessions', sessionId, '--markdown', '--include', 'tools'];
   if (!isLocal) args.push('--host', host);
   try {

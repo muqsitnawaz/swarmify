@@ -55,6 +55,9 @@ export interface RemoteSession {
   /** Absolute session-file path, kept so the fan-out can enrich the deduped
    *  survivor without re-reading the raw record. */
   sessionFile: string;
+  /** The CLI record's `context` ('terminal' | 'cloud' | 'teams' | ...). Lets the
+   *  webview treat cloud rows differently from terminal-backed agents. */
+  context: string;
 }
 
 /** One machine's worth of sessions plus its reachability + freshness stamp. */
@@ -194,6 +197,7 @@ export function normalizeActiveSession(
     startedAtMs,
     topic: raw.topic || raw.label || '',
     sessionFile: raw.sessionFile || '',
+    context: raw.context || '',
   };
 }
 

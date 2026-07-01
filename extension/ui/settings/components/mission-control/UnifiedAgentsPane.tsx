@@ -1086,9 +1086,28 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     () => adaptUnified(items.filter((i) => i.kind !== 'watchdog'), { pinned, workspaceRepo: workspaceRepoName, nowMs }),
     [items, pinned, workspaceRepoName, nowMs]
   )
+  // Session UUIDs already open as a terminal tab in THIS window (the rich, local
+  // source). Used to avoid double-listing an agent that the machine-wide fetch also
+  // reports for this-mac.
+  const localTabSessionIds = useMemo(
+    () => new Set(items.map((i) => i.terminal?.sessionId).filter((x): x is string => !!x)),
+    [items]
+  )
   const floorRemoteAgents = useMemo(
-    () => adaptRemote(remoteSessions.filter((s) => s.host !== 'this-mac'), pinned),
-    [remoteSessions, pinned]
+    () =>
+      adaptRemote(
+        // Show every machine-wide agent, not just this window's tabs: all remote
+        // hosts, PLUS this-mac terminal sessions running elsewhere (other windows /
+        // tmux / standalone) that aren't already an open tab here. this-mac cloud
+        // rows are left to the local task list to avoid double counting.
+        remoteSessions.filter(
+          (s) =>
+            s.host !== 'this-mac' ||
+            (s.context !== 'cloud' && !localTabSessionIds.has(s.sessionId))
+        ),
+        pinned
+      ),
+    [remoteSessions, localTabSessionIds, pinned]
   )
   const floorAgents = useMemo(
     () => [...floorLocalAgents, ...floorRemoteAgents],
