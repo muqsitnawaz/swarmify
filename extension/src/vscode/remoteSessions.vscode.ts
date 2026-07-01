@@ -38,20 +38,50 @@ const DETAIL_TIMEOUT_MS = 15000;
 const TAILSCALE_TIMEOUT_MS = 4000;
 const CACHE_TTL_MS = 4000;
 
+// Common CLI install dirs a GUI-launched editor's PATH usually MISSES. A raw
+// exec (no login shell) on macOS often has only /usr/bin:/bin, so `which agents`
+// and `ssh` fail even though a terminal finds them. We prepend these to PATH for
+// every shell-out here. (Homebrew first so the running install wins over the
+// stale ~/.hermes copy that triggers the CLI's "multiple installs" warning.)
+const EXTRA_BIN_DIRS = [
+  '/opt/homebrew/bin',
+  '/usr/local/bin',
+  path.join(homedir(), '.local', 'bin'),
+  path.join(homedir(), '.bun', 'bin'),
+];
+function pathAugmentedEnv(): NodeJS.ProcessEnv {
+  const extra = EXTRA_BIN_DIRS.join(':');
+  return { ...process.env, PATH: `${extra}:${process.env.PATH || ''}` };
+}
+
 // Resolve the `agents` binary once. The extension-host PATH can differ from an
-// interactive shell's, so `which` beats assuming it is on PATH (mirrors
-// linear.vscode.ts:findLinearCli).
+// interactive shell's, so try `which` with an augmented PATH, then fall back to
+// probing known install dirs directly (mirrors linear.vscode.ts:findLinearCli).
 let cachedAgentsPath: string | null = null;
 async function findAgentsCli(): Promise<string> {
   if (cachedAgentsPath !== null) return cachedAgentsPath || 'agents';
   try {
-    const { stdout } = await execAsync('which agents');
-    cachedAgentsPath = stdout.trim();
-    return cachedAgentsPath || 'agents';
+    const { stdout } = await execAsync('which agents', { env: pathAugmentedEnv() });
+    const p = stdout.trim();
+    if (p) {
+      cachedAgentsPath = p;
+      return p;
+    }
   } catch {
-    cachedAgentsPath = '';
-    return 'agents';
+    // fall through to direct probing
   }
+  for (const dir of EXTRA_BIN_DIRS) {
+    const candidate = path.join(dir, 'agents');
+    try {
+      await fs.promises.access(candidate, fs.constants.X_OK);
+      cachedAgentsPath = candidate;
+      return candidate;
+    } catch {
+      // keep probing
+    }
+  }
+  cachedAgentsPath = '';
+  return 'agents';
 }
 
 // --- Host discovery ---------------------------------------------------------
@@ -83,6 +113,7 @@ async function readTailscaleHosts(): Promise<HostInfo[]> {
     const { stdout } = await execFileAsync('tailscale', ['status', '--json'], {
       timeout: TAILSCALE_TIMEOUT_MS,
       maxBuffer: 8 * 1024 * 1024,
+      env: pathAugmentedEnv(),
     });
     const data = JSON.parse(stdout);
     const out: HostInfo[] = [];
@@ -161,6 +192,7 @@ async function fetchActiveForHost(host: string, isLocal: boolean, fetchedAt: num
     const { stdout } = await execFileAsync(agentsBin, args, {
       timeout: isLocal ? ACTIVE_TIMEOUT_LOCAL_MS : ACTIVE_TIMEOUT_REMOTE_MS,
       maxBuffer: 16 * 1024 * 1024,
+      env: pathAugmentedEnv(),
     });
     const parsed = JSON.parse(stdout);
     const raw: any[] = Array.isArray(parsed) ? parsed : [];
@@ -263,6 +295,7 @@ export async function fetchHostSessionDetail(
     const { stdout } = await execFileAsync(agentsBin, args, {
       timeout: DETAIL_TIMEOUT_MS,
       maxBuffer: 16 * 1024 * 1024,
+      env: pathAugmentedEnv(),
     });
     return { host, sessionId, markdown: stdout };
   } catch (err) {
