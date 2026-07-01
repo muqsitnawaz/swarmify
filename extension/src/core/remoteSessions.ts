@@ -58,6 +58,16 @@ export interface RemoteSession {
   /** The CLI record's `context` ('terminal' | 'cloud' | 'teams' | ...). Lets the
    *  webview treat cloud rows differently from terminal-backed agents. */
   context: string;
+  /** Cloud task id (`agents cloud message <id> <text>` is the reply channel for
+   *  cloud rows). Empty for non-cloud sessions. */
+  cloudTaskId: string;
+  /** Cloud provider ('rush' | 'codex' | 'factory' | ...), informational. Empty otherwise. */
+  cloudProvider: string;
+  /** Team name for `teams`-context sessions (`agents factory answer <team> <text>`
+   *  is their reply channel). Empty otherwise. */
+  teamName: string;
+  /** OS pid of the live process (terminal context), 0 when unknown. */
+  pid: number;
 }
 
 /** One machine's worth of sessions plus its reachability + freshness stamp. */
@@ -212,6 +222,10 @@ export function normalizeActiveSession(
     topic: raw.topic || raw.label || '',
     sessionFile: raw.sessionFile || '',
     context: raw.context || '',
+    cloudTaskId: raw.cloudTaskId || '',
+    cloudProvider: raw.cloudProvider || '',
+    teamName: raw.teamName || '',
+    pid: typeof raw.pid === 'number' ? raw.pid : 0,
   };
 }
 

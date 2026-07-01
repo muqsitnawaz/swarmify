@@ -50,6 +50,30 @@ export interface StructuredQuestion {
 }
 
 /**
+ * How a user reply reaches THIS agent. Built by the adapter from the agent's
+ * source so the host handler ('replyToAgent') can dispatch without re-deriving:
+ *   terminal -> the live vscode terminal (sendText); local tabs only.
+ *   cloud    -> `agents cloud message <cloudTaskId> <text>`.
+ *   team     -> `agents factory answer <teamName> <text>`.
+ *   none     -> no reachable channel (external/remote raw terminal); `reason`
+ *               is shown inline instead of a dead send.
+ * `host` is 'this-mac' for local delivery or a remote name the host prefixes with
+ * ssh (cloud/team commands run on the machine that owns the session).
+ */
+export type ReplyKind = 'terminal' | 'cloud' | 'team' | 'none'
+
+export interface ReplyTarget {
+  kind: ReplyKind
+  host: string
+  terminalId?: string
+  sessionId?: string
+  cloudTaskId?: string
+  cloudProvider?: string
+  teamName?: string
+  reason?: string
+}
+
+/**
  * The at-a-glance unit rendered in every Floor surface. Built by SHELL's adapter
  * from the real UnifiedAgent (+ cross-host session data). Mirrors prototype
  * AGENTS: factory-floor.html:336-347.
@@ -75,6 +99,7 @@ export interface FloorAgent {
   branch: string
   resp: string           // last response text (Anthropic Agent-view style)
   question: StructuredQuestion | null
+  reply: ReplyTarget     // how a user reply reaches this agent (host dispatches on kind)
 }
 
 // ---------- ticket view-model (Backlog) ----------

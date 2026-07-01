@@ -41,6 +41,7 @@ function makeAgent(overrides: Partial<FloorAgent> = {}): FloorAgent {
     branch: 'feat-auth',
     resp: '',
     question: null,
+    reply: { kind: 'terminal', host: 'this-mac', terminalId: 'CC-1' },
     ...overrides,
   }
 }

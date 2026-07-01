@@ -205,6 +205,10 @@ describe('toFloorAgentFromRemote', () => {
       startedAtMs: NOW - 42_000,
       topic: 'Wire the rate limiter',
       context: 'terminal',
+      cloudTaskId: '',
+      cloudProvider: '',
+      teamName: '',
+      pid: 4321,
     }
     const a = toFloorAgentFromRemote(r, new Set())
     expect(a.host).toBe('yosemite-s0')
@@ -239,8 +243,54 @@ describe('toFloorAgentFromRemote', () => {
       startedAtMs: 0,
       topic: 'Dark mode',
       context: 'terminal',
+      cloudTaskId: '',
+      cloudProvider: '',
+      teamName: '',
+      pid: 0,
     }
     expect(toFloorAgentFromRemote(r, new Set()).lastActivityMs).toBe(0)
+  })
+})
+
+describe('deriveReplyTargetFromRemote', () => {
+  const base: RemoteSessionLike = {
+    host: 'this-mac', sessionId: 's1', agentType: 'claude', cwd: '/x', project: 'x',
+    phase: 'waiting', activity: '', tokPerSec: 0, waitingForInput: true, lastResponse: '',
+    prUrl: null, ticket: null, branch: '', sinceMs: 0, startedAtMs: 0, topic: '',
+    context: '', cloudTaskId: '', cloudProvider: '', teamName: '', pid: 0,
+  }
+
+  test('cloud row routes to `agents cloud message` on its owning host', () => {
+    const r = toFloorAgentFromRemote({ ...base, host: 'this-mac', context: 'cloud', cloudTaskId: 'vclfel94', cloudProvider: 'rush' }, new Set())
+    expect(r.reply.kind).toBe('cloud')
+    expect(r.reply.cloudTaskId).toBe('vclfel94')
+    expect(r.reply.host).toBe('this-mac')
+  })
+
+  test('a remote cloud row keeps its host so the handler can ssh to it', () => {
+    const r = toFloorAgentFromRemote({ ...base, host: 'yosemite-s0', context: 'cloud', cloudTaskId: 't7' }, new Set())
+    expect(r.reply.kind).toBe('cloud')
+    expect(r.reply.host).toBe('yosemite-s0')
+  })
+
+  test('teams row routes to `agents factory answer` with the team name', () => {
+    const r = toFloorAgentFromRemote({ ...base, context: 'teams', teamName: 'auth-team' }, new Set())
+    expect(r.reply.kind).toBe('team')
+    expect(r.reply.teamName).toBe('auth-team')
+  })
+
+  test('a raw terminal session has no injectable channel (none + reason)', () => {
+    const local = toFloorAgentFromRemote({ ...base, host: 'this-mac', context: 'terminal' }, new Set())
+    expect(local.reply.kind).toBe('none')
+    expect(local.reply.reason).toBeTruthy()
+    const remote = toFloorAgentFromRemote({ ...base, host: 'zion', context: 'terminal' }, new Set())
+    expect(remote.reply.kind).toBe('none')
+    expect(remote.reply.reason).toContain('zion')
+  })
+
+  test('a cloud row missing its task id degrades to none rather than a dead send', () => {
+    const r = toFloorAgentFromRemote({ ...base, context: 'cloud', cloudTaskId: '' }, new Set())
+    expect(r.reply.kind).toBe('none')
   })
 })
 

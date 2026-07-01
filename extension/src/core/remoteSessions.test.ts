@@ -81,6 +81,21 @@ describe('normalizeActiveSession', () => {
     expect(s.phase).toBe('running');
   });
 
+  test('carries cloud task id + provider + context through for the reply channel', () => {
+    const cloud = ACTIVE.find((r) => r.context === 'cloud' && r.status === 'queued')!;
+    const s = normalizeActiveSession(cloud, 'cloud', FETCHED_AT);
+    expect(s.context).toBe('cloud');
+    expect(s.cloudTaskId).toBe('task_e');
+    expect(s.cloudProvider).toBe(cloud.cloudProvider ?? '');
+  });
+
+  test('carries pid for terminal records (0 when absent)', () => {
+    const terminal = ACTIVE.find((r) => r.context === 'terminal')!;
+    const s = normalizeActiveSession(terminal, 'this-mac', FETCHED_AT);
+    expect(s.pid).toBe(typeof terminal.pid === 'number' ? terminal.pid : 0);
+    expect(s.teamName).toBe(terminal.teamName ?? '');
+  });
+
   test('extracts a ticket id from label/topic', () => {
     const backend = ACTIVE.find((r) => r.label === 'backend')!;
     const s = normalizeActiveSession(backend, 'this-mac', FETCHED_AT);

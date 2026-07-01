@@ -19,6 +19,7 @@ import {
   type FloorAgent,
   type FloorTicket,
   type AgentAbbr,
+  type ReplyTarget,
 } from './floorModel'
 import type { UnifiedTask } from '../../types'
 
@@ -73,6 +74,10 @@ export interface RemoteSessionLike {
   startedAtMs: number
   topic: string
   context: string
+  cloudTaskId: string
+  cloudProvider: string
+  teamName: string
+  pid: number
 }
 
 // ---------- primitive helpers ----------
@@ -158,6 +163,34 @@ export function floorPrLabel(url: string | null | undefined): string | null {
   return n ? `#${n[1]}` : null
 }
 
+/**
+ * Reply channel for a cross-host / non-tab session, derived from its context.
+ * Cloud rows answer via `agents cloud message`; teams via `agents factory answer`;
+ * a raw terminal on another machine or another local process has no injectable
+ * channel, so it resolves to 'none' with a reason the UI shows inline. `host`
+ * rides through so the host handler can ssh cloud/team commands to the owner.
+ */
+export function deriveReplyTargetFromRemote(r: RemoteSessionLike): ReplyTarget {
+  const ctx = (r.context || '').toLowerCase()
+  if (r.cloudTaskId || ctx === 'cloud') {
+    if (!r.cloudTaskId) return { kind: 'none', host: r.host, reason: 'Cloud task id unknown' }
+    // Cloud accounts are host-scoped: a local fetch reports this-mac's tasks, a --host
+    // fetch reports that host's. Keep the owner so the host handler ssh-wraps when remote.
+    return { kind: 'cloud', host: r.host, cloudTaskId: r.cloudTaskId, cloudProvider: r.cloudProvider }
+  }
+  if (r.teamName || ctx === 'teams' || ctx === 'team') {
+    if (!r.teamName) return { kind: 'none', host: r.host, reason: 'Team name unknown' }
+    return { kind: 'team', host: r.host, teamName: r.teamName }
+  }
+  // Raw terminal session (Ghostty, other window, remote shell): no generic way to
+  // inject keystrokes into a TTY we don't own. Honest 'none' beats a silent no-op.
+  return {
+    kind: 'none',
+    host: r.host,
+    reason: r.host === 'this-mac' ? 'Open the terminal to reply' : `Runs on ${r.host} — open it there to reply`,
+  }
+}
+
 // ---------- adapters ----------
 
 /**
@@ -182,6 +215,11 @@ export function toFloorAgentFromUnified(
   const resp = (lastMsgs && lastMsgs.length ? lastMsgs[lastMsgs.length - 1] : '') || u.activity || ''
   const { verb, target } = splitActivity(u.activity)
   const project = deriveProject(u.terminal?.cwd ?? u.agent?.cwd, u.agent?.repo_name, opts.workspaceRepo || '—')
+  // Local unified agents ARE this window's terminal tabs, so sendText into the live
+  // terminal is the exact reply channel; fall back to 'none' for a tab-less headless row.
+  const reply: ReplyTarget = u.terminal?.id
+    ? { kind: 'terminal', host: 'this-mac', terminalId: u.terminal.id }
+    : { kind: 'none', host: 'this-mac', reason: 'No live terminal to reply into' }
 
   return {
     id: u.id,
@@ -205,6 +243,7 @@ export function toFloorAgentFromUnified(
     branch: u.terminal?.branch ?? u.agent?.branch ?? '',
     resp,
     question: parseStructuredQuestion(resp, phase),
+    reply,
   }
 }
 
@@ -248,6 +287,7 @@ export function toFloorAgentFromRemote(r: RemoteSessionLike, pinned: Set<string>
     branch: r.branch,
     resp,
     question: parseStructuredQuestion(resp, phase),
+    reply: deriveReplyTargetFromRemote(r),
   }
 }
 

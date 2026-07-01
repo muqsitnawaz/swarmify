@@ -21,9 +21,11 @@ export interface ReplyCallbacks {
 interface StructuredReplyProps extends ReplyCallbacks {
   question: StructuredQuestion | null
   phase: FloorPhase
+  /** Inline delivery error (no reachable channel, or the CLI send failed). Shown red. */
+  error?: string
 }
 
-export function StructuredReply({ question, phase, onOption, onFreeText, onAttach }: StructuredReplyProps) {
+export function StructuredReply({ question, phase, onOption, onFreeText, onAttach, error }: StructuredReplyProps) {
   const [text, setText] = useState('')
   const danger = question?.kind === 'destructive'
   const options = question?.options ?? []
@@ -67,6 +69,7 @@ export function StructuredReply({ question, phase, onOption, onFreeText, onAttac
         />
         <button className="opt ghost" onClick={send}>Send</button>
       </div>
+      {error && <div className="reply-err" role="alert">{error}</div>}
     </>
   )
 }
