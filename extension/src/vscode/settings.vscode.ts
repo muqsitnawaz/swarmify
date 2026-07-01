@@ -45,8 +45,7 @@ import { buildAgentTerminalEnv } from '../core/terminals';
 import * as foreman from './foreman.vscode';
 import { startForemanAudio, ForemanAudioSession } from './foreman.audio';
 import { buildTaskDispatchPrompt } from '../core/tasks';
-import { loadDevices } from '../core/deviceRegistry';
-import { probeReachable, fetchDeviceStats, countRunningAgents, resolveSecret } from './deviceHealth.vscode';
+import { listRegisteredDevices, fetchDeviceStats, countRunningAgents, resolveSecret } from './deviceHealth.vscode';
 import { inferProjectCandidates } from '../core/projectIndex';
 import { rankRepos } from '../core/repoIndex';
 import { detectProjects } from '../core/projectDetect';
@@ -1638,7 +1637,7 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
       // ---- registered-device dispatch data (Dispatch panel device path) ----
       case 'listDevices': {
         try {
-          const devices = await loadDevices();
+          const devices = await listRegisteredDevices();
           settingsPanel?.webview.postMessage({ type: 'devicesData', devices });
         } catch (err) {
           console.error('[SETTINGS] Error listing devices:', err);
@@ -1647,24 +1646,24 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
         break;
       }
       case 'deviceHealth': {
-        // For each registered device in parallel: SSH-probe reachability, fetch
-        // live load (loadAvg/mem), and count running agents. Reachability from
-        // fetchDeviceStats (credential-aware) is OR'd with the bare probe.
+        // Online status comes from the agents-cli registry (tailscale.online).
+        // For online devices only, fetch live load (loadAvg/mem) and running
+        // agent count over their real address; skip offline hosts to avoid SSH
+        // hangs.
         try {
-          const devices = await loadDevices();
+          const devices = await listRegisteredDevices();
           const health = await Promise.all(
             devices.map(async (device) => {
+              if (!device.online) {
+                return { device, stats: { host: device.host, reachable: false, runningAgents: 0, fetchedAt: Date.now() } };
+              }
               const isLocal = isLocalDeviceHost(device.host);
               const creds = device.secretRef ? await resolveSecret(device.secretRef) : {};
-              const [reachable, stats, runningAgents] = await Promise.all([
-                probeReachable(device.host),
-                fetchDeviceStats(device.host, { isLocal, identityFile: creds.identityFile, user: creds.user }),
+              const [stats, runningAgents] = await Promise.all([
+                fetchDeviceStats(device.host, { isLocal, identityFile: creds.identityFile, user: creds.user || device.user }),
                 countRunningAgents(device.host, { isLocal }),
               ]);
-              return {
-                device,
-                stats: { ...stats, reachable: stats.reachable || reachable, runningAgents },
-              };
+              return { device, stats: { ...stats, reachable: true, runningAgents } };
             }),
           );
           settingsPanel?.webview.postMessage({ type: 'deviceHealthData', health });
@@ -1711,15 +1710,9 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
         break;
       }
       case 'manageDevices': {
-        const devicesPath = path.join(homedir(), '.agents', 'devices.json');
-        try {
-          const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(devicesPath));
-          await vscode.window.showTextDocument(doc);
-        } catch {
-          vscode.window.showErrorMessage(
-            `No devices file at ${devicesPath}. Register a device with \`agents devices add\` first.`,
-          );
-        }
+        const term = vscode.window.createTerminal('agents devices');
+        term.show();
+        term.sendText('agents devices sync');
         break;
       }
       case 'fetchAgentResources': {

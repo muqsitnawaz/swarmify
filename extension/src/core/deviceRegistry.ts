@@ -8,6 +8,9 @@ export interface Device {
   secretRef?: string;
   softLimit?: number;
   registeredAt: number;
+  user?: string;
+  platform?: string;
+  online?: boolean;
 }
 
 interface DevicesFile {

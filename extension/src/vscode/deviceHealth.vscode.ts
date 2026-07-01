@@ -4,9 +4,47 @@ import * as path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { DeviceStats, parseUptime, parseVmStat, parseLinuxMemInfo } from '../core/deviceHealth';
+import { Device } from '../core/deviceRegistry';
 import { resolveAgentsBin, bootstrapPath } from '../core/agentsBin';
 
 const execFileAsync = promisify(execFile);
+
+interface AgentsDeviceEntry {
+  name: string;
+  platform?: string;
+  user?: string;
+  address?: { via?: string; dnsName?: string; ip?: string };
+  auth?: { method?: string; bundle?: string; bundleKey?: string };
+  tailscale?: { online?: boolean };
+  createdAt?: string;
+}
+
+// Source the device fleet from the canonical agents-cli registry
+// (`agents devices`, self-populated from Tailscale) rather than a hand-rolled
+// file. Online status comes from tailscale.online, the credential bundle from
+// auth.bundle, and the SSH address from address.dnsName.
+export async function listRegisteredDevices(): Promise<Device[]> {
+  try {
+    const bin = await resolveAgentsBin();
+    const { stdout } = await execFileAsync(bin, ['devices', 'list', '--json'], {
+      timeout: 8_000,
+      env: augmentedEnv(bin),
+    });
+    const parsed = JSON.parse(stdout) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return (parsed as AgentsDeviceEntry[]).map((d) => ({
+      name: d.name,
+      host: d.address?.dnsName || d.name,
+      user: d.user,
+      secretRef: d.auth?.bundle,
+      platform: d.platform,
+      online: d.tailscale?.online ?? false,
+      registeredAt: d.createdAt ? Date.parse(d.createdAt) || 0 : 0,
+    }));
+  } catch {
+    return [];
+  }
+}
 
 const CACHE_TTL_MS = 6_000;
 const PROBE_TIMEOUT_MS = 4_000;
