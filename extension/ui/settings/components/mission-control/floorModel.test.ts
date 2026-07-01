@@ -406,6 +406,26 @@ describe('computeHostRows', () => {
       [{ name: 'win-mini', online: false, agents: 0 }],
       [],
     )
-    expect(rows).toEqual([{ name: 'win-mini', count: 1, offline: true }])
+    expect(rows).toEqual([{ name: 'win-mini', count: 1, offline: true, pinned: false }])
+  })
+
+  test('pinned hosts render first in pin order, then the alphabetical remainder', () => {
+    const rows = computeHostRows(
+      [makeAgent({ id: 'a', host: 'yosemite-s0' })],
+      devices,
+      [],
+      ['zion', 'mac-mini'], // user pinned zion then mac-mini
+    )
+    // pinned first in the user's order, unpinned (yosemite-s0) after, all sorted within groups
+    expect(rows.map((r) => r.name)).toEqual(['zion', 'mac-mini', 'yosemite-s0'])
+    expect(rows.filter((r) => r.pinned).map((r) => r.name)).toEqual(['zion', 'mac-mini'])
+    expect(rows.find((r) => r.name === 'yosemite-s0')!.pinned).toBe(false)
+  })
+
+  test('a pinned host stays listed even with no agents and no online device', () => {
+    // e.g. the local machine pinned by default while its registry entry is momentarily
+    // absent — the pin keeps it visible so the user can still see/reorder it.
+    const rows = computeHostRows([], [], [], ['zion'])
+    expect(rows).toEqual([{ name: 'zion', count: 0, offline: false, pinned: true }])
   })
 })

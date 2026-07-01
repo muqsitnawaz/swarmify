@@ -64,10 +64,13 @@ interface FloorPrefs {
   right: boolean
   groupBy: FloorGroupBy
   pinned: string[]
+  // Ordered pinned host names for the HOSTS sidebar. null = never customized
+  // (the local machine is pinned by default); [] = user explicitly unpinned all.
+  hostPins: string[] | null
 }
 
 function defaultFloorPrefs(): FloorPrefs {
-  return { plain: false, sidebar: true, right: true, groupBy: 'project', pinned: [] }
+  return { plain: false, sidebar: true, right: true, groupBy: 'project', pinned: [], hostPins: null }
 }
 
 function loadFloorPrefs(): FloorPrefs {
@@ -557,6 +560,8 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   const [sidebarOpen, setSidebarOpen] = useState(floorPrefs0.sidebar)
   const [rightOpen, setRightOpen] = useState(floorPrefs0.right)
   const [pinned, setPinned] = useState<Set<string>>(() => new Set(floorPrefs0.pinned))
+  // Ordered pinned HOSTS names (null = default: pin the local machine).
+  const [hostPins, setHostPins] = useState<string[] | null>(floorPrefs0.hostPins)
   const [statusChips, setStatusChips] = useState<StatusChip[]>([])
   const [abbrChips, setAbbrChips] = useState<AgentAbbr[]>([])
   const [floorSearch, setFloorSearch] = useState('')
@@ -566,10 +571,24 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   const [remoteSessions, setRemoteSessions] = useState<RemoteSessionLike[]>([])
   const [offlineHosts, setOfflineHosts] = useState<string[]>([])
 
-  // Persist the durable Floor prefs (pinned set, plain/sidebar/right toggles, group-by).
+  // Persist the durable Floor prefs (pinned set, plain/sidebar/right toggles, group-by, host pins).
   useEffect(() => {
-    saveFloorPrefs({ plain, sidebar: sidebarOpen, right: rightOpen, groupBy: floorGroupBy, pinned: [...pinned] })
-  }, [plain, sidebarOpen, rightOpen, floorGroupBy, pinned])
+    saveFloorPrefs({ plain, sidebar: sidebarOpen, right: rightOpen, groupBy: floorGroupBy, pinned: [...pinned], hostPins })
+  }, [plain, sidebarOpen, rightOpen, floorGroupBy, pinned, hostPins])
+
+  // Effective HOSTS pins: default to pinning just the local machine until the user
+  // customizes. Pin/unpin and drag-reorder always write an explicit list.
+  const effectiveHostPins = useMemo(
+    () => hostPins ?? (localHostName ? [localHostName] : []),
+    [hostPins, localHostName]
+  )
+  const toggleHostPin = useCallback((name: string) => {
+    setHostPins((prev) => {
+      const base = prev ?? (localHostName ? [localHostName] : [])
+      return base.includes(name) ? base.filter((n) => n !== name) : [...base, name]
+    })
+  }, [localHostName])
+  const reorderHostPins = useCallback((names: string[]) => setHostPins(names), [])
 
   // Cross-host merge: ask the backend for every reachable host's sessions on mount, fold
   // the genuinely-remote ones into the Floor. Local-only Floor works if this never arrives.
@@ -1506,6 +1525,9 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
                 ? dispatchDevices.map((d) => ({ name: d.name, online: !!d.reachable, agents: d.runningAgents ?? 0 }))
                 : fleetDevices.map((d) => ({ name: d.name, online: d.online, agents: 0 }))
             }
+            hostPins={effectiveHostPins}
+            onToggleHostPin={toggleHostPin}
+            onReorderHostPins={reorderHostPins}
             onScope={onScope}
           />
         )}

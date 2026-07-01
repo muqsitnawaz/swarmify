@@ -85,6 +85,7 @@ export interface HostRow {
   name: string
   count: number
   offline: boolean
+  pinned: boolean
 }
 
 /**
@@ -95,11 +96,16 @@ export interface HostRow {
  * 'this-mac' and its registry name. Device-registry reachability is authoritative
  * when a fleet entry exists; session-fetch offlineHosts only decide SSH-config-only
  * hosts.
+ *
+ * `pins` is the user's ordered list of pinned host names. Pinned hosts render FIRST,
+ * in `pins` order (drag-reorderable), then a divider, then the rest auto-sorted. A
+ * pinned host stays visible even with 0 agents / offline, since the user asked for it.
  */
 export function computeHostRows(
   agents: FloorAgent[],
   devices: { name: string; online: boolean; agents: number }[],
   offlineHosts: string[],
+  pins: string[] = [],
 ): HostRow[] {
   const byHost: Record<string, number> = {}
   for (const a of agents) {
@@ -107,15 +113,23 @@ export function computeHostRows(
     byHost[key] = (byHost[key] || 0) + 1
   }
   const offline = new Set(offlineHosts)
+  const pinIndex = new Map(pins.map((n, i) => [n, i]))
   const deviceByName = new Map(devices.map((d) => [d.name, d]))
   const names = new Set<string>(Object.keys(byHost))
   for (const d of devices) if (d.online) names.add(d.name)
-  return [...names].sort().map((name) => {
+  for (const p of pins) names.add(p) // a pinned host is always listed
+  const rows = [...names].sort().map((name) => {
     const dev = deviceByName.get(name)
     const offlineRow = dev ? !dev.online : offline.has(name)
     const count = byHost[name] ?? dev?.agents ?? 0
-    return { name, count, offline: offlineRow }
+    return { name, count, offline: offlineRow, pinned: pinIndex.has(name) }
   })
+  // Pinned first (in the user's drag order), then the alphabetical remainder.
+  const pinned = rows
+    .filter((r) => r.pinned)
+    .sort((a, b) => pinIndex.get(a.name)! - pinIndex.get(b.name)!)
+  const rest = rows.filter((r) => !r.pinned)
+  return [...pinned, ...rest]
 }
 
 // ---------- ticket view-model (Backlog) ----------
