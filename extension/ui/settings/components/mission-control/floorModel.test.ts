@@ -3,6 +3,8 @@ import type { UnifiedTask } from '../../types'
 import {
   derivePhase,
   deriveNeeds,
+  deriveStalled,
+  heartbeatLevel,
   parseStructuredQuestion,
   groupAgents,
   sortAgents,
@@ -11,6 +13,7 @@ import {
   groupTickets,
   sortTickets,
   PHASE_RANK,
+  STALL_THRESHOLD_MS,
   type FloorAgent,
   type FloorPhase,
   type StructuredQuestion,
@@ -28,6 +31,7 @@ function makeAgent(overrides: Partial<FloorAgent> = {}): FloorAgent {
     target: 'src/core/tasks.ts',
     tok: 0,
     since: '2s',
+    lastActivityMs: 0,
     files: 0,
     tools: 0,
     needs: false,
@@ -108,6 +112,49 @@ describe('deriveNeeds', () => {
     expect(deriveNeeds('running', true)).toBe(false)
     expect(deriveNeeds('idle', true)).toBe(false)
   })
+
+  test('a stalled agent needs attention', () => {
+    expect(deriveNeeds('stalled', false)).toBe(true)
+  })
+})
+
+describe('deriveStalled — a running agent gone quiet', () => {
+  const now = 1_000_000_000_000
+
+  test('running past the threshold is stalled; just under is not', () => {
+    expect(deriveStalled(now - STALL_THRESHOLD_MS, 'running', now)).toBe(true)
+    expect(deriveStalled(now - (STALL_THRESHOLD_MS - 1), 'running', now)).toBe(false)
+  })
+
+  test('an already-stalled agent that is still quiet stays stalled', () => {
+    expect(deriveStalled(now - 5 * STALL_THRESHOLD_MS, 'stalled', now)).toBe(true)
+  })
+
+  test('waiting / failed / done / idle never become stalled', () => {
+    const old = now - 10 * STALL_THRESHOLD_MS
+    for (const phase of ['waiting', 'failed', 'done', 'idle'] as const) {
+      expect(deriveStalled(old, phase, now)).toBe(false)
+    }
+  })
+
+  test('unknown last-activity (0 or non-finite) never raises a false stall', () => {
+    expect(deriveStalled(0, 'running', now)).toBe(false)
+    expect(deriveStalled(Number.NaN, 'running', now)).toBe(false)
+  })
+})
+
+describe('heartbeatLevel — live / stale / dead by silence age', () => {
+  test('fresh is live, past 1x is stale (amber), past 2x is dead (red)', () => {
+    expect(heartbeatLevel(0)).toBe('live')
+    expect(heartbeatLevel(STALL_THRESHOLD_MS - 1)).toBe('live')
+    expect(heartbeatLevel(STALL_THRESHOLD_MS)).toBe('stale')
+    expect(heartbeatLevel(2 * STALL_THRESHOLD_MS - 1)).toBe('stale')
+    expect(heartbeatLevel(2 * STALL_THRESHOLD_MS)).toBe('dead')
+  })
+
+  test('a non-finite age reads as live', () => {
+    expect(heartbeatLevel(Number.NaN)).toBe('live')
+  })
 })
 
 describe('parseStructuredQuestion — one kind per shape', () => {
@@ -186,16 +233,17 @@ describe('groupAgents', () => {
 })
 
 describe('sortAgents', () => {
-  test("'needs' orders by PHASE_RANK (waiting < failed < running < done < idle)", () => {
+  test("'needs' orders by PHASE_RANK (waiting < failed < stalled < running < done < idle)", () => {
     const agents = [
       makeAgent({ id: 'idle', phase: 'idle' }),
       makeAgent({ id: 'done', phase: 'done' }),
       makeAgent({ id: 'running', phase: 'running' }),
+      makeAgent({ id: 'stalled', phase: 'stalled' }),
       makeAgent({ id: 'failed', phase: 'failed' }),
       makeAgent({ id: 'waiting', phase: 'waiting' }),
     ]
     const ordered = sortAgents(agents, 'needs').map((a) => a.id)
-    expect(ordered).toEqual(['waiting', 'failed', 'running', 'done', 'idle'])
+    expect(ordered).toEqual(['waiting', 'failed', 'stalled', 'running', 'done', 'idle'])
     const ranks = sortAgents(agents, 'needs').map((a) => PHASE_RANK[a.phase])
     expect(ranks).toEqual([...ranks].sort((x, y) => x - y))
   })
