@@ -44,6 +44,15 @@ function runAgentsCli(args: string[], opts: { timeoutMs?: number } = {}): Promis
   });
 }
 
+function fetchOrigin(root: string): Promise<void> {
+  return new Promise((resolve) => {
+    execFile('git', ['fetch', 'origin'], { cwd: root, timeout: AGENTS_CLI_TIMEOUT_MS }, () => {
+      // Best-effort: ignore errors so provisioning proceeds with stale refs.
+      resolve();
+    });
+  });
+}
+
 /**
  * If the worktree-per-terminal setting is on, provision a worktree for this
  * terminal and return its path. Otherwise (or on any failure) return the
@@ -60,6 +69,10 @@ export async function resolveTerminalCwd(
     return { cwd: workspaceFolder, isolated: false };
   }
   try {
+    // Freshness: fetch origin before provisioning so a new cross-host worktree
+    // is based on the latest origin state, not a stale local ref. Best-effort —
+    // never block provisioning if the fetch fails (offline, no remote, etc.).
+    await fetchOrigin(workspaceFolder);
     const { stdout } = await runAgentsCli([
       'worktree',
       'provision',
