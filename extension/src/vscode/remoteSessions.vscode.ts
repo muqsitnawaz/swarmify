@@ -54,6 +54,15 @@ function pathAugmentedEnv(): NodeJS.ProcessEnv {
   return { ...process.env, PATH: `${extra}:${process.env.PATH || ''}` };
 }
 
+/** Resolve `p`, or `fallback` after `ms` — guards against a child that ignores its
+ *  own timeout (a hung ssh) and would otherwise block the whole fan-out forever. */
+function withHardTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
+  ]);
+}
+
 // Resolve the `agents` binary once. The extension-host PATH can differ from an
 // interactive shell's, so try `which` with an augmented PATH, then fall back to
 // probing known install dirs directly (mirrors linear.vscode.ts:findLinearCli).
@@ -247,8 +256,17 @@ export async function fetchHostSessions(fetchedAt: number = Date.now()): Promise
     const results = await Promise.all(
       hosts.map((h) => {
         const isLocal = h.name === LOCAL_HOST;
-        // Label local sessions 'this-mac' for the UI; still no --host (isLocal).
-        return fetchActiveForHost(isLocal ? LOCAL_LABEL : h.name, isLocal, fetchedAt);
+        const label = isLocal ? LOCAL_LABEL : h.name;
+        // execFile's own timeout sends SIGTERM, which a hung ssh can ignore (stuck
+        // on connect / host-key / auth). Race every host against a hard wall-clock
+        // timeout that always resolves, so ONE unreachable machine can never block
+        // the batch — which was leaving the whole Floor empty. Label local sessions
+        // 'this-mac' for the UI; still no --host (isLocal).
+        return withHardTimeout(
+          fetchActiveForHost(label, isLocal, fetchedAt),
+          isLocal ? ACTIVE_TIMEOUT_LOCAL_MS + 2000 : ACTIVE_TIMEOUT_REMOTE_MS + 2000,
+          { host: label, online: false, sessions: [] }
+        );
       })
     );
     const sessions: RemoteSession[] = [];
