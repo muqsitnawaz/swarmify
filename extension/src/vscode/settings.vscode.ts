@@ -1475,6 +1475,62 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
         const sessions = await discoverRecentSessions(message.limit || 50, sessionsWorkspace);
         settingsPanel?.webview.postMessage({ type: 'sessionsData', sessions });
         break;
+      case 'fetchHostSessions': {
+        // Tier-1 cross-host aggregation: active sessions from this machine +
+        // every reachable SSH/Tailscale host, in parallel. A dead host is marked
+        // offline rather than failing the batch.
+        try {
+          const { fetchHostSessions } = await import('./remoteSessions.vscode');
+          const { hosts, sessions: hostSessions, groups, fetchedAt } = await fetchHostSessions();
+          settingsPanel?.webview.postMessage({
+            type: 'hostSessions',
+            hosts,
+            sessions: hostSessions,
+            groups,
+            fetchedAt,
+          });
+        } catch (err) {
+          console.error('[SETTINGS] Error fetching host sessions:', err);
+          settingsPanel?.webview.postMessage({
+            type: 'hostSessions',
+            hosts: [],
+            sessions: [],
+            groups: [],
+            fetchedAt: Date.now(),
+          });
+        }
+        break;
+      }
+      case 'fetchHostSessionDetail': {
+        // Tier-2 on-demand: render one remote agent's session as markdown.
+        const detailHost = typeof message.host === 'string' ? message.host : '';
+        const detailSessionId = typeof message.sessionId === 'string' ? message.sessionId : '';
+        if (!detailHost || !detailSessionId) {
+          settingsPanel?.webview.postMessage({
+            type: 'hostSessionDetail',
+            host: detailHost,
+            sessionId: detailSessionId,
+            markdown: '',
+            error: 'host and sessionId are required',
+          });
+          break;
+        }
+        try {
+          const { fetchHostSessionDetail } = await import('./remoteSessions.vscode');
+          const detail = await fetchHostSessionDetail(detailHost, detailSessionId);
+          settingsPanel?.webview.postMessage({ type: 'hostSessionDetail', ...detail });
+        } catch (err) {
+          console.error('[SETTINGS] Error fetching host session detail:', err);
+          settingsPanel?.webview.postMessage({
+            type: 'hostSessionDetail',
+            host: detailHost,
+            sessionId: detailSessionId,
+            markdown: '',
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+        break;
+      }
       case 'getFloorThroughput': {
         const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         const all = terminals.getAllTerminals();
