@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Factory Floor — prototypes</title>
+<style>
+  /* ---- LOCKED design tokens (from design-system.css) ---- */
+  :root {
+    --brand:#a3e635; --brand-600:#84cc16; --brand-ring:rgba(163,230,53,0.25);
+    --run:#22C55E; --idle:#6B7280; --fail:#EF4444; --wait:#D4A72C;
+    --run-bg:#E6F6EE; --fail-bg:#FCE8E8; --wait-bg:#FCF3DC; --idle-bg:#F0F0EF;
+    --r-sm:4px; --r-md:6px; --r-lg:8px; --r-xl:10px;
+  }
+  html[data-theme="light"]{
+    --bg:#E8E6E1; --panel:#F0EEEA; --sunken:#D8D5CF; --recessed:#D0CDC6;
+    --bd:rgba(0,0,0,0.12); --bd-strong:rgba(0,0,0,0.2); --bd-sub:rgba(0,0,0,0.06);
+    --tx:#1C1917; --tx-mut:#57534E; --tx-dim:#78716C; --tx-faint:#A8A29E;
+    --term-bg:#1c1a17; --term-tx:#d8cfc2;
+  }
+  html[data-theme="dark"]{
+    --bg:#0a0a0a; --panel:#141414; --sunken:#050505; --recessed:#0f0f0f;
+    --bd:rgba(255,255,255,0.08); --bd-strong:rgba(255,255,255,0.15); --bd-sub:rgba(255,255,255,0.04);
+    --tx:#E7E5E4; --tx-mut:#A8A29E; --tx-dim:#6E6A63; --tx-faint:#44403C;
+    --run-bg:rgba(34,197,94,0.12); --fail-bg:rgba(239,68,68,0.12); --wait-bg:rgba(212,167,44,0.12); --idle-bg:rgba(255,255,255,0.04);
+    --term-bg:#000; --term-tx:#bfb9ae;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--tx);
+    font-family:Geist,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    font-size:13px;line-height:1.45;letter-spacing:-0.005em;}
+  .mono{font-family:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+  button{font-family:inherit;color:inherit;cursor:pointer}
+
+  /* ---- shell ---- */
+  .top{display:flex;align-items:center;gap:14px;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--bd)}
+  .logo{display:flex;align-items:center;gap:8px;font-weight:700;letter-spacing:.06em}
+  .logo .bolt{color:var(--brand)}
+  /* Finder-style icon view-switcher */
+  .viewbar{display:flex;gap:2px;background:var(--sunken);padding:3px;border-radius:var(--r-lg)}
+  .viewbar button{border:none;background:transparent;width:32px;height:26px;border-radius:var(--r-md);color:var(--tx-dim);display:inline-flex;align-items:center;justify-content:center}
+  .viewbar button:hover{color:var(--tx-mut)}
+  .viewbar button.on{background:var(--panel);color:var(--tx);box-shadow:0 1px 2px rgba(0,0,0,.15)}
+  .viewbar svg{display:block}
+  /* Finder-style Arrange/Group dropdown */
+  .arrange{display:inline-flex;align-items:center;gap:6px;background:var(--panel);border:1px solid var(--bd);border-radius:var(--r-lg);padding:3px 8px 3px 9px;color:var(--tx-mut)}
+  .arrange select{border:none;background:transparent;color:var(--tx);font-weight:600;font-size:12px;outline:none}
+  .grow{flex:1}
+  .stat{display:flex;align-items:center;gap:6px;color:var(--tx-mut);font-size:12px}
+  .stat b{color:var(--tx)}
+  .tok{color:var(--brand-600);font-weight:600}
+  .themebtn{border:1px solid var(--bd);background:var(--panel);border-radius:var(--r-md);padding:5px 9px;font-size:12px}
+
+  /* ---- filter bar ---- */
+  .fbar{display:flex;align-items:center;gap:10px;padding:8px 16px;background:var(--bg);border-bottom:1px solid var(--bd-sub);flex-wrap:wrap}
+  .ctl{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--tx-mut)}
+  .sel{background:var(--panel);border:1px solid var(--bd);border-radius:var(--r-md);padding:4px 8px;font-size:12px;color:var(--tx);font-weight:600}
+  .chip{border:1px solid var(--bd);background:var(--panel);border-radius:999px;padding:3px 10px;font-size:11px;font-weight:600;color:var(--tx-mut)}
+  .chip.on{background:var(--brand);border-color:var(--brand);color:#1a1a1a}
+  .chip.needs.on{background:var(--wait);border-color:var(--wait);color:#1a1a1a}
+  .search{flex:1;min-width:120px;max-width:340px;background:var(--panel);border:1px solid var(--bd);border-radius:var(--r-md);padding:5px 10px;color:var(--tx);font-size:12px}
+  .disp{display:inline-flex;align-items:center;gap:6px;background:var(--brand);color:#1a1a1a;border:none;font-weight:700;padding:6px 12px;border-radius:var(--r-md);font-size:12px}
+
+  /* ---- generic dot / badges ---- */
+  .dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto;display:inline-block}
+  .dot.running{background:var(--run);box-shadow:0 0 0 3px var(--run-bg)}
+  .dot.idle{background:transparent;border:1.5px solid var(--idle)}
+  .dot.failed{background:var(--fail);box-shadow:0 0 0 3px var(--fail-bg)}
+  .dot.waiting{background:var(--wait);box-shadow:0 0 0 3px var(--wait-bg)}
+  .dot.done{background:var(--idle)}
+  .av{width:20px;height:20px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex:0 0 auto}
+  .av.CC{background:#a3e635;color:#1a1a1a}.av.CX{background:#5B7CE0;color:#fff}.av.GX{background:#8b5cf6;color:#fff}
+  .tag{font-size:10px;font-weight:700;padding:1px 6px;border-radius:var(--r-sm);background:var(--sunken);color:var(--tx-dim)}
+  .needsflag{font-size:9.5px;font-weight:800;letter-spacing:.04em;padding:1px 6px;border-radius:var(--r-sm);background:var(--wait);color:#1a1a1a}
+  .needsflag.fail{background:var(--fail);color:#fff}
+  .spark{display:inline-flex;align-items:flex-end;gap:1px;height:12px}
+  .spark i{width:2px;background:var(--brand-600);border-radius:1px;display:block;opacity:.85}
+  .since{color:var(--tx-dim);font-size:11px;font-variant-numeric:tabular-nums}
+  .tps{color:var(--brand-600);font-weight:600;font-size:11px;font-variant-numeric:tabular-nums}
+
+  /* ============ LAYOUT: RAIL ============ */
+  .rail-wrap{display:grid;grid-template-columns:320px 1fr;height:calc(100vh - 92px)}
+  .rail{border-right:1px solid var(--bd);overflow:auto;background:var(--bg)}
+  .ghead{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:8px;padding:7px 12px;background:var(--bg);border-bottom:1px solid var(--bd-sub);font-size:11px;font-weight:700;letter-spacing:.03em;color:var(--tx-mut);backdrop-filter:blur(4px)}
+  .ghead .gcount{margin-left:auto;display:flex;gap:8px;font-weight:600}
+  .ghead.attn{color:var(--wait)} .ghead.pin{color:var(--brand-600)}
+  .ghead .edge{position:absolute;left:0;top:0;bottom:0;width:3px}
+  .arow{display:flex;align-items:center;gap:9px;padding:7px 12px 7px 14px;border-bottom:1px solid var(--bd-sub);cursor:pointer}
+  .arow:hover{background:var(--panel)}
+  .arow.sel{background:var(--panel);box-shadow:inset 3px 0 0 var(--brand)}
+  .arow .nm{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px}
+  .arow .act{color:var(--tx-mut);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
+  .arow .act b{color:var(--tx);font-weight:600}
+  .arow .meta{display:flex;align-items:center;gap:7px;margin-left:auto;flex:0 0 auto}
+  .grow0{flex:1;min-width:0}
+
+  /* detail pane */
+  .detail{overflow:auto;background:var(--panel)}
+  .dhead{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--bd)}
+  .dhead .title{font-size:15px;font-weight:700}
+  .dhead .sub{color:var(--tx-dim);font-size:11px}
+  .dbody{padding:16px 18px;display:flex;flex-direction:column;gap:14px}
+  .prog{background:var(--bg);border:1px solid var(--bd-sub);border-radius:var(--r-lg);padding:12px 14px}
+  .prog .now{font-family:"Geist Mono",monospace;font-size:12px;background:var(--term-bg);color:var(--term-tx);padding:8px 10px;border-radius:var(--r-md);margin:8px 0}
+  .prog .stats{display:flex;gap:14px;color:var(--tx-mut);font-size:12px}
+  .lbl{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--tx-dim);margin-bottom:6px}
+  .filerow{display:flex;align-items:center;gap:10px;padding:4px 0;font-size:12px}
+  .filerow .mono{flex:1;color:var(--tx)}
+  .heat{width:120px;height:6px;border-radius:3px;background:var(--sunken);overflow:hidden;position:relative}
+  .heat i{position:absolute;left:0;top:0;bottom:0;background:var(--brand-600)}
+  .diff .add{color:var(--run)} .diff .del{color:var(--fail)}
+  .toolrow{display:flex;align-items:center;gap:8px;padding:3px 0;font-size:12px;color:var(--tx-mut)}
+  .toolrow .ok{color:var(--run)}
+  .actions{display:flex;gap:8px}
+  .abtn{border:1px solid var(--bd);background:var(--bg);border-radius:var(--r-md);padding:6px 12px;font-size:12px;font-weight:600}
+  .abtn.pri{background:var(--brand);border-color:var(--brand);color:#1a1a1a}
+  .tabs{display:flex;gap:2px;border-bottom:1px solid var(--bd);padding:0 18px}
+  .tabs button{border:none;background:transparent;padding:8px 12px;font-size:12px;font-weight:600;color:var(--tx-mut);border-bottom:2px solid transparent}
+  .tabs button.on{color:var(--tx);border-bottom-color:var(--brand)}
+
+  /* ============ LAYOUT: TRIPLE ============ */
+  .tri-wrap{display:grid;grid-template-columns:190px 300px 1fr;height:calc(100vh - 92px)}
+  .nav{border-right:1px solid var(--bd);overflow:auto;padding:8px 0;background:var(--bg)}
+  .navsec{font-size:10px;font-weight:700;letter-spacing:.05em;color:var(--tx-faint);padding:10px 14px 4px}
+  .navitem{display:flex;align-items:center;gap:8px;padding:6px 14px;font-size:12.5px;cursor:pointer;color:var(--tx-mut)}
+  .navitem:hover{background:var(--panel)}
+  .navitem.on{background:var(--panel);color:var(--tx);font-weight:600;box-shadow:inset 3px 0 0 var(--brand)}
+  .navitem .c{margin-left:auto;font-size:11px;color:var(--tx-dim);font-variant-numeric:tabular-nums}
+  .navitem .c.warn{color:var(--wait);font-weight:700}
+  .midlist{border-right:1px solid var(--bd);overflow:auto;background:var(--bg)}
+
+  /* ============ LAYOUT: BOARD ============ */
+  .board{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:14px 16px;height:calc(100vh - 92px);overflow:hidden}
+  .col{background:var(--bg);border:1px solid var(--bd-sub);border-radius:var(--r-lg);display:flex;flex-direction:column;min-height:0}
+  .colhead{display:flex;align-items:center;gap:8px;padding:10px 12px;font-weight:700;font-size:12px;border-bottom:1px solid var(--bd-sub)}
+  .colhead .c{margin-left:auto;background:var(--sunken);border-radius:999px;padding:1px 8px;font-size:11px;color:var(--tx-dim)}
+  .colbody{overflow:auto;padding:8px;display:flex;flex-direction:column;gap:8px}
+  .bcard{background:var(--panel);border:1px solid var(--bd-sub);border-radius:var(--r-md);padding:9px 10px;cursor:pointer}
+  .bcard:hover{border-color:var(--bd-strong)}
+  .bcard .r1{display:flex;align-items:center;gap:7px;margin-bottom:5px}
+  .bcard .r1 .nm{font-weight:600;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bcard .act{font-family:"Geist Mono",monospace;font-size:11px;color:var(--tx-mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bcard .r3{display:flex;align-items:center;gap:8px;margin-top:6px;color:var(--tx-dim);font-size:10.5px}
+  .colhead.needs{color:var(--wait)} .colhead.run{color:var(--run)} .colhead.idle{color:var(--idle)} .colhead.done{color:var(--tx-mut)}
+
+  /* ============ LAYOUT: TABLE ============ */
+  .tbl-wrap{height:calc(100vh - 92px);overflow:auto}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  thead th{position:sticky;top:0;background:var(--panel);text-align:left;padding:8px 12px;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--tx-dim);border-bottom:1px solid var(--bd);cursor:pointer;white-space:nowrap}
+  thead th.sorted{color:var(--tx)}
+  tbody td{padding:7px 12px;border-bottom:1px solid var(--bd-sub);white-space:nowrap}
+  tbody tr:hover{background:var(--panel)}
+  tbody tr.grouphdr td{background:var(--bg);font-weight:700;font-size:11px;letter-spacing:.03em;color:var(--tx-mut);position:sticky}
+  .td-act{font-family:"Geist Mono",monospace;color:var(--tx-mut);max-width:340px;overflow:hidden;text-overflow:ellipsis}
+  .td-act b{color:var(--tx)}
+  td .nm{font-weight:600}
+
+  /* ============ LAYOUT: FEED (3-pane: scope · feed · detail) ============ */
+  .feed-col{flex:1;min-width:0;overflow:auto;display:flex;justify-content:center}
+  .feed{width:100%;max-width:820px;padding:14px 18px 60px}
+  .detail-col{flex:0 0 430px;border-left:1px solid var(--bd);overflow:auto;background:var(--panel)}
+  .detail-empty{height:100%;display:flex;align-items:center;justify-content:center;color:var(--tx-faint);font-size:12px;padding:20px;text-align:center}
+  /* decision block at top of the right detail when an agent needs you */
+  .decide{background:var(--wait-bg);border:1px solid var(--wait);border-radius:var(--r-lg);padding:12px 14px;margin-bottom:14px}
+  .decide .ql{font-size:10px;font-weight:800;letter-spacing:.05em;color:var(--wait);margin-bottom:6px}
+  .decide .qt{font-size:13.5px;font-weight:600;margin-bottom:10px}
+  .feed-sec{font-size:11px;font-weight:800;letter-spacing:.05em;color:var(--tx-dim);margin:18px 4px 8px;display:flex;align-items:center;gap:8px}
+  .feed-sec.attn{color:var(--wait)}
+  .feed-sec .ln{flex:1;height:1px;background:var(--bd-sub)}
+  .fitem{background:var(--panel);border:1px solid var(--bd-sub);border-radius:var(--r-lg);padding:12px 14px;margin-bottom:10px;cursor:pointer}
+  .fitem.selsel{box-shadow:0 0 0 2px var(--brand)}
+  .cluster{cursor:pointer}
+  .fitem.attn{border-color:var(--wait);box-shadow:0 0 0 1px var(--wait-bg)}
+  .fitem.fail{border-color:var(--fail);box-shadow:0 0 0 1px var(--fail-bg)}
+  .fitem .head{display:flex;align-items:center;gap:9px;margin-bottom:8px}
+  .fitem .who{font-weight:700;font-size:13px}
+  .fitem .path{color:var(--tx-dim);font-size:11px}
+  .fitem .when{margin-left:auto;color:var(--tx-dim);font-size:11px;display:flex;align-items:center;gap:8px}
+  .fitem .resp{font-size:12.5px;color:var(--tx);line-height:1.5;margin:2px 0 8px;border-left:2px solid var(--bd);padding-left:10px}
+  .fitem .resp .q{color:var(--wait);font-weight:600}
+  .fitem .nowline{font-family:"Geist Mono",monospace;font-size:11px;color:var(--tx-mut);display:flex;align-items:center;gap:8px}
+  .fitem .nowline .v{color:var(--brand-600)}
+  .pill{font-size:10px;font-weight:700;padding:1px 7px;border-radius:999px}
+  .pill.pr{background:var(--brand);color:#1a1a1a}
+  .pill.run{background:var(--run-bg);color:var(--run)}
+  .pill.done{background:var(--idle-bg);color:var(--tx-mut)}
+  .reply{display:flex;gap:8px;margin-top:10px}
+  .reply input{flex:1;background:var(--bg);border:1px solid var(--bd);border-radius:var(--r-md);padding:7px 10px;font-size:12px;color:var(--tx)}
+  .reply .approve{background:var(--run);color:#fff;border:none;border-radius:var(--r-md);padding:7px 12px;font-weight:700;font-size:12px}
+  .reply .send{background:var(--brand);color:#1a1a1a;border:none;border-radius:var(--r-md);padding:7px 12px;font-weight:700;font-size:12px}
+  .iconbtn{border:1px solid var(--bd);background:var(--panel);border-radius:var(--r-md);width:30px;height:28px;display:inline-flex;align-items:center;justify-content:center;color:var(--tx-mut)}
+  .iconbtn.on{background:var(--brand);border-color:var(--brand);color:#1a1a1a}
+
+  /* page with optional project sidebar */
+  .page{display:flex;height:calc(100vh - 92px)}
+  .sidebar{width:210px;flex:0 0 210px;border-right:1px solid var(--bd);overflow:auto;padding:8px 0;background:var(--bg)}
+  .sb-sec{font-size:10px;font-weight:800;letter-spacing:.05em;color:var(--tx-faint);padding:12px 14px 4px}
+  .sb-item{display:flex;align-items:center;gap:8px;padding:6px 14px;font-size:12.5px;cursor:pointer;color:var(--tx-mut)}
+  .sb-item:hover{background:var(--panel)}
+  .sb-item.on{background:var(--panel);color:var(--tx);font-weight:600;box-shadow:inset 3px 0 0 var(--brand)}
+  .sb-item .c{margin-left:auto;font-size:11px;color:var(--tx-dim);font-variant-numeric:tabular-nums;display:flex;gap:6px}
+  .sb-item .c .w{color:var(--wait);font-weight:700}
+  .sb-item .hd{width:7px;height:7px;border-radius:50%;background:var(--run)}
+  .sb-item .hd.off{background:var(--fail)}
+
+  /* backlog strip */
+  .backlog{border:1px dashed var(--bd-strong);border-radius:var(--r-lg);padding:8px 10px;margin-bottom:14px;background:var(--bg)}
+  .backlog .bh{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:800;letter-spacing:.04em;color:var(--tx-mut);cursor:pointer}
+  .backlog .bh .c{margin-left:auto;color:var(--tx-dim);font-weight:600}
+  .trow{display:flex;align-items:center;gap:9px;padding:6px 4px;border-top:1px solid var(--bd-sub)}
+  .src{font-size:9px;font-weight:800;padding:1px 5px;border-radius:var(--r-sm)}
+  .src.LN{background:#5e6ad2;color:#fff}.src.GH{background:#2d2d2d;color:#fff}
+  .pri{width:7px;height:7px;border-radius:50%}.pri.urgent{background:var(--fail)}.pri.high{background:var(--wait)}.pri.med{background:var(--idle)}.pri.low{background:var(--bd-strong)}
+  .trow .tt{flex:1;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .trow .tid{font-size:11px;color:var(--tx-dim);font-weight:600}
+  .dispatch-sm{border:1px solid var(--brand);background:transparent;color:var(--brand-600);font-weight:700;font-size:11px;padding:3px 9px;border-radius:var(--r-md)}
+  .seeall{color:var(--brand-600);cursor:pointer;font-weight:700;font-size:11px}
+  /* backlog (tickets) view */
+  .bktoolbar{display:flex;align-items:center;gap:10px;padding:2px 2px 10px;border-bottom:1px solid var(--bd-sub);margin-bottom:6px}
+  .bh2{font-size:11px;font-weight:800;letter-spacing:.04em;color:var(--tx-mut)}
+  .bksel{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--tx-dim)}
+  .bksel select{background:var(--panel);border:1px solid var(--bd);border-radius:var(--r-md);padding:3px 6px;font-size:11px;color:var(--tx);font-weight:600}
+  .trow2{display:flex;align-items:center;gap:9px;padding:8px 8px;border-bottom:1px solid var(--bd-sub);cursor:pointer;border-radius:var(--r-sm)}
+  .trow2:hover{background:var(--panel)}
+  .trow2.selsel{background:var(--panel);box-shadow:inset 3px 0 0 var(--brand)}
+  .trow2 .tt{flex:1;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tlbl{font-size:9.5px;font-weight:600;color:var(--tx-dim);background:var(--sunken);border-radius:var(--r-sm);padding:1px 5px}
+  .tlabels{display:flex;gap:4px;flex:0 0 auto}
+  .tstat{font-size:10px;font-weight:700;padding:1px 7px;border-radius:999px;flex:0 0 auto;text-transform:capitalize}
+  .tstat.todo{background:var(--idle-bg);color:var(--tx-mut)}.tstat.in-progress{background:var(--run-bg);color:var(--run)}.tstat.blocked{background:var(--fail-bg);color:var(--fail)}
+  .tproj{font-size:11px;color:var(--tx-dim);flex:0 0 auto;width:96px;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dispatch-panel{background:var(--bg);border:1px solid var(--bd-sub);border-radius:var(--r-lg);padding:12px 14px}
+  .dp-row{display:flex;align-items:center;gap:10px;margin-top:8px}
+  .dp-k{width:48px;font-size:11px;color:var(--tx-dim);font-weight:600}
+
+  /* question-shape cluster (batch triage) */
+  .cluster{background:var(--panel);border:1px solid var(--wait);box-shadow:0 0 0 1px var(--wait-bg);border-radius:var(--r-lg);padding:11px 13px;margin-bottom:10px}
+  .cluster .ch{display:flex;align-items:center;gap:9px;margin-bottom:8px}
+  .cluster .ch .n{background:var(--wait);color:#1a1a1a;font-weight:800;font-size:11px;border-radius:999px;padding:1px 8px}
+  .cluster .qq{font-size:13px;font-weight:600;flex:1}
+  .cluster .avs{display:flex;margin-right:4px}
+  .cluster .avs .av{margin-left:-6px;border:1.5px solid var(--panel)}
+  .cluster .batchline{font-size:11px;color:var(--tx-dim);margin-bottom:8px}
+  .opts{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .opt{border:1px solid var(--bd-strong);background:var(--bg);border-radius:var(--r-md);padding:6px 14px;font-weight:600;font-size:12px}
+  .opt.primary{background:var(--brand);border-color:var(--brand);color:#1a1a1a}
+  .opt.danger{background:var(--fail);border-color:var(--fail);color:#fff}
+  .opt.batch{margin-left:auto;background:var(--wait);border-color:var(--wait);color:#1a1a1a;font-weight:800}
+  .opt.ghost{color:var(--tx-mut)}
+  .applyrow{display:flex;align-items:center;gap:8px;margin-top:9px;padding-top:9px;border-top:1px solid var(--bd-sub);font-size:11px;color:var(--tx-dim)}
+  .attach{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--bd);background:var(--bg);border-radius:var(--r-md);padding:5px 9px;font-size:11px;color:var(--tx-mut)}
+  .reply2{display:flex;gap:8px;align-items:center;margin-top:8px}
+  .reply2 input{flex:1;background:var(--bg);border:1px solid var(--bd);border-radius:var(--r-md);padding:7px 10px;font-size:12px;color:var(--tx)}
+  .hidden{display:none !important}
+  .legend{display:flex;gap:14px;padding:6px 16px;font-size:10.5px;color:var(--tx-dim);background:var(--panel);border-top:1px solid var(--bd)}
+  .legend span{display:inline-flex;align-items:center;gap:5px}
+</style>
+</head>
+<body>
+  <div class="top">
+    <div class="logo"><span class="bolt">⚡</span> FACTORY</div>
+    <button class="iconbtn" id="sidebtn" title="Show / hide projects sidebar">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2.2" y="2.5" width="11.6" height="11" rx="1.4"/><line x1="6" y1="2.5" x2="6" y2="13.5"/></svg>
+    </button>
+    <div class="viewbar" id="sw">
+      <button data-l="feed" class="on" title="Feed — live stream of every agent">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="2.7" width="12" height="4.4" rx="1.2"/><rect x="2" y="8.9" width="12" height="4.4" rx="1.2"/></svg>
+      </button>
+      <button data-l="rail" title="Columns — sidebar + detail">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2.2" y="2.5" width="11.6" height="11" rx="1.4"/><line x1="6.6" y1="2.5" x2="6.6" y2="13.5"/></svg>
+      </button>
+      <button data-l="table" title="List — dense, sortable">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="3.2" cy="4" r=".95"/><line x1="5.6" y1="4" x2="13.5" y2="4"/><circle cx="3.2" cy="8" r=".95"/><line x1="5.6" y1="8" x2="13.5" y2="8"/><circle cx="3.2" cy="12" r=".95"/><line x1="5.6" y1="12" x2="13.5" y2="12"/></svg>
+      </button>
+      <button data-l="board" title="Board — by status">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2.2" y="2.7" width="3" height="10.6" rx="1"/><rect x="6.5" y="2.7" width="3" height="7" rx="1"/><rect x="10.8" y="2.7" width="3" height="10.6" rx="1"/></svg>
+      </button>
+    </div>
+    <div class="arrange">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="4" cy="4" r="1.4"/><circle cx="8" cy="4" r="1.4"/><circle cx="12" cy="4" r="1.4"/><circle cx="4" cy="8" r="1.4"/><circle cx="8" cy="8" r="1.4"/><circle cx="12" cy="8" r="1.4"/></svg>
+      <select id="groupby" title="Arrange agents by">
+        <option value="host">Group: Host</option>
+        <option value="project">Group: Project</option>
+        <option value="status">Group: Status</option>
+        <option value="agent">Group: Agent</option>
+      </select>
+    </div>
+    <div class="grow"></div>
+    <div class="stat"><span class="dot running"></span><b id="srun">0</b>/<span id="stot">0</span> running</div>
+    <div class="stat tok">⚡ <span id="stok">0</span> tok/s</div>
+    <button class="themebtn" id="plain">Plain language: off</button>
+    <button class="iconbtn" id="rightbtn" title="Show / hide the detail panel">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2.2" y="2.5" width="11.6" height="11" rx="1.4"/><line x1="10" y1="2.5" x2="10" y2="13.5"/></svg>
+    </button>
+    <button class="themebtn" id="theme">◐ theme</button>
+  </div>
+
+  <div class="fbar">
+    <div class="ctl">Sort <select class="sel"><option>Needs you first</option><option>Recent activity</option><option>tok/s</option><option>Name</option></select></div>
+    <span class="chip needs on">⚠ Needs you</span>
+    <span class="chip">● Running</span><span class="chip">◐ Idle</span><span class="chip">✕ Failed</span>
+    <span class="chip">CC</span><span class="chip">CX</span><span class="chip">GX</span>
+    <input class="search" placeholder="⌕  search agents, branches, activity…" />
+    <div class="grow"></div>
+    <button class="disp">⚡ Dispatch</button>
+  </div>
+
+  <div id="stage"></div>
+
+  <div class="legend">
+    <span><span class="dot running"></span> running</span>
+    <span><span class="dot idle"></span> idle</span>
+    <span><span class="dot waiting"></span> waiting for you</span>
+    <span><span class="dot failed"></span> failed</span>
+    <span><span class="dot done"></span> done</span>
+    <span>· brand green <b style="color:var(--brand-600)">#a3e635</b> = selection/accent only, never a status</span>
+  </div>
+
+<script>
+// ---------- fake data: ~50 agents across hosts + projects ----------
+const HOSTS = ["this-mac","yosemite-s0","yosemite-s1","zion"];
+const PROJECTS = ["swarmify","prix-api","web","phoenix-horizon"];
+const VERBS = [["Editing","src/core/tasks.ts"],["Reading","session.activity.ts"],["Running","bun test core/"],["Editing","ui/App.tsx"],["Thinking","planning the migration"],["Running","cargo build --release"],["Editing","remoteSessions.ts"],["Reading","RUNBOOK.md"]];
+const NAMES = ["auth-refactor","incr-count","dispatch-fix","rail-virtual","floor-css","docs-pass","changelog","migrate-db","rate-limit","RUSH-812","webhook-retry","onboarding","flaky-test","deploy","r2-sync","perf-audit","cli-help","menu-bar","secrets-ssh","watchdog"];
+function rnd(a){return a[Math.floor(Math.random()*a.length)]}
+// deterministic-ish PRNG so screenshots are stable
+let seed=42; function rng(){seed=(seed*1103515245+12345)&0x7fffffff;return seed/0x7fffffff}
+function pick(a){return a[Math.floor(rng()*a.length)]}
+const AGENTS=[];
+const phasesPlan=["running","running","running","running","idle","idle","idle","waiting","failed","done"];
+for(let i=0;i<52;i++){
+  const host=pick(HOSTS), proj=pick(PROJECTS), agent=pick(["CC","CC","CX","GX"]);
+  const phase=pick(phasesPlan);
+  const [verb,target]=pick(VERBS);
+  const running=phase==="running";
+  AGENTS.push({
+    id:"a"+i, host, project:proj, name:pick(NAMES), agent, phase,
+    verb, target,
+    tok: running? Math.floor(40+rng()*180):0,
+    since: running? Math.floor(rng()*50)+"s" : phase==="waiting"? Math.floor(rng()*30)+"m" : Math.floor(rng()*9)+"h",
+    files: Math.floor(rng()*14), tools: Math.floor(rng()*40),
+    needs: phase==="waiting"||phase==="failed"|| (phase==="done"&&rng()>0.6),
+    pinned: i%23===0,
+    pr: phase==="done"&&rng()>0.4? "#"+(100+Math.floor(rng()*99)):null,
+    ticket: rng()>0.7? "RUSH-"+(800+Math.floor(rng()*99)):null,
+    branch:"feat-"+pick(NAMES),
+  });
+}
+// make a couple obvious needs-you on different hosts/projects
+AGENTS[2].phase="waiting";AGENTS[2].needs=true;AGENTS[2].name="RUSH-812";AGENTS[2].project="prix-api";AGENTS[2].host="yosemite-s0";AGENTS[2].agent="CX";
+AGENTS[5].phase="failed";AGENTS[5].needs=true;AGENTS[5].name="flaky-test";AGENTS[5].project="swarmify";AGENTS[5].host="yosemite-s1";
+AGENTS[8].phase="waiting";AGENTS[8].needs=true;AGENTS[8].name="onboarding";AGENTS[8].project="web";AGENTS[8].agent="GX";
+AGENTS[1].pinned=true;AGENTS[1].phase="running";AGENTS[1].name="auth-refactor";AGENTS[1].project="swarmify";AGENTS[1].tok=142;
+
+// Anthropic Agent View shows each session's LAST RESPONSE + waiting status. Mirror that.
+const RESP={
+  waiting:["I've refactored the auth flow and all 18 tests pass. Should I also migrate the legacy session store, or leave it for a follow-up?","Two approaches for the rate limiter: a token bucket per-user, or a sliding window. Which do you prefer?","The migration will drop the `legacy_tokens` column — that's destructive. Confirm before I run it on prod?","Found 3 ways to fix the flaky test. The cleanest changes the retry semantics. OK to proceed?"],
+  failed:["Build failed: `cargo build` errored on a borrow-check in src/pool.rs:42. I can't resolve it without changing the lifetime — want me to try?","`bun test` exited 1 — 2 tests fail after the refactor. Stopping so you can look."],
+  running:["Editing the incremental counter now; wired the delta read, running the suite.","Reading session.activity.ts to find where throughput is computed.","Running the full test suite to confirm the migration is safe.","Drafting the PR description and pushing the branch."],
+  done:["Done — opened PR #142. 9 files, +312/−48, all tests green. Ready for review.","Finished and merged. The flaky test now passes 50/50 runs.","Completed the docs pass; pushed to the branch, no PR needed."],
+  idle:["Waiting — last turn finished 2h ago. Pick up where we left off?","Idle. Last action: edited ui/App.tsx."],
+};
+const PHASE_LABEL={running:"running",idle:"idle",waiting:"waiting",failed:"failed",done:"done"};
+const PHASE_RANK={waiting:0,failed:1,running:2,done:3,idle:4};
+let SELECTED=AGENTS[1];
+
+AGENTS.forEach(a=>{a.resp=pick(RESP[a.phase]||RESP.idle)});
+// Question-shape clusters → enables BATCH TRIAGE (answer a class of decision once).
+const QCLUSTERS=[
+  {key:"ratelimit", q:"Token bucket per-user, or a sliding window?", options:["Token bucket","Sliding window"], kind:"choice"},
+  {key:"mergegreen", q:"Tests pass and the PR is green — merge it?", options:["Merge","Hold"], kind:"confirm"},
+  {key:"approach", q:"Refactor the legacy session store now, or leave a follow-up?", options:["Do it now","Follow-up"], kind:"choice"},
+];
+AGENTS.filter(a=>a.phase==="waiting").forEach((a,i)=>{
+  const c=QCLUSTERS[i%QCLUSTERS.length]; a.qkey=c.key; a.q=c.q; a.options=c.options.slice(); a.qkind=c.kind; a.resp=c.q;
+});
+// one destructive-confirm singleton so the demo shows that shape too
+{const dz=AGENTS.filter(a=>a.phase==="waiting"); if(dz[2]){Object.assign(dz[2],{qkey:"destructive",q:"This will DROP the legacy_tokens column on prod. Confirm?",options:["Confirm","Cancel"],qkind:"destructive",resp:"This will DROP the legacy_tokens column on prod. Confirm?"});}}
+AGENTS.filter(a=>a.phase==="failed").forEach(a=>{a.qkind="retry";});
+
+// Backlog tickets (would come from linear-cli / github-cli)
+const TICKETS=[
+  {id:"RUSH-1298", title:"System agents leak into 'rush list'", project:"prix-api", source:"LN", pri:"urgent", status:"todo", desc:"`rush list` shows internal system agents that should be hidden. Filter them at the source.", labels:["bug","cli"]},
+  {id:"RUSH-1273", title:"HogQL/SQL injection in bug-report query", project:"prix-api", source:"LN", pri:"urgent", status:"todo", desc:"User input is interpolated into the PostHog query. Parameterize it.", labels:["security"]},
+  {id:"RUSH-1297", title:"Picker preview wraps mid-word (rune-slice)", project:"prix-api", source:"LN", pri:"high", status:"todo", desc:"Truncation slices on bytes, not grapheme boundaries.", labels:["bug"]},
+  {id:"#412", title:"Webview shows a blank panel on reload", project:"swarmify", source:"GH", pri:"high", status:"in-progress", desc:"Mount crash on restored shell; attach to the iframe CDP target.", labels:["bug","webview"]},
+  {id:"#418", title:"Virtualize the agent rail at 100+ agents", project:"swarmify", source:"GH", pri:"high", status:"todo", desc:"Flat windowed list, fixed-height rows.", labels:["perf"]},
+  {id:"RUSH-1294", title:"Stale 'Halo' branding in user-facing help", project:"web", source:"LN", pri:"med", status:"todo", desc:"`rush halo build` is dead; references remain in help text.", labels:["docs"]},
+  {id:"RUSH-1256", title:"Remote-OAuth MCP installable from CLI", project:"prix-api", source:"LN", pri:"med", status:"in-progress", desc:"Make Linear MCP agent-enableable from the rush CLI.", labels:["feature"]},
+  {id:"#88", title:"Add dark-mode to the onboarding flow", project:"web", source:"GH", pri:"med", status:"todo", desc:"Respect the host theme during first-run.", labels:["ui"]},
+  {id:"#402", title:"Flaky Playwright test on CI (auth suite)", project:"swarmify", source:"GH", pri:"med", status:"blocked", desc:"Retries 3x; race on the login redirect.", labels:["test","flaky"]},
+  {id:"RUSH-1238", title:"/careers — mission + roles page", project:"web", source:"LN", pri:"low", status:"todo", desc:"Replace the redirect with a real page.", labels:["growth"]},
+  {id:"#91", title:"Keyboard shortcuts cheat-sheet overlay", project:"swarmify", source:"GH", pri:"low", status:"todo", desc:"Cmd-/ opens a shortcuts panel.", labels:["ui"]},
+  {id:"PHX-77", title:"Weekly investor update automation", project:"phoenix-horizon", source:"LN", pri:"low", status:"todo", desc:"Pull metrics, draft the email.", labels:["ops"]},
+];
+const PRI_RANK={urgent:0,high:1,med:2,low:3};
+
+let PLAIN=false, SIDEBAR=true, RIGHT=true, PROJ_FILTER=null, BACKLOG_OPEN=true;
+let CENTER="agents", SELECTED_TICKET=null, TICKET_GROUP="project", TICKET_SORT="priority", TICKET_SRC={LN:true,GH:true};
+function plainTok(a){return PLAIN?(a.tok>120?"fast":a.tok>0?"working":""):(a.tok?a.tok+" tok/s":"")}
+const totRun=AGENTS.filter(a=>a.phase==="running").length;
+const totTok=AGENTS.reduce((s,a)=>s+a.tok,0);
+document.getElementById("srun").textContent=totRun;
+document.getElementById("stot").textContent=AGENTS.length;
+document.getElementById("stok").textContent=totTok.toLocaleString();
+
+// ---------- helpers ----------
+function sparkEl(tok){const n=6,el=document.createElement("span");el.className="spark";for(let i=0;i<n;i++){const b=document.createElement("i");b.style.height=(tok?(3+((i*53+tok)%10)):2)+"px";el.appendChild(b)}return el}
+function av(a){return `<span class="av ${a}">${a}</span>`}
+function actHtml(a){return `<span class="act">▸ <b>${a.verb}</b> ${a.target}</span>`}
+function dotHtml(p){return `<span class="dot ${p}"></span>`}
+const groupKey={host:a=>a.host,project:a=>a.project,status:a=>PHASE_LABEL[a.phase],agent:a=>a.agent};
+
+// ---------- RAIL ----------
+function renderRail(){
+  const gb=document.getElementById("groupby").value;
+  const stage=document.getElementById("stage");
+  const needs=AGENTS.filter(a=>a.needs);
+  const pinned=AGENTS.filter(a=>a.pinned);
+  const groups={};
+  AGENTS.forEach(a=>{const k=groupKey[gb](a);(groups[k]=groups[k]||[]).push(a)});
+  function row(a){
+    const sel=a===SELECTED?" sel":"";
+    return `<div class="arow${sel}" data-id="${a.id}">
+      ${dotHtml(a.phase)}${av(a.agent)}
+      <span class="grow0">
+        <div class="nm">${a.name}</div>
+      </span>
+      <span class="meta">
+        ${a.tok?`<span class="tps">${a.tok}</span>`:""}
+        ${a.needs?`<span class="needsflag ${a.phase==='failed'?'fail':''}">${a.phase==='failed'?'FAILED':'NEEDS YOU'}</span>`:`<span class="since">${a.since}</span>`}
+      </span>
+    </div>`;
+  }
+  function group(title,arr,cls){
+    if(!arr.length) return "";
+    const run=arr.filter(a=>a.phase==="running").length, wait=arr.filter(a=>a.phase==="waiting").length, fail=arr.filter(a=>a.phase==="failed").length;
+    return `<div class="ghead ${cls||''}"><span>${title}</span><span class="gcount">
+      ${run?`<span style="color:var(--run)">●${run}</span>`:""}${wait?`<span style="color:var(--wait)">◷${wait}</span>`:""}${fail?`<span style="color:var(--fail)">✕${fail}</span>`:""}
+      <span style="color:var(--tx-dim)">${arr.length}</span></span></div>`+arr.map(row).join("");
+  }
+  let railHtml=group("⚠ NEEDS YOU",needs.sort((a,b)=>PHASE_RANK[a.phase]-PHASE_RANK[b.phase]),"attn")
+    +group("★ PINNED",pinned,"pin");
+  Object.keys(groups).sort().forEach(k=>{railHtml+=group(k,groups[k].sort((a,b)=>PHASE_RANK[a.phase]-PHASE_RANK[b.phase]))});
+
+  stage.innerHTML=`<div class="rail-wrap">
+    <div class="rail">${railHtml}</div>
+    <div class="detail">${detailHtml(SELECTED)}</div>
+  </div>`;
+  stage.querySelectorAll(".arow").forEach(r=>r.onclick=()=>{SELECTED=AGENTS.find(a=>a.id===r.dataset.id);render()});
+}
+function detailHtml(a){
+  return `<div class="dhead">
+    ${dotHtml(a.phase)}<div class="grow0"><div class="title">${a.project} / ${a.name}</div>
+    <div class="sub">${av(a.agent).replace('class="av','class="av" style="display:inline-flex;vertical-align:middle')} &nbsp;host <b>${a.host}</b> · branch ${a.branch} · ${PHASE_LABEL[a.phase]}</div></div>
+    <span class="tag">${a.agent}</span>
+  </div>
+  <div class="tabs"><button class="on">Progress</button><button>Transcript</button><button>Files</button><button>Next Up · 6</button></div>
+  <div class="dbody">
+    <div class="prog">
+      <div style="display:flex;align-items:center"><div class="lbl" style="margin:0">Progress</div><div class="grow"></div><span class="tps">⚡ ${a.tok||0} tok/s</span> ${sparkEl(a.tok).outerHTML}</div>
+      <div class="now">Now ▸ ${a.verb} ${a.target}</div>
+      <div class="stats"><span>${a.tools+5} msgs</span><span>${a.files} files</span><span>${a.tools} tool calls</span><span>${PHASE_LABEL[a.phase]} ${a.since}</span></div>
+    </div>
+    <div><div class="lbl">Recent files</div>
+      ${["src/core/tasks.ts","src/vscode/tasks.vscode.ts","ui/settings/App.tsx"].map((f,i)=>`<div class="filerow"><span class="mono">${f}</span><span class="heat"><i style="width:${70-i*22}%"></i></span><span class="diff mono"><span class="add">+${142-i*40}</span> <span class="del">−${18-i*5}</span></span></div>`).join("")}
+    </div>
+    <div><div class="lbl">Recent tools</div>
+      <div class="toolrow"><span class="mono">$ bun test core/tasks.test.ts</span><span class="ok mono">✓ 18 passed</span></div>
+      <div class="toolrow"><span class="mono">✎ Edit src/core/tasks.ts</span></div>
+      <div class="toolrow"><span class="mono">⌘ Read src/core/session.activity.ts</span></div>
+    </div>
+    <div class="actions"><button class="abtn pri">Focus terminal</button><button class="abtn">Open PR</button><button class="abtn">Retry</button><button class="abtn">Kill</button></div>
+  </div>`;
+}
+
+// ---------- TRIPLE-PANE ----------
+let TRI_FILTER={type:"needs",val:null};
+function renderTri(){
+  const stage=document.getElementById("stage");
+  const needs=AGENTS.filter(a=>a.needs).length;
+  const byHost={},byProj={};
+  AGENTS.forEach(a=>{byHost[a.host]=(byHost[a.host]||0)+1;byProj[a.project]=(byProj[a.project]||0)+1});
+  let nav=`<div class="navsec">SMART</div>
+    <div class="navitem ${TRI_FILTER.type==='needs'?'on':''}" data-t="needs"><span>⚠ Needs you</span><span class="c warn">${needs}</span></div>
+    <div class="navitem ${TRI_FILTER.type==='all'?'on':''}" data-t="all"><span>All agents</span><span class="c">${AGENTS.length}</span></div>
+    <div class="navsec">HOSTS</div>`;
+  Object.keys(byHost).sort().forEach(h=>nav+=`<div class="navitem ${TRI_FILTER.type==='host'&&TRI_FILTER.val===h?'on':''}" data-t="host" data-v="${h}"><span>${h}</span><span class="c">${byHost[h]}</span></div>`);
+  nav+=`<div class="navsec">PROJECTS</div>`;
+  Object.keys(byProj).sort().forEach(p=>nav+=`<div class="navitem ${TRI_FILTER.type==='project'&&TRI_FILTER.val===p?'on':''}" data-t="project" data-v="${p}"><span>${p}</span><span class="c">${byProj[p]}</span></div>`);
+
+  let list=AGENTS;
+  if(TRI_FILTER.type==="needs")list=AGENTS.filter(a=>a.needs);
+  else if(TRI_FILTER.type==="host")list=AGENTS.filter(a=>a.host===TRI_FILTER.val);
+  else if(TRI_FILTER.type==="project")list=AGENTS.filter(a=>a.project===TRI_FILTER.val);
+  list=[...list].sort((a,b)=>PHASE_RANK[a.phase]-PHASE_RANK[b.phase]);
+
+  const rows=list.map(a=>{const sel=a===SELECTED?" sel":"";return `<div class="arow${sel}" data-id="${a.id}">
+    ${dotHtml(a.phase)}${av(a.agent)}
+    <span class="grow0"><div class="nm">${a.name}</div>${actHtml(a)}</span>
+    <span class="meta">${a.tok?`<span class="tps">${a.tok}</span>`:`<span class="since">${a.since}</span>`}</span></div>`}).join("");
+
+  stage.innerHTML=`<div class="tri-wrap">
+    <div class="nav">${nav}</div>
+    <div class="midlist">${rows}</div>
+    <div class="detail">${detailHtml(SELECTED)}</div>
+  </div>`;
+  stage.querySelectorAll(".navitem").forEach(n=>n.onclick=()=>{TRI_FILTER={type:n.dataset.t,val:n.dataset.v||null};render()});
+  stage.querySelectorAll(".arow").forEach(r=>r.onclick=()=>{SELECTED=AGENTS.find(a=>a.id===r.dataset.id);render()});
+}
+
+// ---------- BOARD ----------
+function renderBoard(){
+  const stage=document.getElementById("stage");
+  const cols=[
+    {k:"needs",title:"⚠ Needs you",cls:"needs",items:AGENTS.filter(a=>a.needs)},
+    {k:"run",title:"● Running",cls:"run",items:AGENTS.filter(a=>a.phase==="running"&&!a.needs)},
+    {k:"idle",title:"◐ Idle",cls:"idle",items:AGENTS.filter(a=>a.phase==="idle"&&!a.needs)},
+    {k:"done",title:"✓ Done",cls:"done",items:AGENTS.filter(a=>a.phase==="done"&&!a.needs)},
+  ];
+  function card(a){return `<div class="bcard" data-id="${a.id}">
+    <div class="r1">${dotHtml(a.phase)}${av(a.agent)}<span class="nm grow0">${a.name}</span>${a.tok?`<span class="tps">${a.tok}</span>`:""}</div>
+    <div class="act">▸ ${a.verb} ${a.target}</div>
+    <div class="r3"><span class="tag">${a.project}</span><span>${a.host}</span><span class="grow"></span><span class="since">${a.since}</span></div>
+  </div>`}
+  stage.innerHTML=`<div class="board">${cols.map(c=>`<div class="col">
+    <div class="colhead ${c.cls}">${c.title}<span class="c">${c.items.length}</span></div>
+    <div class="colbody">${c.items.map(card).join("")||'<div style="color:var(--tx-faint);font-size:12px;padding:8px">—</div>'}</div>
+  </div>`).join("")}</div>`;
+  stage.querySelectorAll(".bcard").forEach(r=>r.onclick=()=>{SELECTED=AGENTS.find(a=>a.id===r.dataset.id);setL("rail")});
+}
+
+// ---------- TABLE ----------
+function renderTable(){
+  const gb=document.getElementById("groupby").value;
+  const stage=document.getElementById("stage");
+  const groups={};
+  const sorted=[...AGENTS].sort((a,b)=>(a.needs===b.needs?PHASE_RANK[a.phase]-PHASE_RANK[b.phase]:a.needs?-1:1));
+  sorted.forEach(a=>{const k=groupKey[gb](a);(groups[k]=groups[k]||[]).push(a)});
+  let rows="";
+  Object.keys(groups).sort().forEach(k=>{
+    const arr=groups[k];const run=arr.filter(a=>a.phase==="running").length;
+    rows+=`<tr class="grouphdr"><td colspan="8">${k} &nbsp;·&nbsp; ${arr.length} agents · <span style="color:var(--run)">●${run}</span></td></tr>`;
+    arr.forEach(a=>{rows+=`<tr data-id="${a.id}">
+      <td>${dotHtml(a.phase)}</td>
+      <td>${av(a.agent)}</td>
+      <td><span class="nm">${a.name}</span></td>
+      <td style="color:var(--tx-mut)">${a.project}</td>
+      <td style="color:var(--tx-mut)">${a.host}</td>
+      <td class="td-act">▸ <b>${a.verb}</b> ${a.target}</td>
+      <td>${a.tok?`<span class="tps">${a.tok}</span>`:'<span class="since">—</span>'}</td>
+      <td class="since">${a.needs?`<span class="needsflag ${a.phase==='failed'?'fail':''}">${a.phase==='failed'?'FAILED':'NEEDS YOU'}</span>`:a.since}</td>
+    </tr>`})
+  });
+  stage.innerHTML=`<div class="tbl-wrap"><table>
+    <thead><tr><th></th><th></th><th class="sorted">Agent ↓</th><th>Project</th><th>Host</th><th>Activity</th><th>tok/s</th><th>Status</th></tr></thead>
+    <tbody>${rows}</tbody></table></div>`;
+  stage.querySelectorAll("tbody tr[data-id]").forEach(r=>r.onclick=()=>{SELECTED=AGENTS.find(a=>a.id===r.dataset.id);setL("rail")});
+}
+
+// ---------- project sidebar (scope) — shared across views ----------
+const PAPERCLIP=`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.4 11l-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.1a2 2 0 0 1-2.9-2.8l8.5-8.5"/></svg>`;
+function buildSidebar(){
+  if(!SIDEBAR) return "";
+  const byProj={},byHost={},projWait={},hostWait={};
+  AGENTS.forEach(a=>{byProj[a.project]=(byProj[a.project]||0)+1;byHost[a.host]=(byHost[a.host]||0)+1;if(a.needs){projWait[a.project]=(projWait[a.project]||0)+1;hostWait[a.host]=(hostWait[a.host]||0)+1}});
+  const needs=AGENTS.filter(a=>a.needs).length;
+  let h=`<div class="sb-sec">SMART</div>
+    <div class="sb-item ${PROJ_FILTER===null?'on':''}" data-proj=""><span>All agents</span><span class="c">${AGENTS.length}</span></div>
+    <div class="sb-item" data-proj="__needs"><span style="color:var(--wait)">⚠ Needs you</span><span class="c"><span class="w">${needs}</span></span></div>
+    <div class="sb-sec">QUEUE</div>
+    <div class="sb-item" data-proj="__queue"><span>Backlog</span><span class="c">${TICKETS.length} tickets</span></div>
+    <div class="sb-sec">PROJECTS</div>`;
+  Object.keys(byProj).sort().forEach(p=>h+=`<div class="sb-item ${PROJ_FILTER===p?'on':''}" data-proj="${p}"><span>${p}</span><span class="c">${projWait[p]?`<span class="w">◷${projWait[p]}</span>`:""}${byProj[p]}</span></div>`);
+  h+=`<div class="sb-sec">HOSTS</div>`;
+  const offline={zion:1};
+  Object.keys(byHost).sort().forEach(ho=>h+=`<div class="sb-item" data-proj=""><span class="hd ${offline[ho]?'off':''}"></span><span>${ho}</span><span class="c">${offline[ho]?'<span style="color:var(--fail)">offline</span>':byHost[ho]}</span></div>`);
+  return `<div class="sidebar">${h}</div>`;
+}
+function wireSidebar(stage){
+  stage.querySelectorAll(".sb-item[data-proj]").forEach(n=>n.onclick=()=>{
+    const v=n.dataset.proj;
+    if(v==="__queue"){CENTER="backlog";}
+    else if(v==="__needs"){CENTER="agents";PROJ_FILTER=null;}
+    else{CENTER="agents";PROJ_FILTER=v||null;}
+    render();
+  });
+}
+
+// ---------- FEED (home): backlog · BATCH-TRIAGE needs-you · live activity ----------
+function structuredReply(a){
+  const danger=a.qkind==="destructive";
+  const opts=(a.options||[]).map((o,i)=>`<button class="opt ${i===0?(danger?'danger':'primary'):'ghost'}">${o}</button>`).join("");
+  const fail=a.phase==="failed"?`<button class="opt primary">Retry</button><button class="opt ghost">View error</button>`:"";
+  return `<div class="opts">${opts}${fail}<button class="attach">${PAPERCLIP} Screenshot</button></div>
+    <div class="reply2"><input placeholder="…or reply in your own words"><button class="opt ghost">Send</button></div>`;
+}
+function clusterCard(arr){
+  const c=arr[0], danger=c.qkind==="destructive";
+  const optBtns=(c.options||[]).map((o,i)=>`<button class="opt ${i===0?(danger?'danger':'primary'):''}">${o}</button>`).join("");
+  const who=arr.slice(0,3).map(a=>`${a.name} · ${a.host}`).join("   ·   ")+(arr.length>3?`   +${arr.length-3} more`:"");
+  return `<div class="cluster" data-id="${c.id}">
+    <div class="ch"><span class="n">${arr.length}</span><span class="qq">${c.q}</span><span class="avs">${arr.slice(0,5).map(a=>av(a.agent)).join("")}</span></div>
+    <div class="batchline">${who}</div>
+    <div class="opts">${optBtns}<button class="opt ghost">Something else…</button><button class="opt batch">Apply to all ${arr.length}</button></div>
+  </div>`;
+}
+function feedItem(a){
+  const marker=a.pr?`<span class="pill pr">PR ${a.pr}</span>`:a.phase==="running"?`<span class="pill run">● running</span>`:a.phase==="done"?`<span class="pill done">done</span>`:"";
+  const tok=plainTok(a);
+  const meta=PLAIN?`${a.project}`:`${a.project} · ${a.host}${a.ticket?` · ${a.ticket}`:""}`;
+  const resp=a.qkind==="destructive"?`<span class="q">${a.resp}</span>`:a.resp;
+  return `<div class="fitem ${a.needs?(a.phase==='failed'?'fail':'attn'):''}${SELECTED&&SELECTED.id===a.id?' selsel':''}" data-id="${a.id}">
+    <div class="head">${dotHtml(a.phase)}${av(a.agent)}<span class="who">${a.name}</span><span class="path">${meta}</span>
+      <span class="when">${marker}${tok?`<span class="tps">${PLAIN?'':'⚡'}${tok}</span>`:""}<span>${a.since} ago</span></span></div>
+    <div class="resp">${resp}</div>
+    ${PLAIN?"":`<div class="nowline">▸ <span class="v">${a.verb}</span> ${a.target}</div>`}
+    ${a.needs?structuredReply(a):""}
+  </div>`;
+}
+function ticketStrip(t){
+  return `<div class="trow" data-tid="${t.id}"><span class="pri ${t.pri}"></span><span class="src ${t.source}">${t.source}</span><span class="tid">${t.id}</span><span class="tt">${t.title}</span><button class="dispatch-sm">Dispatch ▸</button></div>`;
+}
+function agentsCenter(){
+  const scope=a=>PROJ_FILTER===null||a.project===PROJ_FILTER;
+  const needs=AGENTS.filter(a=>a.needs&&scope(a));
+  const active=AGENTS.filter(a=>!a.needs&&scope(a)&&(a.phase==="running"||a.phase==="done")).sort((a,b)=>PHASE_RANK[a.phase]-PHASE_RANK[b.phase]);
+  const waiting=needs.filter(a=>a.phase==="waiting"), failed=needs.filter(a=>a.phase==="failed");
+  const byQ={}; waiting.forEach(a=>{(byQ[a.qkey]=byQ[a.qkey]||[]).push(a)});
+  let needsHtml=""; Object.values(byQ).forEach(arr=>{needsHtml+=arr.length>1?clusterCard(arr):feedItem(arr[0])}); failed.forEach(a=>needsHtml+=feedItem(a));
+  const tickets=TICKETS.filter(t=>PROJ_FILTER===null||t.project===PROJ_FILTER).slice(0,4);
+  const backlog=`<div class="backlog">
+    <div class="bh"><span id="blh">${BACKLOG_OPEN?'▾':'▸'} NEXT UP — ready to dispatch</span><span class="c"><span data-center="backlog" class="seeall">see all ${TICKETS.length} ▸</span></span></div>
+    ${BACKLOG_OPEN?tickets.map(ticketStrip).join(""):""}
+  </div>`;
+  return `<div class="feed">${backlog}
+    ${needs.length?`<div class="feed-sec attn">⚠ NEEDS YOU · ${needs.length}${PROJ_FILTER?` · ${PROJ_FILTER}`:""}<span class="ln"></span></div>${needsHtml}`:""}
+    <div class="feed-sec">LIVE ACTIVITY · ${active.length}<span class="ln"></span></div>
+    ${active.map(feedItem).join("")}</div>`;
+}
+function ticketRow(t){
+  const sel=SELECTED_TICKET&&SELECTED_TICKET.id===t.id?' selsel':'';
+  return `<div class="trow2${sel}" data-tid="${t.id}">
+    <span class="pri ${t.pri}"></span><span class="src ${t.source}">${t.source}</span><span class="tid">${t.id}</span>
+    <span class="tt">${t.title}</span>
+    <span class="tlabels">${(t.labels||[]).slice(0,2).map(l=>`<span class="tlbl">${l}</span>`).join("")}</span>
+    <span class="tstat ${t.status}">${t.status.replace('-',' ')}</span>
+    <span class="tproj">${t.project}</span>
+  </div>`;
+}
+function backlogCenter(){
+  let list=TICKETS.filter(t=>(PROJ_FILTER===null||t.project===PROJ_FILTER)&&TICKET_SRC[t.source]);
+  list=[...list].sort((a,b)=>TICKET_SORT==="priority"?PRI_RANK[a.pri]-PRI_RANK[b.pri]:a.id.localeCompare(b.id));
+  const gk={project:t=>t.project,priority:t=>t.pri,source:t=>t.source==="LN"?"Linear":"GitHub",status:t=>t.status.replace("-"," ")};
+  const groups={}; list.forEach(t=>{const k=gk[TICKET_GROUP](t);(groups[k]=groups[k]||[]).push(t)});
+  let rows=""; Object.keys(groups).forEach(k=>{rows+=`<div class="feed-sec">${k} <span style="color:var(--tx-dim);font-weight:600">· ${groups[k].length}</span><span class="ln"></span></div>`+groups[k].map(ticketRow).join("")});
+  return `<div class="feed">
+    <div class="bktoolbar">
+      <span data-center="agents" class="seeall">‹ Agents</span>
+      <div class="bh2">BACKLOG · ${list.length} tickets</div><div class="grow"></div>
+      <span class="bksel">Group <select id="tgrp">${["project","priority","source","status"].map(o=>`<option value="${o}" ${TICKET_GROUP===o?"selected":""}>${o[0].toUpperCase()+o.slice(1)}</option>`).join("")}</select></span>
+      <span class="bksel">Sort <select id="tsort">${["priority","id"].map(o=>`<option value="${o}" ${TICKET_SORT===o?"selected":""}>${o==="id"?"ID":"Priority"}</option>`).join("")}</select></span>
+      <span class="chip ${TICKET_SRC.LN?"on":""}" data-src="LN">LN</span><span class="chip ${TICKET_SRC.GH?"on":""}" data-src="GH">GH</span>
+    </div>${rows}</div>`;
+}
+function ticketDetail(t){
+  return `<div class="dhead"><span class="src ${t.source}">${t.source}</span><div class="grow0"><div class="title">${t.id}</div><div class="sub">${t.project} · <span class="pri ${t.pri}" style="display:inline-block;vertical-align:middle"></span> ${t.pri} · ${t.status.replace("-"," ")}</div></div></div>
+  <div class="dbody">
+    <div><div style="font-size:14px;font-weight:600;margin-bottom:6px">${t.title}</div><div style="font-size:12.5px;color:var(--tx-mut);line-height:1.5">${t.desc}</div>
+    <div style="margin-top:8px">${(t.labels||[]).map(l=>`<span class="tlbl">${l}</span>`).join(" ")}</div></div>
+    <div class="dispatch-panel">
+      <div class="lbl">Dispatch an agent onto this ticket</div>
+      <div class="dp-row"><span class="dp-k">Agent</span><span class="opts"><button class="opt primary">Claude</button><button class="opt ghost">Codex</button><button class="opt ghost">Gemini</button></span></div>
+      <div class="dp-row"><span class="dp-k">Host</span><select class="sel"><option>this-mac</option><option>yosemite-s0</option><option>yosemite-s1</option><option>zion (offline)</option></select></div>
+      <div class="dp-row"><span class="dp-k">Mode</span><span class="opts"><button class="opt ghost">Plan</button><button class="opt primary">Edit</button></span></div>
+      <button class="disp" style="width:100%;justify-content:center;margin-top:8px">⚡ Dispatch onto ${t.id}</button>
+    </div>
+    <div><div class="lbl">Links</div><div style="font-size:12px"><span style="color:var(--brand-600);cursor:pointer">Open ${t.id} in ${t.source==="LN"?"Linear":"GitHub"} ▸</span></div></div>
+  </div>`;
+}
+function renderFeed(){
+  const stage=document.getElementById("stage");
+  let centerHtml,rightHtml;
+  if(CENTER==="backlog"){centerHtml=backlogCenter();rightHtml=SELECTED_TICKET?ticketDetail(SELECTED_TICKET):`<div class="detail-empty">Select a ticket to see its details and dispatch an agent onto it.</div>`;}
+  else{centerHtml=agentsCenter();rightHtml=detailRight(SELECTED);}
+  stage.innerHTML=`<div class="page">${buildSidebar()}<div class="feed-col">${centerHtml}</div>${RIGHT?`<div class="detail-col">${rightHtml}</div>`:""}</div>`;
+  wireSidebar(stage);
+  stage.querySelectorAll("[data-center]").forEach(b=>b.onclick=()=>{CENTER=b.dataset.center;render()});
+  const blh=document.getElementById("blh"); if(blh)blh.onclick=()=>{BACKLOG_OPEN=!BACKLOG_OPEN;render()};
+  const sel=(id)=>{if(id){SELECTED=AGENTS.find(a=>a.id===id);render()}};
+  stage.querySelectorAll(".fitem").forEach(r=>r.onclick=(e)=>{if(e.target.closest(".opts")||e.target.closest(".reply2"))return;sel(r.dataset.id)});
+  stage.querySelectorAll(".cluster").forEach(r=>r.onclick=(e)=>{if(e.target.closest(".opts"))return;sel(r.dataset.id)});
+  stage.querySelectorAll(".trow[data-tid],.trow2[data-tid]").forEach(r=>r.onclick=(e)=>{if(e.target.closest("button"))return;CENTER="backlog";SELECTED_TICKET=TICKETS.find(t=>t.id===r.dataset.tid);render()});
+  const tg=document.getElementById("tgrp"); if(tg)tg.onchange=()=>{TICKET_GROUP=tg.value;render()};
+  const tsr=document.getElementById("tsort"); if(tsr)tsr.onchange=()=>{TICKET_SORT=tsr.value;render()};
+  stage.querySelectorAll("[data-src]").forEach(c=>c.onclick=()=>{TICKET_SRC[c.dataset.src]=!TICKET_SRC[c.dataset.src];render()});
+}
+// Right-pane detail: a decision block (when the agent needs you) + the rich progress view.
+function detailRight(a){
+  if(!a) return `<div class="detail-empty">Select an agent or issue to open its conversation and reply here.</div>`;
+  let decide="";
+  if(a.needs){
+    const danger=a.qkind==="destructive";
+    const opts=(a.options||[]).map((o,i)=>`<button class="opt ${i===0?(danger?'danger':'primary'):'ghost'}">${o}</button>`).join("");
+    const fail=a.phase==="failed"?`<button class="opt primary">Retry</button><button class="opt ghost">View error</button>`:"";
+    decide=`<div style="padding:14px 16px 0"><div class="decide">
+      <div class="ql">${a.phase==="failed"?"FAILED — NEEDS YOU":"WAITING ON YOU"}</div>
+      <div class="qt">${a.q||a.resp}</div>
+      <div class="opts">${opts}${fail}<button class="attach">${PAPERCLIP} Screenshot</button></div>
+      <div class="reply2"><input placeholder="…or reply in your own words"><button class="opt ghost">Send</button></div>
+    </div></div>`;
+  }
+  return decide + detailHtml(a);
+}
+
+// ---------- switcher ----------
+let LAYOUT="feed";
+function render(){({feed:renderFeed,rail:renderRail,tri:renderTri,board:renderBoard,table:renderTable})[LAYOUT]()}
+function setL(l){LAYOUT=l;document.querySelectorAll("#sw button").forEach(b=>b.classList.toggle("on",b.dataset.l===l));render()}
+document.querySelectorAll("#sw button").forEach(b=>b.onclick=()=>setL(b.dataset.l));
+document.getElementById("groupby").onchange=render;
+document.getElementById("theme").onclick=()=>{const h=document.documentElement;h.dataset.theme=h.dataset.theme==="light"?"dark":"light"};
+const sb=document.getElementById("sidebtn"); sb.classList.toggle("on",SIDEBAR);
+sb.onclick=()=>{SIDEBAR=!SIDEBAR;sb.classList.toggle("on",SIDEBAR);render()};
+const rb=document.getElementById("rightbtn"); rb.classList.toggle("on",RIGHT);
+rb.onclick=()=>{RIGHT=!RIGHT;rb.classList.toggle("on",RIGHT);render()};
+document.getElementById("plain").onclick=()=>{PLAIN=!PLAIN;document.getElementById("plain").textContent="Plain language: "+(PLAIN?"on":"off");render()};
+// allow ?l=table&theme=dark for screenshots
+const q=new URLSearchParams(location.search);
+if(q.get("theme"))document.documentElement.dataset.theme=q.get("theme");
+if(q.get("group"))document.getElementById("groupby").value=q.get("group");
+if(q.get("plain")){PLAIN=true;document.getElementById("plain").textContent="Plain language: on";}
+if(q.get("nosb")){SIDEBAR=false;document.getElementById("sidebtn").classList.remove("on");}
+SELECTED=AGENTS.find(a=>a.phase==="waiting")||SELECTED;
+if(q.get("center"))CENTER=q.get("center");
+if(CENTER==="backlog")SELECTED_TICKET=TICKETS[0];
+setL(q.get("l")||"feed");
+</script>
+</body>
+</html>
