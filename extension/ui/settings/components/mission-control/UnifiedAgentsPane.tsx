@@ -41,7 +41,7 @@ import {
   type TicketSource,
   type AgentAbbr,
 } from './floorModel'
-import { adaptUnified, adaptRemote, adaptTickets, type RemoteSessionLike } from './floorAdapter'
+import { adaptUnified, adaptRemote, adaptTickets, sinceFromMs, type RemoteSessionLike } from './floorAdapter'
 import { DispatchPanel } from './DispatchPanel'
 import { PlanReview } from './PlanReview'
 import { FailureCard } from './FailureCard'
@@ -53,6 +53,13 @@ import type {
 // ---------- Floor shell persisted prefs ----------
 
 const FLOOR_PREFS_KEY = 'swarmify.floorPrefs.v1'
+
+// Two-tier refresh of cross-host sessions. Local (this-mac, no SSH) is cheap → fast;
+// the remote SSH fan-out is expensive → slow. Both are visibility-gated. Local tab
+// agents already stream via the extension's fs.watch push, so these only drive the
+// remote + cross-window rows that the one-shot mount fetch used to leave frozen.
+const LOCAL_POLL_MS = 3_000
+const REMOTE_POLL_MS = 45_000
 
 interface FloorPrefs {
   plain: boolean
@@ -550,6 +557,9 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   const [ticketSrc, setTicketSrc] = useState<Record<TicketSource, boolean>>({ LN: true, GH: true })
   const [remoteSessions, setRemoteSessions] = useState<RemoteSessionLike[]>([])
   const [offlineHosts, setOfflineHosts] = useState<string[]>([])
+  // Freshness of the cross-host (remote) sweep, for the LIVE ACTIVITY sync chip.
+  const [lastRemoteSync, setLastRemoteSync] = useState(0)
+  const [syncingHosts, setSyncingHosts] = useState(false)
   const [selectedHostId, setSelectedHostId] = useState<string | null>(null)
   const [hostInventories, setHostInventories] = useState<Record<string, HostInventory>>({})
   const [hostConfigError, setHostConfigError] = useState<string | null>(null)
@@ -559,22 +569,52 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     saveFloorPrefs({ plain, sidebar: sidebarOpen, right: rightOpen, groupBy: floorGroupBy, pinned: [...pinned] })
   }, [plain, sidebarOpen, rightOpen, floorGroupBy, pinned])
 
-  // Cross-host merge: ask the backend for every reachable host's sessions on mount, fold
-  // the genuinely-remote ones into the Floor. Local-only Floor works if this never arrives.
+  // Cross-host merge: fold genuinely-remote sessions into the Floor. Two message
+  // types arrive here:
+  //   hostSessions  — full sweep (every online host); replaces the whole set + roster.
+  //   localSessions — this-mac only (the fast 3s poll); replaces just the this-mac rows
+  //                   so remote rows from the slower sweep are preserved.
+  // Local-only Floor still works if neither ever arrives.
   useEffect(() => {
-    postMessage({ type: 'fetchHostSessions' })
     const onMsg = (event: MessageEvent) => {
       const msg = event.data
-      if (msg?.type !== 'hostSessions') return
-      setRemoteSessions(Array.isArray(msg.sessions) ? (msg.sessions as RemoteSessionLike[]) : [])
-      const offline = Array.isArray(msg.hosts)
-        ? (msg.hosts as Array<{ name: string; online: boolean }>).filter((h) => h && !h.online).map((h) => h.name)
-        : []
-      setOfflineHosts(offline)
+      if (msg?.type === 'hostSessions') {
+        setRemoteSessions(Array.isArray(msg.sessions) ? (msg.sessions as RemoteSessionLike[]) : [])
+        const offline = Array.isArray(msg.hosts)
+          ? (msg.hosts as Array<{ name: string; online: boolean }>).filter((h) => h && !h.online).map((h) => h.name)
+          : []
+        setOfflineHosts(offline)
+        setLastRemoteSync(typeof msg.fetchedAt === 'number' ? msg.fetchedAt : Date.now())
+        setSyncingHosts(false)
+      } else if (msg?.type === 'localSessions') {
+        const local = Array.isArray(msg.sessions) ? (msg.sessions as RemoteSessionLike[]) : []
+        setRemoteSessions((prev) => [...prev.filter((s) => s.host !== 'this-mac'), ...local])
+      }
     }
     window.addEventListener('message', onMsg)
     return () => window.removeEventListener('message', onMsg)
   }, [])
+
+  // Remote tier: sweep every online host over SSH. Expensive, so poll slowly and only
+  // while the panel is visible; the sweep itself is cheapened backend-side (offline
+  // hosts skipped, one SSH per host, CPU probe decoupled). Mirrors the throughput poll.
+  useEffect(() => {
+    if (!panelVisible) return
+    const sweep = () => { setSyncingHosts(true); postMessage({ type: 'fetchHostSessions' }) }
+    sweep()
+    const id = setInterval(sweep, REMOTE_POLL_MS)
+    return () => clearInterval(id)
+  }, [panelVisible])
+
+  // Local tier: this-mac sessions with no SSH — cheap, so poll fast. Keeps the feed
+  // feeling live for local agents between the slow remote sweeps.
+  useEffect(() => {
+    if (!panelVisible) return
+    const poll = () => postMessage({ type: 'fetchLocalSessions' })
+    poll()
+    const id = setInterval(poll, LOCAL_POLL_MS)
+    return () => clearInterval(id)
+  }, [panelVisible])
 
   // Host detail pane: receive fetched inventories + config-action errors.
   useEffect(() => {
@@ -1045,7 +1085,10 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   }, [panelHosts])
 
   // ---------- Floor view-model derivation ----------
-  const nowMs = Date.now()
+  // A once-a-second ticker (local useNow) instead of a bare Date.now(): advances the
+  // "since" labels + the sync chip's age on a timer rather than on every render, which
+  // is also what lets the memos below actually memoize (Date.now() changed every render).
+  const nowMs = useNow(1000)
 
   // Local agents (drop the synthetic watchdog row) + genuinely-remote sessions
   // (host !== 'this-mac' so we don't double count this machine's own agents).
@@ -1364,7 +1407,20 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
         </>
       )}
 
-      <div className="feed-sec">LIVE ACTIVITY · {activeFeed.length}<span className="ln" /></div>
+      <div className="feed-sec">LIVE ACTIVITY · {activeFeed.length}<span className="ln" />
+        <span
+          className={`fresh${syncingHosts ? ' syncing' : ''}${!syncingHosts && lastRemoteSync > 0 && nowMs - lastRemoteSync > 2 * REMOTE_POLL_MS ? ' stale' : ''}`}
+          title="Last cross-host sync. Click to refresh now."
+          onClick={() => { if (!syncingHosts) { setSyncingHosts(true); postMessage({ type: 'fetchHostSessions' }) } }}
+        >
+          <span className="rot"><Icon name="refresh" size={11} /></span>
+          {syncingHosts
+            ? 'syncing hosts…'
+            : lastRemoteSync > 0
+              ? `hosts synced ${sinceFromMs(Math.max(0, nowMs - lastRemoteSync))} ago`
+              : 'not synced yet'}
+        </span>
+      </div>
       {activeFeed.map((a) => (
         <FeedItem
           key={a.id}
