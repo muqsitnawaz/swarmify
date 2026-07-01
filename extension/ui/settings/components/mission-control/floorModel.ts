@@ -53,20 +53,26 @@ export interface StructuredQuestion {
  * How a user reply reaches THIS agent. Built by the adapter from the agent's
  * source so the host handler ('replyToAgent') can dispatch without re-deriving:
  *   terminal -> the live vscode terminal (sendText); local tabs only.
+ *   tmux     -> `tmux -S <muxSocket> send-keys -t <muxTarget>`, over ssh when the
+ *               session is on another host. This is how a headless/interactive agent
+ *               running inside tmux (local or remote) receives a reply; the CLI hands
+ *               us the socket + pane in `provenance.reply`.
  *   cloud    -> `agents cloud message <cloudTaskId> <text>`.
  *   team     -> `agents factory answer <teamName> <text>`.
- *   none     -> no reachable channel (external/remote raw terminal); `reason`
+ *   none     -> no reachable channel (raw non-tmux TTY, e.g. bare Ghostty); `reason`
  *               is shown inline instead of a dead send.
- * `host` is 'this-mac' for local delivery or a remote name the host prefixes with
- * ssh (cloud/team commands run on the machine that owns the session).
+ * `host` is 'this-mac' for local delivery or a remote name the handler prefixes with
+ * ssh (tmux/cloud/team commands run on the machine that owns the session).
  */
-export type ReplyKind = 'terminal' | 'cloud' | 'team' | 'none'
+export type ReplyKind = 'terminal' | 'tmux' | 'cloud' | 'team' | 'none'
 
 export interface ReplyTarget {
   kind: ReplyKind
   host: string
   terminalId?: string
   sessionId?: string
+  muxSocket?: string
+  muxTarget?: string
   cloudTaskId?: string
   cloudProvider?: string
   teamName?: string

@@ -209,6 +209,10 @@ describe('toFloorAgentFromRemote', () => {
       cloudProvider: '',
       teamName: '',
       pid: 4321,
+      transport: 'ssh',
+      replyRail: '',
+      replyMuxTarget: '',
+      replyMuxSocket: '',
     }
     const a = toFloorAgentFromRemote(r, new Set())
     expect(a.host).toBe('yosemite-s0')
@@ -247,6 +251,10 @@ describe('toFloorAgentFromRemote', () => {
       cloudProvider: '',
       teamName: '',
       pid: 0,
+      transport: 'ssh',
+      replyRail: '',
+      replyMuxTarget: '',
+      replyMuxSocket: '',
     }
     expect(toFloorAgentFromRemote(r, new Set()).lastActivityMs).toBe(0)
   })
@@ -258,7 +266,24 @@ describe('deriveReplyTargetFromRemote', () => {
     phase: 'waiting', activity: '', tokPerSec: 0, waitingForInput: true, lastResponse: '',
     prUrl: null, ticket: null, branch: '', sinceMs: 0, startedAtMs: 0, topic: '',
     context: '', cloudTaskId: '', cloudProvider: '', teamName: '', pid: 0,
+    transport: '', replyRail: '', replyMuxTarget: '', replyMuxSocket: '',
   }
+
+  test('a tmux-backed remote session routes to the tmux rail (ssh + send-keys)', () => {
+    const r = toFloorAgentFromRemote({
+      ...base, host: 'yosemite-s0', context: 'terminal', transport: 'ssh',
+      replyRail: 'tmux', replyMuxTarget: '%65', replyMuxSocket: '/tmp/tmux-1000/default',
+    }, new Set())
+    expect(r.reply.kind).toBe('tmux')
+    expect(r.reply.host).toBe('yosemite-s0')
+    expect(r.reply.muxTarget).toBe('%65')
+    expect(r.reply.muxSocket).toBe('/tmp/tmux-1000/default')
+  })
+
+  test('a tmux rail missing its pane/socket degrades to none, not a dead send', () => {
+    const r = toFloorAgentFromRemote({ ...base, context: 'terminal', replyRail: 'tmux', replyMuxTarget: '', replyMuxSocket: '' }, new Set())
+    expect(r.reply.kind).toBe('none')
+  })
 
   test('cloud row routes to `agents cloud message` on its owning host', () => {
     const r = toFloorAgentFromRemote({ ...base, host: 'this-mac', context: 'cloud', cloudTaskId: 'vclfel94', cloudProvider: 'rush' }, new Set())

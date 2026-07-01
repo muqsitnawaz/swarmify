@@ -68,6 +68,15 @@ export interface RemoteSession {
   teamName: string;
   /** OS pid of the live process (terminal context), 0 when unknown. */
   pid: number;
+  /** Transport the CLI reached this session over ('ssh' remote, 'local', or ''). */
+  transport: string;
+  /** Reply rail from `provenance.reply.rail`: 'tmux' means drive the pane below with
+   *  `tmux send-keys`; '' means no programmatic channel (raw TTY) unless cloud/team. */
+  replyRail: string;
+  /** tmux pane target (e.g. '%65') for the tmux rail. Empty otherwise. */
+  replyMuxTarget: string;
+  /** tmux socket path for the tmux rail. Empty otherwise. */
+  replyMuxSocket: string;
 }
 
 /** One machine's worth of sessions plus its reachability + freshness stamp. */
@@ -123,6 +132,13 @@ export interface RawActiveSession {
   branch?: string;
   prUrl?: string;
   ticket?: string;
+  /** How the CLI says a reply reaches this session. `reply` is null for raw TTYs
+   *  (e.g. bare Ghostty) with no programmatic input channel; a tmux-backed session
+   *  carries the socket + pane to drive via `tmux send-keys` (over ssh when remote). */
+  provenance?: {
+    transport?: string;
+    reply?: { rail?: string; target?: string; socket?: string } | null;
+  } | null;
 }
 
 const TICKET_RE = /\b[A-Z][A-Z0-9]*-\d+\b/;
@@ -226,6 +242,10 @@ export function normalizeActiveSession(
     cloudProvider: raw.cloudProvider || '',
     teamName: raw.teamName || '',
     pid: typeof raw.pid === 'number' ? raw.pid : 0,
+    transport: raw.provenance?.transport || '',
+    replyRail: raw.provenance?.reply?.rail || '',
+    replyMuxTarget: raw.provenance?.reply?.target || '',
+    replyMuxSocket: raw.provenance?.reply?.socket || '',
   };
 }
 

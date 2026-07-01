@@ -78,6 +78,10 @@ export interface RemoteSessionLike {
   cloudProvider: string
   teamName: string
   pid: number
+  transport: string
+  replyRail: string
+  replyMuxTarget: string
+  replyMuxSocket: string
 }
 
 // ---------- primitive helpers ----------
@@ -182,8 +186,16 @@ export function deriveReplyTargetFromRemote(r: RemoteSessionLike): ReplyTarget {
     if (!r.teamName) return { kind: 'none', host: r.host, reason: 'Team name unknown' }
     return { kind: 'team', host: r.host, teamName: r.teamName }
   }
-  // Raw terminal session (Ghostty, other window, remote shell): no generic way to
-  // inject keystrokes into a TTY we don't own. Honest 'none' beats a silent no-op.
+  // tmux-backed session (headless or interactive, local or remote): the CLI's
+  // provenance.reply hands us the socket + pane, so we drive it with `tmux send-keys`
+  // (over ssh when the host isn't this machine). This is the channel for a headless
+  // agent on another box — as long as it runs inside tmux.
+  if (r.replyRail === 'tmux' && r.replyMuxTarget && r.replyMuxSocket) {
+    return { kind: 'tmux', host: r.host, muxSocket: r.replyMuxSocket, muxTarget: r.replyMuxTarget }
+  }
+  // Raw non-tmux TTY (bare Ghostty, a shell we don't own): the CLI reports reply=null
+  // — there is no programmatic way to inject keystrokes. Honest 'none' beats a silent
+  // no-op; the user opens the terminal to answer.
   return {
     kind: 'none',
     host: r.host,

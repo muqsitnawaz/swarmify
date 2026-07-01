@@ -2405,6 +2405,7 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
         // 'replyResult' so the webview shows an inline error on failure (never a toast).
         const reply = (message.reply || {}) as {
           kind?: string; host?: string; terminalId?: string;
+          muxSocket?: string; muxTarget?: string;
           cloudTaskId?: string; teamName?: string; reason?: string;
         };
         const replyAgentId = typeof message.agentId === 'string' ? message.agentId : '';
@@ -2427,6 +2428,24 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
               term.terminal.sendText(replyText, true);
             }
             term.terminal.show();
+            postReplyResult(true);
+          } else if (reply.kind === 'tmux') {
+            // Drive the agent's tmux pane: literal text, then Enter (matches the
+            // Ink-friendly text-then-CR local path). Local runs tmux directly; a
+            // remote host runs it over ssh. ssh flattens argv into one remote shell
+            // string, so the remote command must be single-quoted piece by piece.
+            if (!reply.muxSocket || !reply.muxTarget) { postReplyResult(false, 'Missing tmux socket/pane'); break; }
+            const sendKeys = async (keyArgs: string[]) => {
+              if (replyHost) {
+                const remote = ['tmux', '-S', reply.muxSocket!, 'send-keys', '-t', reply.muxTarget!, ...keyArgs]
+                  .map(shq).join(' ');
+                await execFileAsync('ssh', [replyHost, remote], { timeout: 20_000 });
+              } else {
+                await execFileAsync('tmux', ['-S', reply.muxSocket!, 'send-keys', '-t', reply.muxTarget!, ...keyArgs], { timeout: 20_000 });
+              }
+            };
+            await sendKeys(['-l', '--', replyText]);
+            await sendKeys(['Enter']);
             postReplyResult(true);
           } else if (reply.kind === 'cloud') {
             if (!reply.cloudTaskId) { postReplyResult(false, 'Missing cloud task id'); break; }

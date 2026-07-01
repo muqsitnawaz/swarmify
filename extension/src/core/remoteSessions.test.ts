@@ -96,6 +96,28 @@ describe('normalizeActiveSession', () => {
     expect(s.teamName).toBe(terminal.teamName ?? '');
   });
 
+  test('captures the tmux reply rail (socket + pane) from provenance', () => {
+    const s = normalizeActiveSession(
+      { context: 'terminal', kind: 'claude', sessionId: 'abc', status: 'running',
+        provenance: { transport: 'ssh', reply: { rail: 'tmux', target: '%65', socket: '/tmp/tmux-1000/default' } } },
+      'yosemite-s0', FETCHED_AT,
+    );
+    expect(s.transport).toBe('ssh');
+    expect(s.replyRail).toBe('tmux');
+    expect(s.replyMuxTarget).toBe('%65');
+    expect(s.replyMuxSocket).toBe('/tmp/tmux-1000/default');
+  });
+
+  test('a raw TTY with reply=null carries no rail', () => {
+    const s = normalizeActiveSession(
+      { context: 'terminal', kind: 'claude', sessionId: 'ghost', status: 'running',
+        provenance: { transport: 'local', reply: null } },
+      'this-mac', FETCHED_AT,
+    );
+    expect(s.replyRail).toBe('');
+    expect(s.replyMuxTarget).toBe('');
+  });
+
   test('extracts a ticket id from label/topic', () => {
     const backend = ACTIVE.find((r) => r.label === 'backend')!;
     const s = normalizeActiveSession(backend, 'this-mac', FETCHED_AT);
