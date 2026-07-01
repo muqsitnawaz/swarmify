@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { BUILT_IN_AGENTS, getBuiltInByKey, getBuiltInDefByTitle, getBuiltInByPrefix, pickLatestVersion, STRATEGY_LAUNCH_AGENTS } from '../core/agents';
+import { BUILT_IN_AGENTS, getBuiltInByKey, getBuiltInDefByTitle, getBuiltInByPrefix, pickLatestVersion, STRATEGY_LAUNCH_AGENTS, modeFlagForAgent, AgentLaunchMode } from '../core/agents';
 import {
   AgentConfig,
   buildIconPath,
@@ -180,6 +180,7 @@ function buildAgentLaunchCommand(
   additionalFlags?: string,
   pinnedVersion?: string,
   strategy?: RunStrategy,
+  mode?: AgentLaunchMode,
 ): string {
   const agentSpec = pinnedVersion ? `${agentKey}@${pinnedVersion}` : agentKey;
   let command = `agents run ${agentSpec} --interactive`;
@@ -193,6 +194,15 @@ function buildAgentLaunchCommand(
   }
   if (defaultModel && (!additionalFlags || !additionalFlags.includes('--model'))) {
     command += ` --model ${defaultModel}`;
+  }
+  // Dispatch mode -> per-agent permission flag, next to --model/--strategy.
+  // Skip when the caller already threaded an explicit --permission-mode via
+  // additionalFlags so we never emit it twice.
+  if (mode) {
+    const modeFlag = modeFlagForAgent(agentKey, mode);
+    if (modeFlag && (!additionalFlags || !additionalFlags.includes('--permission-mode'))) {
+      command += ` ${modeFlag}`;
+    }
   }
   if (additionalFlags?.trim()) {
     command += ` ${additionalFlags.trim()}`;
@@ -209,8 +219,9 @@ function buildClaudeLaunchCommand(
   sessionId: string,
   defaultModel?: string,
   additionalFlags?: string,
+  mode?: AgentLaunchMode,
 ): string {
-  return buildAgentLaunchCommand('claude', sessionId, defaultModel, additionalFlags);
+  return buildAgentLaunchCommand('claude', sessionId, defaultModel, additionalFlags, undefined, undefined, mode);
 }
 
 // Terminal readiness detection moved to src/vscode/terminalReadiness.ts.
@@ -2934,8 +2945,8 @@ export async function openSingleAgentWithQueue(
   context: vscode.ExtensionContext,
   agentConfig: Omit<AgentConfig, 'count'>,
   messages: string[],
-  opts?: { cwd?: string }
-) {
+  opts?: { cwd?: string; mode?: AgentLaunchMode; sessionId?: string }
+): Promise<{ terminalId: string; sessionId: string | null }> {
   const editorLocation: vscode.TerminalEditorLocationOptions = {
     viewColumn: vscode.ViewColumn.Active,
     preserveFocus: false
@@ -2965,8 +2976,10 @@ export async function openSingleAgentWithQueue(
 
   if (agentKey === 'claude') {
     // Claude: generate session ID at open time; others are discovered post-spawn.
-    sessionId = generateClaudeSessionId();
-    command = buildClaudeLaunchCommand(context, sessionId, defaultModel);
+    // A caller (dispatch) may pre-supply the id so it can watch that exact
+    // session file for a plan / completion afterwards.
+    sessionId = opts?.sessionId ?? generateClaudeSessionId();
+    command = buildClaudeLaunchCommand(context, sessionId, defaultModel, undefined, opts?.mode);
   }
 
   const title = buildTerminalTitle(agentConfig.title, undefined, context, sessionId);
@@ -3041,6 +3054,8 @@ export async function openSingleAgentWithQueue(
   }).catch(() => {
     // waitFor rejects on timeout — fallback handle already scheduled
   });
+
+  return { terminalId, sessionId };
 }
 
 async function openAgentTerminals(context: vscode.ExtensionContext) {
