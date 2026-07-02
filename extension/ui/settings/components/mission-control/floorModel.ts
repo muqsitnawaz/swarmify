@@ -49,6 +49,14 @@ export interface StructuredQuestion {
   clusterKey: string
 }
 
+export type TodoStatus = 'pending' | 'in_progress' | 'completed'
+
+/** One item of an agent's task checklist, parsed from its latest TodoWrite call. */
+export interface TodoItem {
+  content: string
+  status: TodoStatus
+}
+
 /**
  * The at-a-glance unit rendered in every Floor surface. Built by SHELL's adapter
  * from the real UnifiedAgent (+ cross-host session data). Mirrors prototype
@@ -75,6 +83,7 @@ export interface FloorAgent {
   branch: string
   resp: string           // last response text (Anthropic Agent-view style)
   question: StructuredQuestion | null
+  todos: TodoItem[]      // task checklist from the latest TodoWrite; empty when none
 }
 
 // ---------- ticket view-model (Backlog) ----------
@@ -224,6 +233,47 @@ export function heartbeatLevel(ageMs: number): HeartbeatLevel {
   if (!Number.isFinite(ageMs) || ageMs < STALL_THRESHOLD_MS) return 'live'
   if (ageMs >= 2 * STALL_THRESHOLD_MS) return 'dead'
   return 'stale'
+}
+
+/** Minimal shape of a parsed tool call the checklist reads (name + raw input). */
+export interface ToolCallLike {
+  name: string
+  input?: unknown
+}
+
+/**
+ * The agent's current task checklist: the todos of its MOST RECENT TodoWrite call.
+ * A later TodoWrite fully supersedes earlier ones (the agent rewrites the whole
+ * list each time), so we take the last one, not a merge. Returns [] when the
+ * session has no TodoWrite, or the input is malformed. Pure so it's unit-tested.
+ */
+export function latestTodos(toolCalls: ReadonlyArray<ToolCallLike> | undefined): TodoItem[] {
+  if (!toolCalls || toolCalls.length === 0) return []
+  for (let i = toolCalls.length - 1; i >= 0; i--) {
+    if (toolCalls[i]?.name !== 'TodoWrite') continue
+    const input = toolCalls[i]?.input
+    const raw = input && typeof input === 'object' ? (input as Record<string, unknown>).todos : undefined
+    if (!Array.isArray(raw)) return []
+    const todos: TodoItem[] = []
+    for (const t of raw) {
+      if (!t || typeof t !== 'object') continue
+      const rec = t as Record<string, unknown>
+      const content =
+        typeof rec.content === 'string' ? rec.content :
+        typeof rec.activeForm === 'string' ? rec.activeForm : ''
+      if (!content) continue
+      const status: TodoStatus =
+        rec.status === 'completed' || rec.status === 'in_progress' ? rec.status : 'pending'
+      todos.push({ content, status })
+    }
+    return todos
+  }
+  return []
+}
+
+/** completed / total tally for a checklist (total 0 when empty). */
+export function todoProgress(todos: ReadonlyArray<TodoItem>): { done: number; total: number } {
+  return { done: todos.filter((t) => t.status === 'completed').length, total: todos.length }
 }
 
 /**
