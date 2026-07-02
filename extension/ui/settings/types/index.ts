@@ -378,6 +378,7 @@ export interface TerminalDetail {
   recentTools?: string[]
   recentToolCalls?: RecentToolCall[]
   lastFilePath?: string | null
+  narrative?: string
   cwd?: string | null
   branch?: string | null
   recentFileStats?: Record<string, { added: number; removed: number }>
