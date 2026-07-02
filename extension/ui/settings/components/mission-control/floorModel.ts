@@ -244,12 +244,15 @@ export interface ToolCallLike {
 /**
  * The agent's current task checklist: the todos of its MOST RECENT TodoWrite call.
  * A later TodoWrite fully supersedes earlier ones (the agent rewrites the whole
- * list each time), so we take the last one, not a merge. Returns [] when the
- * session has no TodoWrite, or the input is malformed. Pure so it's unit-tested.
+ * list each time), so we take the newest, not a merge. `recentToolCalls` is stored
+ * NEWEST-FIRST (session.summary.ts unshifts each call), so we scan from index 0 and
+ * return the FIRST TodoWrite. Returns [] when there is no TodoWrite or the input is
+ * malformed. (Caveat: recentToolCalls is capped at 24, so a checklist drops off once
+ * >24 tool calls follow the last TodoWrite.) Pure so it's unit-tested.
  */
 export function latestTodos(toolCalls: ReadonlyArray<ToolCallLike> | undefined): TodoItem[] {
   if (!toolCalls || toolCalls.length === 0) return []
-  for (let i = toolCalls.length - 1; i >= 0; i--) {
+  for (let i = 0; i < toolCalls.length; i++) {
     if (toolCalls[i]?.name !== 'TodoWrite') continue
     const input = toolCalls[i]?.input
     const raw = input && typeof input === 'object' ? (input as Record<string, unknown>).todos : undefined
