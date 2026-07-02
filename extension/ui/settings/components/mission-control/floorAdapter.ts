@@ -16,9 +16,11 @@ import {
   deriveNeeds,
   parseStructuredQuestion,
   toFloorTicket,
+  latestTodos,
   type FloorAgent,
   type FloorTicket,
   type AgentAbbr,
+  type ToolCallLike,
 } from './floorModel'
 import type { UnifiedTask } from '../../types'
 
@@ -44,6 +46,7 @@ export interface UnifiedAgentLike {
     waitingForInput?: boolean
     lastUserMessage?: string
     currentActivity?: string
+    recentToolCalls?: ToolCallLike[]
   } | null
   agent?: {
     cwd?: string | null
@@ -205,6 +208,7 @@ export function toFloorAgentFromUnified(
     branch: u.terminal?.branch ?? u.agent?.branch ?? '',
     resp,
     question: parseStructuredQuestion(resp, phase),
+    todos: latestTodos(u.terminal?.recentToolCalls),
   }
 }
 
@@ -248,6 +252,8 @@ export function toFloorAgentFromRemote(r: RemoteSessionLike, pinned: Set<string>
     branch: r.branch,
     resp,
     question: parseStructuredQuestion(resp, phase),
+    // Remote (Tier-1) sessions are status-only; no tool calls to parse todos from yet.
+    todos: [],
   }
 }
 

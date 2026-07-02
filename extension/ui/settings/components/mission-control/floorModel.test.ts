@@ -5,6 +5,8 @@ import {
   deriveNeeds,
   deriveStalled,
   heartbeatLevel,
+  latestTodos,
+  todoProgress,
   parseStructuredQuestion,
   groupAgents,
   sortAgents,
@@ -355,5 +357,62 @@ describe('groupTickets / sortTickets', () => {
     const g = groupTickets(tickets, 'project')
     expect(g.get('web')!.map((t) => t.id)).toEqual(['RUSH-2', 'RUSH-3'])
     expect(g.get('swarmify')!.map((t) => t.id)).toEqual(['#1'])
+  })
+})
+
+describe('latestTodos -- the checklist from the newest TodoWrite', () => {
+  const tw = (todos: unknown) => ({ name: 'TodoWrite', input: { todos } })
+
+  test('reads the LAST TodoWrite, superseding earlier ones', () => {
+    const calls = [
+      { name: 'Edit', input: { file: 'a.ts' } },
+      tw([{ content: 'first plan', status: 'completed' }]),
+      { name: 'Bash', input: { command: 'bun test' } },
+      tw([
+        { content: 'read code', status: 'completed' },
+        { content: 'write code', status: 'in_progress' },
+        { content: 'open PR', status: 'pending' },
+      ]),
+    ]
+    expect(latestTodos(calls)).toEqual([
+      { content: 'read code', status: 'completed' },
+      { content: 'write code', status: 'in_progress' },
+      { content: 'open PR', status: 'pending' },
+    ])
+  })
+
+  test('returns [] when there is no TodoWrite', () => {
+    expect(latestTodos([{ name: 'Edit', input: {} }, { name: 'Bash', input: {} }])).toEqual([])
+  })
+
+  test('returns [] for undefined / empty input', () => {
+    expect(latestTodos(undefined)).toEqual([])
+    expect(latestTodos([])).toEqual([])
+  })
+
+  test('falls back to activeForm for content and defaults unknown status to pending', () => {
+    expect(latestTodos([tw([
+      { activeForm: 'Migrating token store', status: 'weird' },
+      { content: '', status: 'completed' },        // dropped: no content
+      { content: 'ok', status: 'in_progress' },
+    ])])).toEqual([
+      { content: 'Migrating token store', status: 'pending' },
+      { content: 'ok', status: 'in_progress' },
+    ])
+  })
+
+  test('tolerates malformed todos payload', () => {
+    expect(latestTodos([tw('not-an-array')])).toEqual([])
+    expect(latestTodos([{ name: 'TodoWrite', input: null }])).toEqual([])
+  })
+
+  test('todoProgress tallies completed vs total', () => {
+    expect(todoProgress([
+      { content: 'a', status: 'completed' },
+      { content: 'b', status: 'completed' },
+      { content: 'c', status: 'in_progress' },
+      { content: 'd', status: 'pending' },
+    ])).toEqual({ done: 2, total: 4 })
+    expect(todoProgress([])).toEqual({ done: 0, total: 0 })
   })
 })
