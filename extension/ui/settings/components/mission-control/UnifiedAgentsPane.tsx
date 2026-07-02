@@ -26,11 +26,13 @@ import { BacklogCenter } from './BacklogCenter'
 import { TicketDetail } from './TicketDetail'
 import { HostDetail } from './HostDetail'
 import { FeedItem, TicketStrip } from './FeedItem'
+import { TodoChecklist } from './TodoChecklist'
 import { NeedsYouClusters } from './NeedsYouClusters'
 import { StructuredReply } from './StructuredReply'
 import {
   clusterByQuestion,
   sortAgents,
+  latestTodos,
   type FloorAgent,
   type CenterMode,
   type HostInventory,
@@ -2128,6 +2130,7 @@ function filePillColor(touchedAtMs: number | undefined, now: number): string {
 
 function TerminalExpandedDetail({ terminal }: { terminal: TerminalInfo }) {
   const now = useNow(5000)
+  const todos = latestTodos(terminal.recentToolCalls)
   const cwdDisplay = terminal.cwd ? terminal.cwd.replace(/^\/Users\/[^/]+/, '~') : null
   const linkStyle: React.CSSProperties = {
     background: 'transparent',
@@ -2174,6 +2177,12 @@ function TerminalExpandedDetail({ terminal }: { terminal: TerminalInfo }) {
           <div className="sw-unified-detail-text">
             {renderTodoDescription(terminal.firstUserMessage, false)}
           </div>
+        </div>
+      )}
+      {todos.length > 0 && (
+        <div className="sw-unified-detail-section">
+          <div className="sw-section-label">Checklist</div>
+          <TodoChecklist todos={todos} />
         </div>
       )}
       {(terminal.quickSummary || terminal.messageCount) && (
