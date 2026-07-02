@@ -202,6 +202,27 @@
 .swarmify-root .fitem .resp .q { color: var(--status-pending); font-weight: 600; }
 .swarmify-root .fitem .nowline { font-family: "Geist Mono", monospace; font-size: 11px; color: var(--ds-text-muted); display: flex; align-items: center; gap: 8px; }
 .swarmify-root .fitem .nowline .v { color: var(--brand-600); }
+
+/* task checklist (from TodoWrite) -- compact bar on the card + full list in the detail.
+ * Status is a colored marker (no glyphs): done = filled green, in-progress = pulsing
+ * amber, pending = hollow ring; completed text is struck through. */
+.swarmify-root .sw-todobar { display: flex; align-items: center; gap: 8px; margin: 2px 0 8px; font-size: 10.5px; color: var(--ds-text-dim); }
+.swarmify-root .sw-todobar-frac { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--ds-text-muted); }
+.swarmify-root .sw-todobar-track { flex: 1; height: 5px; border-radius: 3px; background: var(--ds-bg-inset); overflow: hidden; }
+.swarmify-root .sw-todobar-track > i { display: block; height: 100%; background: var(--brand); border-radius: 3px; transition: width .4s ease; }
+.swarmify-root .sw-todocheck-head { display: flex; align-items: center; gap: 10px; margin-bottom: 7px; }
+.swarmify-root .sw-todocheck-frac { font-size: 12px; font-weight: 800; color: var(--ds-text-muted); font-variant-numeric: tabular-nums; }
+.swarmify-root .sw-todocheck-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.swarmify-root .sw-todocheck-item { display: flex; align-items: flex-start; gap: 9px; padding: 4px 6px; border-radius: 6px; font-size: 12.5px; color: var(--ds-text); line-height: 1.4; }
+.swarmify-root .sw-todocheck-mk { flex: 0 0 auto; width: 13px; height: 13px; border-radius: 50%; margin-top: 1px; border: 1.5px solid var(--ds-border-strong); position: relative; }
+.swarmify-root .sw-todocheck-item.status-completed { color: var(--ds-text-dim); }
+.swarmify-root .sw-todocheck-item.status-completed .sw-todocheck-txt { text-decoration: line-through; text-decoration-color: var(--ds-border-strong); }
+.swarmify-root .sw-todocheck-item.status-completed .sw-todocheck-mk { background: var(--status-running); border-color: var(--status-running); }
+.swarmify-root .sw-todocheck-item.status-in_progress { background: var(--status-pending-bg); }
+.swarmify-root .sw-todocheck-item.status-in_progress .sw-todocheck-mk { border-color: var(--status-pending); }
+.swarmify-root .sw-todocheck-item.status-in_progress .sw-todocheck-mk::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--status-pending); animation: sw-todo-pulse 1.3s ease-in-out infinite; }
+@keyframes sw-todo-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .swarmify-root .sw-todocheck-item.status-in_progress .sw-todocheck-mk::after { animation: none; } }
 .swarmify-root .pill { font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 999px; }
 .swarmify-root .pill.pr { background: var(--brand); color: #1a1a1a; }
 .swarmify-root .pill.run { background: var(--status-running-bg); color: var(--status-running); }
