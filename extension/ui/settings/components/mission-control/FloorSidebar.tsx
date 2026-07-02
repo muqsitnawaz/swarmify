@@ -42,7 +42,7 @@ export function FloorSidebar({ agents, tickets, projFilter, offlineHosts = [], o
   const needs = agents.filter((a) => a.needs).length
   const offline = new Set(offlineHosts)
 
-  // HOSTS list = hosts running agents (byHost) ∪ reachable roster hosts. Idle
+  // HOSTS list = hosts running agents (byHost) plus reachable roster hosts. Idle
   // ssh-config aliases that are offline with no agents stay hidden (clutter);
   // online devices (yosemite, mac-mini, win-mini) show even with zero agents.
   const rosterOnline = new Map(hosts.map((h) => [h.name, h.online]))
