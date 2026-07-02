@@ -45,6 +45,7 @@ export interface UnifiedAgentLike {
     waitingForInput?: boolean
     lastUserMessage?: string
     currentActivity?: string
+    narrative?: string
     recentToolCalls?: RecentToolCall[]
   } | null
   agent?: {
@@ -208,9 +209,10 @@ export function toFloorAgentFromUnified(
     resp,
     question: parseStructuredQuestion(resp, phase),
     todos: latestTodos(u.terminal?.recentToolCalls),
-    // The "what is it doing" line + recent tool calls already flow over the wire on the
-    // terminal (TerminalDetail.currentActivity / recentToolCalls); surface them here.
-    summary: u.terminal?.currentActivity ?? '',
+    // The rolling summary line + recent tool calls already flow over the wire on the
+    // terminal. Prefer the agent's own prose (narrative); fall back to the now-line
+    // (currentActivity) when it hasn't spoken between tool calls yet.
+    summary: u.terminal?.narrative || u.terminal?.currentActivity || '',
     recent: u.terminal?.recentToolCalls ?? [],
   }
 }

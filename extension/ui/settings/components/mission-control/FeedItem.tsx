@@ -39,6 +39,17 @@ export function FeedItem({ agent: a, selected, plain, onSelect, onOption, onFree
   const destructive = a.question?.kind === 'destructive'
   const attn = a.phase === 'failed' ? 'fail' : stalled ? 'stall' : a.needs ? 'attn' : ''
 
+  // Rolling summary line: the agent's own words for a running/stalled agent. Skip it
+  // when it just echoes the response block. Suppress the now-line when the summary
+  // already says the same thing (summary fell back to the now-line's activity string).
+  const nowlineText = `${a.verb} ${a.target}`.trim()
+  const showSummary =
+    !plain &&
+    !!a.summary &&
+    (a.phase === 'running' || a.phase === 'stalled') &&
+    a.summary.trim() !== a.resp.trim()
+  const showNowline = !plain && !!a.verb && !(showSummary && a.summary.trim() === nowlineText)
+
   const marker =
     a.pr ? <span className="pill pr">PR {a.pr}</span> :
     stalled ? <span className="pill stall">stalled</span> :
@@ -68,7 +79,8 @@ export function FeedItem({ agent: a, selected, plain, onSelect, onOption, onFree
       </div>
       <div className="resp">{destructive ? <span className="q">{a.resp}</span> : a.resp}</div>
       {!plain && a.todos.length > 0 && <TodoProgressBar todos={a.todos} />}
-      {!plain && (
+      {showSummary && <div className="summary">{a.summary}</div>}
+      {showNowline && (
         <div className={`nowline ${stalled ? 'stall' : ''}`}>
           <Icon name="chevR" size={11} /> <span className="v">{a.verb}</span> {a.target}
         </div>
