@@ -1328,11 +1328,24 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
             onKill={handleKill}
           />
         ) : (
-          <div className="dhead" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
-            <div className="title">{a.project} / {a.name}</div>
-            <div className="sub">host <b>{a.host}</b>{a.branch ? ` · ${a.branch}` : ''} · {a.phase}{a.tok ? ` · ${a.tok} tok/s` : ''}</div>
-            {a.resp && <div className="resp" style={{ marginTop: 8 }}>{a.resp}</div>}
-            {(a.verb || a.target) && <div className="nowline" style={{ marginTop: 8 }}><Icon name="chevR" size={11} /> <span className="v">{a.verb}</span> {a.target}</div>}
+          <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'auto' }}>
+            <div className="dhead" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
+              <div className="title">{a.project} / {a.name}</div>
+              <div className="sub">host <b>{a.host}</b>{a.branch ? ` · ${a.branch}` : ''} · {a.phase}{a.tok ? ` · ${a.tok} tok/s` : ''}</div>
+              {a.summary && <div className="resp" style={{ marginTop: 8 }}>{a.summary}</div>}
+              {a.resp && a.resp !== a.summary && <div className="resp" style={{ marginTop: 8 }}>{a.resp}</div>}
+              {(a.verb || a.target) && <div className="nowline" style={{ marginTop: 8 }}><Icon name="chevR" size={11} /> <span className="v">{a.verb}</span> {a.target}</div>}
+            </div>
+            {a.recent.length > 0 && (
+              <div className="sw-unified-detail-section">
+                <div className="sw-section-label">Recent tools</div>
+                <div className="sw-floor-detail-tools">
+                  {a.recent.slice(0, 8).map((call, i) => (
+                    <RecentToolCallRow key={`${call.name}-${i}`} call={call} />
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </>
