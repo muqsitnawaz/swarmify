@@ -20,9 +20,8 @@ import {
   type FloorAgent,
   type FloorTicket,
   type AgentAbbr,
-  type ToolCallLike,
 } from './floorModel'
-import type { UnifiedTask } from '../../types'
+import type { UnifiedTask, RecentToolCall } from '../../types'
 
 // ---------- structural inputs ----------
 
@@ -46,7 +45,7 @@ export interface UnifiedAgentLike {
     waitingForInput?: boolean
     lastUserMessage?: string
     currentActivity?: string
-    recentToolCalls?: ToolCallLike[]
+    recentToolCalls?: RecentToolCall[]
   } | null
   agent?: {
     cwd?: string | null
@@ -209,6 +208,10 @@ export function toFloorAgentFromUnified(
     resp,
     question: parseStructuredQuestion(resp, phase),
     todos: latestTodos(u.terminal?.recentToolCalls),
+    // The "what is it doing" line + recent tool calls already flow over the wire on the
+    // terminal (TerminalDetail.currentActivity / recentToolCalls); surface them here.
+    summary: u.terminal?.currentActivity ?? '',
+    recent: u.terminal?.recentToolCalls ?? [],
   }
 }
 
@@ -254,6 +257,10 @@ export function toFloorAgentFromRemote(r: RemoteSessionLike, pinned: Set<string>
     question: parseStructuredQuestion(resp, phase),
     // Remote (Tier-1) sessions are status-only; no tool calls to parse todos from yet.
     todos: [],
+    // Remote = summary only: the sweep carries the session's task line (topic) / last
+    // response but no tool calls yet, so recent stays empty until Tier-2 enrichment.
+    summary: r.topic || r.lastResponse || '',
+    recent: [],
   }
 }
 

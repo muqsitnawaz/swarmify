@@ -13,7 +13,9 @@
 // (+ DESIGN.md). Field names mirror the prototype's AGENTS / TICKETS mock objects
 // so the port is a 1:1 translation, not a redesign.
 
-import type { UnifiedTask } from '../../types'
+import type { UnifiedTask, RecentToolCall } from '../../types'
+
+export type { RecentToolCall }
 
 // ---------- agent view-model ----------
 
@@ -84,6 +86,8 @@ export interface FloorAgent {
   resp: string           // last response text (Anthropic Agent-view style)
   question: StructuredQuestion | null
   todos: TodoItem[]      // task checklist from the latest TodoWrite; empty when none
+  summary: string        // the "what is it doing" line (CLI-provided); '' when unknown
+  recent: RecentToolCall[] // rolling window of this session's recent tool calls; [] when none
 }
 
 // ---------- ticket view-model (Backlog) ----------

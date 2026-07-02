@@ -45,6 +45,8 @@ function makeAgent(overrides: Partial<FloorAgent> = {}): FloorAgent {
     resp: '',
     question: null,
     todos: [],
+    summary: '',
+    recent: [],
     ...overrides,
   }
 }
