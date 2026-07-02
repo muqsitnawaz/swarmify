@@ -26,10 +26,18 @@ export interface SessionQuickDetails {
   recentTools: string[];
   recentToolCalls: RecentToolCall[];
   lastFilePath: string | null;
+  /**
+   * The agent's most recent substantive assistant prose — the natural-language
+   * text it emits between tool calls. Pure tool-call turns, thinking-only turns,
+   * and empty/whitespace turns are skipped. Truncated at a word boundary.
+   * '' when the session has no assistant prose yet.
+   */
+  narrative: string;
 }
 
 const MAX_RECENT_TOOL_CALLS = 24;
 const MAX_TOOL_OUTPUT_CHARS = 4000;
+const MAX_NARRATIVE_CHARS = 160;
 
 type MutableSessionQuickSummary = {
   filesEdited: Set<string>;
@@ -48,6 +56,7 @@ type MutableSessionQuickSummary = {
   mcpCalls: number;
   maxWebSearchesFromUsage: number;
   maxWebFetchesFromUsage: number;
+  lastAssistantText: string;
 };
 
 function initMutableSummary(): MutableSessionQuickSummary {
@@ -68,7 +77,39 @@ function initMutableSummary(): MutableSessionQuickSummary {
     mcpCalls: 0,
     maxWebSearchesFromUsage: 0,
     maxWebFetchesFromUsage: 0,
+    lastAssistantText: '',
   };
+}
+
+/**
+ * Pull natural-language prose out of an assistant message's content. Handles both
+ * a bare string and the block-array shape common to every CLI: Claude
+ * `{type:'text', text}`, Codex `{type:'output_text', text}`. Thinking / reasoning /
+ * tool_use blocks carry no `text` under those types, so they are skipped.
+ */
+function assistantTextFromContent(content: unknown): string {
+  if (typeof content === 'string') return content.trim();
+  if (!Array.isArray(content)) return '';
+  const parts: string[] = [];
+  for (const block of content) {
+    const rec = toRecord(block);
+    if (!rec) continue;
+    const type = toStringValue(rec.type);
+    if (type !== 'text' && type !== 'output_text' && type !== 'input_text') continue;
+    const text = toStringValue(rec.text).trim();
+    if (text) parts.push(text);
+  }
+  return parts.join(' ').trim();
+}
+
+/** Collapse whitespace and truncate to ~160 chars at a word boundary. */
+function truncateNarrative(text: string): string {
+  const clean = text.replace(/\s+/g, ' ').trim();
+  if (clean.length <= MAX_NARRATIVE_CHARS) return clean;
+  const slice = clean.slice(0, MAX_NARRATIVE_CHARS);
+  const lastSpace = slice.lastIndexOf(' ');
+  const base = lastSpace > MAX_NARRATIVE_CHARS * 0.6 ? slice.slice(0, lastSpace) : slice;
+  return base.replace(/[\s,.;:]+$/, '') + '...';
 }
 
 function parseTimestampMs(ts?: string): number | undefined {
@@ -301,6 +342,9 @@ function applyClaudeEvent(summary: MutableSessionQuickSummary, event: Record<str
     const content = message?.content;
     if (!Array.isArray(content)) return;
 
+    const text = assistantTextFromContent(content);
+    if (text) summary.lastAssistantText = text;
+
     for (const block of content) {
       const blockRecord = toRecord(block);
       if (!blockRecord || toStringValue(blockRecord.type) !== 'tool_use') continue;
@@ -478,6 +522,12 @@ function applyCodexEvent(summary: MutableSessionQuickSummary, event: Record<stri
     return;
   }
 
+  if (payloadType === 'message' && toStringValue(payload.role) === 'assistant') {
+    const text = assistantTextFromContent(payload.content);
+    if (text) summary.lastAssistantText = text;
+    return;
+  }
+
   if (payloadType !== 'function_call') return;
   const toolName = toStringValue(payload.name);
   const args = parseArguments(payload.arguments);
@@ -496,6 +546,15 @@ function applyGeminiEvent(summary: MutableSessionQuickSummary, event: Record<str
     const output = stringifyToolResultContent(event.response ?? event.result ?? event.output);
     const isError = event.is_error === true || event.success === false;
     attachToolResult(summary, callId, output, isError);
+    return;
+  }
+
+  if (eventType === 'message' || eventType === 'assistant') {
+    const role = toStringValue(event.role) || 'assistant';
+    if (role === 'assistant') {
+      const text = assistantTextFromContent(event.content) || toStringValue(event.text).trim();
+      if (text) summary.lastAssistantText = text;
+    }
     return;
   }
 
@@ -584,6 +643,7 @@ export function extractSessionQuickDetails(
       recentTools: [],
       recentToolCalls: [],
       lastFilePath: null,
+      narrative: '',
     };
   }
 
@@ -612,6 +672,7 @@ export function extractSessionQuickDetails(
     recentTools: summary.recentTools.slice(0, 32),
     recentToolCalls: summary.recentToolCalls.slice(0, MAX_RECENT_TOOL_CALLS),
     lastFilePath: recentFilesSource[0] || null,
+    narrative: truncateNarrative(summary.lastAssistantText),
   };
 }
 
