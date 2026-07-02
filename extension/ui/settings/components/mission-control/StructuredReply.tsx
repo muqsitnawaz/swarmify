@@ -54,9 +54,7 @@ export function StructuredReply({ question, phase, onOption, onFreeText, onAttac
             <button className="opt ghost" onClick={() => onOption('View error')}>View error</button>
           </>
         )}
-        <button className="attach" onClick={onAttach}>
-          <Icon name="paperclip" size={12} /> Screenshot
-        </button>
+        {/* Screenshot attach hidden until a transport exists (was a no-op stub). */}
       </div>
       <div className="reply2">
         <input

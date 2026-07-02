@@ -20,7 +20,7 @@ import {
   PENDING_DISPATCH_TTL_MS,
   type PendingDispatch,
 } from './dispatch'
-import { FloorControls, type FloorView, type StatusChip } from './FloorControls'
+import { FloorControls, type StatusChip } from './FloorControls'
 import { FloorSidebar } from './FloorSidebar'
 import { BacklogCenter } from './BacklogCenter'
 import { TicketDetail } from './TicketDetail'
@@ -62,7 +62,6 @@ interface FloorPrefs {
   plain: boolean
   sidebar: boolean
   right: boolean
-  groupBy: FloorGroupBy
   pinned: string[]
   // Ordered pinned host names for the HOSTS sidebar. null = never customized
   // (the local machine is pinned by default); [] = user explicitly unpinned all.
@@ -70,7 +69,7 @@ interface FloorPrefs {
 }
 
 function defaultFloorPrefs(): FloorPrefs {
-  return { plain: false, sidebar: true, right: true, groupBy: 'project', pinned: [], hostPins: null }
+  return { plain: false, sidebar: true, right: true, pinned: [], hostPins: null }
 }
 
 function loadFloorPrefs(): FloorPrefs {
@@ -543,19 +542,17 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     openDispatch({ ticketId: ticketKey(task) })
     onDetailTaskConsumed?.()
   }, [openDetailTaskId, unifiedTasks, onDetailTaskConsumed, openDispatch])
-  const [activeFilter, setActiveFilter] = useState<'all' | 'local' | 'cloud'>('all')
-  const [expandedAgentId, setExpandedAgentId] = useState<string | null>(null)
   const [pendingDispatches, setPendingDispatches] = useState<PendingDispatch[]>([])
   const [tick, setTick] = useState(0)
   // ---------- Floor 3-pane shell state ----------
   const floorPrefs0 = useRef(loadFloorPrefs()).current
   const [center, setCenter] = useState<CenterMode>('agents')
-  const [floorView, setFloorView] = useState<FloorView>('feed')
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null)
   const [projFilter, setProjFilter] = useState<string | null>(null)
+  // Host scope: click a HOSTS row to filter the feed to that machine; click again to clear.
+  const [hostFilter, setHostFilter] = useState<string | null>(null)
   const [floorSort, setFloorSort] = useState<FloorSort>('needs')
-  const [floorGroupBy, setFloorGroupBy] = useState<FloorGroupBy>(floorPrefs0.groupBy)
   const [plain, setPlain] = useState(floorPrefs0.plain)
   const [sidebarOpen, setSidebarOpen] = useState(floorPrefs0.sidebar)
   const [rightOpen, setRightOpen] = useState(floorPrefs0.right)
@@ -573,8 +570,8 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
 
   // Persist the durable Floor prefs (pinned set, plain/sidebar/right toggles, group-by, host pins).
   useEffect(() => {
-    saveFloorPrefs({ plain, sidebar: sidebarOpen, right: rightOpen, groupBy: floorGroupBy, pinned: [...pinned], hostPins })
-  }, [plain, sidebarOpen, rightOpen, floorGroupBy, pinned, hostPins])
+    saveFloorPrefs({ plain, sidebar: sidebarOpen, right: rightOpen, pinned: [...pinned], hostPins })
+  }, [plain, sidebarOpen, rightOpen, pinned, hostPins])
 
   // Effective HOSTS pins: default to pinning just the local machine until the user
   // customizes. Pin/unpin and drag-reorder always write an explicit list.
@@ -1109,8 +1106,6 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     postMessage({ type: 'focusTerminal', terminalId: t.id })
   }
 
-  const handleSelectAgent = useCallback((id: string) => setExpandedAgentId(id), [])
-
   const handleRetry = useCallback((taskName: string) => {
     postMessage({ type: 'retrySwarm', taskName })
   }, [])
@@ -1210,16 +1205,17 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     return m
   }, [items])
 
-  // Center list scoped by project filter + status/agent chips + search.
+  // Center list scoped by project filter + host filter + status/agent chips + search.
   const scopedAgents = useMemo(() => {
     let list = floorAgents
     if (projFilter) list = list.filter((a) => a.project === projFilter)
+    if (hostFilter) list = list.filter((a) => (a.hostLabel ?? a.host) === hostFilter)
     if (statusChips.length) list = list.filter((a) => statusChips.some((c) => (c === 'needs' ? a.needs : a.phase === c)))
     if (abbrChips.length) list = list.filter((a) => abbrChips.includes(a.abbr))
     const q = floorSearch.trim().toLowerCase()
     if (q) list = list.filter((a) => `${a.name} ${a.branch} ${a.verb} ${a.target} ${a.project} ${a.host} ${a.hostLabel ?? ''}`.toLowerCase().includes(q))
     return list
-  }, [floorAgents, projFilter, statusChips, abbrChips, floorSearch])
+  }, [floorAgents, projFilter, hostFilter, statusChips, abbrChips, floorSearch])
 
   const needsAgents = useMemo(() => scopedAgents.filter((a) => a.needs), [scopedAgents])
   const waitingAgents = useMemo(() => needsAgents.filter((a) => a.phase === 'waiting'), [needsAgents])
@@ -1233,11 +1229,12 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   const floorRunning = useMemo(() => floorAgents.filter((a) => a.phase === 'running').length, [floorAgents])
   const floorTok = useMemo(() => floorAgents.reduce((s, a) => s + a.tok, 0) + liveThroughput, [floorAgents, liveThroughput])
 
-  // Selected agent (defaults to the first waiting, else first live) + its FloorTicket.
-  const selectedFloorAgent: FloorAgent | null = useMemo(() => {
-    if (selectedAgentId) return floorAgents.find((a) => a.id === selectedAgentId) ?? null
-    return waitingAgents[0] ?? activeFeed[0] ?? null
-  }, [selectedAgentId, floorAgents, waitingAgents, activeFeed])
+  // Selected agent: only when the user explicitly picks one. No auto-select — the right
+  // rail must not slam to a "WAITING ON YOU" agent nobody clicked.
+  const selectedFloorAgent: FloorAgent | null = useMemo(
+    () => (selectedAgentId ? floorAgents.find((a) => a.id === selectedAgentId) ?? null : null),
+    [selectedAgentId, floorAgents]
+  )
 
   const selectedFloorTicket = useMemo(
     () => (selectedTicketId ? floorTickets.find((t) => t.id === selectedTicketId) ?? null : null),
@@ -1318,8 +1315,15 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
 
   const onScope = useCallback((value: string) => {
     if (value === '__queue') { setCenter('backlog'); return }
-    if (value === '__needs') { setCenter('agents'); setProjFilter(null); return }
+    if (value === '__needs') { setCenter('agents'); setProjFilter(null); setHostFilter(null); return }
+    if (value.startsWith('host:')) {
+      const h = value.slice(5)
+      setCenter('agents'); setProjFilter(null)
+      setHostFilter((cur) => (cur === h ? null : h)) // click again to clear
+      return
+    }
     setCenter('agents')
+    setHostFilter(null)
     setProjFilter(value || null)
   }, [])
 
@@ -1402,10 +1406,6 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
       onSelectTicket={(id) => setSelectedTicketId(id)}
       onBackToAgents={() => setCenter('agents')}
     />
-  ) : floorView !== 'feed' ? (
-    <div className="feed">
-      <div className="detail-empty">The {floorView} view is coming soon — Feed is the primary Floor view.</div>
-    </div>
   ) : (
     <div className="feed">
       {nextUpTickets.length > 0 && (
@@ -1488,20 +1488,14 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   return (
     <div className="sw-floor-dashboard" style={{ padding: 0, overflow: 'hidden' }}>
       <FloorControls
-        view={floorView}
-        onView={setFloorView}
-        groupBy={floorGroupBy}
-        onGroupBy={setFloorGroupBy}
         runningCount={floorRunning}
         totalCount={floorAgents.length}
-        totalTok={floorTok}
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen((o) => !o)}
         rightOpen={rightOpen}
         onToggleRight={() => setRightOpen((o) => !o)}
         plain={plain}
         onTogglePlain={() => setPlain((o) => !o)}
-        onToggleTheme={() => postMessage({ type: 'executeCommand', command: 'workbench.action.toggleLightDarkThemes' })}
         sort={floorSort}
         onSort={setFloorSort}
         activeStatus={statusChips}
@@ -1519,6 +1513,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
             agents={floorAgents}
             tickets={floorTickets}
             projFilter={projFilter}
+            hostFilter={hostFilter}
             offlineHosts={offlineHosts}
             devices={
               dispatchDevices.length

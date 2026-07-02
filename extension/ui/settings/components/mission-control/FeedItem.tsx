@@ -1,5 +1,6 @@
 import React from 'react'
 import { Icon } from './icons'
+import { AgentAvatar, agentIdFromPrefix } from './AgentAvatar'
 import { StructuredReply, type ReplyCallbacks } from './StructuredReply'
 import { heartbeatLevel, type FloorAgent, type FloorTicket } from './floorModel'
 import { sinceFromMs } from './floorAdapter'
@@ -52,7 +53,7 @@ export function FeedItem({ agent: a, selected, plain, onSelect, onOption, onFree
     >
       <div className="head">
         <span className={`dot ${a.phase}`} />
-        <span className={`av ${a.abbr}`}>{a.abbr}</span>
+        <AgentAvatar id={agentIdFromPrefix(a.abbr) ?? a.abbr.toLowerCase()} size={20} title={a.abbr} />
         <span className="who">{a.name}</span>
         <span className="path">{meta}</span>
         <span className="when">

@@ -2350,6 +2350,22 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
         }
         break;
       }
+      // Answer a waiting "Needs you" agent — the Floor's core action. The webview posts
+      // the agent's session id as `agentId`; deliver the chosen option / free text to that
+      // session (same send path as nudge). Before this case existed the reply was dropped.
+      case 'replyToAgent': {
+        const sessionId = typeof message.agentId === 'string' ? message.agentId : '';
+        const text = typeof message.text === 'string' ? message.text.trim() : '';
+        if (!sessionId || !text) {
+          vscode.window.showErrorMessage('Reply: missing session id or text');
+          break;
+        }
+        const res = await nudgeSession(sessionId, text, 'floor-reply');
+        if (!res.success) {
+          vscode.window.showErrorMessage(`Reply failed: ${res.error ?? 'unknown error'}`);
+        }
+        break;
+      }
       case 'spawnAgentForTask': {
         const task = message.task as {
           title: string;
@@ -2899,6 +2915,8 @@ function getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri): s
   const cursorIconLight = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'cursor-light.png'));
   const agentsIcon = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'agents.png'));
   const githubIcon = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'github.png'));
+  const antigravityIcon = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'antigravity.png'));
+  const grokIcon = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'grok.png'));
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -2916,7 +2934,9 @@ function getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri): s
       cursor: { dark: "${cursorIcon}", light: "${cursorIconLight}" },
       shell: "${agentsIcon}",
       agents: "${agentsIcon}",
-      github: "${githubIcon}"
+      github: "${githubIcon}",
+      antigravity: "${antigravityIcon}",
+      grok: "${grokIcon}"
     };
   </script>
 </head>

@@ -434,6 +434,8 @@ export interface IconConfig {
   agents: string
   shell: string
   github: string
+  antigravity: string
+  grok: string
 }
 
 // Built-in agent config

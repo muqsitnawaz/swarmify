@@ -12,6 +12,8 @@ interface FloorSidebarProps {
   tickets: FloorTicket[]
   /** Current project filter: null = All agents; a project name otherwise. */
   projFilter: string | null
+  /** Current host scope: null = no host filter; a host name highlights that row. */
+  hostFilter?: string | null
   /** Hosts known to be offline (health comes from SHELL, not hardcoded). */
   offlineHosts?: string[]
   /** Registered device fleet (agents devices) to surface under HOSTS, even with 0 agents. */
@@ -29,7 +31,7 @@ interface FloorSidebarProps {
   onScope: (value: string) => void
 }
 
-export function FloorSidebar({ agents, tickets, projFilter, offlineHosts = [], devices = [], hostPins = [], onToggleHostPin, onReorderHostPins, onScope }: FloorSidebarProps) {
+export function FloorSidebar({ agents, tickets, projFilter, hostFilter = null, offlineHosts = [], devices = [], hostPins = [], onToggleHostPin, onReorderHostPins, onScope }: FloorSidebarProps) {
   const byProj: Record<string, number> = {}
   const projWait: Record<string, number> = {}
   for (const a of agents) {
@@ -61,14 +63,14 @@ export function FloorSidebar({ agents, tickets, projFilter, offlineHosts = [], d
   const renderHost = (h: HostRow) => (
     <div
       key={h.name}
-      className={`sb-item sb-host${h.pinned ? ' pinned' : ''}${dragName === h.name ? ' dragging' : ''}${overName === h.name ? ' dragover' : ''}`}
+      className={`sb-item sb-host${h.pinned ? ' pinned' : ''}${hostFilter === h.name ? ' on' : ''}${dragName === h.name ? ' dragging' : ''}${overName === h.name ? ' dragover' : ''}`}
       draggable={h.pinned}
       onDragStart={h.pinned ? (e) => { setDragName(h.name); e.dataTransfer.effectAllowed = 'move' } : undefined}
       onDragOver={h.pinned ? (e) => { e.preventDefault(); if (dragName && dragName !== h.name) setOverName(h.name) } : undefined}
       onDragLeave={h.pinned ? () => setOverName((n) => (n === h.name ? null : n)) : undefined}
       onDrop={h.pinned ? (e) => { e.preventDefault(); dropBefore(h.name) } : undefined}
       onDragEnd={() => { setDragName(null); setOverName(null) }}
-      onClick={() => onScope('')}
+      onClick={() => onScope(`host:${h.name}`)}
     >
       <span className="sb-grip" title={h.pinned ? 'Drag to reorder' : undefined}>
         {h.pinned ? <Icon name="grip" size={12} /> : null}
