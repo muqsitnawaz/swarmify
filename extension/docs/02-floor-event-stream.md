@@ -85,20 +85,54 @@ worth stating plainly.
 
 ## Design
 
+### The primary consumer: a per-session summary
+
+The point of all this is a concrete user-facing operation: **show, per agent
+session, a summary of what it is doing** -- its status, its recent messages / tool
+calls, grouped by session id. So the *product* of the pipeline is a **per-session
+accumulator**, and the global time-ordered stream is the *transport* that feeds it
+(and, incidentally, the cross-session LIVE ACTIVITY feed). Design the store around
+the session, not around a global log.
+
+Concretely, the store's value per session is richer than the at-a-glance card:
+
+```
+SessionState = {
+  key: string            // canonical sessionKey
+  origin, host, agent, status, branch, pr, ticket
+  summary: string        // the "what is it doing" line (derived / CLI-provided)
+  recent: SessionEvent[] // rolling window of this session's messages / tool calls
+  lastActivityTs, tok, needs, ...   // the FloorAgent card fields, derived
+}
+```
+
+Grouping "messages by session id" is then not a feature to build -- it is the
+store's key. The summary is a fold over `recent`.
+
+Good news from the code: this summary largely **already exists** for local
+sessions. `extractSessionQuickDetails()` (`session.summary.ts`) produces a
+`quickSummary` + `recentToolCalls`, and `terminals.vscode.ts:1000-1162` already
+ships them on `TerminalDetail`. The gaps are (a) remote sessions skip that
+enrichment, (b) the Floor does not yet surface it as a grouped per-session view,
+and (c) there is no canonical key to group by. That is what makes a summary-first
+**Phase 0** cheap (see roadmap).
+
 ### Core shape
 
 ```
   sources --emit-->  FloorEventBus (host)  --floorEvent-->  useFloorStore (webview)
-  local fs.watch                                            reducer keyed by
-  cloud SSE          stamps ingestSeq + ingestTs            canonical sessionKey
-  remote sweep diff  per event                              -> one FloorAgent map
-  terminal open/close
+  local fs.watch                                            Map<sessionKey,
+  cloud SSE          stamps ingestSeq + ingestTs               SessionState>
+  remote sweep diff  message/activity/status events         summary = fold(recent)
+  terminal open/close                                       feed = order by ingestSeq
 ```
 
 One host-side `FloorEventBus` that every source emits into; one `floorEvent`
-message type to the webview; a webview reducer keyed by a canonical session key
-that owns the whole Floor view-model. `UnifiedAgentsPane` reads the store instead
-of hand-merging props + `remoteSessions` + pending + cloud.
+message type to the webview; a webview reducer keyed by the canonical session key
+that owns a `SessionState` per session. `UnifiedAgentsPane` reads the store instead
+of hand-merging props + `remoteSessions` + pending + cloud; the per-session detail
+pane folds `recent` into a summary; the LIVE ACTIVITY feed orders sessions by their
+latest `ingestSeq`.
 
 ### Decision 1 -- a canonical `sessionKey()`
 
@@ -148,18 +182,32 @@ deltas **per `sessionKey` per frame**, keeping only the latest patch. Coalescing
 safe precisely because ordering is by `ingestSeq` (Decision 2) -- dropping
 intermediate patches for the same key never reorders the log.
 
-### Decision 5 -- a typed `FloorEvent` union
+### Decision 5 -- a typed `FloorEvent` union, at message granularity
+
+Because the priority is grouping *messages*, the event granularity is
+message/activity-level appends, not only card-field patches. A session's `recent`
+list is built from `activity` events; `status`/`upsert` carry the card fields.
 
 ```ts
 type FloorEvent =
-  | { kind: 'snapshot'; ingestSeq: number; sessions: FloorSessionState[] }
-  | { kind: 'upsert';   ingestSeq: number; ingestTs: number; key: string; origin: Origin; sourceTs: number; patch: Partial<FloorSessionState> }
+  | { kind: 'snapshot'; ingestSeq: number; sessions: SessionState[] }
+  | { kind: 'upsert';   ingestSeq: number; ingestTs: number; key: string; origin: Origin; sourceTs: number; patch: Partial<SessionState> }
+  | { kind: 'activity'; ingestSeq: number; ingestTs: number; key: string; sourceTs: number; event: SessionEvent } // append to recent[]
   | { kind: 'remove';   ingestSeq: number; ingestTs: number; key: string }
 ```
 
 Copy the `src/monitor/protocol.ts` type-guard style. This finally gives the Floor
 slice of the webview<->host protocol a real typed contract instead of an ad-hoc
 string switch -- a side win.
+
+### Decision 6 -- rolling window in the webview, full transcript on-demand
+
+A summary needs the last N events per session, not the whole transcript. The store
+keeps a bounded `recent` window per session (drop oldest past the cap) so it never
+bloats. The **full** transcript stays on-demand: the Tier-2 path already exists --
+`fetchHostSessionDetail` -> `hostSessionDetail` renders one session as markdown
+(`settings.vscode.ts:1755`). "Open this session" pulls the full thread; the stream
+only carries the rolling window + summary.
 
 ### The remote reality check
 
@@ -172,6 +220,16 @@ timestamp. Worth being explicit: this design makes remote *consistent with* loca
 it does not make remote *push*.
 
 ## Proposed phasing (each phase shippable, no big-bang)
+
+**Phase 0 -- ship the per-session summary first (no event stream).** The immediate
+user value does not need the rearchitecture. Two small pieces: (a) a canonical
+`sessionKey()` used by the Floor for grouping/dedup, and (b) surface the *already
+computed* `quickSummary` + `recentToolCalls` (`TerminalDetail`, from
+`extractSessionQuickDetails`) as a grouped per-session summary view, and extend that
+same enrichment to remote sweep rows (run `enrichWithSessionContent` / a light probe
+for non-local hosts). Low blast radius, delivers the priority now. Detailed plan:
+`03-floor-session-summary.md`. Phases 1-5 adopt the event stream later, if and when
+legibility/extensibility earn it.
 
 1. **Introduce `FloorEvent` + `useFloorStore` behind an adapter.** Convert today's
    messages (`allTerminalsData`, `tasksData`, `hostSessions`, `localSessions`,
