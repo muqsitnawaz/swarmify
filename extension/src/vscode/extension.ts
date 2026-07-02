@@ -118,6 +118,7 @@ import { getSessionPathBySessionId, getSessionPreviewInfo, getOpenCodeSessionPre
 import * as tasksImport from './tasks.vscode';
 import { SOURCE_BADGES } from '../core/tasks';
 import * as handoff from '../core/handoff';
+import { decodeInjectQuery, selectInjectTarget } from '../core/inject';
 
 // Settings types are now imported from ./settings
 // Settings functions are in ./settings.vscode
@@ -813,6 +814,46 @@ export async function activate(context: vscode.ExtensionContext) {
           const entry = terminalId ? terminals.getById(terminalId) : undefined;
           if (entry) {
             entry.terminal.show();
+          }
+        } else if (uri.path === '/inject') {
+          // External nudge: an outside process (agents-cli) delivers text into a
+          // live integrated terminal by session id. Payload is base64url-JSON in
+          // the single `p` query param. Malformed input logs + returns, never throws.
+          const payload = decodeInjectQuery(uri.query);
+          if (!payload) {
+            console.warn('[INJECT] Ignoring malformed inject URI (bad or missing `p` payload)');
+            return;
+          }
+
+          const all = terminals.getAllTerminals();
+          const target = selectInjectTarget(all, payload.terminalId);
+          if (!target) {
+            const known = all.map((t) => t.sessionId).filter(Boolean).join(', ');
+            console.warn(
+              `[INJECT] No live terminal for id ${payload.terminalId}. Active sessions: ${known}`
+            );
+            return;
+          }
+
+          try {
+            if (payload.enter === false) {
+              // Text only, no submit.
+              target.terminal.sendText(payload.text, false);
+            } else if (payload.combined) {
+              // Single write with the carriage return appended.
+              target.terminal.sendText(payload.text + '\r', false);
+            } else {
+              // Ink-safe default: two writes so Claude's TUI sees Enter alone.
+              target.terminal.sendText(payload.text, false);
+              target.terminal.sendText('\r', false);
+            }
+            console.log(
+              `[INJECT] Delivered to ${target.id} (session ${target.sessionId ?? 'unknown'}): "${payload.text.slice(0, 80)}${payload.text.length > 80 ? '…' : ''}"`
+            );
+          } catch (err) {
+            console.error(
+              `[INJECT] Failed to deliver to ${target.id}: ${err instanceof Error ? err.message : String(err)}`
+            );
           }
         }
 
