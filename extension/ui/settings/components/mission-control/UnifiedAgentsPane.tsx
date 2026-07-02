@@ -559,6 +559,9 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   const [ticketSrc, setTicketSrc] = useState<Record<TicketSource, boolean>>({ LN: true, GH: true })
   const [remoteSessions, setRemoteSessions] = useState<RemoteSessionLike[]>([])
   const [offlineHosts, setOfflineHosts] = useState<string[]>([])
+  // Full discovered roster (name + reachability) so the sidebar can list idle
+  // reachable hosts, not only hosts currently running an agent.
+  const [hostRoster, setHostRoster] = useState<Array<{ name: string; online: boolean }>>([])
   // Freshness of the cross-host (remote) sweep, for the LIVE ACTIVITY sync chip.
   const [lastRemoteSync, setLastRemoteSync] = useState(0)
   const [syncingHosts, setSyncingHosts] = useState(false)
@@ -582,10 +585,13 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
       const msg = event.data
       if (msg?.type === 'hostSessions') {
         setRemoteSessions(Array.isArray(msg.sessions) ? (msg.sessions as RemoteSessionLike[]) : [])
-        const offline = Array.isArray(msg.hosts)
-          ? (msg.hosts as Array<{ name: string; online: boolean }>).filter((h) => h && !h.online).map((h) => h.name)
+        const roster = Array.isArray(msg.hosts)
+          ? (msg.hosts as Array<{ name: string; online: boolean }>)
+              .filter((h) => h && typeof h.name === 'string')
+              .map((h) => ({ name: h.name, online: !!h.online }))
           : []
-        setOfflineHosts(offline)
+        setHostRoster(roster)
+        setOfflineHosts(roster.filter((h) => !h.online).map((h) => h.name))
         setLastRemoteSync(typeof msg.fetchedAt === 'number' ? msg.fetchedAt : Date.now())
         setSyncingHosts(false)
       } else if (msg?.type === 'localSessions') {
@@ -1494,6 +1500,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
             onScope={onScope}
             onSelectHost={onSelectHost}
             selectedHost={center === 'host' ? selectedHostId : null}
+            hosts={hostRoster}
           />
         )}
         <div className="feed-col">{centerContent}</div>
