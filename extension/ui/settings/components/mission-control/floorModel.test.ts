@@ -11,6 +11,7 @@ import {
   groupAgents,
   sortAgents,
   clusterByQuestion,
+  sessionKey,
   toFloorTicket,
   groupTickets,
   sortTickets,
@@ -292,6 +293,50 @@ describe('clusterByQuestion', () => {
     const clusters = clusterByQuestion([waitingAgent('x', null), waitingAgent('y', null)])
     expect(clusters.length).toBe(2)
     expect(clusters.every((c) => c.length === 1)).toBe(true)
+  })
+})
+
+describe('sessionKey — one canonical identity across origins', () => {
+  const uuid = '4a78949e-1111-2222-3333-444455556666'
+
+  test('same session via local tab + local sweep collapse to one key', () => {
+    const fromTab = sessionKey({ origin: 'local', host: 'this-mac', cliSessionUuid: uuid, terminalId: 'CC-1705-1' })
+    const fromSweep = sessionKey({ origin: 'local', host: 'this-mac', cliSessionUuid: uuid })
+    expect(fromTab).toBe(uuid)
+    expect(fromSweep).toBe(uuid)
+    expect(fromTab).toBe(fromSweep)
+  })
+
+  test('provisional key re-keys once the UUID appears', () => {
+    const provisional = sessionKey({ origin: 'local', terminalId: 'CC-1705-1' })
+    const resolved = sessionKey({ origin: 'local', cliSessionUuid: uuid, terminalId: 'CC-1705-1' })
+    expect(provisional).toBe('provisional:CC-1705-1')
+    expect(resolved).toBe(uuid)
+    expect(provisional).not.toBe(resolved)
+  })
+
+  test('provisional falls back through terminal -> cloud -> agent id', () => {
+    expect(sessionKey({ origin: 'cloud', cloudTaskId: 'task-abc' })).toBe('provisional:task-abc')
+    expect(sessionKey({ origin: 'local', agentId: 'agent-xyz' })).toBe('provisional:agent-xyz')
+    expect(sessionKey({ origin: 'local' })).toBe('provisional:unknown')
+  })
+
+  test('remote keys namespaced by host do not collide across hosts', () => {
+    const onHostA = sessionKey({ origin: 'remote', host: 'yosemite-s0', cliSessionUuid: uuid })
+    const onHostB = sessionKey({ origin: 'remote', host: 'zion-m1', cliSessionUuid: uuid })
+    expect(onHostA).toBe(`yosemite-s0:${uuid}`)
+    expect(onHostB).toBe(`zion-m1:${uuid}`)
+    expect(onHostA).not.toBe(onHostB)
+  })
+
+  test('remote falls back to the session file stem when the UUID is unknown', () => {
+    expect(sessionKey({ origin: 'remote', host: 'zion-m1', sessionFileStem: 'rollout-2024' })).toBe('zion-m1:rollout-2024')
+  })
+
+  test('a genuinely remote UUID does not collide with the same session seen locally', () => {
+    const local = sessionKey({ origin: 'local', host: 'this-mac', cliSessionUuid: uuid })
+    const remote = sessionKey({ origin: 'remote', host: 'yosemite-s0', cliSessionUuid: uuid })
+    expect(local).not.toBe(remote)
   })
 })
 

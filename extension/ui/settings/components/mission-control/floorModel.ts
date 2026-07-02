@@ -185,6 +185,60 @@ export const PRI_RANK: Record<TicketPriority, number> = {
   low: 3,
 }
 
+// ---------- canonical session identity ----------
+
+/**
+ * Where a session was observed. 'this-mac' sightings (a local tab OR the local sweep)
+ * are 'local'; only a genuinely different host is 'remote'. Cloud tasks are 'cloud'.
+ */
+export type SessionOrigin = 'local' | 'remote' | 'cloud'
+
+/**
+ * Raw identity signals for one observed session. Shaped to fit what the adapter has:
+ * local terminals carry a lazily-populated CLI UUID + a terminal id; the remote sweep
+ * carries a host + a session id (UUID or file stem); cloud carries an opaque task id.
+ */
+export interface SessionKeyInput {
+  origin: SessionOrigin
+  host?: string | null
+  /** The CLI session UUID — collision-free within an agent type, but populated lazily. */
+  cliSessionUuid?: string | null
+  /** Remote fallback: the session file's stem, used when the UUID is not yet known. */
+  sessionFileStem?: string | null
+  /** Provisional (pre-UUID) identity sources, in precedence order. */
+  terminalId?: string | null
+  cloudTaskId?: string | null
+  agentId?: string | null
+}
+
+function firstNonEmpty(...values: Array<string | null | undefined>): string | undefined {
+  for (const v of values) {
+    if (typeof v === 'string' && v.trim()) return v.trim()
+  }
+  return undefined
+}
+
+/**
+ * One canonical identity per session, stable across the origins that report it. Mirrors
+ * 02-floor-event-stream.md Decision 1:
+ *   remote -> `${host}:${cliSessionUuid ?? sessionFileStem}`
+ *   else   -> cliSessionUuid ?? `provisional:${terminalId | cloudTaskId | agentId}`
+ * Prefer the CLI UUID (so a session seen as both a local tab and the local sweep collapses
+ * to one key); namespace remote by host so the same UUID on two hosts does not collide;
+ * fall back to a provisional key while the UUID is unknown and re-key once it arrives.
+ */
+export function sessionKey(input: SessionKeyInput): string {
+  const uuid = firstNonEmpty(input.cliSessionUuid)
+  const provisionalId = firstNonEmpty(input.terminalId, input.cloudTaskId, input.agentId) ?? 'unknown'
+  if (input.origin === 'remote') {
+    const host = firstNonEmpty(input.host) ?? 'unknown-host'
+    const id = uuid ?? firstNonEmpty(input.sessionFileStem) ?? provisionalId
+    return `${host}:${id}`
+  }
+  if (uuid) return uuid
+  return `provisional:${provisionalId}`
+}
+
 // ---------- pure logic (LOGIC fills bodies; signatures are the contract) ----------
 
 /** Raw signals -> FloorPhase, applying the precedence documented on FloorPhase. */
