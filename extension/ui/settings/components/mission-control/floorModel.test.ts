@@ -43,6 +43,7 @@ function makeAgent(overrides: Partial<FloorAgent> = {}): FloorAgent {
     branch: 'feat-auth',
     resp: '',
     question: null,
+    todos: [],
     ...overrides,
   }
 }
@@ -363,16 +364,18 @@ describe('groupTickets / sortTickets', () => {
 describe('latestTodos -- the checklist from the newest TodoWrite', () => {
   const tw = (todos: unknown) => ({ name: 'TodoWrite', input: { todos } })
 
-  test('reads the LAST TodoWrite, superseding earlier ones', () => {
+  test('reads the NEWEST TodoWrite, superseding earlier ones', () => {
+    // recentToolCalls is NEWEST-FIRST (session.summary.ts unshifts each call), so the
+    // most recent TodoWrite (the 3-item list) sits ahead of the older one-item list.
     const calls = [
-      { name: 'Edit', input: { file: 'a.ts' } },
-      tw([{ content: 'first plan', status: 'completed' }]),
       { name: 'Bash', input: { command: 'bun test' } },
       tw([
         { content: 'read code', status: 'completed' },
         { content: 'write code', status: 'in_progress' },
         { content: 'open PR', status: 'pending' },
       ]),
+      { name: 'Edit', input: { file: 'a.ts' } },
+      tw([{ content: 'first plan', status: 'completed' }]),
     ]
     expect(latestTodos(calls)).toEqual([
       { content: 'read code', status: 'completed' },
