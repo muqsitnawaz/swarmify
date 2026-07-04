@@ -1093,16 +1093,19 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   }, [panelHosts])
 
   // ---------- Floor view-model derivation ----------
-  // A once-a-second ticker (local useNow) instead of a bare Date.now(): advances the
-  // "since" labels + the sync chip's age on a timer rather than on every render, which
-  // is also what lets the memos below actually memoize (Date.now() changed every render).
+  // A once-a-second ticker (local useNow) drives the sync chip's live age (below). It is
+  // deliberately NOT a dependency of the agent adapters: at 100+ agents, re-adapting the
+  // whole feed every second (derivePhase / splitActivity / a per-agent question regex)
+  // is the dominant idle cost. The adapter instead captures Date.now() at data-change
+  // time only; each FeedItem's own leaf heartbeat (useNow) ticks the visible "since"
+  // label, so nothing freezes while unchanged agents stop being re-derived every second.
   const nowMs = useNow(1000)
 
   // Local agents (drop the synthetic watchdog row) + genuinely-remote sessions
   // (host !== 'this-mac' so we don't double count this machine's own agents).
   const floorLocalAgents = useMemo(
-    () => adaptUnified(items.filter((i) => i.kind !== 'watchdog'), { pinned, workspaceRepo: workspaceRepoName, nowMs }),
-    [items, pinned, workspaceRepoName, nowMs]
+    () => adaptUnified(items.filter((i) => i.kind !== 'watchdog'), { pinned, workspaceRepo: workspaceRepoName, nowMs: Date.now() }),
+    [items, pinned, workspaceRepoName]
   )
   // Session UUIDs already open as a terminal tab in THIS window (the rich, local
   // source). Used to avoid double-listing an agent that the machine-wide fetch also
@@ -1411,9 +1414,9 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
               selected={selectedFloorAgent?.id === c[0].id}
               plain={plain}
               onSelect={selectFloorAgent}
-              onOption={(o) => onAgentOption(c[0], o)}
-              onFreeText={(t) => replyToAgent(c[0], t)}
-              onAttach={() => onAttachScreenshot(c[0])}
+              onOption={onAgentOption}
+              onFreeText={replyToAgent}
+              onAttach={onAttachScreenshot}
             />
           ))}
           {failedAgents.map((a) => (
@@ -1449,9 +1452,9 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
           selected={selectedFloorAgent?.id === a.id}
           plain={plain}
           onSelect={selectFloorAgent}
-          onOption={(o) => onAgentOption(a, o)}
-          onFreeText={(t) => replyToAgent(a, t)}
-          onAttach={() => onAttachScreenshot(a)}
+          onOption={onAgentOption}
+          onFreeText={replyToAgent}
+          onAttach={onAttachScreenshot}
         />
       ))}
     </div>
