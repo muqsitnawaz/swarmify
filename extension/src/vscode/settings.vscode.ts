@@ -1538,7 +1538,7 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
           const { fetchHostSessions, LOCAL_LABEL } = await import('./remoteSessions.vscode');
           const [inventories, hostResult] = await Promise.all([
             getCachedAgentInventories(),
-            fetchHostSessions(Date.now(), { probeCpu: true }),
+            fetchHostSessions(Date.now(), { probeCpu: true, projectRules: getSettings(context).projectRules ?? [] }),
           ]);
           const defaultTitle = context.globalState.get<string>('agents.defaultAgentTitle', 'CC');
           const defaultAgentId = getBuiltInDefByTitle(defaultTitle)?.key ?? 'claude';
@@ -1656,7 +1656,10 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
         // offline rather than failing the batch.
         try {
           const { fetchHostSessions } = await import('./remoteSessions.vscode');
-          const { hosts, sessions: hostSessions, groups, fetchedAt } = await fetchHostSessions();
+          const { hosts, sessions: hostSessions, groups, fetchedAt } = await fetchHostSessions(
+            Date.now(),
+            { projectRules: getSettings(context).projectRules ?? [] },
+          );
           settingsPanel?.webview.postMessage({
             type: 'hostSessions',
             hosts,
@@ -1682,7 +1685,10 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
         // webview replaces only the this-mac rows and leaves remote rows intact.
         try {
           const { fetchLocalSessions } = await import('./remoteSessions.vscode');
-          const { sessions: localSessions, fetchedAt } = await fetchLocalSessions();
+          const { sessions: localSessions, fetchedAt } = await fetchLocalSessions(
+            Date.now(),
+            getSettings(context).projectRules ?? [],
+          );
           settingsPanel?.webview.postMessage({
             type: 'localSessions',
             sessions: localSessions,

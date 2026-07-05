@@ -13,9 +13,78 @@
 // (+ DESIGN.md). Field names mirror the prototype's AGENTS / TICKETS mock objects
 // so the port is a 1:1 translation, not a redesign.
 
-import type { UnifiedTask, RecentToolCall } from '../../types'
+import type { UnifiedTask, RecentToolCall, ProjectRule } from '../../types'
 
 export type { RecentToolCall }
+
+// ---------- project resolution ----------
+//
+// Mirror of src/core/remoteSessions.ts resolveProject (hand-kept; the src/ and ui/
+// builds cannot share imports, so the logic lives on both sides of the postMessage
+// boundary). Keep the two in lockstep.
+
+/** Glob -> RegExp. `**` spans path separators, `*` does not, `?` a single char.
+ *  A trailing subpath always matches so a rule for a dir captures work inside it. */
+function projectGlobToRegExp(glob: string): RegExp {
+  let re = ''
+  for (let i = 0; i < glob.length; i++) {
+    const c = glob[i]
+    if (c === '*') {
+      if (glob[i + 1] === '*') {
+        re += '.*'
+        i++
+      } else {
+        re += '[^/]*'
+      }
+    } else if (c === '?') {
+      re += '[^/]'
+    } else {
+      re += c.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    }
+  }
+  return new RegExp('^' + re + '(?:/.*)?$')
+}
+
+/** A rule pattern with no glob metacharacters is a path prefix; else a glob. */
+function matchesProjectRule(cwd: string, pattern: string): boolean {
+  const p = pattern.trim().replace(/\/+$/, '')
+  if (!p) return false
+  if (!/[*?]/.test(p)) return cwd === p || cwd.startsWith(p + '/')
+  return projectGlobToRegExp(p).test(cwd)
+}
+
+function pathBasename(p: string): string {
+  const parts = p.replace(/\/+$/, '').split('/').filter(Boolean)
+  return parts[parts.length - 1] || ''
+}
+
+/**
+ * Resolve a session cwd to a display project. Order:
+ *   1. user rules (first match wins) — glob or path-prefix against the cwd.
+ *   2. worktree fold: `.../<repo>/.agents/worktrees/<slug>` -> `<repo>`.
+ *   3. git repo root basename when `repoRoot` is supplied — so a monorepo subdir
+ *      folds to the repo, not the leaf dir.
+ *   4. ultimate fallback: the cwd's last path segment (legacy behavior).
+ */
+export function resolveProject(
+  cwd: string,
+  rules: ProjectRule[] = [],
+  repoRoot?: string | null,
+): string {
+  if (!cwd) return ''
+  const norm = cwd.replace(/\/+$/, '')
+  for (const rule of rules) {
+    if (rule && matchesProjectRule(norm, rule.pattern)) return rule.project
+  }
+  const wt = norm.match(/\/([^/]+)\/\.agents\/worktrees\//)
+  if (wt) return wt[1]
+  if (repoRoot) {
+    const base = pathBasename(repoRoot)
+    if (base) return base
+  }
+  const parts = norm.split('/').filter(Boolean)
+  return parts[parts.length - 1] || norm
+}
 
 // ---------- agent view-model ----------
 

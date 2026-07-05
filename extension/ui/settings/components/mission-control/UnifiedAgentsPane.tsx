@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { TaskSummary, TerminalDetail as TerminalInfo, AgentDetail, UnifiedTask, RecentToolCall } from '../../types'
+import type { TaskSummary, TerminalDetail as TerminalInfo, AgentDetail, UnifiedTask, RecentToolCall, ProjectRule } from '../../types'
 import { AgentAvatar, agentShortChunk } from './AgentAvatar'
 import { Icon } from './icons'
 import { relTime, taskNameToTitle, swarmOverallStatus, shortDuration } from './types'
@@ -477,6 +477,7 @@ interface UnifiedAgentsPaneProps {
   githubRepo?: string | null
   watchdogEnabled?: boolean
   watchdogEvents?: WatchdogEventUI[]
+  projectRules?: ProjectRule[]
 }
 
 // Preserve object identity for unchanged agents across renders so memoized
@@ -499,7 +500,7 @@ function useStableList(items: UnifiedAgent[]): UnifiedAgent[] {
   }, [items])
 }
 
-export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks, unifiedTasksLoading, onDispatch, onNavigate, onOpenInBench, openDispatchTrigger, quickSpawnTrigger, openDetailTaskId, onDetailTaskConsumed, onThroughputChange, githubRepo, watchdogEnabled = false, watchdogEvents = [] }: UnifiedAgentsPaneProps) {
+export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks, unifiedTasksLoading, onDispatch, onNavigate, onOpenInBench, openDispatchTrigger, quickSpawnTrigger, openDetailTaskId, onDetailTaskConsumed, onThroughputChange, githubRepo, watchdogEnabled = false, watchdogEvents = [], projectRules = [] }: UnifiedAgentsPaneProps) {
   const panelVisible = usePanelVisibility()
   const [newMenuOpen, setNewMenuOpen] = useState(false)
   const [statPopover, setStatPopover] = useState<'shipped' | 'open' | 'running' | 'nextup' | 'files' | null>(null)
@@ -1104,8 +1105,8 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   // Local agents (drop the synthetic watchdog row) + genuinely-remote sessions
   // (host !== 'this-mac' so we don't double count this machine's own agents).
   const floorLocalAgents = useMemo(
-    () => adaptUnified(items.filter((i) => i.kind !== 'watchdog'), { pinned, workspaceRepo: workspaceRepoName, nowMs: Date.now() }),
-    [items, pinned, workspaceRepoName]
+    () => adaptUnified(items.filter((i) => i.kind !== 'watchdog'), { pinned, workspaceRepo: workspaceRepoName, nowMs: Date.now(), projectRules }),
+    [items, pinned, workspaceRepoName, projectRules]
   )
   // Session UUIDs already open as a terminal tab in THIS window (the rich, local
   // source). Used to avoid double-listing an agent that the machine-wide fetch also
@@ -1126,9 +1127,10 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
             s.host !== 'this-mac' ||
             (s.context !== 'cloud' && !localTabSessionIds.has(s.sessionId))
         ),
-        pinned
+        pinned,
+        projectRules
       ),
-    [remoteSessions, localTabSessionIds, pinned]
+    [remoteSessions, localTabSessionIds, pinned, projectRules]
   )
   const floorAgents = useMemo(
     () => [...floorLocalAgents, ...floorRemoteAgents],

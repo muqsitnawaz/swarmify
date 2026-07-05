@@ -4,6 +4,7 @@ import * as path from 'path';
 import {
   mapStatusToPhase,
   projectFromCwd,
+  resolveProject,
   normalizeActiveSession,
   normalizeActiveSessions,
   dedupeSessions,
@@ -11,6 +12,7 @@ import {
   groupByHost,
   type RemoteSession,
   type RawActiveSession,
+  type ProjectRule,
 } from './remoteSessions';
 
 const TESTDATA = path.join(__dirname, 'testdata');
@@ -47,6 +49,68 @@ describe('projectFromCwd', () => {
   test('tolerates trailing slashes and empty input', () => {
     expect(projectFromCwd('/a/b/repo/')).toBe('repo');
     expect(projectFromCwd('')).toBe('');
+  });
+});
+
+describe('resolveProject', () => {
+  const RULES: ProjectRule[] = [
+    { pattern: '**/agents/prix/api', project: 'Prix API' },
+    { pattern: '**/agents/prix/app', project: 'Prix App' },
+    { pattern: '/home/muqsit/src/monorepo', project: 'Monorepo Root' },
+  ];
+
+  test('a user rule wins over every default (glob match, first match wins)', () => {
+    // Both prix rules could conceptually apply to a deep path; the FIRST listed wins.
+    expect(resolveProject('/home/muqsit/src/github.com/o/agents/prix/api', RULES)).toBe('Prix API');
+    expect(resolveProject('/home/muqsit/src/github.com/o/agents/prix/app', RULES)).toBe('Prix App');
+  });
+
+  test('a glob rule also captures work inside the matched directory', () => {
+    expect(resolveProject('/x/y/agents/prix/api/src/routes', RULES)).toBe('Prix API');
+  });
+
+  test('a path-prefix rule (no glob) matches the dir and its descendants', () => {
+    expect(resolveProject('/home/muqsit/src/monorepo', RULES)).toBe('Monorepo Root');
+    expect(resolveProject('/home/muqsit/src/monorepo/packages/api', RULES)).toBe('Monorepo Root');
+    // A sibling that only shares a prefix string but not a path boundary must NOT match.
+    expect(resolveProject('/home/muqsit/src/monorepo-two', RULES)).toBe('monorepo-two');
+  });
+
+  test('rules take precedence over the git-repo-root default', () => {
+    expect(
+      resolveProject('/home/muqsit/src/github.com/o/agents/prix/api', RULES, '/home/muqsit/src/github.com/o/agents')
+    ).toBe('Prix API');
+  });
+
+  test('a monorepo subdir with no rule folds to its git repo root basename', () => {
+    // Without a rule, the leaf-dir default would say "api"; repoRoot folds it to the repo.
+    expect(resolveProject('/home/muqsit/src/github.com/o/agents/prix/api', [], '/home/muqsit/src/github.com/o/agents')).toBe('agents');
+  });
+
+  test('worktree folding beats the git-repo-root default', () => {
+    // A git worktree root basename is the slug; the path fold must win and yield the repo.
+    expect(
+      resolveProject(
+        '/Users/muqsit/src/github.com/muqsitnawaz/swarmify/.agents/worktrees/floor-port',
+        [],
+        '/Users/muqsit/src/github.com/muqsitnawaz/swarmify/.agents/worktrees/floor-port'
+      )
+    ).toBe('swarmify');
+  });
+
+  test('with no rules and no repoRoot it is the legacy last-segment behavior', () => {
+    expect(resolveProject('/home/muqsit/src/github.com/o/prix-api')).toBe('prix-api');
+    expect(resolveProject('')).toBe('');
+  });
+
+  test('normalizeActiveSession applies the rules to the session project', () => {
+    const s = normalizeActiveSession(
+      { kind: 'claude', status: 'running', cwd: '/x/y/agents/prix/api', sessionFile: '/x/aaaaaaaa.jsonl' } as RawActiveSession,
+      'zion',
+      FETCHED_AT,
+      RULES
+    );
+    expect(s.project).toBe('Prix API');
   });
 });
 
