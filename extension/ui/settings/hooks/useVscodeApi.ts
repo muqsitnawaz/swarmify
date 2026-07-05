@@ -1,17 +1,25 @@
 import type { VsCodeApi, IconConfig } from '../types'
-
-// Declare the global VS Code API acquisition function
-declare function acquireVsCodeApi(): VsCodeApi
+import { resolveBridge } from '../host/bridge'
 
 // Create singleton instance
 let vscodeInstance: VsCodeApi | null = null
 
 /**
- * Get the VS Code API instance (singleton)
+ * Get the host API instance (singleton).
+ *
+ * Named for history; it now routes through the HostBridge, so the same call
+ * works under both the VS Code webview and the standalone Electron host. State
+ * getters are no-ops — nothing in the webview persists through the VS Code state
+ * API (all durable state lives host-side and is re-sent on the ready handshake).
  */
 export function getVsCodeApi(): VsCodeApi {
   if (!vscodeInstance) {
-    vscodeInstance = acquireVsCodeApi()
+    const bridge = resolveBridge()
+    vscodeInstance = {
+      postMessage: (message: unknown) => bridge.post(message),
+      getState: () => undefined,
+      setState: () => {},
+    }
   }
   return vscodeInstance
 }
