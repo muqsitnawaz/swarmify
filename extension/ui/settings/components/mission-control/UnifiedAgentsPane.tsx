@@ -579,6 +579,9 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   const [ticketSrc, setTicketSrc] = useState<Record<TicketSource, boolean>>({ LN: true, GH: true })
   const [remoteSessions, setRemoteSessions] = useState<RemoteSessionLike[]>([])
   const [offlineHosts, setOfflineHosts] = useState<string[]>([])
+  // Per-agent reply failures (host 'replyResult' with ok=false, or a 'none' channel),
+  // shown inline near the reply control instead of a toast. Cleared on the next send.
+  const [replyErrors, setReplyErrors] = useState<Map<string, string>>(new Map())
   // Full discovered roster (name + reachability) so the sidebar can list idle
   // reachable hosts, not only hosts currently running an agent.
   const [hostRoster, setHostRoster] = useState<Array<{ name: string; online: boolean }>>([])
@@ -613,10 +616,23 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   //   hostSessions  — full sweep (every online host); replaces the whole set + roster.
   //   localSessions — this-mac only (the fast 3s poll); replaces just the this-mac rows
   //                   so remote rows from the slower sweep are preserved.
+  // Per-agent reply failures ('replyResult' with ok=false) surface inline near the reply
+  // control instead of a toast; cleared on the next successful send.
   // Local-only Floor still works if neither ever arrives.
   useEffect(() => {
     const onMsg = (event: MessageEvent) => {
       const msg = event.data
+      if (msg?.type === 'replyResult') {
+        const agentId = String(msg.agentId ?? '')
+        if (!agentId) return
+        setReplyErrors((prev) => {
+          const n = new Map(prev)
+          if (msg.ok) n.delete(agentId)
+          else n.set(agentId, String(msg.error || 'Reply failed'))
+          return n
+        })
+        return
+      }
       if (msg?.type === 'hostSessions') {
         setRemoteSessions(Array.isArray(msg.sessions) ? (msg.sessions as RemoteSessionLike[]) : [])
         const roster = Array.isArray(msg.hosts)
@@ -1253,13 +1269,12 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     () =>
       adaptRemote(
         // Show every machine-wide agent, not just this window's tabs: all remote
-        // hosts, PLUS this-mac terminal sessions running elsewhere (other windows /
-        // tmux / standalone) that aren't already an open tab here. this-mac cloud
-        // rows are left to the local task list to avoid double counting.
+        // hosts, PLUS this-mac sessions running elsewhere (other windows / tmux /
+        // standalone / headless / cloud) that aren't already an open tab here. Cloud
+        // agents that are input_required are exactly the "needs you" case the field
+        // exists for, so they surface too (with a cloud reply channel).
         remoteSessions.filter(
-          (s) =>
-            s.host !== 'this-mac' ||
-            (s.context !== 'cloud' && !localTabSessionIds.has(s.sessionId))
+          (s) => s.host !== 'this-mac' || !localTabSessionIds.has(s.sessionId)
         ),
         pinned,
         localHostName,
@@ -1334,15 +1349,21 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     })
   }, [])
 
-  // Reply transport: focus the agent's terminal so the user answers inline (the only
-  // real send path we have for a local agent). We also post a structured replyToAgent
-  // message so a backend reply handler, once present, receives the chosen option/text.
-  // No toast, no fake success — screenshot attach is a deliberate no-op stub below.
+  // Reply transport: dispatch on the agent's reply channel (a.reply), computed by the
+  // adapter from the agent's source. Local tabs also get focused so the user sees the
+  // answer land in the terminal; cloud/team deliver headlessly via the CLI. The host
+  // replies with a 'replyResult' we surface inline on failure — no toast, no fake success.
   const replyToAgent = useCallback((a: FloorAgent, text: string) => {
-    const u = unifiedById.get(a.id)
-    if (u?.terminal) postMessage({ type: 'focusTerminal', terminalId: u.terminal.id })
-    postMessage({ type: 'replyToAgent', agentId: a.id, host: a.host, text })
-  }, [unifiedById])
+    if (a.reply.kind === 'none') {
+      setReplyErrors((prev) => new Map(prev).set(a.id, a.reply.reason || 'No reply channel for this agent'))
+      return
+    }
+    if (a.reply.kind === 'terminal' && a.reply.terminalId) {
+      postMessage({ type: 'focusTerminal', terminalId: a.reply.terminalId })
+    }
+    setReplyErrors((prev) => { const n = new Map(prev); n.delete(a.id); return n })
+    postMessage({ type: 'replyToAgent', agentId: a.id, reply: a.reply, text })
+  }, [])
 
   const retryFloorAgent = useCallback((a: FloorAgent) => {
     const u = unifiedById.get(a.id)
@@ -1456,6 +1477,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
           <StructuredReply
             question={a.question}
             phase={a.phase}
+            error={replyErrors.get(a.id)}
             onOption={(o) => onAgentOption(a, o)}
             onFreeText={(t) => replyToAgent(a, t)}
             onAttach={() => onAttachScreenshot(a)}

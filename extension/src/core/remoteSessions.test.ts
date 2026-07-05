@@ -159,6 +159,43 @@ describe('normalizeActiveSession', () => {
     expect(s.phase).toBe('running');
   });
 
+  test('carries cloud task id + provider + context through for the reply channel', () => {
+    const cloud = ACTIVE.find((r) => r.context === 'cloud' && r.status === 'queued')!;
+    const s = normalizeActiveSession(cloud, 'cloud', FETCHED_AT);
+    expect(s.context).toBe('cloud');
+    expect(s.cloudTaskId).toBe('task_e');
+    expect(s.cloudProvider).toBe(cloud.cloudProvider ?? '');
+  });
+
+  test('carries pid for terminal records (0 when absent)', () => {
+    const terminal = ACTIVE.find((r) => r.context === 'terminal')!;
+    const s = normalizeActiveSession(terminal, 'this-mac', FETCHED_AT);
+    expect(s.pid).toBe(typeof terminal.pid === 'number' ? terminal.pid : 0);
+    expect(s.teamName).toBe(terminal.teamName ?? '');
+  });
+
+  test('captures the tmux reply rail (socket + pane) from provenance', () => {
+    const s = normalizeActiveSession(
+      { context: 'terminal', kind: 'claude', sessionId: 'abc', status: 'running',
+        provenance: { transport: 'ssh', reply: { rail: 'tmux', target: '%65', socket: '/tmp/tmux-1000/default' } } },
+      'yosemite-s0', FETCHED_AT,
+    );
+    expect(s.transport).toBe('ssh');
+    expect(s.replyRail).toBe('tmux');
+    expect(s.replyMuxTarget).toBe('%65');
+    expect(s.replyMuxSocket).toBe('/tmp/tmux-1000/default');
+  });
+
+  test('a raw TTY with reply=null carries no rail', () => {
+    const s = normalizeActiveSession(
+      { context: 'terminal', kind: 'claude', sessionId: 'ghost', status: 'running',
+        provenance: { transport: 'local', reply: null } },
+      'this-mac', FETCHED_AT,
+    );
+    expect(s.replyRail).toBe('');
+    expect(s.replyMuxTarget).toBe('');
+  });
+
   test('extracts a ticket id from label/topic', () => {
     const backend = ACTIVE.find((r) => r.label === 'backend')!;
     const s = normalizeActiveSession(backend, 'this-mac', FETCHED_AT);

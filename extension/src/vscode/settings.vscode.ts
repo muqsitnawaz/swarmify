@@ -16,6 +16,7 @@ import { getBuiltInByTitle, configFromDef } from './agents.vscode';
 import { openSingleAgentWithQueue } from './extension';
 import { generateClaudeSessionId } from '../core/prewarm.simple';
 import { nudgeSession } from '../mcp/watchdog-bridge';
+import { runAgents } from '../core/agentsBin';
 import { AgentLaunchMode, parsePlanFromClaudeJsonl, planTextToSteps } from '../core/agents';
 import { CLAUDE_TITLE } from '../core/utils';
 import { discoverRecentSessions, getSessionPathBySessionId } from './sessions.vscode';
@@ -2731,6 +2732,76 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
           term.show();
         }
         break;
+      case 'replyToAgent': {
+        // Deliver a user reply INTO a running agent, routed by the reply channel the
+        // adapter computed for it (floorModel.ReplyTarget): a live terminal tab gets
+        // sendText; a cloud task gets `agents cloud message`; a team gets `agents
+        // factory answer`; anything else has no injectable channel. Cloud/team commands
+        // ssh to the owning host when it isn't this machine. Result rides back as
+        // 'replyResult' so the webview shows an inline error on failure (never a toast).
+        const reply = (message.reply || {}) as {
+          kind?: string; host?: string; terminalId?: string;
+          muxSocket?: string; muxTarget?: string;
+          cloudTaskId?: string; teamName?: string; reason?: string;
+        };
+        const replyAgentId = typeof message.agentId === 'string' ? message.agentId : '';
+        const replyText = typeof message.text === 'string' ? message.text.trim() : '';
+        const postReplyResult = (ok: boolean, error?: string) =>
+          settingsPanel?.webview.postMessage({ type: 'replyResult', agentId: replyAgentId, ok, error });
+        // Single-quote for the shell (runAgents/ssh run via a shell string).
+        const shq = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
+        const replyHost = reply.host && reply.host !== 'this-mac' ? reply.host : '';
+        if (!replyText) { postReplyResult(false, 'Reply text is empty'); break; }
+        try {
+          if (reply.kind === 'terminal') {
+            const term = terminals.getAllTerminals().find((t) => t.id === reply.terminalId);
+            if (!term) { postReplyResult(false, 'Terminal not found — it may have closed'); break; }
+            // Claude's Ink TUI needs an explicit CR; other agents take a newline.
+            if (term.agentType === 'claude') {
+              term.terminal.sendText(replyText, false);
+              term.terminal.sendText('\r', false);
+            } else {
+              term.terminal.sendText(replyText, true);
+            }
+            term.terminal.show();
+            postReplyResult(true);
+          } else if (reply.kind === 'tmux') {
+            // Drive the agent's tmux pane: literal text, then Enter (matches the
+            // Ink-friendly text-then-CR local path). Local runs tmux directly; a
+            // remote host runs it over ssh. ssh flattens argv into one remote shell
+            // string, so the remote command must be single-quoted piece by piece.
+            if (!reply.muxSocket || !reply.muxTarget) { postReplyResult(false, 'Missing tmux socket/pane'); break; }
+            const sendKeys = async (keyArgs: string[]) => {
+              if (replyHost) {
+                const remote = ['tmux', '-S', reply.muxSocket!, 'send-keys', '-t', reply.muxTarget!, ...keyArgs]
+                  .map(shq).join(' ');
+                await execFileAsync('ssh', [replyHost, remote], { timeout: 20_000 });
+              } else {
+                await execFileAsync('tmux', ['-S', reply.muxSocket!, 'send-keys', '-t', reply.muxTarget!, ...keyArgs], { timeout: 20_000 });
+              }
+            };
+            await sendKeys(['-l', '--', replyText]);
+            await sendKeys(['Enter']);
+            postReplyResult(true);
+          } else if (reply.kind === 'cloud') {
+            if (!reply.cloudTaskId) { postReplyResult(false, 'Missing cloud task id'); break; }
+            const args = `cloud message ${shq(reply.cloudTaskId)} ${shq(replyText)}`;
+            if (replyHost) await execFileAsync('ssh', [replyHost, 'agents', 'cloud', 'message', reply.cloudTaskId, replyText], { timeout: 30_000 });
+            else await runAgents(args);
+            postReplyResult(true);
+          } else if (reply.kind === 'team') {
+            if (!reply.teamName) { postReplyResult(false, 'Missing team name'); break; }
+            if (replyHost) await execFileAsync('ssh', [replyHost, 'agents', 'factory', 'answer', reply.teamName, replyText], { timeout: 30_000 });
+            else await runAgents(`factory answer ${shq(reply.teamName)} ${shq(replyText)}`);
+            postReplyResult(true);
+          } else {
+            postReplyResult(false, reply.reason || 'No reply channel for this agent');
+          }
+        } catch (err) {
+          postReplyResult(false, err instanceof Error ? err.message : String(err));
+        }
+        break;
+      }
       case 'factoryConfigRead':
         settingsPanel?.webview.postMessage({
           type: 'factoryConfigData',
