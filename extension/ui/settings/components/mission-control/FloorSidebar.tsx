@@ -19,9 +19,18 @@ interface FloorSidebarProps {
    * otherwise a project name. Mirrors wireSidebar()'s data-proj values.
    */
   onScope: (value: string) => void
+  /** Open the host detail/config pane for a host (clicking its name). */
+  onSelectHost?: (host: string) => void
+  /** Host currently shown in the detail pane, for highlight. */
+  selectedHost?: string | null
+  /**
+   * Full discovered host roster (name + reachability), so idle-but-reachable
+   * hosts appear too — not just hosts that happen to be running an agent.
+   */
+  hosts?: Array<{ name: string; online: boolean }>
 }
 
-export function FloorSidebar({ agents, tickets, projFilter, offlineHosts = [], onScope }: FloorSidebarProps) {
+export function FloorSidebar({ agents, tickets, projFilter, offlineHosts = [], onScope, onSelectHost, selectedHost = null, hosts = [] }: FloorSidebarProps) {
   const byProj: Record<string, number> = {}
   const byHost: Record<string, number> = {}
   const projWait: Record<string, number> = {}
@@ -32,6 +41,16 @@ export function FloorSidebar({ agents, tickets, projFilter, offlineHosts = [], o
   }
   const needs = agents.filter((a) => a.needs).length
   const offline = new Set(offlineHosts)
+
+  // HOSTS list = hosts running agents (byHost) plus reachable roster hosts. Idle
+  // ssh-config aliases that are offline with no agents stay hidden (clutter);
+  // online devices (yosemite, mac-mini, win-mini) show even with zero agents.
+  const rosterOnline = new Map(hosts.map((h) => [h.name, h.online]))
+  const hostNames = [...new Set<string>([
+    ...Object.keys(byHost),
+    ...hosts.filter((h) => h.online).map((h) => h.name),
+  ])].sort()
+  const hostOffline = (ho: string) => (rosterOnline.has(ho) ? !rosterOnline.get(ho) : offline.has(ho))
 
   return (
     <div className="sidebar">
@@ -63,11 +82,15 @@ export function FloorSidebar({ agents, tickets, projFilter, offlineHosts = [], o
       ))}
 
       <div className="sb-sec">HOSTS</div>
-      {Object.keys(byHost).sort().map((ho) => (
-        <div key={ho} className="sb-item" onClick={() => onScope('')}>
-          <span className={`hd ${offline.has(ho) ? 'off' : ''}`} />
+      {hostNames.map((ho) => (
+        <div
+          key={ho}
+          className={`sb-item ${selectedHost === ho ? 'on' : ''}`}
+          onClick={() => onSelectHost?.(ho)}
+        >
+          <span className={`hd ${hostOffline(ho) ? 'off' : ''}`} />
           <span>{ho}</span>
-          <span className="c">{offline.has(ho) ? <span style={{ color: 'var(--fail)' }}>offline</span> : byHost[ho]}</span>
+          <span className="c">{hostOffline(ho) ? <span style={{ color: 'var(--fail)' }}>offline</span> : (byHost[ho] ?? 0)}</span>
         </div>
       ))}
     </div>

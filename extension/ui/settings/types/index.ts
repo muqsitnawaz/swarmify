@@ -191,6 +191,13 @@ export interface NotificationSettings {
   enabledAgents: string[]
 }
 
+// Ordered cwd->project mapping for Factory Floor grouping. Mirror of
+// src/core/settings.ts ProjectRule (hand-kept; crosses the postMessage boundary).
+export interface ProjectRule {
+  pattern: string
+  project: string
+}
+
 export interface AgentSettings {
   builtIn: {
     claude: BuiltInAgentSettings
@@ -211,6 +218,7 @@ export interface AgentSettings {
   showWelcomeScreen: boolean
   taskSources: TaskSourceSettings
   githubOwner?: string
+  projectRules?: ProjectRule[]
 }
 
 // Running counts
@@ -378,6 +386,7 @@ export interface TerminalDetail {
   recentTools?: string[]
   recentToolCalls?: RecentToolCall[]
   lastFilePath?: string | null
+  narrative?: string
   cwd?: string | null
   branch?: string | null
   recentFileStats?: Record<string, { added: number; removed: number }>

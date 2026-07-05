@@ -16,12 +16,14 @@ import {
   deriveNeeds,
   parseStructuredQuestion,
   toFloorTicket,
+  latestTodos,
+  resolveProject,
   type FloorAgent,
   type FloorTicket,
   type AgentAbbr,
   type ReplyTarget,
 } from './floorModel'
-import type { UnifiedTask } from '../../types'
+import type { UnifiedTask, RecentToolCall, ProjectRule } from '../../types'
 
 // ---------- structural inputs ----------
 
@@ -45,6 +47,8 @@ export interface UnifiedAgentLike {
     waitingForInput?: boolean
     lastUserMessage?: string
     currentActivity?: string
+    narrative?: string
+    recentToolCalls?: RecentToolCall[]
   } | null
   agent?: {
     cwd?: string | null
@@ -118,19 +122,19 @@ export function splitActivity(activity: string): { verb: string; target: string 
 }
 
 /**
- * Project scope for an agent. A repo name (from the CLI) wins; otherwise derive from
- * cwd, folding a worktree path ".../<repo>/.agents/worktrees/<slug>" back to <repo>
- * so parallel worktrees group under their repo. Empty cwd falls back to the label.
+ * Project scope for an agent. Delegates to resolveProject: user rules win first,
+ * then a worktree path folds back to its repo, then the CLI repo name (the git repo
+ * root basename), then the cwd's last segment. Empty cwd falls back to the label.
  */
-export function deriveProject(cwd: string | null | undefined, repoName: string | null | undefined, fallback: string): string {
-  if (repoName) return repoName
-  if (cwd) {
-    const wt = cwd.match(/([^/]+)\/\.agents\/worktrees\//)
-    if (wt) return wt[1]
-    const base = cwd.split('/').filter(Boolean).pop()
-    if (base) return base
-  }
-  return fallback
+export function deriveProject(
+  cwd: string | null | undefined,
+  repoName: string | null | undefined,
+  fallback: string,
+  rules: ProjectRule[] = [],
+): string {
+  // No cwd to match rules against -> the CLI repo name (or the label) is all we have.
+  if (!cwd) return repoName || fallback
+  return resolveProject(cwd, rules, repoName || undefined) || fallback
 }
 
 /** Human elapsed label ("2s" / "14m" / "3h" / "1d") from an epoch-ms delta. */
@@ -212,7 +216,7 @@ export function deriveReplyTargetFromRemote(r: RemoteSessionLike): ReplyTarget {
  */
 export function toFloorAgentFromUnified(
   u: UnifiedAgentLike,
-  opts: { pinned: Set<string>; workspaceRepo?: string | null; nowMs: number },
+  opts: { pinned: Set<string>; workspaceRepo?: string | null; nowMs: number; projectRules?: ProjectRule[] },
 ): FloorAgent {
   const waitingForInput = u.terminal?.waitingForInput === true || u.agent?.status === 'input_required'
   const prOpenUnreviewed = !!u.prUrl
@@ -226,7 +230,7 @@ export function toFloorAgentFromUnified(
   const lastMsgs = u.agent?.last_messages
   const resp = (lastMsgs && lastMsgs.length ? lastMsgs[lastMsgs.length - 1] : '') || u.activity || ''
   const { verb, target } = splitActivity(u.activity)
-  const project = deriveProject(u.terminal?.cwd ?? u.agent?.cwd, u.agent?.repo_name, opts.workspaceRepo || '—')
+  const project = deriveProject(u.terminal?.cwd ?? u.agent?.cwd, u.agent?.repo_name, opts.workspaceRepo || '—', opts.projectRules ?? [])
   // Local unified agents ARE this window's terminal tabs, so sendText into the live
   // terminal is the exact reply channel; fall back to 'none' for a tab-less headless row.
   const reply: ReplyTarget = u.terminal?.id
@@ -256,6 +260,12 @@ export function toFloorAgentFromUnified(
     resp,
     question: parseStructuredQuestion(resp, phase),
     reply,
+    todos: latestTodos(u.terminal?.recentToolCalls),
+    // The rolling summary line + recent tool calls already flow over the wire on the
+    // terminal. Prefer the agent's own prose (narrative); fall back to the now-line
+    // (currentActivity) when it hasn't spoken between tool calls yet.
+    summary: u.terminal?.narrative || u.terminal?.currentActivity || '',
+    recent: u.terminal?.recentToolCalls ?? [],
   }
 }
 
@@ -264,7 +274,7 @@ export function toFloorAgentFromUnified(
  * phase + activity + throughput, so we trust those and only re-derive needs + the
  * structured question (both pure). Host stays the remote machine name.
  */
-export function toFloorAgentFromRemote(r: RemoteSessionLike, pinned: Set<string>): FloorAgent {
+export function toFloorAgentFromRemote(r: RemoteSessionLike, pinned: Set<string>, projectRules: ProjectRule[] = []): FloorAgent {
   const phase = r.phase
   const prOpenUnreviewed = !!r.prUrl
   const needs = deriveNeeds(phase, prOpenUnreviewed)
@@ -278,7 +288,7 @@ export function toFloorAgentFromRemote(r: RemoteSessionLike, pinned: Set<string>
   return {
     id,
     host: r.host,
-    project: deriveProject(r.cwd, r.project, r.project || '—'),
+    project: deriveProject(r.cwd, r.project, r.project || '—', projectRules),
     name,
     abbr: abbrFor(r.agentType),
     phase,
@@ -300,20 +310,26 @@ export function toFloorAgentFromRemote(r: RemoteSessionLike, pinned: Set<string>
     resp,
     question: parseStructuredQuestion(resp, phase),
     reply: deriveReplyTargetFromRemote(r),
+    // Remote (Tier-1) sessions are status-only; no tool calls to parse todos from yet.
+    todos: [],
+    // Remote = summary only: the sweep carries the session's task line (topic) / last
+    // response but no tool calls yet, so recent stays empty until Tier-2 enrichment.
+    summary: r.topic || r.lastResponse || '',
+    recent: [],
   }
 }
 
 /** Map local UnifiedAgents (watchdog rows should be filtered out by the caller). */
 export function adaptUnified(
   agents: UnifiedAgentLike[],
-  opts: { pinned: Set<string>; workspaceRepo?: string | null; nowMs: number },
+  opts: { pinned: Set<string>; workspaceRepo?: string | null; nowMs: number; projectRules?: ProjectRule[] },
 ): FloorAgent[] {
   return agents.map((a) => toFloorAgentFromUnified(a, opts))
 }
 
 /** Map genuinely-remote sessions (caller drops host === 'this-mac' to avoid double count). */
-export function adaptRemote(sessions: RemoteSessionLike[], pinned: Set<string>): FloorAgent[] {
-  return sessions.map((s) => toFloorAgentFromRemote(s, pinned))
+export function adaptRemote(sessions: RemoteSessionLike[], pinned: Set<string>, projectRules: ProjectRule[] = []): FloorAgent[] {
+  return sessions.map((s) => toFloorAgentFromRemote(s, pinned, projectRules))
 }
 
 /** UnifiedTask[] -> FloorTicket[] (delegates to floorModel.toFloorTicket). */

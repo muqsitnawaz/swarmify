@@ -1,5 +1,5 @@
 import React from 'react'
-import type { TaskSummary, TerminalDetail, UnifiedTask } from '../../types'
+import type { TaskSummary, TerminalDetail, UnifiedTask, ProjectRule } from '../../types'
 import { UnifiedAgentsPane, WatchdogEventUI } from './UnifiedAgentsPane'
 
 interface MissionControlTabProps {
@@ -19,9 +19,10 @@ interface MissionControlTabProps {
   githubRepo?: string | null
   watchdogEnabled?: boolean
   watchdogEvents?: WatchdogEventUI[]
+  projectRules?: ProjectRule[]
 }
 
-export function MissionControlTab({ tasks, tasksLoading, terminals, unifiedTasks, unifiedTasksLoading, onDispatch, onNavigate, onOpenInBench, openDispatchTrigger, quickSpawnTrigger, openDetailTaskId, onDetailTaskConsumed, onThroughputChange, githubRepo, watchdogEnabled, watchdogEvents }: MissionControlTabProps) {
+export function MissionControlTab({ tasks, tasksLoading, terminals, unifiedTasks, unifiedTasksLoading, onDispatch, onNavigate, onOpenInBench, openDispatchTrigger, quickSpawnTrigger, openDetailTaskId, onDetailTaskConsumed, onThroughputChange, githubRepo, watchdogEnabled, watchdogEvents, projectRules }: MissionControlTabProps) {
   return (
     <UnifiedAgentsPane
       terminals={terminals}
@@ -40,6 +41,7 @@ export function MissionControlTab({ tasks, tasksLoading, terminals, unifiedTasks
       githubRepo={githubRepo}
       watchdogEnabled={watchdogEnabled}
       watchdogEvents={watchdogEvents}
+      projectRules={projectRules}
     />
   )
 }

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { TaskSummary, TerminalDetail as TerminalInfo, AgentDetail, UnifiedTask, RecentToolCall } from '../../types'
+import type { TaskSummary, TerminalDetail as TerminalInfo, AgentDetail, UnifiedTask, RecentToolCall, ProjectRule } from '../../types'
 import { AgentAvatar, agentShortChunk } from './AgentAvatar'
 import { Icon } from './icons'
 import { relTime, taskNameToTitle, swarmOverallStatus, shortDuration } from './types'
@@ -24,14 +24,18 @@ import { FloorControls, type FloorView, type StatusChip } from './FloorControls'
 import { FloorSidebar } from './FloorSidebar'
 import { BacklogCenter } from './BacklogCenter'
 import { TicketDetail } from './TicketDetail'
+import { HostDetail } from './HostDetail'
 import { FeedItem, TicketStrip } from './FeedItem'
+import { TodoChecklist } from './TodoChecklist'
 import { NeedsYouClusters } from './NeedsYouClusters'
 import { StructuredReply } from './StructuredReply'
 import {
   clusterByQuestion,
   sortAgents,
+  latestTodos,
   type FloorAgent,
   type CenterMode,
+  type HostInventory,
   type FloorGroupBy,
   type FloorSort,
   type TicketGroupBy,
@@ -39,7 +43,7 @@ import {
   type TicketSource,
   type AgentAbbr,
 } from './floorModel'
-import { adaptUnified, adaptRemote, adaptTickets, type RemoteSessionLike } from './floorAdapter'
+import { adaptUnified, adaptRemote, adaptTickets, sinceFromMs, type RemoteSessionLike } from './floorAdapter'
 import { DispatchPanel } from './DispatchPanel'
 import { PlanReview } from './PlanReview'
 import { FailureCard } from './FailureCard'
@@ -51,6 +55,13 @@ import type {
 // ---------- Floor shell persisted prefs ----------
 
 const FLOOR_PREFS_KEY = 'swarmify.floorPrefs.v1'
+
+// Two-tier refresh of cross-host sessions. Local (this-mac, no SSH) is cheap → fast;
+// the remote SSH fan-out is expensive → slow. Both are visibility-gated. Local tab
+// agents already stream via the extension's fs.watch push, so these only drive the
+// remote + cross-window rows that the one-shot mount fetch used to leave frozen.
+const LOCAL_POLL_MS = 3_000
+const REMOTE_POLL_MS = 45_000
 
 interface FloorPrefs {
   plain: boolean
@@ -466,6 +477,7 @@ interface UnifiedAgentsPaneProps {
   githubRepo?: string | null
   watchdogEnabled?: boolean
   watchdogEvents?: WatchdogEventUI[]
+  projectRules?: ProjectRule[]
 }
 
 // Preserve object identity for unchanged agents across renders so memoized
@@ -488,7 +500,7 @@ function useStableList(items: UnifiedAgent[]): UnifiedAgent[] {
   }, [items])
 }
 
-export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks, unifiedTasksLoading, onDispatch, onNavigate, onOpenInBench, openDispatchTrigger, quickSpawnTrigger, openDetailTaskId, onDetailTaskConsumed, onThroughputChange, githubRepo, watchdogEnabled = false, watchdogEvents = [] }: UnifiedAgentsPaneProps) {
+export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks, unifiedTasksLoading, onDispatch, onNavigate, onOpenInBench, openDispatchTrigger, quickSpawnTrigger, openDetailTaskId, onDetailTaskConsumed, onThroughputChange, githubRepo, watchdogEnabled = false, watchdogEvents = [], projectRules = [] }: UnifiedAgentsPaneProps) {
   const panelVisible = usePanelVisibility()
   const [newMenuOpen, setNewMenuOpen] = useState(false)
   const [statPopover, setStatPopover] = useState<'shipped' | 'open' | 'running' | 'nextup' | 'files' | null>(null)
@@ -551,21 +563,30 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   // Per-agent reply failures (host 'replyResult' with ok=false, or a 'none' channel),
   // shown inline near the reply control instead of a toast. Cleared on the next send.
   const [replyErrors, setReplyErrors] = useState<Map<string, string>>(new Map())
+  // Full discovered roster (name + reachability) so the sidebar can list idle
+  // reachable hosts, not only hosts currently running an agent.
+  const [hostRoster, setHostRoster] = useState<Array<{ name: string; online: boolean }>>([])
+  // Freshness of the cross-host (remote) sweep, for the LIVE ACTIVITY sync chip.
+  const [lastRemoteSync, setLastRemoteSync] = useState(0)
+  const [syncingHosts, setSyncingHosts] = useState(false)
+  const [selectedHostId, setSelectedHostId] = useState<string | null>(null)
+  const [hostInventories, setHostInventories] = useState<Record<string, HostInventory>>({})
+  const [hostConfigError, setHostConfigError] = useState<string | null>(null)
 
   // Persist the durable Floor prefs (pinned set, plain/sidebar/right toggles, group-by).
   useEffect(() => {
     saveFloorPrefs({ plain, sidebar: sidebarOpen, right: rightOpen, groupBy: floorGroupBy, pinned: [...pinned] })
   }, [plain, sidebarOpen, rightOpen, floorGroupBy, pinned])
 
-  // Cross-host merge: poll every reachable host's live sessions and fold the machine-wide
-  // set (headless / cloud / external terminals / remote) into the Floor, so agents that
-  // start or finish outside this window appear/disappear without a remount. Gated on panel
-  // visibility to avoid an ssh fan-out while hidden. Local-only Floor works if none arrive.
+  // Cross-host merge: fold genuinely-remote sessions into the Floor. Two message
+  // types arrive here:
+  //   hostSessions  — full sweep (every online host); replaces the whole set + roster.
+  //   localSessions — this-mac only (the fast 3s poll); replaces just the this-mac rows
+  //                   so remote rows from the slower sweep are preserved.
+  // Per-agent reply failures ('replyResult' with ok=false) surface inline near the reply
+  // control instead of a toast; cleared on the next successful send.
+  // Local-only Floor still works if neither ever arrives.
   useEffect(() => {
-    if (!panelVisible) return
-    const fetch = () => postMessage({ type: 'fetchHostSessions' })
-    fetch()
-    const id = setInterval(fetch, 8000)
     const onMsg = (event: MessageEvent) => {
       const msg = event.data
       if (msg?.type === 'replyResult') {
@@ -579,16 +600,61 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
         })
         return
       }
-      if (msg?.type !== 'hostSessions') return
-      setRemoteSessions(Array.isArray(msg.sessions) ? (msg.sessions as RemoteSessionLike[]) : [])
-      const offline = Array.isArray(msg.hosts)
-        ? (msg.hosts as Array<{ name: string; online: boolean }>).filter((h) => h && !h.online).map((h) => h.name)
-        : []
-      setOfflineHosts(offline)
+      if (msg?.type === 'hostSessions') {
+        setRemoteSessions(Array.isArray(msg.sessions) ? (msg.sessions as RemoteSessionLike[]) : [])
+        const roster = Array.isArray(msg.hosts)
+          ? (msg.hosts as Array<{ name: string; online: boolean }>)
+              .filter((h) => h && typeof h.name === 'string')
+              .map((h) => ({ name: h.name, online: !!h.online }))
+          : []
+        setHostRoster(roster)
+        setOfflineHosts(roster.filter((h) => !h.online).map((h) => h.name))
+        setLastRemoteSync(typeof msg.fetchedAt === 'number' ? msg.fetchedAt : Date.now())
+        setSyncingHosts(false)
+      } else if (msg?.type === 'localSessions') {
+        const local = Array.isArray(msg.sessions) ? (msg.sessions as RemoteSessionLike[]) : []
+        setRemoteSessions((prev) => [...prev.filter((s) => s.host !== 'this-mac'), ...local])
+      }
     }
     window.addEventListener('message', onMsg)
-    return () => { clearInterval(id); window.removeEventListener('message', onMsg) }
+    return () => window.removeEventListener('message', onMsg)
+  }, [])
+
+  // Remote tier: sweep every online host over SSH. Expensive, so poll slowly and only
+  // while the panel is visible; the sweep itself is cheapened backend-side (offline
+  // hosts skipped, one SSH per host, CPU probe decoupled). Mirrors the throughput poll.
+  useEffect(() => {
+    if (!panelVisible) return
+    const sweep = () => { setSyncingHosts(true); postMessage({ type: 'fetchHostSessions' }) }
+    sweep()
+    const id = setInterval(sweep, REMOTE_POLL_MS)
+    return () => clearInterval(id)
   }, [panelVisible])
+
+  // Local tier: this-mac sessions with no SSH — cheap, so poll fast. Keeps the feed
+  // feeling live for local agents between the slow remote sweeps.
+  useEffect(() => {
+    if (!panelVisible) return
+    const poll = () => postMessage({ type: 'fetchLocalSessions' })
+    poll()
+    const id = setInterval(poll, LOCAL_POLL_MS)
+    return () => clearInterval(id)
+  }, [panelVisible])
+
+  // Host detail pane: receive fetched inventories + config-action errors.
+  useEffect(() => {
+    const onMsg = (event: MessageEvent) => {
+      const msg = event.data
+      if (msg?.type === 'hostInventory' && msg.inventory && typeof msg.host === 'string') {
+        setHostInventories((prev) => ({ ...prev, [msg.host]: msg.inventory as HostInventory }))
+        setHostConfigError(null)
+      } else if (msg?.type === 'hostConfigError' && typeof msg.error === 'string') {
+        setHostConfigError(msg.error)
+      }
+    }
+    window.addEventListener('message', onMsg)
+    return () => window.removeEventListener('message', onMsg)
+  }, [])
 
   // Consolidated dispatch data (installed agents / hosts / ranked targets) for the
   // single DispatchPanel, plus the Floor after-dispatch `planReady` signal. Both are
@@ -1044,13 +1110,19 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   }, [panelHosts])
 
   // ---------- Floor view-model derivation ----------
-  const nowMs = Date.now()
+  // A once-a-second ticker (local useNow) drives the sync chip's live age (below). It is
+  // deliberately NOT a dependency of the agent adapters: at 100+ agents, re-adapting the
+  // whole feed every second (derivePhase / splitActivity / a per-agent question regex)
+  // is the dominant idle cost. The adapter instead captures Date.now() at data-change
+  // time only; each FeedItem's own leaf heartbeat (useNow) ticks the visible "since"
+  // label, so nothing freezes while unchanged agents stop being re-derived every second.
+  const nowMs = useNow(1000)
 
   // Local agents (drop the synthetic watchdog row) + genuinely-remote sessions
   // (host !== 'this-mac' so we don't double count this machine's own agents).
   const floorLocalAgents = useMemo(
-    () => adaptUnified(items.filter((i) => i.kind !== 'watchdog'), { pinned, workspaceRepo: workspaceRepoName, nowMs }),
-    [items, pinned, workspaceRepoName, nowMs]
+    () => adaptUnified(items.filter((i) => i.kind !== 'watchdog'), { pinned, workspaceRepo: workspaceRepoName, nowMs: Date.now(), projectRules }),
+    [items, pinned, workspaceRepoName, projectRules]
   )
   // Session UUIDs already open as a terminal tab in THIS window (the rich, local
   // source). Used to avoid double-listing an agent that the machine-wide fetch also
@@ -1070,9 +1142,10 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
         remoteSessions.filter(
           (s) => s.host !== 'this-mac' || !localTabSessionIds.has(s.sessionId)
         ),
-        pinned
+        pinned,
+        projectRules
       ),
-    [remoteSessions, localTabSessionIds, pinned]
+    [remoteSessions, localTabSessionIds, pinned, projectRules]
   )
   const floorAgents = useMemo(
     () => [...floorLocalAgents, ...floorRemoteAgents],
@@ -1217,6 +1290,27 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     setSelectedTicketId(id)
   }, [])
 
+  // Host detail pane: clicking a host in the sidebar opens its detail/config on
+  // the right and fetches its inventory (cached backend-side).
+  const onSelectHost = useCallback((hostName: string) => {
+    setCenter('host')
+    setSelectedHostId(hostName)
+    setHostConfigError(null)
+    setRightOpen(true)
+    postMessage({ type: 'fetchHostInventory', host: hostName })
+  }, [])
+  const refreshHost = useCallback((hostName: string) => {
+    postMessage({ type: 'fetchHostInventory', host: hostName, force: true })
+  }, [])
+  const enrollHostAction = useCallback((hostName: string, caps: string[]) => {
+    setHostConfigError(null)
+    postMessage({ type: 'enrollHost', host: hostName, caps })
+  }, [])
+  const removeHostAction = useCallback((hostName: string) => {
+    setHostConfigError(null)
+    postMessage({ type: 'removeHost', host: hostName })
+  }, [])
+
   // Right-pane detail for the selected agent: a decision block when it needs you, then
   // the reused rich DetailPane (local) or a light remote summary (cross-host).
   const renderAgentDetail = () => {
@@ -1261,11 +1355,24 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
             onKill={handleKill}
           />
         ) : (
-          <div className="dhead" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
-            <div className="title">{a.project} / {a.name}</div>
-            <div className="sub">host <b>{a.host}</b>{a.branch ? ` · ${a.branch}` : ''} · {a.phase}{a.tok ? ` · ${a.tok} tok/s` : ''}</div>
-            {a.resp && <div className="resp" style={{ marginTop: 8 }}>{a.resp}</div>}
-            {(a.verb || a.target) && <div className="nowline" style={{ marginTop: 8 }}><Icon name="chevR" size={11} /> <span className="v">{a.verb}</span> {a.target}</div>}
+          <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'auto' }}>
+            <div className="dhead" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
+              <div className="title">{a.project} / {a.name}</div>
+              <div className="sub">host <b>{a.host}</b>{a.branch ? ` · ${a.branch}` : ''} · {a.phase}{a.tok ? ` · ${a.tok} tok/s` : ''}</div>
+              {a.summary && <div className="resp" style={{ marginTop: 8 }}>{a.summary}</div>}
+              {a.resp && a.resp !== a.summary && <div className="resp" style={{ marginTop: 8 }}>{a.resp}</div>}
+              {(a.verb || a.target) && <div className="nowline" style={{ marginTop: 8 }}><Icon name="chevR" size={11} /> <span className="v">{a.verb}</span> {a.target}</div>}
+            </div>
+            {a.recent.length > 0 && (
+              <div className="sw-unified-detail-section">
+                <div className="sw-section-label">Recent tools</div>
+                <div className="sw-floor-detail-tools">
+                  {a.recent.slice(0, 8).map((call, i) => (
+                    <RecentToolCallRow key={`${call.name}-${i}`} call={call} />
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </>
@@ -1331,9 +1438,9 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
               selected={selectedFloorAgent?.id === c[0].id}
               plain={plain}
               onSelect={selectFloorAgent}
-              onOption={(o) => onAgentOption(c[0], o)}
-              onFreeText={(t) => replyToAgent(c[0], t)}
-              onAttach={() => onAttachScreenshot(c[0])}
+              onOption={onAgentOption}
+              onFreeText={replyToAgent}
+              onAttach={onAttachScreenshot}
             />
           ))}
           {failedAgents.map((a) => (
@@ -1348,7 +1455,20 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
         </>
       )}
 
-      <div className="feed-sec">LIVE ACTIVITY · {activeFeed.length}<span className="ln" /></div>
+      <div className="feed-sec">LIVE ACTIVITY · {activeFeed.length}<span className="ln" />
+        <span
+          className={`fresh${syncingHosts ? ' syncing' : ''}${!syncingHosts && lastRemoteSync > 0 && nowMs - lastRemoteSync > 2 * REMOTE_POLL_MS ? ' stale' : ''}`}
+          title="Last cross-host sync. Click to refresh now."
+          onClick={() => { if (!syncingHosts) { setSyncingHosts(true); postMessage({ type: 'fetchHostSessions' }) } }}
+        >
+          <span className="rot"><Icon name="refresh" size={11} /></span>
+          {syncingHosts
+            ? 'syncing hosts…'
+            : lastRemoteSync > 0
+              ? `hosts synced ${sinceFromMs(Math.max(0, nowMs - lastRemoteSync))} ago`
+              : 'not synced yet'}
+        </span>
+      </div>
       {activeFeed.map((a) => (
         <FeedItem
           key={a.id}
@@ -1356,15 +1476,27 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
           selected={selectedFloorAgent?.id === a.id}
           plain={plain}
           onSelect={selectFloorAgent}
-          onOption={(o) => onAgentOption(a, o)}
-          onFreeText={(t) => replyToAgent(a, t)}
-          onAttach={() => onAttachScreenshot(a)}
+          onOption={onAgentOption}
+          onFreeText={replyToAgent}
+          onAttach={onAttachScreenshot}
         />
       ))}
     </div>
   )
 
-  const rightContent = center === 'backlog'
+  const rightContent = center === 'host'
+    ? (selectedHostId
+      ? <HostDetail
+          host={selectedHostId}
+          inventory={hostInventories[selectedHostId] ?? null}
+          configError={hostConfigError}
+          onRefresh={() => refreshHost(selectedHostId)}
+          onEnroll={(caps) => enrollHostAction(selectedHostId, caps)}
+          onRemove={() => removeHostAction(selectedHostId)}
+          onDispatch={() => setDispatchOpen(true)}
+        />
+      : <div className="detail-empty">Select a host to see its installed agents and configuration.</div>)
+    : center === 'backlog'
     ? (selectedFloorTicket
       ? <TicketDetail ticket={selectedFloorTicket} hosts={floorHosts} onDispatch={() => openDispatch({ ticketId: selectedFloorTicket.id })} />
       : <div className="detail-empty">Select a ticket to see its details and dispatch an agent onto it.</div>)
@@ -1406,6 +1538,9 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
             projFilter={projFilter}
             offlineHosts={offlineHosts}
             onScope={onScope}
+            onSelectHost={onSelectHost}
+            selectedHost={center === 'host' ? selectedHostId : null}
+            hosts={hostRoster}
           />
         )}
         <div className="feed-col">{centerContent}</div>
@@ -2042,6 +2177,7 @@ function filePillColor(touchedAtMs: number | undefined, now: number): string {
 
 function TerminalExpandedDetail({ terminal }: { terminal: TerminalInfo }) {
   const now = useNow(5000)
+  const todos = latestTodos(terminal.recentToolCalls)
   const cwdDisplay = terminal.cwd ? terminal.cwd.replace(/^\/Users\/[^/]+/, '~') : null
   const linkStyle: React.CSSProperties = {
     background: 'transparent',
@@ -2088,6 +2224,12 @@ function TerminalExpandedDetail({ terminal }: { terminal: TerminalInfo }) {
           <div className="sw-unified-detail-text">
             {renderTodoDescription(terminal.firstUserMessage, false)}
           </div>
+        </div>
+      )}
+      {todos.length > 0 && (
+        <div className="sw-unified-detail-section">
+          <div className="sw-section-label">Checklist</div>
+          <TodoChecklist todos={todos} />
         </div>
       )}
       {(terminal.quickSummary || terminal.messageCount) && (

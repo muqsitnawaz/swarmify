@@ -16,6 +16,9 @@ import {
   computeOutputTokensPerSec,
   formatActivity,
 } from './session.activity';
+import type { ProjectRule } from './settings';
+
+export type { ProjectRule } from './settings';
 
 /** Mirror of floorModel.FloorPhase (kept in sync by hand; not imported). */
 export type RemotePhase = 'running' | 'idle' | 'waiting' | 'failed' | 'done';
@@ -177,17 +180,83 @@ export function mapStatusToPhase(status: string | undefined): RemotePhase {
 }
 
 /**
- * Derive a display project from a working directory. Worktrees are folded to
- * their repo: `.../<repo>/.agents/worktrees/<slug>` -> `<repo>`. Otherwise the
- * cwd basename.
+ * Convert a project-rule glob to a RegExp. `**` spans path separators, `*` does
+ * not, `?` matches a single non-separator char. A trailing subpath always matches
+ * so a rule for a directory also captures sessions running inside it.
  */
-export function projectFromCwd(cwd: string): string {
+function projectGlobToRegExp(glob: string): RegExp {
+  let re = '';
+  for (let i = 0; i < glob.length; i++) {
+    const c = glob[i];
+    if (c === '*') {
+      if (glob[i + 1] === '*') {
+        re += '.*';
+        i++;
+      } else {
+        re += '[^/]*';
+      }
+    } else if (c === '?') {
+      re += '[^/]';
+    } else {
+      re += c.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+    }
+  }
+  return new RegExp('^' + re + '(?:/.*)?$');
+}
+
+/**
+ * Does a rule's pattern match a cwd? A pattern with no glob metacharacters is a
+ * plain path prefix (the exact dir or any descendant); otherwise it is a glob.
+ */
+function matchesProjectRule(cwd: string, pattern: string): boolean {
+  const p = pattern.trim().replace(/\/+$/, '');
+  if (!p) return false;
+  if (!/[*?]/.test(p)) return cwd === p || cwd.startsWith(p + '/');
+  return projectGlobToRegExp(p).test(cwd);
+}
+
+/** Last path segment of a repo-root path (or a bare repo name). */
+function pathBasename(p: string): string {
+  const parts = p.replace(/\/+$/, '').split('/').filter(Boolean);
+  return parts[parts.length - 1] || '';
+}
+
+/**
+ * Resolve a session cwd to a display project for Floor grouping. Order:
+ *   1. user rules (first match wins) — glob or path-prefix against the cwd.
+ *   2. worktree fold: `.../<repo>/.agents/worktrees/<slug>` -> `<repo>`.
+ *   3. git repo root basename, when the caller supplies `repoRoot` — so a
+ *      monorepo subdir (`.../agents/prix/api`) folds to the repo, not the leaf.
+ *   4. ultimate fallback: the cwd's last path segment (legacy behavior).
+ * Pure — mirrored in ui/.../floorModel.ts across the webview boundary.
+ */
+export function resolveProject(
+  cwd: string,
+  rules: ProjectRule[] = [],
+  repoRoot?: string | null
+): string {
   if (!cwd) return '';
   const norm = cwd.replace(/\/+$/, '');
+  for (const rule of rules) {
+    if (rule && matchesProjectRule(norm, rule.pattern)) return rule.project;
+  }
   const wt = norm.match(/\/([^/]+)\/\.agents\/worktrees\//);
   if (wt) return wt[1];
-  const parts = norm.split('/');
+  if (repoRoot) {
+    const base = pathBasename(repoRoot);
+    if (base) return base;
+  }
+  const parts = norm.split('/').filter(Boolean);
   return parts[parts.length - 1] || norm;
+}
+
+/**
+ * Derive a display project from a working directory with no user rules — the
+ * legacy default: worktrees fold to their repo, otherwise the cwd basename.
+ * Thin wrapper over resolveProject so the two never diverge.
+ */
+export function projectFromCwd(cwd: string): string {
+  return resolveProject(cwd);
 }
 
 /** Pull the session UUID out of a session-file path (basename minus extension). */
@@ -204,7 +273,8 @@ function sessionIdFromFile(sessionFile: string | undefined): string {
 export function normalizeActiveSession(
   raw: RawActiveSession,
   host: string,
-  fetchedAt: number
+  fetchedAt: number,
+  projectRules: ProjectRule[] = []
 ): RemoteSession {
   const status = raw.status;
   const phase = mapStatusToPhase(status);
@@ -224,7 +294,7 @@ export function normalizeActiveSession(
     sessionId,
     agentType: (raw.kind || '').toLowerCase(),
     cwd,
-    project: projectFromCwd(cwd),
+    project: resolveProject(cwd, projectRules),
     phase,
     activity: '',
     tokPerSec: 0,
@@ -295,7 +365,8 @@ export function dedupeSessions(sessions: RemoteSession[]): RemoteSession[] {
 export function normalizeActiveSessions(
   payload: string | unknown[],
   host: string,
-  fetchedAt: number
+  fetchedAt: number,
+  projectRules: ProjectRule[] = []
 ): RemoteSession[] {
   let arr: unknown[];
   if (typeof payload === 'string') {
@@ -312,7 +383,7 @@ export function normalizeActiveSessions(
   }
   return arr
     .filter((r): r is RawActiveSession => !!r && typeof r === 'object')
-    .map((r) => normalizeActiveSession(r, host, fetchedAt));
+    .map((r) => normalizeActiveSession(r, host, fetchedAt, projectRules));
 }
 
 /**

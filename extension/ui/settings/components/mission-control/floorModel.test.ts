@@ -1,23 +1,72 @@
 import { describe, test, expect } from 'bun:test'
-import type { UnifiedTask } from '../../types'
+import type { UnifiedTask, ProjectRule } from '../../types'
 import {
   derivePhase,
   deriveNeeds,
   deriveStalled,
   heartbeatLevel,
+  latestTodos,
+  todoProgress,
   parseStructuredQuestion,
   groupAgents,
   sortAgents,
   clusterByQuestion,
+  sessionKey,
   toFloorTicket,
   groupTickets,
   sortTickets,
+  resolveProject,
   PHASE_RANK,
   STALL_THRESHOLD_MS,
   type FloorAgent,
   type FloorPhase,
   type StructuredQuestion,
 } from './floorModel'
+
+describe('resolveProject', () => {
+  const RULES: ProjectRule[] = [
+    { pattern: '**/agents/prix/api', project: 'Prix API' },
+    { pattern: '**/agents/prix/app', project: 'Prix App' },
+    { pattern: '/home/muqsit/src/monorepo', project: 'Monorepo Root' },
+  ]
+
+  test('user rules win first, and the first matching rule wins', () => {
+    expect(resolveProject('/x/y/agents/prix/api', RULES)).toBe('Prix API')
+    expect(resolveProject('/x/y/agents/prix/app', RULES)).toBe('Prix App')
+  })
+
+  test('a glob captures work inside the matched directory', () => {
+    expect(resolveProject('/x/y/agents/prix/api/src/routes', RULES)).toBe('Prix API')
+  })
+
+  test('a path-prefix rule matches the dir and descendants but not a shared-prefix sibling', () => {
+    expect(resolveProject('/home/muqsit/src/monorepo/packages/api', RULES)).toBe('Monorepo Root')
+    expect(resolveProject('/home/muqsit/src/monorepo-two', RULES)).toBe('monorepo-two')
+  })
+
+  test('rules beat the git-repo-root default', () => {
+    expect(resolveProject('/x/y/agents/prix/api', RULES, '/x/y/agents')).toBe('Prix API')
+  })
+
+  test('a monorepo subdir with no rule folds to its git repo root basename', () => {
+    expect(resolveProject('/x/y/agents/prix/api', [], '/x/y/agents')).toBe('agents')
+  })
+
+  test('worktree folding beats the git-repo-root default', () => {
+    expect(
+      resolveProject(
+        '/Users/m/src/o/swarmify/.agents/worktrees/floor-port',
+        [],
+        '/Users/m/src/o/swarmify/.agents/worktrees/floor-port',
+      ),
+    ).toBe('swarmify')
+  })
+
+  test('no rules, no repoRoot -> legacy last-segment', () => {
+    expect(resolveProject('/x/y/prix-api')).toBe('prix-api')
+    expect(resolveProject('')).toBe('')
+  })
+})
 
 function makeAgent(overrides: Partial<FloorAgent> = {}): FloorAgent {
   return {
@@ -42,6 +91,9 @@ function makeAgent(overrides: Partial<FloorAgent> = {}): FloorAgent {
     resp: '',
     question: null,
     reply: { kind: 'terminal', host: 'this-mac', terminalId: 'CC-1' },
+    todos: [],
+    summary: '',
+    recent: [],
     ...overrides,
   }
 }
@@ -293,6 +345,50 @@ describe('clusterByQuestion', () => {
   })
 })
 
+describe('sessionKey — one canonical identity across origins', () => {
+  const uuid = '4a78949e-1111-2222-3333-444455556666'
+
+  test('same session via local tab + local sweep collapse to one key', () => {
+    const fromTab = sessionKey({ origin: 'local', host: 'this-mac', cliSessionUuid: uuid, terminalId: 'CC-1705-1' })
+    const fromSweep = sessionKey({ origin: 'local', host: 'this-mac', cliSessionUuid: uuid })
+    expect(fromTab).toBe(uuid)
+    expect(fromSweep).toBe(uuid)
+    expect(fromTab).toBe(fromSweep)
+  })
+
+  test('provisional key re-keys once the UUID appears', () => {
+    const provisional = sessionKey({ origin: 'local', terminalId: 'CC-1705-1' })
+    const resolved = sessionKey({ origin: 'local', cliSessionUuid: uuid, terminalId: 'CC-1705-1' })
+    expect(provisional).toBe('provisional:CC-1705-1')
+    expect(resolved).toBe(uuid)
+    expect(provisional).not.toBe(resolved)
+  })
+
+  test('provisional falls back through terminal -> cloud -> agent id', () => {
+    expect(sessionKey({ origin: 'cloud', cloudTaskId: 'task-abc' })).toBe('provisional:task-abc')
+    expect(sessionKey({ origin: 'local', agentId: 'agent-xyz' })).toBe('provisional:agent-xyz')
+    expect(sessionKey({ origin: 'local' })).toBe('provisional:unknown')
+  })
+
+  test('remote keys namespaced by host do not collide across hosts', () => {
+    const onHostA = sessionKey({ origin: 'remote', host: 'yosemite-s0', cliSessionUuid: uuid })
+    const onHostB = sessionKey({ origin: 'remote', host: 'zion-m1', cliSessionUuid: uuid })
+    expect(onHostA).toBe(`yosemite-s0:${uuid}`)
+    expect(onHostB).toBe(`zion-m1:${uuid}`)
+    expect(onHostA).not.toBe(onHostB)
+  })
+
+  test('remote falls back to the session file stem when the UUID is unknown', () => {
+    expect(sessionKey({ origin: 'remote', host: 'zion-m1', sessionFileStem: 'rollout-2024' })).toBe('zion-m1:rollout-2024')
+  })
+
+  test('a genuinely remote UUID does not collide with the same session seen locally', () => {
+    const local = sessionKey({ origin: 'local', host: 'this-mac', cliSessionUuid: uuid })
+    const remote = sessionKey({ origin: 'remote', host: 'yosemite-s0', cliSessionUuid: uuid })
+    expect(local).not.toBe(remote)
+  })
+})
+
 describe('toFloorTicket — field mapping', () => {
   test('medium priority remaps to med', () => {
     expect(toFloorTicket(makeTask({ priority: 'medium' })).pri).toBe('med')
@@ -356,5 +452,64 @@ describe('groupTickets / sortTickets', () => {
     const g = groupTickets(tickets, 'project')
     expect(g.get('web')!.map((t) => t.id)).toEqual(['RUSH-2', 'RUSH-3'])
     expect(g.get('swarmify')!.map((t) => t.id)).toEqual(['#1'])
+  })
+})
+
+describe('latestTodos -- the checklist from the newest TodoWrite', () => {
+  const tw = (todos: unknown) => ({ name: 'TodoWrite', input: { todos } })
+
+  test('reads the NEWEST TodoWrite, superseding earlier ones', () => {
+    // recentToolCalls is NEWEST-FIRST (session.summary.ts unshifts each call), so the
+    // most recent TodoWrite (the 3-item list) sits ahead of the older one-item list.
+    const calls = [
+      { name: 'Bash', input: { command: 'bun test' } },
+      tw([
+        { content: 'read code', status: 'completed' },
+        { content: 'write code', status: 'in_progress' },
+        { content: 'open PR', status: 'pending' },
+      ]),
+      { name: 'Edit', input: { file: 'a.ts' } },
+      tw([{ content: 'first plan', status: 'completed' }]),
+    ]
+    expect(latestTodos(calls)).toEqual([
+      { content: 'read code', status: 'completed' },
+      { content: 'write code', status: 'in_progress' },
+      { content: 'open PR', status: 'pending' },
+    ])
+  })
+
+  test('returns [] when there is no TodoWrite', () => {
+    expect(latestTodos([{ name: 'Edit', input: {} }, { name: 'Bash', input: {} }])).toEqual([])
+  })
+
+  test('returns [] for undefined / empty input', () => {
+    expect(latestTodos(undefined)).toEqual([])
+    expect(latestTodos([])).toEqual([])
+  })
+
+  test('falls back to activeForm for content and defaults unknown status to pending', () => {
+    expect(latestTodos([tw([
+      { activeForm: 'Migrating token store', status: 'weird' },
+      { content: '', status: 'completed' },        // dropped: no content
+      { content: 'ok', status: 'in_progress' },
+    ])])).toEqual([
+      { content: 'Migrating token store', status: 'pending' },
+      { content: 'ok', status: 'in_progress' },
+    ])
+  })
+
+  test('tolerates malformed todos payload', () => {
+    expect(latestTodos([tw('not-an-array')])).toEqual([])
+    expect(latestTodos([{ name: 'TodoWrite', input: null }])).toEqual([])
+  })
+
+  test('todoProgress tallies completed vs total', () => {
+    expect(todoProgress([
+      { content: 'a', status: 'completed' },
+      { content: 'b', status: 'completed' },
+      { content: 'c', status: 'in_progress' },
+      { content: 'd', status: 'pending' },
+    ])).toEqual({ done: 2, total: 4 })
+    expect(todoProgress([])).toEqual({ done: 0, total: 0 })
   })
 })

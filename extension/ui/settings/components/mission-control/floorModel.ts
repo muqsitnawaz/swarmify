@@ -13,7 +13,78 @@
 // (+ DESIGN.md). Field names mirror the prototype's AGENTS / TICKETS mock objects
 // so the port is a 1:1 translation, not a redesign.
 
-import type { UnifiedTask } from '../../types'
+import type { UnifiedTask, RecentToolCall, ProjectRule } from '../../types'
+
+export type { RecentToolCall }
+
+// ---------- project resolution ----------
+//
+// Mirror of src/core/remoteSessions.ts resolveProject (hand-kept; the src/ and ui/
+// builds cannot share imports, so the logic lives on both sides of the postMessage
+// boundary). Keep the two in lockstep.
+
+/** Glob -> RegExp. `**` spans path separators, `*` does not, `?` a single char.
+ *  A trailing subpath always matches so a rule for a dir captures work inside it. */
+function projectGlobToRegExp(glob: string): RegExp {
+  let re = ''
+  for (let i = 0; i < glob.length; i++) {
+    const c = glob[i]
+    if (c === '*') {
+      if (glob[i + 1] === '*') {
+        re += '.*'
+        i++
+      } else {
+        re += '[^/]*'
+      }
+    } else if (c === '?') {
+      re += '[^/]'
+    } else {
+      re += c.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    }
+  }
+  return new RegExp('^' + re + '(?:/.*)?$')
+}
+
+/** A rule pattern with no glob metacharacters is a path prefix; else a glob. */
+function matchesProjectRule(cwd: string, pattern: string): boolean {
+  const p = pattern.trim().replace(/\/+$/, '')
+  if (!p) return false
+  if (!/[*?]/.test(p)) return cwd === p || cwd.startsWith(p + '/')
+  return projectGlobToRegExp(p).test(cwd)
+}
+
+function pathBasename(p: string): string {
+  const parts = p.replace(/\/+$/, '').split('/').filter(Boolean)
+  return parts[parts.length - 1] || ''
+}
+
+/**
+ * Resolve a session cwd to a display project. Order:
+ *   1. user rules (first match wins) — glob or path-prefix against the cwd.
+ *   2. worktree fold: `.../<repo>/.agents/worktrees/<slug>` -> `<repo>`.
+ *   3. git repo root basename when `repoRoot` is supplied — so a monorepo subdir
+ *      folds to the repo, not the leaf dir.
+ *   4. ultimate fallback: the cwd's last path segment (legacy behavior).
+ */
+export function resolveProject(
+  cwd: string,
+  rules: ProjectRule[] = [],
+  repoRoot?: string | null,
+): string {
+  if (!cwd) return ''
+  const norm = cwd.replace(/\/+$/, '')
+  for (const rule of rules) {
+    if (rule && matchesProjectRule(norm, rule.pattern)) return rule.project
+  }
+  const wt = norm.match(/\/([^/]+)\/\.agents\/worktrees\//)
+  if (wt) return wt[1]
+  if (repoRoot) {
+    const base = pathBasename(repoRoot)
+    if (base) return base
+  }
+  const parts = norm.split('/').filter(Boolean)
+  return parts[parts.length - 1] || norm
+}
 
 // ---------- agent view-model ----------
 
@@ -47,6 +118,14 @@ export interface StructuredQuestion {
   options: string[]
   /** Stable key so identical questions across agents cluster for batch triage. */
   clusterKey: string
+}
+
+export type TodoStatus = 'pending' | 'in_progress' | 'completed'
+
+/** One item of an agent's task checklist, parsed from its latest TodoWrite call. */
+export interface TodoItem {
+  content: string
+  status: TodoStatus
 }
 
 /**
@@ -106,6 +185,9 @@ export interface FloorAgent {
   resp: string           // last response text (Anthropic Agent-view style)
   question: StructuredQuestion | null
   reply: ReplyTarget     // how a user reply reaches this agent (host dispatches on kind)
+  todos: TodoItem[]      // task checklist from the latest TodoWrite; empty when none
+  summary: string        // the "what is it doing" line (CLI-provided); '' when unknown
+  recent: RecentToolCall[] // rolling window of this session's recent tool calls; [] when none
 }
 
 // ---------- ticket view-model (Backlog) ----------
@@ -128,7 +210,55 @@ export interface FloorTicket {
 
 // ---------- controls state ----------
 
-export type CenterMode = 'agents' | 'backlog'
+export type CenterMode = 'agents' | 'backlog' | 'host'
+
+// Host detail pane payloads. Mirror of extension/src/core/hostInventory.ts —
+// the webview can't import from src/*, so the shape is redeclared here and
+// crosses the boundary as JSON via the `hostInventory` message.
+export interface HostResourceSummary {
+  skills: number
+  plugins: number
+  mcp: number
+  commands: number
+  workflows: number
+  memory: number
+  hooks: number
+  drift: number
+}
+export interface HostAgentVersion {
+  version: string
+  isDefault: boolean
+  signedIn: boolean
+  email: string | null
+  plan: string | null
+  sessionPercent: number | null
+  weekPercent: number | null
+  lastActive: string | null
+  resources: HostResourceSummary | null
+}
+export interface HostAgentInfo {
+  agent: string
+  versions: HostAgentVersion[]
+}
+export interface HostMeta {
+  name: string
+  enrolled: boolean
+  source: string | null
+  target: string | null
+  user: string | null
+  os: string | null
+  caps: string[]
+  addedAt: string | null
+  status: string | null
+}
+export interface HostInventory {
+  host: string
+  reachable: boolean
+  error: string | null
+  meta: HostMeta | null
+  agents: HostAgentInfo[]
+  fetchedAt: number
+}
 export type FloorGroupBy = 'host' | 'project' | 'status' | 'agent'
 export type FloorSort = 'needs' | 'recent' | 'tok' | 'name'
 export type TicketGroupBy = 'project' | 'priority' | 'source' | 'status'
@@ -157,6 +287,60 @@ export const PRI_RANK: Record<TicketPriority, number> = {
   high: 1,
   med: 2,
   low: 3,
+}
+
+// ---------- canonical session identity ----------
+
+/**
+ * Where a session was observed. 'this-mac' sightings (a local tab OR the local sweep)
+ * are 'local'; only a genuinely different host is 'remote'. Cloud tasks are 'cloud'.
+ */
+export type SessionOrigin = 'local' | 'remote' | 'cloud'
+
+/**
+ * Raw identity signals for one observed session. Shaped to fit what the adapter has:
+ * local terminals carry a lazily-populated CLI UUID + a terminal id; the remote sweep
+ * carries a host + a session id (UUID or file stem); cloud carries an opaque task id.
+ */
+export interface SessionKeyInput {
+  origin: SessionOrigin
+  host?: string | null
+  /** The CLI session UUID — collision-free within an agent type, but populated lazily. */
+  cliSessionUuid?: string | null
+  /** Remote fallback: the session file's stem, used when the UUID is not yet known. */
+  sessionFileStem?: string | null
+  /** Provisional (pre-UUID) identity sources, in precedence order. */
+  terminalId?: string | null
+  cloudTaskId?: string | null
+  agentId?: string | null
+}
+
+function firstNonEmpty(...values: Array<string | null | undefined>): string | undefined {
+  for (const v of values) {
+    if (typeof v === 'string' && v.trim()) return v.trim()
+  }
+  return undefined
+}
+
+/**
+ * One canonical identity per session, stable across the origins that report it. Mirrors
+ * 02-floor-event-stream.md Decision 1:
+ *   remote -> `${host}:${cliSessionUuid ?? sessionFileStem}`
+ *   else   -> cliSessionUuid ?? `provisional:${terminalId | cloudTaskId | agentId}`
+ * Prefer the CLI UUID (so a session seen as both a local tab and the local sweep collapses
+ * to one key); namespace remote by host so the same UUID on two hosts does not collide;
+ * fall back to a provisional key while the UUID is unknown and re-key once it arrives.
+ */
+export function sessionKey(input: SessionKeyInput): string {
+  const uuid = firstNonEmpty(input.cliSessionUuid)
+  const provisionalId = firstNonEmpty(input.terminalId, input.cloudTaskId, input.agentId) ?? 'unknown'
+  if (input.origin === 'remote') {
+    const host = firstNonEmpty(input.host) ?? 'unknown-host'
+    const id = uuid ?? firstNonEmpty(input.sessionFileStem) ?? provisionalId
+    return `${host}:${id}`
+  }
+  if (uuid) return uuid
+  return `provisional:${provisionalId}`
 }
 
 // ---------- pure logic (LOGIC fills bodies; signatures are the contract) ----------
@@ -207,6 +391,50 @@ export function heartbeatLevel(ageMs: number): HeartbeatLevel {
   if (!Number.isFinite(ageMs) || ageMs < STALL_THRESHOLD_MS) return 'live'
   if (ageMs >= 2 * STALL_THRESHOLD_MS) return 'dead'
   return 'stale'
+}
+
+/** Minimal shape of a parsed tool call the checklist reads (name + raw input). */
+export interface ToolCallLike {
+  name: string
+  input?: unknown
+}
+
+/**
+ * The agent's current task checklist: the todos of its MOST RECENT TodoWrite call.
+ * A later TodoWrite fully supersedes earlier ones (the agent rewrites the whole
+ * list each time), so we take the newest, not a merge. `recentToolCalls` is stored
+ * NEWEST-FIRST (session.summary.ts unshifts each call), so we scan from index 0 and
+ * return the FIRST TodoWrite. Returns [] when there is no TodoWrite or the input is
+ * malformed. (Caveat: recentToolCalls is capped at 24, so a checklist drops off once
+ * >24 tool calls follow the last TodoWrite.) Pure so it's unit-tested.
+ */
+export function latestTodos(toolCalls: ReadonlyArray<ToolCallLike> | undefined): TodoItem[] {
+  if (!toolCalls || toolCalls.length === 0) return []
+  for (let i = 0; i < toolCalls.length; i++) {
+    if (toolCalls[i]?.name !== 'TodoWrite') continue
+    const input = toolCalls[i]?.input
+    const raw = input && typeof input === 'object' ? (input as Record<string, unknown>).todos : undefined
+    if (!Array.isArray(raw)) return []
+    const todos: TodoItem[] = []
+    for (const t of raw) {
+      if (!t || typeof t !== 'object') continue
+      const rec = t as Record<string, unknown>
+      const content =
+        typeof rec.content === 'string' ? rec.content :
+        typeof rec.activeForm === 'string' ? rec.activeForm : ''
+      if (!content) continue
+      const status: TodoStatus =
+        rec.status === 'completed' || rec.status === 'in_progress' ? rec.status : 'pending'
+      todos.push({ content, status })
+    }
+    return todos
+  }
+  return []
+}
+
+/** completed / total tally for a checklist (total 0 when empty). */
+export function todoProgress(todos: ReadonlyArray<TodoItem>): { done: number; total: number } {
+  return { done: todos.filter((t) => t.status === 'completed').length, total: todos.length }
 }
 
 /**
