@@ -44,7 +44,8 @@ function FeedItemImpl({ agent: a, selected, plain, onSelect, onOption, onFreeTex
   const liveSince = beats ? sinceFromMs(ageMs) : a.since
 
   const tok = plainTok(a.tok, plain)
-  const meta = plain ? a.project : `${a.project} · ${a.hostLabel ?? a.host}${a.ticket ? ` · ${a.ticket}` : ''}`
+  const filesLabel = !plain && a.files > 0 ? ` · ${a.files} ${a.files === 1 ? 'file' : 'files'}` : ''
+  const meta = plain ? a.project : `${a.project} · ${a.hostLabel ?? a.host}${a.ticket ? ` · ${a.ticket}` : ''}${filesLabel}`
   const destructive = a.question?.kind === 'destructive'
   const attn = a.phase === 'failed' ? 'fail' : stalled ? 'stall' : a.needs ? 'attn' : ''
 
