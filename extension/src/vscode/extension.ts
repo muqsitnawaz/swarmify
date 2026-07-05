@@ -2550,6 +2550,73 @@ function agentKeyFromSession(agent: CliSessionItem['agent']): PrewarmAgentType |
   return null;
 }
 
+// Resume a specific agent session in a fresh editor-tab terminal. Shared by the
+// interactive Session Resume command and the crash-recovery restore flow so both
+// go through one open path instead of hand-rolling a terminal spawn. Returns the
+// created terminal, or null when the agent type has no built-in config.
+export async function resumeAgentInTerminal(
+  context: vscode.ExtensionContext,
+  agentKey: PrewarmAgentType,
+  sessionId: string,
+  cwd: string,
+  version?: string,
+  account?: string,
+): Promise<vscode.Terminal | null> {
+  const builtIn = BUILT_IN_AGENTS.find(a => a.key === agentKey);
+  if (!builtIn) {
+    console.warn(`[RESUME] No built-in agent config for ${agentKey}`);
+    return null;
+  }
+
+  const agentConfig = createAgentConfig(
+    context.extensionPath,
+    builtIn.title,
+    builtIn.command,
+    builtIn.icon,
+    builtIn.prefix,
+  );
+
+  const resumeCmd = buildVersionedResumeCommand(agentKey, sessionId, version);
+
+  const terminalId = terminals.nextId(builtIn.prefix);
+  const title = buildTerminalTitle(agentConfig.title, undefined, context, sessionId);
+  const terminal = vscode.window.createTerminal({
+    iconPath: agentConfig.iconPath,
+    location: { viewColumn: vscode.ViewColumn.Active },
+    name: title,
+    env: buildAgentTerminalEnv(terminalId, sessionId, cwd, version),
+    isTransient: true,
+  });
+
+  const pid = await terminal.processId;
+  terminals.register(terminal, terminalId, agentConfig, pid, context);
+  readiness.registerTerminal(terminal);
+  terminals.setSessionId(terminal, sessionId);
+  terminals.setAgentType(terminal, agentKey);
+  if (version) {
+    terminals.setVersion(terminal, version);
+  }
+  if (account) {
+    terminals.setAccount(terminal, account);
+  }
+  startAutoLabelPollerForTerminal(terminal, context);
+
+  try {
+    await readiness.waitFor(terminal, 'promptReady');
+  } catch (err) {
+    console.warn(`[READINESS] promptReady wait failed: ${err}`);
+  }
+  if (terminal.shellIntegration) {
+    terminal.shellIntegration.executeCommand(resumeCmd);
+  } else {
+    terminal.sendText(resumeCmd);
+  }
+  readiness.armAgentReady(terminal, { agentKey, sessionId, cwd });
+
+  terminal.show();
+  return terminal;
+}
+
 async function resumeSession(context: vscode.ExtensionContext) {
   const activeTerminal = vscode.window.activeTerminal;
   const terminalEntry = activeTerminal ? terminals.getByTerminal(activeTerminal) : null;
@@ -2570,63 +2637,20 @@ async function resumeSession(context: vscode.ExtensionContext) {
     return;
   }
 
-  const builtIn = BUILT_IN_AGENTS.find(a => a.key === agentKey);
-  if (!builtIn) {
+  const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
+  const terminal = await resumeAgentInTerminal(
+    context,
+    agentKey,
+    session.id,
+    workspacePath,
+    session.version,
+    session.account,
+  );
+  if (!terminal) {
     vscode.window.showInformationMessage(`No built-in agent config for ${agentKey}`);
     return;
   }
 
-  const agentConfig = createAgentConfig(
-    context.extensionPath,
-    builtIn.title,
-    builtIn.command,
-    builtIn.icon,
-    builtIn.prefix,
-  );
-
-  const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
-  const resumeCmd = buildVersionedResumeCommand(agentKey, session.id, session.version);
-
-  const terminalId = terminals.nextId(builtIn.prefix);
-  const title = buildTerminalTitle(agentConfig.title, undefined, context, session.id);
-  const terminal = vscode.window.createTerminal({
-    iconPath: agentConfig.iconPath,
-    location: { viewColumn: vscode.ViewColumn.Active },
-    name: title,
-    env: buildAgentTerminalEnv(terminalId, session.id, workspacePath, session.version),
-    isTransient: true,
-  });
-
-  const pid = await terminal.processId;
-  terminals.register(terminal, terminalId, agentConfig, pid, context);
-  readiness.registerTerminal(terminal);
-  terminals.setSessionId(terminal, session.id);
-  terminals.setAgentType(terminal, agentKey);
-  if (session.version) {
-    terminals.setVersion(terminal, session.version);
-  }
-  if (session.account) {
-    terminals.setAccount(terminal, session.account);
-  }
-  startAutoLabelPollerForTerminal(terminal, context);
-
-  try {
-    await readiness.waitFor(terminal, 'promptReady');
-  } catch (err) {
-    console.warn(`[READINESS] promptReady wait failed: ${err}`);
-  }
-  if (terminal.shellIntegration) {
-    terminal.shellIntegration.executeCommand(resumeCmd);
-  } else {
-    terminal.sendText(resumeCmd);
-  }
-  readiness.armAgentReady(terminal, {
-    agentKey,
-    sessionId: session.id,
-    cwd: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
-  });
-
-  terminal.show();
   vscode.window.setStatusBarMessage(`Resuming ${agentKey}${session.version ? `@${session.version}` : ''} · ${session.shortId}`, 3000);
 }
 

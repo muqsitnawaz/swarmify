@@ -36,6 +36,42 @@ export interface TerminalSessionMapping {
   workingDirectory: string;
 }
 
+/** Plan produced from the crash-recovery state, consumed by restoreTerminals */
+export interface RestorePlan {
+  shouldPrompt: boolean;                    // ask the user whether to restore?
+  toRestore: TerminalSessionMapping[];      // mappings safe to re-open on "Restore"
+  clearMappingsNow: boolean;                // clear stored mappings without prompting
+}
+
+/**
+ * Decide what to do with the persisted crash mappings on startup.
+ *
+ * - Clean shutdown: nothing crashed, so drop the stale mappings and do not prompt.
+ * - Crash but no mappings: nothing to restore, nothing to clear.
+ * - Crash with mappings: only re-open mappings that carry a resumable session ID
+ *   and a known agent type; if none qualify, clear silently instead of prompting.
+ */
+export function planRestore(
+  cleanShutdown: boolean,
+  mappings: TerminalSessionMapping[]
+): RestorePlan {
+  if (cleanShutdown) {
+    return { shouldPrompt: false, toRestore: [], clearMappingsNow: true };
+  }
+  if (mappings.length === 0) {
+    return { shouldPrompt: false, toRestore: [], clearMappingsNow: false };
+  }
+
+  const toRestore = mappings.filter(
+    m => !!m.sessionId && supportsPrewarming(m.agentType)
+  );
+
+  if (toRestore.length === 0) {
+    return { shouldPrompt: false, toRestore: [], clearMappingsNow: true };
+  }
+  return { shouldPrompt: true, toRestore, clearMappingsNow: false };
+}
+
 // Pre-warm configurations per agent
 export const PREWARM_CONFIGS: Record<PrewarmAgentType, PrewarmConfig> = {
   claude: {

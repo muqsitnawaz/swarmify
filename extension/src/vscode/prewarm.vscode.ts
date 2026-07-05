@@ -12,7 +12,8 @@ import {
   DEFAULT_POOL_SIZE,
   needsReplenishment,
   selectBestSession,
-  getSupportedAgentTypes
+  getSupportedAgentTypes,
+  planRestore
 } from '../core/prewarm';
 import {
   spawnSimplePrewarmSession,
@@ -319,33 +320,52 @@ export function wasCleanShutdown(context: vscode.ExtensionContext): boolean {
  * Returns number of terminals restored
  */
 export async function restoreTerminals(context: vscode.ExtensionContext): Promise<number> {
-  if (wasCleanShutdown(context)) {
-    // Clean shutdown - clear mappings, don't restore
+  const plan = planRestore(wasCleanShutdown(context), getMappings(context));
+
+  if (plan.clearMappingsNow) {
+    // Clean shutdown (or nothing resumable) - drop stale mappings, don't restore.
     await context.globalState.update(MAPPINGS_KEY, []);
-    return 0;
   }
+  if (!plan.shouldPrompt) return 0;
 
-  const mappings = getMappings(context);
-  if (mappings.length === 0) return 0;
+  console.log(`[PREWARM] Detected crash - ${plan.toRestore.length} terminals to restore`);
 
-  console.log(`[PREWARM] Detected crash - ${mappings.length} terminals to restore`);
-
-  // TODO: Implement terminal restoration
-  // For now, just clear the mappings and let user know
   const action = await vscode.window.showInformationMessage(
-    `Found ${mappings.length} agent session(s) from previous crash. Restore them?`,
+    `Found ${plan.toRestore.length} agent session(s) from previous crash. Restore them?`,
     'Restore',
     'Dismiss'
   );
 
-  if (action === 'Restore') {
-    // Return count, actual restoration handled elsewhere
-    return mappings.length;
+  if (action !== 'Restore') {
+    // Dismissed - clear so the same crash is not offered again on next launch.
+    await context.globalState.update(MAPPINGS_KEY, []);
+    return 0;
   }
 
-  // Clear mappings if dismissed
+  // Re-open each stored agent terminal through the extension's existing resume
+  // path. Loaded lazily to avoid a static import cycle with extension.ts (which
+  // owns activation); at runtime the entry module is already loaded.
+  const { resumeAgentInTerminal } = await import('./extension');
+
+  let restored = 0;
+  for (const mapping of plan.toRestore) {
+    try {
+      const terminal = await resumeAgentInTerminal(
+        context,
+        mapping.agentType,
+        mapping.sessionId,
+        mapping.workingDirectory
+      );
+      if (terminal) restored++;
+    } catch (err) {
+      console.error(`[PREWARM] Failed to restore terminal ${mapping.terminalId}:`, err);
+    }
+  }
+
+  // Clear the crash mappings after a successful restore pass.
   await context.globalState.update(MAPPINGS_KEY, []);
-  return 0;
+  console.log(`[PREWARM] Restored ${restored}/${plan.toRestore.length} terminals`);
+  return restored;
 }
 
 // === Webview Data ===
