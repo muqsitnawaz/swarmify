@@ -1312,8 +1312,23 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   const waitingAgents = useMemo(() => needsAgents.filter((a) => a.phase === 'waiting'), [needsAgents])
   const failedAgents = useMemo(() => needsAgents.filter((a) => a.phase === 'failed'), [needsAgents])
   const questionClusters = useMemo(() => clusterByQuestion(waitingAgents), [waitingAgents])
-  const activeFeed = useMemo(
-    () => sortAgents(scopedAgents.filter((a) => !a.needs && (a.phase === 'running' || a.phase === 'done')), floorSort),
+  // Needs-you agents that aren't a waiting question or a failure: a stalled agent,
+  // or a completed agent whose PR is open and unreviewed (the "Review & merge"
+  // row). Previously these were counted in the header but never rendered.
+  const reviewNeedsAgents = useMemo(
+    () => sortAgents(needsAgents.filter((a) => a.phase !== 'waiting' && a.phase !== 'failed'), floorSort),
+    [needsAgents, floorSort]
+  )
+  // One attention-ordered stream: NEEDS YOU -> RUNNING -> READY -> DONE, where
+  // status is a position, not a filter. Running and idle agents are the live
+  // lane; done (without an unreviewed PR — those are NEEDS YOU) is the terminal
+  // lane. idle is no longer dropped from the feed.
+  const runningFeed = useMemo(
+    () => sortAgents(scopedAgents.filter((a) => !a.needs && (a.phase === 'running' || a.phase === 'idle')), floorSort),
+    [scopedAgents, floorSort]
+  )
+  const doneFeed = useMemo(
+    () => sortAgents(scopedAgents.filter((a) => !a.needs && a.phase === 'done'), floorSort),
     [scopedAgents, floorSort]
   )
 
@@ -1540,18 +1555,6 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     />
   ) : (
     <div className="feed">
-      {nextUpTickets.length > 0 && (
-        <div className="backlog">
-          <div className="bh" onClick={() => setCenter('backlog')}>
-            <span><Icon name="chevD" size={11} /> NEXT UP — ready to dispatch</span>
-            <span className="c"><span className="seeall" onClick={(e) => { e.stopPropagation(); setCenter('backlog') }}>see all {floorTickets.length} <Icon name="chevR" size={10} /></span></span>
-          </div>
-          {nextUpTickets.map((t) => (
-            <TicketStrip key={t.id} ticket={t} onDispatch={openTicketDetail} onSelect={selectFloorTicket} />
-          ))}
-        </div>
-      )}
-
       {(needsAgents.length > 0 || pendingPlans.length > 0) && (
         <>
           <div className="feed-sec attn">
@@ -1592,10 +1595,22 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
               onReassign={(toAgent) => reassignFloorAgent(a, toAgent)}
             />
           ))}
+          {reviewNeedsAgents.map((a) => (
+            <FeedItem
+              key={a.id}
+              agent={a}
+              selected={selectedFloorAgent?.id === a.id}
+              plain={plain}
+              onSelect={selectFloorAgent}
+              onOption={onAgentOption}
+              onFreeText={replyToAgent}
+              onAttach={onAttachScreenshot}
+            />
+          ))}
         </>
       )}
 
-      <div className="feed-sec">LIVE ACTIVITY · {activeFeed.length}<span className="ln" />
+      <div className="feed-sec">RUNNING · {runningFeed.length}<span className="ln" />
         <span
           className={`fresh${syncingHosts ? ' syncing' : ''}${!syncingHosts && lastRemoteSync > 0 && nowMs - lastRemoteSync > 2 * REMOTE_POLL_MS ? ' stale' : ''}`}
           title="Last cross-host sync. Click to refresh now."
@@ -1609,7 +1624,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
               : 'not synced yet'}
         </span>
       </div>
-      {activeFeed.map((a) => (
+      {runningFeed.map((a) => (
         <FeedItem
           key={a.id}
           agent={a}
@@ -1621,6 +1636,36 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
           onAttach={onAttachScreenshot}
         />
       ))}
+
+      {nextUpTickets.length > 0 && (
+        <div className="backlog">
+          <div className="bh" onClick={() => setCenter('backlog')}>
+            <span><Icon name="chevD" size={11} /> READY TO DISPATCH · {floorTickets.length}</span>
+            <span className="c"><span className="seeall" onClick={(e) => { e.stopPropagation(); setCenter('backlog') }}>see all {floorTickets.length} <Icon name="chevR" size={10} /></span></span>
+          </div>
+          {nextUpTickets.map((t) => (
+            <TicketStrip key={t.id} ticket={t} onDispatch={openTicketDetail} onSelect={selectFloorTicket} />
+          ))}
+        </div>
+      )}
+
+      {doneFeed.length > 0 && (
+        <>
+          <div className="feed-sec">DONE TODAY · {doneFeed.length}<span className="ln" /></div>
+          {doneFeed.map((a) => (
+            <FeedItem
+              key={a.id}
+              agent={a}
+              selected={selectedFloorAgent?.id === a.id}
+              plain={plain}
+              onSelect={selectFloorAgent}
+              onOption={onAgentOption}
+              onFreeText={replyToAgent}
+              onAttach={onAttachScreenshot}
+            />
+          ))}
+        </>
+      )}
     </div>
   )
 
