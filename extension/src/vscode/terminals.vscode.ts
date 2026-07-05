@@ -788,6 +788,7 @@ export interface TerminalDetail {
   recentTools?: string[];
   recentToolCalls?: import('../core/session.summary').RecentToolCall[];
   lastFilePath?: string | null;
+  narrative?: string; // Agent's most recent substantive assistant prose (rolling summary line)
   cwd?: string | null;
   branch?: string | null;
   recentFileStats?: Record<string, { added: number; removed: number }>;
@@ -1160,6 +1161,7 @@ export async function getTerminalsByAgentType(
       results[data.index].recentTools = data.quickDetails.recentTools;
       results[data.index].recentToolCalls = data.quickDetails.recentToolCalls;
       results[data.index].lastFilePath = data.quickDetails.lastFilePath;
+      results[data.index].narrative = data.quickDetails.narrative;
     }
     results[data.index].waitingForInput = data.waitingForInput;
 

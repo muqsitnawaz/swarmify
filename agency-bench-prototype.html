@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en" class="theme-dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Swarmify — Floor + Bench prototype</title>
+<style>
+/* ===== Tactical design tokens (mirrors extension design-system.css + bench.css) ===== */
+:root{
+  --brand:#a3e635; --brand-600:#84cc16; --brand-700:#65a30d; --brand-ring:rgba(163,230,53,.45);
+  --claude:#a3e635; --codex:#9ca3af; --gemini:#4A7DFF; --cursor:#c084fc; --opencode:#84cc16;
+  --status-pending:#D4A72C; --status-running:#22C55E; --status-failed:#EF4444; --status-idle:#6B7280;
+  --led-running:#22C55E; --led-running-glow:rgba(34,197,94,.55);
+  --led-failed:#EF4444; --led-failed-glow:rgba(239,68,68,.5);
+  --led-pending:#D4A72C; --led-pending-glow:rgba(212,167,44,.5); --led-idle:#6B7280;
+  --status-running-bg:rgba(34,197,94,.1); --status-idle-bg:rgba(107,114,128,.12);
+  --r-xs:3px; --r-sm:4px; --r-md:6px; --r-lg:8px; --r-xl:10px;
+  --mono:"Geist Mono",ui-monospace,"SF Mono",Menlo,monospace;
+}
+.theme-dark{
+  --ds-bg:#0a0a0a; --ds-bg-panel:#141414; --ds-bg-recessed:#0c0c0c; --ds-bg-sunken:#050505;
+  --ds-border:rgba(255,255,255,.08); --ds-border-strong:rgba(255,255,255,.16); --ds-border-subtle:rgba(255,255,255,.05);
+  --ds-text:#E7E5E4; --ds-text-muted:#A8A29E; --ds-text-dim:#78716C; --ds-text-faint:#57534E;
+  --shadow-emboss:inset 0 1px 0 rgba(255,255,255,.04), 0 1px 2px rgba(0,0,0,.5);
+  --shadow-inset:inset 0 1px 3px rgba(0,0,0,.55);
+  --shadow-raised:0 1px 2px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.05);
+}
+.theme-light{
+  --ds-bg:#E8E6E1; --ds-bg-panel:#F0EEEA; --ds-bg-recessed:#DEDBD4; --ds-bg-sunken:#D8D5CF;
+  --ds-border:rgba(0,0,0,.12); --ds-border-strong:rgba(0,0,0,.22); --ds-border-subtle:rgba(0,0,0,.07);
+  --ds-text:#1C1917; --ds-text-muted:#57534E; --ds-text-dim:#78716C; --ds-text-faint:#A8A29E;
+  --shadow-emboss:inset 0 1px 0 rgba(255,255,255,.6), 0 1px 2px rgba(0,0,0,.08);
+  --shadow-inset:inset 0 1px 3px rgba(0,0,0,.12);
+  --shadow-raised:0 1px 2px rgba(0,0,0,.12), inset 0 1px 0 rgba(255,255,255,.6);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;font-size:13px;line-height:1.45;
+  background:var(--ds-bg);color:var(--ds-text);-webkit-font-smoothing:antialiased}
+.mono{font-family:var(--mono)}
+.sw-app{display:grid;grid-template-rows:auto 1fr auto;height:100vh}
+
+/* top bar */
+.sw-top{display:flex;align-items:center;gap:14px;padding:8px 14px;background:var(--ds-bg-panel);border-bottom:2px solid var(--ds-border);box-shadow:var(--shadow-emboss)}
+.sw-brand{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-weight:700;letter-spacing:.06em;font-size:12px;text-transform:uppercase}
+.sw-brand .dot{width:9px;height:9px;border-radius:50%;background:var(--brand);box-shadow:0 0 8px var(--brand-ring)}
+.sw-tabs{display:flex;background:var(--ds-bg-recessed);padding:3px;border-radius:var(--r-md);box-shadow:var(--shadow-inset)}
+.sw-tab{padding:5px 14px;font-size:11px;font-weight:600;border-radius:var(--r-sm);transition:.15s;font-family:var(--mono);letter-spacing:.04em;
+  color:var(--ds-text-dim);background:transparent;border:0;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.sw-tab:hover{color:var(--ds-text)}
+.sw-tab.active{background:var(--ds-bg-panel);box-shadow:var(--shadow-raised);color:var(--ds-text)}
+.sw-tab-badge{font-size:9.5px;padding:1px 5px;border-radius:6px;background:var(--ds-bg-recessed);color:var(--brand);box-shadow:0 0 6px var(--brand-ring),0 0 0 1px var(--brand-700)}
+.sw-top-spacer{flex:1}
+.sw-top-meta{font-family:var(--mono);font-size:10px;color:var(--ds-text-faint);letter-spacing:.04em}
+.sw-theme-btn{font-family:var(--mono);font-size:10px;letter-spacing:.04em;color:var(--ds-text-dim);background:var(--ds-bg-recessed);border:1px solid var(--ds-border);border-radius:var(--r-sm);padding:4px 9px;cursor:pointer;box-shadow:var(--shadow-raised)}
+
+/* panel = nav rail + main */
+.sw-panel{display:none;height:100%;overflow:hidden}
+.sw-panel.active{display:grid;grid-template-columns:236px 1fr}
+/* floor = seamless full-width canvas, no sub-nav */
+.sw-panel.floor.active{display:flex;flex-direction:column}
+.sw-nav{display:flex;flex-direction:column;overflow:hidden;border-right:2px solid var(--ds-border);background:var(--ds-bg-panel)}
+.sw-nav-head{padding:11px 12px;border-bottom:2px solid var(--ds-border);box-shadow:var(--shadow-emboss);display:flex;align-items:baseline;gap:8px}
+.sw-section-label{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ds-text-dim)}
+.sw-nav-tagline{font-family:var(--mono);font-size:9px;color:var(--ds-text-faint);letter-spacing:.03em}
+.sw-nav-body{flex:1;overflow-y:auto;padding:7px 8px;display:flex;flex-direction:column;gap:3px}
+.sw-nav-item{display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:var(--r-md);cursor:pointer;border:1px solid transparent;transition:.12s}
+.sw-nav-item:hover{background:var(--ds-bg-recessed)}
+.sw-nav-item.active{background:var(--ds-bg-recessed);border-color:var(--ds-border);border-left:3px solid var(--brand);box-shadow:var(--shadow-inset)}
+.sw-nav-item .ico{width:16px;height:16px;flex-shrink:0;color:var(--ds-text-dim)}
+.sw-nav-item.active .ico{color:var(--brand)}
+.sw-nav-item .nm{flex:1;font-size:12px;font-weight:600;color:var(--ds-text-muted)}
+.sw-nav-item.active .nm{color:var(--ds-text)}
+.sw-nav-item .ct{font-family:var(--mono);font-size:10px;color:var(--ds-text-faint);min-width:18px;text-align:right}
+.sw-nav-foot{padding:9px 12px;border-top:1px solid var(--ds-border);font-family:var(--mono);font-size:9.5px;color:var(--ds-text-faint);letter-spacing:.04em;display:flex;align-items:center;gap:6px}
+.sw-nav-foot .ok{width:6px;height:6px;border-radius:50%;background:var(--led-running);box-shadow:0 0 5px var(--led-running-glow)}
+.sw-main{display:flex;flex-direction:column;overflow:hidden;background:var(--ds-bg)}
+.sw-main-head{display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:2px solid var(--ds-border);background:var(--ds-bg-panel);box-shadow:var(--shadow-emboss);flex-shrink:0}
+.sw-main-title{font-size:14px;font-weight:600;flex:1}
+.sw-main-sub{font-family:var(--mono);font-size:10px;color:var(--ds-text-faint);letter-spacing:.03em}
+.sw-icon-btn{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:var(--r-sm);border:1px solid var(--ds-border);background:var(--ds-bg-recessed);color:var(--ds-text-dim);cursor:pointer;box-shadow:var(--shadow-raised)}
+.sw-main-body{flex:1;overflow-y:auto;padding:16px}
+.sw-view{display:none}
+.sw-view.active{display:block}
+
+/* shared chrome */
+.sw-status-led{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:9.5px;font-weight:600;padding:2px 8px;border-radius:var(--r-xs);letter-spacing:.04em;text-transform:uppercase;box-shadow:var(--shadow-inset)}
+.sw-status-led .b{width:6px;height:6px;border-radius:50%}
+.sw-status-led.running{background:var(--status-running-bg);color:var(--status-running)} .sw-status-led.running .b{background:var(--led-running);box-shadow:0 0 6px var(--led-running-glow)}
+.sw-status-led.idle{background:var(--status-idle-bg);color:var(--status-idle)} .sw-status-led.idle .b{background:var(--led-idle)}
+.sw-status-led.failed{background:rgba(239,68,68,.1);color:var(--status-failed)} .sw-status-led.failed .b{background:var(--led-failed);box-shadow:0 0 6px var(--led-failed-glow)}
+.sw-status-led.pending{background:rgba(212,167,44,.1);color:var(--status-pending)} .sw-status-led.pending .b{background:var(--led-pending);box-shadow:0 0 6px var(--led-pending-glow)}
+.sw-status-led.done{background:var(--status-running-bg);color:var(--status-running)} .sw-status-led.done .b{background:var(--led-running)}
+.sw-chip{font-family:var(--mono);font-size:10px;padding:1px 6px;border-radius:var(--r-xs);background:var(--ds-bg-recessed);border:1px solid var(--ds-border);color:var(--ds-text-dim);box-shadow:var(--shadow-inset);letter-spacing:.02em;display:inline-flex;align-items:center;gap:4px}
+.sw-chip .k{color:var(--ds-text-faint);text-transform:uppercase;letter-spacing:.06em;font-size:8.5px}
+.sw-gauge{height:6px;border-radius:99px;background:var(--ds-bg-sunken);box-shadow:var(--shadow-inset);overflow:hidden}
+.sw-gauge > i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--brand-700),var(--brand))}
+.sw-gauge.warn > i{background:linear-gradient(90deg,#a8771a,var(--status-pending))}
+.sw-gauge.hot > i{background:linear-gradient(90deg,#a11,var(--status-failed))}
+.sw-grid{display:grid;gap:12px}
+.sw-grid.cards3{grid-template-columns:repeat(auto-fill,minmax(248px,1fr))}
+
+/* ===== FLOOR: faithful reproduction of UnifiedAgentsPane (master/detail) ===== */
+.sw-floor{flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;min-height:0}
+.sw-section-header-row{display:flex;align-items:center;gap:10px;margin:4px 0 10px;flex-shrink:0}
+.sw-section-count-pill{font-size:9px;font-weight:600;color:var(--ds-bg-panel);background:var(--ds-text-dim);padding:1px 7px;border-radius:3px;letter-spacing:.5px}
+.sw-section-line{flex:1;height:1px;background:var(--ds-border-subtle)}
+.sw-btn{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 11px;border-radius:var(--r-sm);font-size:10.5px;font-weight:600;border:1px solid transparent;cursor:pointer;font-family:var(--mono);letter-spacing:.02em;text-transform:uppercase;color:var(--ds-text);background:var(--ds-bg-recessed);box-shadow:var(--shadow-raised)}
+.sw-btn.primary{background:var(--brand);color:#0a0a0a;border-color:var(--brand-700);box-shadow:0 2px 0 var(--brand-700),inset 0 1px 0 rgba(255,255,255,.15)}
+.sw-active-filter{display:inline-flex;align-items:center;gap:2px;padding:2px;margin-left:8px;border:1px solid var(--ds-border);border-radius:6px;background:var(--ds-bg-sunken)}
+.sw-active-filter-btn{display:inline-flex;align-items:center;gap:6px;border:0;background:transparent;color:var(--ds-text-dim);font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;padding:3px 8px;border-radius:4px;cursor:pointer;font-family:var(--mono)}
+.sw-active-filter-btn:hover{color:var(--ds-text)}
+.sw-active-filter-btn.active{background:var(--ds-bg-panel);color:var(--ds-text);box-shadow:var(--shadow-raised)}
+.sw-active-filter-count{font-size:9px;font-weight:700;color:var(--ds-text-dim);background:var(--ds-bg-panel);padding:1px 5px;border-radius:999px;min-width:14px;text-align:center}
+.sw-active-filter-btn.active .sw-active-filter-count{background:var(--ds-bg-sunken);color:var(--ds-text)}
+
+/* master/detail grid — 380px list + 1fr detail (the house pattern) */
+.sw-floor-active{display:grid;grid-template-columns:380px 1fr;min-height:420px;flex:1 1 auto;border:1px solid var(--ds-border);border-radius:var(--r-md);background:var(--ds-bg-panel);box-shadow:var(--shadow-emboss);overflow:hidden}
+.sw-floor-active-list{display:flex;flex-direction:column;gap:6px;padding:10px;overflow-y:auto;border-right:2px solid var(--ds-border);background:var(--ds-bg-panel);min-height:0}
+.sw-floor-active-detail{display:flex;flex-direction:column;overflow:hidden;background:var(--ds-bg);min-height:0}
+.sw-floor-recent-divider{display:flex;align-items:center;gap:8px;margin:10px 2px 4px;font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ds-text-faint)}
+.sw-floor-recent-divider::before,.sw-floor-recent-divider::after{content:"";flex:1;height:1px;background:var(--ds-border-subtle)}
+
+/* agent card (master column) */
+.sw-floor-agent-card{display:flex;flex-direction:column;gap:6px;padding:10px 12px;border:1px solid var(--ds-border-subtle);border-radius:var(--r-md);background:var(--ds-bg-panel);box-shadow:var(--shadow-emboss);cursor:pointer;transition:.12s;text-align:left;width:100%;color:inherit;flex-shrink:0;font:inherit}
+.sw-floor-agent-card:hover{border-color:var(--ds-border)}
+.sw-floor-agent-card.selected{border-left:3px solid var(--brand);box-shadow:var(--shadow-inset);background:rgba(163,230,53,.05)}
+.sw-floor-agent-card.dimmed{opacity:.6}
+.sw-floor-agent-card-top{display:flex;align-items:center;gap:8px;min-width:0}
+.sw-fa-logo{width:24px;height:24px;border-radius:var(--r-sm);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-weight:800;font-size:9px;color:#0a0a0a;flex-shrink:0}
+.sw-floor-agent-card-name{font-size:13px;font-weight:600;color:var(--ds-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1}
+.sw-floor-agent-card-chunk{font-family:var(--mono);font-size:10px;font-weight:500;color:var(--ds-text-dim);letter-spacing:.04em;white-space:nowrap;flex-shrink:0}
+.sw-floor-agent-card-chunk.team,.sw-floor-agent-card-chunk.cloud{font-weight:700;letter-spacing:1px;text-transform:uppercase;padding:1px 6px;border-radius:3px;background:var(--ds-bg-recessed)}
+.sw-floor-agent-card-chunk.team{color:#8b5cf6} .sw-floor-agent-card-chunk.cloud{color:#5B7CE0}
+.sw-floor-agent-card-status-line{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10.5px;color:var(--ds-text-dim)}
+.sw-floor-agent-card-status-word{font-weight:700;letter-spacing:.04em;text-transform:uppercase;font-size:9.5px}
+.sw-floor-agent-card-status-word.running{color:#16a34a} .sw-floor-agent-card-status-word.idle{color:var(--ds-text-dim)}
+.sw-floor-agent-card-status-word.completed{color:#10b981} .sw-floor-agent-card-status-word.waiting{color:#f59e0b}
+.sw-floor-agent-card-activity{font-family:var(--mono);font-size:11px;color:#BFB9AE;background:#2A2825;padding:5px 8px;border-radius:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:inset 0 1px 2px rgba(0,0,0,.3)}
+.theme-light .sw-floor-agent-card-activity{color:var(--ds-text-muted);background:var(--ds-bg-recessed)}
+.sw-floor-agent-card-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-family:var(--mono);font-size:10px;color:var(--ds-text-faint)}
+.sw-floor-agent-card-meta-counts{color:var(--ds-text-dim)}
+.sw-floor-agent-card-meta-spacer{flex:1}
+.sw-tag-linear{font-size:9px;font-weight:700;color:#4A7DFF;background:rgba(74,125,255,.1);padding:3px 7px;border-radius:3px;white-space:nowrap}
+.sw-tag-pr{font-size:9px;font-weight:700;color:#22C55E;background:rgba(34,197,94,.1);padding:3px 7px;border-radius:3px;white-space:nowrap}
+/* small surface chip on the card (net-new: browser/computer the conversation owns) */
+.sw-fa-surface{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:9px;color:var(--ds-text-dim);background:var(--ds-bg-recessed);border:1px solid var(--ds-border-subtle);box-shadow:var(--shadow-inset);padding:2px 6px;border-radius:3px}
+.sw-fa-surface .glyph{width:11px;height:11px;color:var(--ds-text-faint)}
+.sw-fa-surface.live .glyph{color:var(--status-running)}
+
+/* detail pane */
+.sw-mc-pane-head{display:flex;align-items:center;gap:8px;padding:12px 14px;flex-shrink:0;border-bottom:2px solid var(--ds-border);background:var(--ds-bg-panel);box-shadow:var(--shadow-emboss);font-family:var(--mono)}
+.sw-mc-pane-head .nm{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.sw-mc-pane-body{overflow-y:auto;flex:1;padding:10px 14px 20px}
+.sw-spacer{flex:1}
+.sw-badge{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;font-family:var(--mono);padding:2px 8px;border-radius:3px;letter-spacing:.04em;text-transform:uppercase;box-shadow:var(--shadow-inset)}
+.sw-badge.running{background:var(--status-running-bg);color:var(--status-running);text-shadow:0 0 8px var(--led-running-glow)}
+.sw-badge.idle{background:var(--status-idle-bg);color:var(--status-idle)}
+.sw-badge.ok,.sw-badge.completed{background:var(--status-running-bg);color:var(--status-running)}
+.sw-badge.pending{background:rgba(212,167,44,.12);color:var(--status-pending)}
+.sw-pill{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;padding:2px 7px;border-radius:3px;background:var(--ds-bg-recessed);border:1px solid var(--ds-border);color:var(--ds-text-dim);box-shadow:var(--shadow-inset);font-family:var(--mono)}
+.sw-unified-kind-badge{font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;padding:1px 6px;border-radius:3px;background:var(--ds-bg-recessed);color:var(--ds-text-dim);box-shadow:var(--shadow-inset)}
+.sw-unified-kind-badge.cloud{background:rgba(74,125,255,.1);color:#4a7dff}
+.sw-unified-kind-badge.team{background:rgba(163,230,53,.08);color:var(--brand)}
+.sw-detail-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:14px}
+.sw-udetail-section{margin-bottom:16px}
+.sw-udetail-section .sw-section-label{display:block;margin-bottom:7px}
+.sw-udetail-text{font-size:12.5px;color:var(--ds-text-muted);line-height:1.55}
+.sw-udetail-stats{display:flex;gap:14px;flex-wrap:wrap;font-family:var(--mono);font-size:11px;color:var(--ds-text-dim)}
+.sw-udetail-meta{font-family:var(--mono);font-size:11px;color:var(--ds-text-dim)}
+.sw-udetail-files{display:flex;flex-direction:column;gap:4px}
+.sw-file-pill{font-family:var(--mono);font-size:10.5px;color:var(--ds-text-muted);padding:3px 8px;border-radius:3px;background:var(--ds-bg-recessed);box-shadow:var(--shadow-inset);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sw-surface-line{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:var(--r-sm);background:var(--ds-bg-recessed);border:1px solid var(--ds-border-subtle);box-shadow:var(--shadow-inset);font-family:var(--mono);font-size:11px;color:var(--ds-text-muted);margin-bottom:6px}
+.sw-surface-line .glyph{width:14px;height:14px;color:var(--ds-text-dim)}
+.sw-surface-line.live .glyph{color:var(--status-running)}
+.sw-surface-line .lbl{color:var(--ds-text-faint);text-transform:uppercase;letter-spacing:.06em;font-size:8.5px}
+.sw-surface-line .sp{flex:1}
+
+/* ===== BENCH: task queue (existing BenchTab) — 380px list + detail ===== */
+.sw-panel.bench.active{display:grid;grid-template-columns:380px 1fr}
+.sw-bench-list{display:flex;flex-direction:column;overflow:hidden;border-right:2px solid var(--ds-border);background:var(--ds-bg-panel)}
+.sw-bench-list-head{display:flex;align-items:center;gap:8px;padding:10px 12px;flex-shrink:0;border-bottom:2px solid var(--ds-border);background:var(--ds-bg-panel);box-shadow:var(--shadow-emboss);font-family:var(--mono)}
+.sw-bench-filters{display:flex;align-items:center;gap:4px}
+.sw-mini-select{font-family:var(--mono);font-size:10px;font-weight:600;padding:3px 6px;color:var(--ds-text-dim);background:var(--ds-bg-recessed);border:1px solid var(--ds-border);border-radius:3px;box-shadow:var(--shadow-inset);cursor:pointer}
+.sw-bench-list-body{overflow-y:auto;flex:1;padding:6px 8px}
+.sw-src-chip{display:inline-flex;align-items:center;height:22px;padding:0 7px;font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;border-radius:3px;border:1px solid var(--ds-border);background:var(--ds-bg-panel);color:var(--ds-text-dim);cursor:pointer;box-shadow:var(--shadow-raised)}
+.sw-src-chip.active{color:#fff;border-color:transparent;box-shadow:var(--shadow-inset)}
+.sw-src-chip.active.ln{background:#5e6ad2} .sw-src-chip.active.gh{background:#238636}
+.sw-task-card{padding:10px 12px;border-radius:var(--r-md);border:1px solid var(--ds-border);margin:3px 0;cursor:pointer;transition:.12s;box-shadow:var(--shadow-emboss);background:var(--ds-bg-panel)}
+.sw-task-card:hover{border-color:var(--ds-border-strong)}
+.sw-task-card.selected{border-left:3px solid var(--brand);box-shadow:var(--shadow-inset);background:rgba(163,230,53,.05)}
+.sw-task-card-top{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+.sw-task-card-title{font-size:13px;font-weight:600;color:var(--ds-text);line-height:1.35;flex:1}
+.sw-task-card-desc{font-size:11.5px;color:var(--ds-text-dim);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-top:4px}
+.sw-task-card-meta{display:flex;align-items:center;gap:6px;margin-top:6px;flex-wrap:wrap}
+.sw-task-age{font-family:var(--mono);font-size:10px;color:var(--ds-text-faint);margin-left:auto;flex-shrink:0}
+.sw-source-badge{font-family:var(--mono);font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:3px;letter-spacing:.04em;text-transform:uppercase;color:#fff;flex-shrink:0}
+.sw-source-badge.ln{background:#5e6ad2} .sw-source-badge.gh{background:#238636}
+.sw-priority-led{width:8px;height:8px;border-radius:50%;flex-shrink:0;border:1px solid rgba(0,0,0,.2)}
+.sw-priority-led.urgent{background:var(--led-failed);box-shadow:0 0 6px var(--led-failed-glow)}
+.sw-priority-led.high{background:var(--led-pending);box-shadow:0 0 4px var(--led-pending-glow)}
+.sw-priority-led.medium{background:var(--led-idle)} .sw-priority-led.low{background:var(--ds-text-faint)}
+.sw-label-chip{font-family:var(--mono);font-size:10px;padding:1px 6px;border-radius:3px;background:var(--ds-bg-recessed);border:1px solid var(--ds-border);color:var(--ds-text-dim);box-shadow:var(--shadow-inset)}
+.sw-task-identifier{font-family:var(--mono);font-size:10px;color:var(--ds-text-muted)}
+.sw-bench-detail{display:flex;flex-direction:column;overflow:hidden;background:var(--ds-bg)}
+.sw-bench-detail-head{display:flex;align-items:center;gap:10px;padding:12px 16px;flex-shrink:0;border-bottom:2px solid var(--ds-border);background:var(--ds-bg-panel);box-shadow:var(--shadow-emboss)}
+.sw-bench-detail-head .t{font-size:14px;font-weight:600;color:var(--ds-text);flex:1;min-width:0}
+.sw-bench-detail-body{overflow-y:auto;flex:1;padding:16px}
+.sw-detail-meta{background:var(--ds-bg-panel);border:1px solid var(--ds-border);border-radius:var(--r-md);box-shadow:var(--shadow-emboss);padding:12px 14px;margin-bottom:16px}
+.sw-detail-meta-row{display:flex;align-items:center;gap:10px;padding:6px 0}
+.sw-detail-meta-row+.sw-detail-meta-row{border-top:1px solid var(--ds-border-subtle)}
+.sw-detail-meta-label{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ds-text-dim);width:80px;flex-shrink:0}
+.sw-detail-meta-value{font-size:12px;color:var(--ds-text);flex:1}
+.sw-detail-desc{background:var(--ds-bg-recessed);border:1px solid var(--ds-border);border-radius:var(--r-md);box-shadow:var(--shadow-inset);padding:14px 16px;margin-bottom:16px;font-size:12.5px;line-height:1.6;color:var(--ds-text-muted)}
+.sw-bench-detail-actions{display:flex;align-items:center;gap:8px;padding:10px 16px;flex-shrink:0;border-top:2px solid var(--ds-border);background:var(--ds-bg-panel)}
+
+/* ===== PANEL: configuration ===== */
+.sw-harness{background:var(--ds-bg-panel);border:1px solid var(--ds-border);border-radius:var(--r-lg);box-shadow:var(--shadow-emboss);padding:13px 14px;display:flex;flex-direction:column;gap:10px;position:relative;overflow:hidden}
+.sw-harness::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent,var(--brand))}
+.sw-harness.dim{opacity:.62}
+.sw-h-top{display:flex;align-items:center;gap:10px}
+.sw-h-logo{width:30px;height:30px;border-radius:var(--r-md);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-weight:800;font-size:12px;color:#0a0a0a;background:var(--accent,var(--brand));flex-shrink:0;box-shadow:0 0 10px -2px var(--accent,var(--brand))}
+.sw-h-name{font-size:13.5px;font-weight:700}
+.sw-h-model{font-family:var(--mono);font-size:10px;color:var(--ds-text-dim);margin-top:1px}
+.sw-h-rows{display:flex;flex-direction:column;gap:7px}
+.sw-h-row{display:flex;align-items:center;gap:8px;font-size:11.5px}
+.sw-h-row .k{font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ds-text-faint);width:62px;flex-shrink:0}
+.sw-h-row .v{color:var(--ds-text-muted);flex:1;min-width:0}
+.sw-h-usage{display:flex;align-items:center;gap:8px} .sw-h-usage .sw-gauge{flex:1} .sw-h-usage .pct{font-family:var(--mono);font-size:10px;color:var(--ds-text-dim);min-width:30px;text-align:right}
+.sw-h-foot{display:flex;align-items:center;gap:6px;flex-wrap:wrap;border-top:1px solid var(--ds-border-subtle);padding-top:9px}
+.sw-repo{background:var(--ds-bg-panel);border:1px solid var(--ds-border);border-radius:var(--r-lg);box-shadow:var(--shadow-emboss);padding:13px 15px;margin-bottom:11px}
+.sw-repo-top{display:flex;align-items:center;gap:10px;margin-bottom:11px}
+.sw-repo-tag{font-family:var(--mono);font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#0a0a0a;background:var(--brand);padding:2px 7px;border-radius:var(--r-xs)}
+.sw-repo-tag.system{background:var(--gemini);color:#fff} .sw-repo-tag.project{background:var(--status-pending)}
+.sw-repo-path{font-family:var(--mono);font-size:11px;color:var(--ds-text-muted);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sw-res-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:7px}
+.sw-res{display:flex;flex-direction:column;gap:2px;padding:8px 10px;border-radius:var(--r-md);background:var(--ds-bg-recessed);border:1px solid var(--ds-border-subtle);box-shadow:var(--shadow-inset)}
+.sw-res .n{font-family:var(--mono);font-size:17px;font-weight:700;line-height:1}
+.sw-res .l{font-family:var(--mono);font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--ds-text-faint)}
+.sw-res.zero .n{color:var(--ds-text-faint)}
+
+.sw-foot{display:flex;align-items:center;gap:14px;padding:6px 14px;background:var(--ds-bg-panel);border-top:2px solid var(--ds-border);box-shadow:var(--shadow-emboss);font-family:var(--mono);font-size:10px;color:var(--ds-text-faint);letter-spacing:.04em}
+.sw-foot .seg b{color:var(--ds-text-muted);font-weight:600}
+</style>
+</head>
+<body>
+<div class="sw-app">
+
+  <div class="sw-top">
+    <div class="sw-brand"><span class="dot"></span> Swarmify</div>
+    <div class="sw-tabs">
+      <button class="sw-tab active" data-tab="floor">Floor <span class="sw-tab-badge">4</span></button>
+      <button class="sw-tab" data-tab="bench">Bench</button>
+      <button class="sw-tab" data-tab="panel">Panel</button>
+    </div>
+    <div class="sw-top-spacer"></div>
+    <span class="sw-top-meta">agents-cli 0.9 · cached 12s ago</span>
+    <button class="sw-theme-btn" onclick="toggleTheme()">◐ theme</button>
+  </div>
+
+  <!-- ===================== FLOOR (existing UnifiedAgentsPane design) ===================== -->
+  <div class="sw-panel floor active" data-panel="floor">
+    <div class="sw-floor">
+      <div class="sw-section-header-row">
+        <span class="sw-section-label">Active</span>
+        <span class="sw-section-count-pill" id="activeCount">4</span>
+        <div class="sw-active-filter" id="floorFilter"></div>
+        <span class="sw-section-line"></span>
+        <button class="sw-btn">+ New</button>
+        <button class="sw-btn primary">Dispatch</button>
+      </div>
+      <div class="sw-floor-active">
+        <div class="sw-floor-active-list" id="floorList"></div>
+        <div class="sw-floor-active-detail" id="floorDetail"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== BENCH (task queue — existing BenchTab, unchanged) ===================== -->
+  <div class="sw-panel bench" data-panel="bench">
+    <div class="sw-bench-list">
+      <div class="sw-bench-list-head">
+        <span class="sw-section-label">Work Queue</span>
+        <span class="sw-section-count-pill" id="taskCount">6</span>
+        <div class="sw-bench-filters" id="benchSrcFilter"></div>
+        <span class="sw-section-line"></span>
+        <select class="sw-mini-select"><option>Priority</option><option>Due date</option></select>
+        <button class="sw-icon-btn">⟳</button>
+      </div>
+      <div class="sw-bench-list-body" id="taskList"></div>
+    </div>
+    <div class="sw-bench-detail" id="taskDetail"></div>
+  </div>
+
+  <!-- ===================== PANEL (agency configuration) ===================== -->
+  <div class="sw-panel" data-panel="panel">
+    <div class="sw-nav">
+      <div class="sw-nav-head"><span class="sw-section-label">Panel</span><span class="sw-nav-tagline">configuration</span></div>
+      <div class="sw-nav-body" id="navPanel"></div>
+      <div class="sw-nav-foot"><span class="ok"></span> synced · agents view / inspect</div>
+    </div>
+    <div class="sw-main">
+      <div class="sw-main-head"><span class="sw-main-title" id="panelTitle">Harness Roster</span><span class="sw-main-sub" id="panelSub">agents view --json</span><button class="sw-icon-btn">⟳</button></div>
+      <div class="sw-main-body">
+        <div class="sw-view active" data-pview="roster"><div class="sw-grid cards3" id="rosterGrid"></div></div>
+        <div class="sw-view" data-pview="repos" id="reposView"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sw-foot">
+    <div class="seg"><b>4</b> agents live</div>
+    <div class="seg"><b>3</b> teams · <b>4</b> conversations</div>
+    <div class="seg"><b>1</b> browser surface</div>
+    <div class="seg" style="margin-left:auto">Bench: 5 harnesses · ~/.agents · ~/.agents/.system · swarmify/.agents</div>
+  </div>
+</div>
+
+<script>
+const COLORS={claude:'var(--claude)',codex:'var(--codex)',gemini:'var(--gemini)',cursor:'var(--cursor)',opencode:'var(--opencode)'};
+const ABBR={claude:'CC',codex:'CX',gemini:'GX',cursor:'CR',opencode:'OC'};
+const led=s=>({running:'running',idle:'idle',failed:'failed',pending:'pending',done:'done'}[s]||'idle');
+const ledTxt=s=>({running:'Running',idle:'Idle',failed:'Rate limited',pending:'Pending',done:'Done'}[s]||s);
+const txtColor=a=>a==='gemini'||a==='cursor'?';color:#fff':'';
+
+/* ---- FLOOR data: unified agent list (terminal / cloud / team), matching
+       UnifiedAgentsPane.buildUnifiedList. Each item = an agent running a
+       conversation; browser/computer surfaces hang off the item. ---- */
+const FLOOR_ITEMS=[
+  {id:'team-pricing',kind:'team',agent:'claude',name:'pricing-page',chunk:'TEAM',status:'running',active:true,
+   activity:'3 agents · backend, frontend, qa',tools:46,files:14,linear:'RUSH-1182',pr:null,when:'2m',
+   task:'Ship the /v2 three-tier pricing page',
+   members:[{agent:'claude',role:'backend',act:'Editing api/pricing.ts',status:'running'},
+            {agent:'codex',role:'frontend',act:'$ bun test',status:'running'},
+            {agent:'claude',role:'qa',act:'awaiting deps · after backend, frontend',status:'pending'}],
+   browser:{name:'comet-local',host:'dash.cloudflare.com',live:true},computer:null},
+  {id:'term-cc1',kind:'terminal',agent:'claude',name:'Claude',chunk:'a1b2c3d4',status:'running',active:true,
+   activity:'Editing api/pricing.ts',tools:34,files:5,linear:'RUSH-1182',pr:null,when:'Just now',
+   task:'Rewrite /v2/pricing endpoint',cwd:'~/src/prix-api',branch:'pricing/v2',
+   recentFiles:['api/pricing.ts','api/schema/pricing.ts','tests/pricing.test.ts'],
+   browser:{name:'comet-local',host:'dash.cloudflare.com',live:true},computer:null},
+  {id:'term-cx1',kind:'terminal',agent:'codex',name:'Codex',chunk:'5e6f7a8b',status:'running',active:true,
+   activity:'$ bun test',tools:12,files:3,linear:null,pr:null,when:'40s',
+   task:'Build /pricing route, three-tier layout',cwd:'~/src/rush-web',branch:'pricing/ui',
+   recentFiles:['app/pricing/page.tsx','app/pricing/tiers.tsx'],browser:null,computer:null},
+  {id:'cloud-1',kind:'cloud',agent:'claude',name:'claude-7a1c9e22',chunk:'CLOUD',status:'running',active:true,
+   provider:'anthropic',activity:'cloud run · Workers AI + AI Gateway provider',tools:21,files:9,linear:'RUSH-1127',pr:'482',when:'14m',
+   task:'Wire Workers AI + AI Gateway into prix-api',browser:null,computer:null},
+  /* recent (inactive) */
+  {id:'term-cx2',kind:'terminal',agent:'codex',name:'Codex',chunk:'8b9c0d1e',status:'idle',active:false,
+   activity:'Editing normalizer.ts',tools:8,files:2,linear:'RUSH-1162',pr:null,when:'18m ago',
+   task:'Preserve tapback + reaction metadata',cwd:'~/src/prix-api',branch:'bluebubbles-meta',
+   recentFiles:['normalizer.ts'],browser:null,computer:null},
+  {id:'cloud-2',kind:'cloud',agent:'gemini',name:'gemini-b4d8f013',chunk:'CLOUD',status:'completed',active:false,
+   provider:'anthropic',activity:'completed · Draft submission writeup',tools:15,files:4,linear:null,pr:'479',when:'1h ago',
+   task:'Draft CF Launchpad submission writeup',browser:{name:'rush-mac-mini',host:'getrush.ai',live:false},computer:null},
+];
+
+/* ---- BENCH data: configuration ---- */
+const HARNESSES=[
+  {key:'claude',name:'Claude',model:'claude-opus-4-8',versions:4,accounts:['muqsit@icloud','rush-team'],plan:'Max 20x',usage:47,status:'running',strategy:'balanced'},
+  {key:'codex',name:'Codex',model:'gpt-5-codex',versions:2,accounts:['muqsit@openai'],plan:'Plus',usage:14,status:'running',strategy:'pinned'},
+  {key:'gemini',name:'Gemini',model:'gemini-3-pro',versions:1,accounts:['muqsit@google'],plan:'AI Ultra',usage:8,status:'idle',strategy:'available'},
+  {key:'cursor',name:'Cursor',model:'cursor-agent',versions:1,accounts:['muqsit@cursor'],plan:'Pro',usage:96,status:'failed',strategy:'pinned'},
+  {key:'opencode',name:'OpenCode',model:'—',versions:1,accounts:[],plan:'not signed in',usage:0,status:'idle',strategy:'available'},
+];
+const REPOS=[
+  {tag:'user',path:'~/.agents',res:{commands:24,skills:41,hooks:6,mcp:8,rules:12,plugins:5,workflows:3,subagents:7}},
+  {tag:'system',path:'~/.agents/.system',res:{commands:18,skills:30,hooks:4,mcp:5,rules:9,plugins:11,workflows:6,subagents:4}},
+  {tag:'project',path:'~/src/.../swarmify/.agents',res:{commands:2,skills:4,hooks:1,mcp:0,rules:1,plugins:0,workflows:0,subagents:0}},
+];
+
+/* ---- PANEL nav: agency configuration sections ---- */
+const PANEL_NAV=[
+  {id:'roster',name:'Harness Roster',count:5,sub:'agents view --json',ico:'M3 6h18M3 12h18M3 18h18'},
+  {id:'repos',name:'Agent Resources',count:3,sub:'agents inspect --json',ico:'M3 7l9-4 9 4-9 4-9-4zM3 7v10l9 4 9-4V7'},
+];
+const GLOBE='M2 12a10 10 0 1 0 20 0 10 10 0 1 0-20 0M2 12h20M12 2a15 15 0 0 1 0 20a15 15 0 0 1 0-20';
+const SCREEN='M3 4h18v12H3zM8 20h8M12 16v4';
+
+function navHtml(items,active){return items.map((s,i)=>`
+  <div class="sw-nav-item ${i===active?'active':''}" data-go="${s.id}" data-title="${s.name}" data-sub="${s.sub}">
+    <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="${s.ico}"/></svg>
+    <span class="nm">${s.name}</span><span class="ct">${s.count}</span></div>`).join('');}
+
+document.getElementById('navPanel').innerHTML=navHtml(PANEL_NAV,0);
+
+function wireNav(navId,viewAttr,titleId,subId){
+  const nav=document.getElementById(navId);
+  nav.querySelectorAll('.sw-nav-item').forEach(el=>el.onclick=()=>{
+    nav.querySelectorAll('.sw-nav-item').forEach(n=>n.classList.remove('active'));el.classList.add('active');
+    const main=nav.closest('.sw-panel').querySelector('.sw-main');
+    main.querySelectorAll('.sw-view').forEach(v=>v.classList.remove('active'));
+    main.querySelector(`.sw-view[data-${viewAttr}="${el.dataset.go}"]`).classList.add('active');
+    document.getElementById(titleId).textContent=el.dataset.title;
+    document.getElementById(subId).textContent=el.dataset.sub;
+  });
+}
+wireNav('navPanel','pview','panelTitle','panelSub');
+
+/* ---- BENCH task queue (existing BenchTab — Linear/GitHub tasks to do) ---- */
+const TASKS=[
+  {id:'t1',src:'ln',pri:'urgent',ident:'RUSH-1236',title:'[crm] Attio CLI + Apollo enrichment integration',labels:['growth','repo:agents'],age:'2d',assignee:'Muqsit',
+   desc:'Attio is the source-of-truth CRM for Rush/Phoenix. Make it actionable from the terminal and tie it into the existing agent-driven GTM workflows (Marc the Closer, Apollo enrichment).'},
+  {id:'t2',src:'ln',pri:'high',ident:'RUSH-1127',title:'Ship Workers AI + AI Gateway as prix-api LLM providers',labels:['infra'],age:'3d',assignee:'Muqsit',
+   desc:'Wire Workers AI + AI Gateway into prix-api (CF Launchpad proof-point). Mirrors the exact CF primitives the cohort sponsors.'},
+  {id:'t3',src:'ln',pri:'high',ident:'RUSH-1125',title:'Finish CF Workers Launchpad application',labels:['growth'],age:'3d',assignee:'Muqsit',
+   desc:'Code is wired and tested. Dashboard setup + submit remain. Dashboard tabs are pre-opened in the comet-local browser profile.'},
+  {id:'t4',src:'ln',pri:'medium',ident:'RUSH-1162',title:'[bug] BlueBubbles normalizer drops tapback/reaction metadata',labels:['engineering'],age:'5d',assignee:'Muqsit',
+   desc:'BlueBubbles webhooks carry rich iMessage metadata — threadOriginatorGuid, associatedMessageGuid + associatedMessageType (tapbacks/reactions). The normalizer drops them.'},
+  {id:'t5',src:'gh',pri:'medium',ident:'#214',title:'Editor-tab readiness race on cold spawn',labels:['bug'],age:'1d',assignee:'—',
+   desc:'Terminal readiness state machine occasionally misses agentReady on a cold spawn; falls back to the S-state heuristic late.'},
+  {id:'t6',src:'gh',pri:'low',ident:'#208',title:'Add --json to `agents teams list`',labels:['cli','good-first-issue'],age:'6d',assignee:'—',
+   desc:'teams list should support machine-readable output so the Floor can read team status without scraping text.'},
+];
+let benchSrc=new Set(['ln','gh']), taskSel='t1';
+const PRI_LABEL={urgent:'Urgent',high:'High',medium:'Medium',low:'Low'};
+function taskCard(t){
+  return `<div class="sw-task-card ${t.id===taskSel?'selected':''}" data-id="${t.id}">
+    <div class="sw-task-card-top">
+      <span class="sw-source-badge ${t.src}">${t.src}</span>
+      <span class="sw-priority-led ${t.pri}" title="${PRI_LABEL[t.pri]}"></span>
+      <span class="sw-task-card-title">${t.title}</span>
+    </div>
+    <div class="sw-task-card-desc">${t.desc}</div>
+    <div class="sw-task-card-meta">
+      <span class="sw-task-identifier">${t.ident}</span>
+      ${t.labels.map(l=>`<span class="sw-label-chip">${l}</span>`).join('')}
+      <span class="sw-task-age">${t.age}</span>
+    </div>
+  </div>`;
+}
+function taskDetail(t){
+  if(!t) return `<div style="display:flex;flex:1;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--ds-text-dim);text-align:center"><div style="font-size:13px;font-weight:600;color:var(--ds-text)">Select a task to see details</div><div style="font-size:11.5px">Click a task in the work queue to view its description, metadata, and actions.</div></div>`;
+  return `<div class="sw-bench-detail-head"><span class="sw-source-badge ${t.src}">${t.src}</span><span class="t">${t.title}</span></div>
+    <div class="sw-bench-detail-body">
+      <div class="sw-detail-meta">
+        <div class="sw-detail-meta-row"><span class="sw-detail-meta-label">ID</span><span class="sw-detail-meta-value mono">${t.ident}</span></div>
+        <div class="sw-detail-meta-row"><span class="sw-detail-meta-label">Priority</span><span class="sw-detail-meta-value"><span class="sw-priority-led ${t.pri}" style="display:inline-block;vertical-align:middle;margin-right:6px"></span>${PRI_LABEL[t.pri]}</span></div>
+        <div class="sw-detail-meta-row"><span class="sw-detail-meta-label">Assignee</span><span class="sw-detail-meta-value">${t.assignee}</span></div>
+        <div class="sw-detail-meta-row"><span class="sw-detail-meta-label">Labels</span><span class="sw-detail-meta-value">${t.labels.map(l=>`<span class="sw-label-chip">${l}</span>`).join(' ')}</span></div>
+        <div class="sw-detail-meta-row"><span class="sw-detail-meta-label">Age</span><span class="sw-detail-meta-value mono">${t.age}</span></div>
+      </div>
+      <div class="sw-detail-desc">${t.desc}</div>
+    </div>
+    <div class="sw-bench-detail-actions"><button class="sw-btn primary">Dispatch</button><button class="sw-btn">Open in Linear</button><span class="sw-spacer" style="flex:1"></span><button class="sw-btn">Dismiss</button></div>`;
+}
+function renderBench(){
+  const vis=TASKS.filter(t=>benchSrc.has(t.src));
+  document.getElementById('taskCount').textContent=vis.length;
+  document.getElementById('benchSrcFilter').innerHTML=['ln','gh'].map(s=>`<button class="sw-src-chip ${s} ${benchSrc.has(s)?'active':''}" data-s="${s}">${s}</button>`).join('');
+  document.getElementById('taskList').innerHTML=vis.length?vis.map(taskCard).join(''):`<div style="padding:30px;text-align:center;color:var(--ds-text-faint);font-family:var(--mono);font-size:11px">Work queue empty</div>`;
+  const sel=vis.find(t=>t.id===taskSel)||vis[0]||null;
+  document.getElementById('taskDetail').innerHTML=taskDetail(sel);
+  document.querySelectorAll('#taskList .sw-task-card').forEach(el=>el.onclick=()=>{taskSel=el.dataset.id;renderBench()});
+  document.querySelectorAll('#benchSrcFilter .sw-src-chip').forEach(el=>el.onclick=()=>{const s=el.dataset.s;benchSrc.has(s)?benchSrc.delete(s):benchSrc.add(s);renderBench()});
+}
+renderBench();
+
+/* tabs */
+document.querySelectorAll('.sw-tab').forEach(t=>t.onclick=()=>{
+  document.querySelectorAll('.sw-tab').forEach(x=>x.classList.remove('active'));t.classList.add('active');
+  document.querySelectorAll('.sw-panel').forEach(p=>p.classList.remove('active'));
+  document.querySelector(`.sw-panel[data-panel="${t.dataset.tab}"]`).classList.add('active');
+});
+
+/* ---- render FLOOR: master list of agent cards + detail pane (UnifiedAgentsPane) ---- */
+let floorFilter='all', floorSel='team-pricing';
+const statusWord=s=>({running:'Running',idle:'Idle',completed:'Completed',pending:'Queued'}[s]||s);
+function surfaceGlyph(g){return `<svg class="glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">${g}</svg>`}
+
+function cardHtml(it){
+  const dim=it.active?'':'dimmed', sel=it.id===floorSel?'selected':'';
+  const chunkCls=it.kind==='team'?'team':it.kind==='cloud'?'cloud':'';
+  const counts=(it.tools||it.files)?`<span class="sw-floor-agent-card-meta-counts">${it.tools?it.tools+' tools':''}${it.tools&&it.files?' · ':''}${it.files?it.files+' files':''}</span>`:'';
+  const surf=it.browser?`<span class="sw-fa-surface ${it.browser.live?'live':''}">${surfaceGlyph(`<path d="${GLOBE}"/>`)} ${it.browser.name}</span>`:'';
+  const tags=`${it.linear?`<span class="sw-tag-linear">${it.linear}</span>`:''}${it.pr?`<span class="sw-tag-pr">#${it.pr}</span>`:''}`;
+  return `<button class="sw-floor-agent-card ${sel} ${dim}" data-id="${it.id}">
+    <div class="sw-floor-agent-card-top">
+      <span class="sw-fa-logo" style="background:${COLORS[it.agent]}${txtColor(it.agent)}">${ABBR[it.agent]}</span>
+      <span class="sw-floor-agent-card-name">${it.name}</span>
+      <span class="sw-floor-agent-card-chunk ${chunkCls}">${it.chunk}</span>
+    </div>
+    <div class="sw-floor-agent-card-status-line"><span class="sw-floor-agent-card-status-word ${it.status}">${statusWord(it.status)}</span><span>${it.status==='running'?it.when:'· '+it.when}</span></div>
+    <div class="sw-floor-agent-card-activity">${it.activity}</div>
+    ${(counts||surf||tags)?`<div class="sw-floor-agent-card-meta">${counts}<span class="sw-floor-agent-card-meta-spacer"></span>${surf}${tags}</div>`:''}
+  </button>`;
+}
+
+function surfaceLine(it){
+  let h='';
+  if(it.browser) h+=`<div class="sw-surface-line ${it.browser.live?'live':''}">${surfaceGlyph(`<path d="${GLOBE}"/>`)}<span class="lbl">browser</span> ${it.browser.name} → ${it.browser.host}<span class="sp"></span><span class="sw-badge ${it.browser.live?'running':'idle'}">${it.browser.live?'live':'idle'}</span></div>`;
+  h+=`<div class="sw-surface-line">${surfaceGlyph(`<path d="${SCREEN}"/>`)}<span class="lbl">computer</span> ${it.computer||'— no session'}</div>`;
+  return h;
+}
+function detailHtml(it){
+  if(!it) return `<div class="sw-floor-active-detail-empty"><div style="font-size:13px;font-weight:600;color:var(--ds-text)">Select an agent to see its activity</div><div style="font-size:11.5px;color:var(--ds-text-dim)">Each card shows current status, recent commands, and the files an agent has touched.</div></div>`;
+  const btns = it.kind==='team'
+    ? `<button class="sw-btn">↻ Retry</button><button class="sw-btn">Kill</button>`
+    : it.kind==='terminal' ? `<button class="sw-btn">Focus</button>` : '';
+  const members = it.members?`<div class="sw-udetail-section"><span class="sw-section-label">Teammates</span>
+    ${it.members.map(m=>`<div class="sw-surface-line"><span class="sw-fa-logo" style="width:18px;height:18px;font-size:8px;background:${COLORS[m.agent]}${txtColor(m.agent)}">${ABBR[m.agent]}</span><b style="color:var(--ds-text)">${m.role}</b> ${m.act}<span class="sp"></span><span class="sw-badge ${m.status==='pending'?'pending':m.status}">${statusWord(m.status)}</span></div>`).join('')}</div>`:'';
+  const meta = (it.cwd||it.branch)?`<div class="sw-udetail-section"><div class="sw-udetail-meta">${it.cwd||''}${it.cwd&&it.branch?' · branch: ':''}${it.branch||''}</div></div>`:'';
+  const taskSec = it.task?`<div class="sw-udetail-section"><span class="sw-section-label">Task</span><div class="sw-udetail-text">${it.task}</div></div>`:'';
+  const surfaces=`<div class="sw-udetail-section"><span class="sw-section-label">Surfaces</span>${surfaceLine(it)}</div>`;
+  const stats=`<div class="sw-udetail-section"><span class="sw-section-label">Activity</span><div class="sw-udetail-stats">${it.tools?`<span>${it.tools} tool calls</span>`:''}${it.files?`<span>${it.files} files touched</span>`:''}${it.pr?`<span>PR #${it.pr}</span>`:''}</div></div>`;
+  const files = it.recentFiles?`<div class="sw-udetail-section"><span class="sw-section-label">Recent files</span><div class="sw-udetail-files">${it.recentFiles.map(f=>`<span class="sw-file-pill">${f}</span>`).join('')}</div></div>`:'';
+  return `<div class="sw-mc-pane-head">
+      <span class="sw-fa-logo" style="width:20px;height:20px;font-size:8px;background:${COLORS[it.agent]}${txtColor(it.agent)}">${ABBR[it.agent]}</span>
+      <span class="nm">${it.task||it.name}</span>
+      <span class="sw-unified-kind-badge ${it.kind}">${it.kind}</span>
+      ${it.provider?`<span class="sw-pill">${it.provider}</span>`:''}
+      <div class="sw-spacer"></div>${btns}<button class="sw-btn">✕</button>
+    </div>
+    <div class="sw-mc-pane-body">
+      <div class="sw-detail-row"><span class="sw-badge ${it.status==='completed'?'ok':it.status}">${statusWord(it.status)}</span><span class="sw-pill">${it.when}</span></div>
+      ${meta}${taskSec}${members}${surfaces}${stats}${files}
+    </div>`;
+}
+
+function renderFloor(){
+  const active=FLOOR_ITEMS.filter(i=>i.active), recent=FLOOR_ITEMS.filter(i=>!i.active);
+  const vis=active.filter(i=>floorFilter==='all'||(floorFilter==='cloud'?i.kind==='cloud':i.kind!=='cloud'));
+  const fcounts={all:active.length,local:active.filter(i=>i.kind!=='cloud').length,cloud:active.filter(i=>i.kind==='cloud').length};
+  document.getElementById('activeCount').textContent=active.length;
+  document.getElementById('floorFilter').innerHTML=['all','local','cloud'].map(k=>
+    `<button class="sw-active-filter-btn ${floorFilter===k?'active':''}" data-f="${k}">${k}<span class="sw-active-filter-count">${fcounts[k]}</span></button>`).join('');
+  document.getElementById('floorList').innerHTML=
+    vis.map(cardHtml).join('') +
+    (recent.length?`<div class="sw-floor-recent-divider"><span>Recent</span></div>`+recent.map(cardHtml).join(''):'');
+  const sel=FLOOR_ITEMS.find(i=>i.id===floorSel)||vis[0]||null;
+  document.getElementById('floorDetail').innerHTML=detailHtml(sel);
+  document.querySelectorAll('#floorList .sw-floor-agent-card').forEach(el=>el.onclick=()=>{floorSel=el.dataset.id;renderFloor()});
+  document.querySelectorAll('#floorFilter .sw-active-filter-btn').forEach(el=>el.onclick=()=>{floorFilter=el.dataset.f;renderFloor()});
+}
+renderFloor();
+
+/* ---- render BENCH config ---- */
+const uc=u=>u>=90?'hot':u>=70?'warn':'';
+document.getElementById('rosterGrid').innerHTML=HARNESSES.map(h=>{
+  const c=COLORS[h.key],signed=h.accounts.length;
+  return `<div class="sw-harness ${signed?'':'dim'}" style="--accent:${c}">
+    <div class="sw-h-top"><div class="sw-h-logo" style="--accent:${c}">${ABBR[h.key]}</div>
+      <div style="flex:1;min-width:0"><div class="sw-h-name">${h.name}</div><div class="sw-h-model">${h.model}</div></div>
+      <span class="sw-status-led ${led(h.status)}"><span class="b"></span>${ledTxt(h.status)}</span></div>
+    <div class="sw-h-rows">
+      <div class="sw-h-row"><span class="k">Accounts</span><span class="v">${signed?h.accounts.join(', '):'—'}</span></div>
+      <div class="sw-h-row"><span class="k">Plan</span><span class="v">${h.plan}</span></div>
+      <div class="sw-h-row"><span class="k">Usage</span><span class="v sw-h-usage"><span class="sw-gauge ${uc(h.usage)}"><i style="width:${h.usage}%"></i></span><span class="pct">${h.usage}%</span></span></div>
+    </div>
+    <div class="sw-h-foot"><span class="sw-chip">${h.versions} ver</span><span class="sw-chip">strategy: ${h.strategy}</span></div>
+  </div>`;}).join('');
+
+const RES=['commands','skills','hooks','mcp','rules','plugins','workflows','subagents'];
+document.getElementById('reposView').innerHTML=REPOS.map(r=>`
+  <div class="sw-repo"><div class="sw-repo-top"><span class="sw-repo-tag ${r.tag}">${r.tag}</span><span class="sw-repo-path">${r.path}</span></div>
+    <div class="sw-res-grid">${RES.map(k=>`<div class="sw-res ${r.res[k]===0?'zero':''}"><span class="n">${r.res[k]}</span><span class="l">${k}</span></div>`).join('')}</div></div>`).join('');
+
+function toggleTheme(){const h=document.documentElement;h.classList.toggle('theme-dark');h.classList.toggle('theme-light')}
+</script>
+</body>
+</html>

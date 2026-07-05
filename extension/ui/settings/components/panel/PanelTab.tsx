@@ -34,6 +34,7 @@ import {
 import { getIcon, formatPreviewTerminalTitle } from '../../utils'
 import { FactorySection } from '../FactorySection'
 import { SourcesSection } from './TuneSection'
+import { ProjectRulesSection } from './ProjectRulesSection'
 
 export interface PanelTabProps {
   settings: AgentSettings
@@ -633,6 +634,8 @@ export function PanelTab({
             />
           </div>
         </section>
+
+        <ProjectRulesSection settings={settings} onSaveSettings={onSaveSettings} />
 
       </div>
     </div>

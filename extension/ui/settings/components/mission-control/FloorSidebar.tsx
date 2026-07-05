@@ -29,6 +29,15 @@ interface FloorSidebarProps {
    * otherwise a project name. Mirrors wireSidebar()'s data-proj values.
    */
   onScope: (value: string) => void
+  /** Open the host detail/config pane for a host (clicking its name). */
+  onSelectHost?: (host: string) => void
+  /** Host currently shown in the detail pane, for highlight. */
+  selectedHost?: string | null
+  /**
+   * Full discovered host roster (name + reachability), so idle-but-reachable
+   * hosts appear too — not just hosts that happen to be running an agent.
+   */
+  hosts?: Array<{ name: string; online: boolean }>
 }
 
 export function FloorSidebar({ agents, tickets, projFilter, hostFilter = null, offlineHosts = [], devices = [], hostPins = [], onToggleHostPin, onReorderHostPins, onScope }: FloorSidebarProps) {

@@ -1637,7 +1637,7 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
           const { fetchHostSessions, LOCAL_LABEL } = await import('./remoteSessions.vscode');
           const [inventories, hostResult] = await Promise.all([
             getCachedAgentInventories(),
-            fetchHostSessions(),
+            fetchHostSessions(Date.now(), { probeCpu: true, projectRules: getSettings(context).projectRules ?? [] }),
           ]);
           const defaultTitle = context.globalState.get<string>('agents.defaultAgentTitle', 'CC');
           const defaultAgentId = getBuiltInDefByTitle(defaultTitle)?.key ?? 'claude';
@@ -1856,7 +1856,10 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
         // offline rather than failing the batch.
         try {
           const { fetchHostSessions } = await import('./remoteSessions.vscode');
-          const { hosts, sessions: hostSessions, groups, fetchedAt } = await fetchHostSessions();
+          const { hosts, sessions: hostSessions, groups, fetchedAt } = await fetchHostSessions(
+            Date.now(),
+            { projectRules: getSettings(context).projectRules ?? [] },
+          );
           settingsPanel?.webview.postMessage({
             type: 'hostSessions',
             hosts,
@@ -1872,6 +1875,85 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
             sessions: [],
             groups: [],
             fetchedAt: Date.now(),
+          });
+        }
+        break;
+      }
+      case 'fetchLocalSessions': {
+        // Local-only fast path (the 3s feed poll): this machine's sessions with no
+        // SSH and no host discovery. Rides a distinct 'localSessions' message so the
+        // webview replaces only the this-mac rows and leaves remote rows intact.
+        try {
+          const { fetchLocalSessions } = await import('./remoteSessions.vscode');
+          const { sessions: localSessions, fetchedAt } = await fetchLocalSessions(
+            Date.now(),
+            getSettings(context).projectRules ?? [],
+          );
+          settingsPanel?.webview.postMessage({
+            type: 'localSessions',
+            sessions: localSessions,
+            fetchedAt,
+          });
+        } catch (err) {
+          console.error('[SETTINGS] Error fetching local sessions:', err);
+        }
+        break;
+      }
+      case 'fetchHostInventory': {
+        // Host detail pane: installed agents/versions/accounts/usage/resources on
+        // one host (over SSH for remotes) + registry metadata. Cached per host.
+        const invHost = typeof message.host === 'string' ? message.host : '';
+        const invForce = message.force === true;
+        try {
+          const { fetchHostInventory } = await import('../core/hostInventory');
+          const inventory = await fetchHostInventory(invHost, invForce);
+          settingsPanel?.webview.postMessage({ type: 'hostInventory', host: invHost, inventory });
+        } catch (err) {
+          console.error('[SETTINGS] Error fetching host inventory:', err);
+          settingsPanel?.webview.postMessage({
+            type: 'hostInventory',
+            host: invHost,
+            inventory: {
+              host: invHost,
+              reachable: false,
+              error: err instanceof Error ? err.message : String(err),
+              meta: null,
+              agents: [],
+              fetchedAt: Date.now(),
+            },
+          });
+        }
+        break;
+      }
+      case 'enrollHost': {
+        // Configure: register a host, then re-fetch (force) so the pane reflects it.
+        const enName = typeof message.host === 'string' ? message.host : '';
+        const enTarget = typeof message.target === 'string' && message.target ? message.target : undefined;
+        const enCaps = Array.isArray(message.caps) ? message.caps.filter((c: unknown): c is string => typeof c === 'string') : undefined;
+        try {
+          const { enrollHost, fetchHostInventory } = await import('../core/hostInventory');
+          await enrollHost(enName, { target: enTarget, caps: enCaps });
+          const inventory = await fetchHostInventory(enName, true);
+          settingsPanel?.webview.postMessage({ type: 'hostInventory', host: enName, inventory });
+        } catch (err) {
+          settingsPanel?.webview.postMessage({
+            type: 'hostConfigError', host: enName, action: 'enroll',
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+        break;
+      }
+      case 'removeHost': {
+        const rmName = typeof message.host === 'string' ? message.host : '';
+        try {
+          const { removeHost, fetchHostInventory } = await import('../core/hostInventory');
+          await removeHost(rmName);
+          const inventory = await fetchHostInventory(rmName, true);
+          settingsPanel?.webview.postMessage({ type: 'hostInventory', host: rmName, inventory });
+        } catch (err) {
+          settingsPanel?.webview.postMessage({
+            type: 'hostConfigError', host: rmName, action: 'remove',
+            error: err instanceof Error ? err.message : String(err),
           });
         }
         break;

@@ -45,6 +45,7 @@
   ],
   "activationEvents": [
     "onStartupFinished",
+    "onUri",
     "onLanguage:markdown",
     "onCustomEditor:agents.markdownEditor"
   ],

@@ -5,6 +5,7 @@ import { StructuredReply, type ReplyCallbacks } from './StructuredReply'
 import { heartbeatLevel, type FloorAgent, type FloorTicket } from './floorModel'
 import { sinceFromMs } from './floorAdapter'
 import { useNow } from './useNow'
+import { TodoProgressBar } from './TodoChecklist'
 
 // One agent row in the feed (feedItem: factory-floor.html:608-620) + the Next-Up
 // ticketStrip teaser row (:621-623). Pure presentation; selection + replies raised
@@ -16,15 +17,23 @@ function plainTok(tok: number, plain: boolean): string {
   return tok ? `${tok} tok/s` : ''
 }
 
-interface FeedItemProps extends ReplyCallbacks {
+// Reply callbacks are agent-scoped (they take the FloorAgent, not a pre-bound closure)
+// so the caller can pass the SAME stable function reference to every row. That is what
+// lets React.memo(FeedItem) skip re-rendering unchanged rows — an inline `(o) => f(a, o)`
+// per row would allocate a fresh prop each render and defeat the memo. The leaf binds
+// them to its own agent below for StructuredReply (only rendered when a.needs).
+interface FeedItemProps {
   agent: FloorAgent
   selected: boolean
   plain: boolean
   /** The row (not the reply controls) was clicked. */
   onSelect: (id: string) => void
+  onOption: (agent: FloorAgent, option: string) => void
+  onFreeText: (agent: FloorAgent, text: string) => void
+  onAttach: (agent: FloorAgent) => void
 }
 
-export function FeedItem({ agent: a, selected, plain, onSelect, onOption, onFreeText, onAttach }: FeedItemProps) {
+function FeedItemImpl({ agent: a, selected, plain, onSelect, onOption, onFreeText, onAttach }: FeedItemProps) {
   // Live heartbeat: only a running / stalled agent with a known last-activity stamp ticks.
   // The shared 1s ticker re-renders just this leaf, never the parent list.
   const now = useNow(1000)
@@ -38,6 +47,17 @@ export function FeedItem({ agent: a, selected, plain, onSelect, onOption, onFree
   const meta = plain ? a.project : `${a.project} · ${a.hostLabel ?? a.host}${a.ticket ? ` · ${a.ticket}` : ''}`
   const destructive = a.question?.kind === 'destructive'
   const attn = a.phase === 'failed' ? 'fail' : stalled ? 'stall' : a.needs ? 'attn' : ''
+
+  // Rolling summary line: the agent's own words for a running/stalled agent. Skip it
+  // when it just echoes the response block. Suppress the now-line when the summary
+  // already says the same thing (summary fell back to the now-line's activity string).
+  const nowlineText = `${a.verb} ${a.target}`.trim()
+  const showSummary =
+    !plain &&
+    !!a.summary &&
+    (a.phase === 'running' || a.phase === 'stalled') &&
+    a.summary.trim() !== a.resp.trim()
+  const showNowline = !plain && !!a.verb && !(showSummary && a.summary.trim() === nowlineText)
 
   const marker =
     a.pr ? <span className="pill pr">PR {a.pr}</span> :
@@ -67,7 +87,9 @@ export function FeedItem({ agent: a, selected, plain, onSelect, onOption, onFree
         </span>
       </div>
       <div className="resp">{destructive ? <span className="q">{a.resp}</span> : a.resp}</div>
-      {!plain && (
+      {!plain && a.todos.length > 0 && <TodoProgressBar todos={a.todos} />}
+      {showSummary && <div className="summary">{a.summary}</div>}
+      {showNowline && (
         <div className={`nowline ${stalled ? 'stall' : ''}`}>
           <Icon name="chevR" size={11} /> <span className="v">{a.verb}</span> {a.target}
         </div>
@@ -77,15 +99,21 @@ export function FeedItem({ agent: a, selected, plain, onSelect, onOption, onFree
           <StructuredReply
             question={a.question}
             phase={a.phase}
-            onOption={onOption}
-            onFreeText={onFreeText}
-            onAttach={onAttach}
+            onOption={(o) => onOption(a, o)}
+            onFreeText={(t) => onFreeText(a, t)}
+            onAttach={() => onAttach(a)}
           />
         </div>
       )}
     </div>
   )
 }
+
+// Memoized: with stable, agent-scoped callback props (see FeedItemProps), a row only
+// re-renders when its own agent object, selection, or `plain` actually changes — so a
+// selection change or search keystroke re-renders 1-2 rows, not all 100+. The 1s "since"
+// tick stays local to each row's useNow leaf and never touches this boundary.
+export const FeedItem = React.memo(FeedItemImpl)
 
 interface TicketStripProps {
   ticket: FloorTicket
