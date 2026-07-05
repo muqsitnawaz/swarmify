@@ -64,10 +64,13 @@ interface FloorPrefs {
   right: boolean
   groupBy: FloorGroupBy
   pinned: string[]
+  // Ordered pinned host names for the HOSTS sidebar. null = never customized
+  // (the local machine is pinned by default); [] = user explicitly unpinned all.
+  hostPins: string[] | null
 }
 
 function defaultFloorPrefs(): FloorPrefs {
-  return { plain: false, sidebar: true, right: true, groupBy: 'project', pinned: [] }
+  return { plain: false, sidebar: true, right: true, groupBy: 'project', pinned: [], hostPins: null }
 }
 
 function loadFloorPrefs(): FloorPrefs {
@@ -513,6 +516,9 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   // Lightweight fleet list (agents devices list --json, no SSH) for the sidebar
   // HOSTS section — populated on mount so hosts show even before the panel opens.
   const [fleetDevices, setFleetDevices] = useState<{ name: string; online: boolean }[]>([])
+  // This machine's real canonical device name (e.g. 'zion'), from the fleet fetch.
+  // Local agents keep host==='this-mac' for routing but display under this name.
+  const [localHostName, setLocalHostName] = useState<string>('')
   // Floor after-dispatch: plans awaiting review, one per sessionId (from `planReady`).
   const [pendingPlans, setPendingPlans] = useState<PendingPlan[]>([])
   const [cardDragActive, setCardDragActive] = useState(false)
@@ -554,6 +560,8 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   const [sidebarOpen, setSidebarOpen] = useState(floorPrefs0.sidebar)
   const [rightOpen, setRightOpen] = useState(floorPrefs0.right)
   const [pinned, setPinned] = useState<Set<string>>(() => new Set(floorPrefs0.pinned))
+  // Ordered pinned HOSTS names (null = default: pin the local machine).
+  const [hostPins, setHostPins] = useState<string[] | null>(floorPrefs0.hostPins)
   const [statusChips, setStatusChips] = useState<StatusChip[]>([])
   const [abbrChips, setAbbrChips] = useState<AgentAbbr[]>([])
   const [floorSearch, setFloorSearch] = useState('')
@@ -563,10 +571,24 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   const [remoteSessions, setRemoteSessions] = useState<RemoteSessionLike[]>([])
   const [offlineHosts, setOfflineHosts] = useState<string[]>([])
 
-  // Persist the durable Floor prefs (pinned set, plain/sidebar/right toggles, group-by).
+  // Persist the durable Floor prefs (pinned set, plain/sidebar/right toggles, group-by, host pins).
   useEffect(() => {
-    saveFloorPrefs({ plain, sidebar: sidebarOpen, right: rightOpen, groupBy: floorGroupBy, pinned: [...pinned] })
-  }, [plain, sidebarOpen, rightOpen, floorGroupBy, pinned])
+    saveFloorPrefs({ plain, sidebar: sidebarOpen, right: rightOpen, groupBy: floorGroupBy, pinned: [...pinned], hostPins })
+  }, [plain, sidebarOpen, rightOpen, floorGroupBy, pinned, hostPins])
+
+  // Effective HOSTS pins: default to pinning just the local machine until the user
+  // customizes. Pin/unpin and drag-reorder always write an explicit list.
+  const effectiveHostPins = useMemo(
+    () => hostPins ?? (localHostName ? [localHostName] : []),
+    [hostPins, localHostName]
+  )
+  const toggleHostPin = useCallback((name: string) => {
+    setHostPins((prev) => {
+      const base = prev ?? (localHostName ? [localHostName] : [])
+      return base.includes(name) ? base.filter((n) => n !== name) : [...base, name]
+    })
+  }, [localHostName])
+  const reorderHostPins = useCallback((names: string[]) => setHostPins(names), [])
 
   // Cross-host merge: ask the backend for every reachable host's sessions on mount, fold
   // the genuinely-remote ones into the Floor. Local-only Floor works if this never arrives.
@@ -623,6 +645,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     const onMsg = (event: MessageEvent) => {
       const msg = event.data
       if (msg?.type === 'devicesData' && Array.isArray(msg.devices)) {
+        if (typeof msg.local === 'string' && msg.local) setLocalHostName(msg.local)
         setFleetDevices(
           (msg.devices as Array<{ name: string; online?: boolean }>).map((d) => ({
             name: d.name,
@@ -1146,8 +1169,8 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   // Local agents (drop the synthetic watchdog row) + genuinely-remote sessions
   // (host !== 'this-mac' so we don't double count this machine's own agents).
   const floorLocalAgents = useMemo(
-    () => adaptUnified(items.filter((i) => i.kind !== 'watchdog'), { pinned, workspaceRepo: workspaceRepoName, nowMs }),
-    [items, pinned, workspaceRepoName, nowMs]
+    () => adaptUnified(items.filter((i) => i.kind !== 'watchdog'), { pinned, workspaceRepo: workspaceRepoName, nowMs, localHostName }),
+    [items, pinned, workspaceRepoName, nowMs, localHostName]
   )
   // Session UUIDs already open as a terminal tab in THIS window (the rich, local
   // source). Used to avoid double-listing an agent that the machine-wide fetch also
@@ -1168,9 +1191,10 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
             s.host !== 'this-mac' ||
             (s.context !== 'cloud' && !localTabSessionIds.has(s.sessionId))
         ),
-        pinned
+        pinned,
+        localHostName
       ),
-    [remoteSessions, localTabSessionIds, pinned]
+    [remoteSessions, localTabSessionIds, pinned, localHostName]
   )
   const floorAgents = useMemo(
     () => [...floorLocalAgents, ...floorRemoteAgents],
@@ -1193,7 +1217,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     if (statusChips.length) list = list.filter((a) => statusChips.some((c) => (c === 'needs' ? a.needs : a.phase === c)))
     if (abbrChips.length) list = list.filter((a) => abbrChips.includes(a.abbr))
     const q = floorSearch.trim().toLowerCase()
-    if (q) list = list.filter((a) => `${a.name} ${a.branch} ${a.verb} ${a.target} ${a.project} ${a.host}`.toLowerCase().includes(q))
+    if (q) list = list.filter((a) => `${a.name} ${a.branch} ${a.verb} ${a.target} ${a.project} ${a.host} ${a.hostLabel ?? ''}`.toLowerCase().includes(q))
     return list
   }, [floorAgents, projFilter, statusChips, abbrChips, floorSearch])
 
@@ -1354,7 +1378,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
         ) : (
           <div className="dhead" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
             <div className="title">{a.project} / {a.name}</div>
-            <div className="sub">host <b>{a.host}</b>{a.branch ? ` · ${a.branch}` : ''} · {a.phase}{a.tok ? ` · ${a.tok} tok/s` : ''}</div>
+            <div className="sub">host <b>{a.hostLabel ?? a.host}</b>{a.branch ? ` · ${a.branch}` : ''} · {a.phase}{a.tok ? ` · ${a.tok} tok/s` : ''}</div>
             {a.resp && <div className="resp" style={{ marginTop: 8 }}>{a.resp}</div>}
             {(a.verb || a.target) && <div className="nowline" style={{ marginTop: 8 }}><Icon name="chevR" size={11} /> <span className="v">{a.verb}</span> {a.target}</div>}
           </div>
@@ -1501,6 +1525,9 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
                 ? dispatchDevices.map((d) => ({ name: d.name, online: !!d.reachable, agents: d.runningAgents ?? 0 }))
                 : fleetDevices.map((d) => ({ name: d.name, online: d.online, agents: 0 }))
             }
+            hostPins={effectiveHostPins}
+            onToggleHostPin={toggleHostPin}
+            onReorderHostPins={reorderHostPins}
             onScope={onScope}
           />
         )}

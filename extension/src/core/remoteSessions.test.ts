@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {
   mapStatusToPhase,
+  normalizeHost,
   projectFromCwd,
   normalizeActiveSession,
   normalizeActiveSessions,
@@ -21,6 +22,19 @@ const ACTIVE = JSON.parse(
 // Fixed fetch clock so sinceMs assertions are deterministic. Chosen just after
 // the newest startedAtMs in the fixture.
 const FETCHED_AT = 1782865920000;
+
+describe('normalizeHost', () => {
+  test('collapses FQDN, case, and separators to the agents-cli device label', () => {
+    // Matches an `agents devices` registry name for the local machine so the
+    // HOSTS sidebar folds this-mac into it instead of double-listing.
+    expect(normalizeHost('zion')).toBe('zion');
+    expect(normalizeHost('zion.local')).toBe('zion');
+    expect(normalizeHost('ZION')).toBe('zion');
+    expect(normalizeHost('zion.tail1a85a1.ts.net')).toBe('zion');
+    expect(normalizeHost("Muqsit's Mac mini")).toBe('muqsit-s-mac-mini');
+    expect(normalizeHost('')).toBe('');
+  });
+});
 
 describe('mapStatusToPhase', () => {
   test('maps the real CLI status values', () => {

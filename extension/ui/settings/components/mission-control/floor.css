@@ -224,6 +224,18 @@
 .swarmify-root .sb-item .c .w { color: var(--status-pending); font-weight: 700; }
 .swarmify-root .sb-item .hd { width: 7px; height: 7px; border-radius: 50%; background: var(--status-running); }
 .swarmify-root .sb-item .hd.off { background: var(--status-failed); }
+/* HOSTS pin + drag-reorder. Grip column is reserved on every host row so the
+   status dots line up whether or not a row is pinned/draggable. */
+.swarmify-root .sb-host { position: relative; }
+.swarmify-root .sb-host .sb-grip { display: inline-flex; align-items: center; justify-content: center; width: 12px; flex: 0 0 12px; color: var(--ds-text-faint); cursor: grab; opacity: .5; }
+.swarmify-root .sb-host.pinned:active .sb-grip { cursor: grabbing; }
+.swarmify-root .sb-host.dragging { opacity: .45; }
+.swarmify-root .sb-host.dragover { box-shadow: inset 0 2px 0 var(--brand); }
+.swarmify-root .sb-host .sb-pin { display: inline-flex; align-items: center; background: none; border: 0; padding: 0; margin-left: 6px; cursor: pointer; color: var(--ds-text-faint); opacity: 0; }
+.swarmify-root .sb-host:hover .sb-pin { opacity: .55; }
+.swarmify-root .sb-host .sb-pin:hover { opacity: .9; }
+.swarmify-root .sb-host .sb-pin.on { opacity: 1; color: var(--brand); }
+.swarmify-root .sb-host-div { height: 1px; margin: 5px 14px; background: var(--ds-border); }
 
 /* backlog strip */
 .swarmify-root .backlog { border: 1px dashed var(--ds-border-strong); border-radius: var(--r-lg); padding: 8px 10px; margin-bottom: 14px; background: var(--ds-bg); }

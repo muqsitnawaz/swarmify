@@ -4,6 +4,7 @@ type IconName =
   | 'radar' | 'terminal' | 'plus' | 'chevD' | 'chevR' | 'chevL' | 'search' | 'moon' | 'sun' | 'cog'
   | 'check' | 'x' | 'copy' | 'refresh' | 'play' | 'pause' | 'gitBranch' | 'folder'
   | 'dispatch' | 'inbox' | 'zap' | 'clipboard' | 'external' | 'alert' | 'paperclip' | 'clock'
+  | 'pin' | 'grip'
 
 const PATHS: Record<IconName, React.ReactNode> = {
   radar: <><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1.5" /></>,
@@ -32,6 +33,8 @@ const PATHS: Record<IconName, React.ReactNode> = {
   alert: <><path d="m10.29 3.86-8.19 14.2A2 2 0 0 0 3.83 21h16.34a2 2 0 0 0 1.73-3l-8.19-14.2a2 2 0 0 0-3.46 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></>,
   paperclip: <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />,
   clock: <><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></>,
+  pin: <><line x1="12" y1="17" x2="12" y2="22" /><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24z" /></>,
+  grip: <><circle cx="9" cy="6" r="1" /><circle cx="9" cy="12" r="1" /><circle cx="9" cy="18" r="1" /><circle cx="15" cy="6" r="1" /><circle cx="15" cy="12" r="1" /><circle cx="15" cy="18" r="1" /></>,
 }
 
 export function Icon({ name, size = 14, className, style }: {
