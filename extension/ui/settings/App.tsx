@@ -785,6 +785,7 @@ export default function App() {
           githubRepo={githubRepo}
           watchdogEnabled={watchdogEnabled}
           watchdogEvents={watchdogEvents}
+          projectRules={settings?.projectRules ?? []}
         />
       )}
 

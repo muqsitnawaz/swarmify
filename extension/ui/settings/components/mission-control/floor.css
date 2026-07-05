@@ -200,8 +200,30 @@
 .swarmify-root .fitem .when { margin-left: auto; color: var(--ds-text-dim); font-size: 11px; display: flex; align-items: center; gap: 8px; }
 .swarmify-root .fitem .resp { font-size: 12.5px; color: var(--ds-text); line-height: 1.5; margin: 2px 0 8px; border-left: 2px solid var(--ds-border); padding-left: 10px; }
 .swarmify-root .fitem .resp .q { color: var(--status-pending); font-weight: 600; }
+.swarmify-root .fitem .summary { font-size: 12px; color: var(--ds-text-muted); line-height: 1.4; margin: 0 0 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .swarmify-root .fitem .nowline { font-family: "Geist Mono", monospace; font-size: 11px; color: var(--ds-text-muted); display: flex; align-items: center; gap: 8px; }
 .swarmify-root .fitem .nowline .v { color: var(--brand-600); }
+
+/* task checklist (from TodoWrite) -- compact bar on the card + full list in the detail.
+ * Status is a colored marker (no glyphs): done = filled green, in-progress = pulsing
+ * amber, pending = hollow ring; completed text is struck through. */
+.swarmify-root .sw-todobar { display: flex; align-items: center; gap: 8px; margin: 2px 0 8px; font-size: 10.5px; color: var(--ds-text-dim); }
+.swarmify-root .sw-todobar-frac { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--ds-text-muted); }
+.swarmify-root .sw-todobar-track { flex: 1; height: 5px; border-radius: 3px; background: var(--ds-bg-inset); overflow: hidden; }
+.swarmify-root .sw-todobar-track > i { display: block; height: 100%; background: var(--brand); border-radius: 3px; transition: width .4s ease; }
+.swarmify-root .sw-todocheck-head { display: flex; align-items: center; gap: 10px; margin-bottom: 7px; }
+.swarmify-root .sw-todocheck-frac { font-size: 12px; font-weight: 800; color: var(--ds-text-muted); font-variant-numeric: tabular-nums; }
+.swarmify-root .sw-todocheck-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.swarmify-root .sw-todocheck-item { display: flex; align-items: flex-start; gap: 9px; padding: 4px 6px; border-radius: 6px; font-size: 12.5px; color: var(--ds-text); line-height: 1.4; }
+.swarmify-root .sw-todocheck-mk { flex: 0 0 auto; width: 13px; height: 13px; border-radius: 50%; margin-top: 1px; border: 1.5px solid var(--ds-border-strong); position: relative; }
+.swarmify-root .sw-todocheck-item.status-completed { color: var(--ds-text-dim); }
+.swarmify-root .sw-todocheck-item.status-completed .sw-todocheck-txt { text-decoration: line-through; text-decoration-color: var(--ds-border-strong); }
+.swarmify-root .sw-todocheck-item.status-completed .sw-todocheck-mk { background: var(--status-running); border-color: var(--status-running); }
+.swarmify-root .sw-todocheck-item.status-in_progress { background: var(--status-pending-bg); }
+.swarmify-root .sw-todocheck-item.status-in_progress .sw-todocheck-mk { border-color: var(--status-pending); }
+.swarmify-root .sw-todocheck-item.status-in_progress .sw-todocheck-mk::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--status-pending); animation: sw-todo-pulse 1.3s ease-in-out infinite; }
+@keyframes sw-todo-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .swarmify-root .sw-todocheck-item.status-in_progress .sw-todocheck-mk::after { animation: none; } }
 .swarmify-root .pill { font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 999px; }
 .swarmify-root .pill.pr { background: var(--brand); color: #1a1a1a; }
 .swarmify-root .pill.run { background: var(--status-running-bg); color: var(--status-running); }
@@ -315,9 +337,9 @@
 /* ============================================================================
  * AFTER-DISPATCH trust signals (STYLES owns these; FLOOR-UI renders the markup).
  * Class-name contract for FLOOR-UI (FeedItem.tsx / PlanReview.tsx / FailureCard.tsx):
- *   heartbeat  : <span class="heartbeat [stale|stale2]"><i class="beat"/>{age}</span>
+ *   heartbeat  : <span class="hb [stale|dead]">{clock icon}{age} ago</span>
  *                normal -> dim, `stale` -> amber (past stall threshold),
- *                `stale2` -> red (past 2x). The `.beat` dot pulses while fresh.
+ *                `dead` -> red (past 2x). The `.beat` dot pulses while fresh.
  *   stalled    : <div class="fitem stalled"> card variant (pulsing amber outline).
  *   plan-review: <div class="planreview"> with `.pr-h` eyebrow, `.pr-steps`/`.pr-step`
  *                (`.n` step number; step `input`/`textarea` for Approve+edit),
@@ -329,14 +351,29 @@
  *                `select.reassign` (Reassign to a different agent).
  * ========================================================================= */
 
-/* live heartbeat — ticking last-activity age in .fitem .when */
-.swarmify-root .heartbeat { display: inline-flex; align-items: center; gap: 5px; color: var(--ds-text-dim); font-variant-numeric: tabular-nums; }
-.swarmify-root .heartbeat .beat { width: 6px; height: 6px; border-radius: 50%; background: var(--status-running); animation: sw-beat 1.6s ease-out infinite; }
-.swarmify-root .heartbeat.stale { color: var(--status-pending); }
-.swarmify-root .heartbeat.stale .beat { background: var(--status-pending); animation: none; }
-.swarmify-root .heartbeat.stale2 { color: var(--status-failed); }
-.swarmify-root .heartbeat.stale2 .beat { background: var(--status-failed); animation: none; }
+/* live heartbeat — ticking last-activity age in .fitem .when. Class names match
+ * FeedItem's markup (`hb live|stale|dead`): dim by default, amber past the stall
+ * threshold, red past 2x. */
+.swarmify-root .hb { display: inline-flex; align-items: center; gap: 5px; color: var(--ds-text-dim); font-variant-numeric: tabular-nums; }
+.swarmify-root .hb .beat { width: 6px; height: 6px; border-radius: 50%; background: var(--status-running); animation: sw-beat 1.6s ease-out infinite; }
+.swarmify-root .hb.stale { color: var(--status-pending); }
+.swarmify-root .hb.stale .beat { background: var(--status-pending); animation: none; }
+.swarmify-root .hb.dead { color: var(--status-failed); }
+.swarmify-root .hb.dead .beat { background: var(--status-failed); animation: none; }
 @keyframes sw-beat { 0% { box-shadow: 0 0 0 0 var(--status-running-bg); } 70% { box-shadow: 0 0 0 5px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+
+/* data-freshness chip — cross-host sweep age in the LIVE ACTIVITY header. Spins while
+ * a sweep is in flight; amber when stale (a host is likely stuck). Click to refresh. */
+.swarmify-root .fresh { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; letter-spacing: 0;
+  color: var(--ds-text-dim); background: var(--ds-bg-inset); border: 1px solid var(--ds-border); border-radius: 20px;
+  padding: 3px 9px 3px 7px; cursor: pointer; user-select: none; white-space: nowrap; transition: color .15s, border-color .15s; }
+.swarmify-root .fresh:hover { border-color: var(--ds-text-dim); color: var(--ds-text-muted); }
+.swarmify-root .fresh .rot { display: inline-flex; color: var(--status-running); }
+.swarmify-root .fresh.syncing { color: var(--status-running); border-color: var(--status-running); }
+.swarmify-root .fresh.syncing .rot { animation: sw-spin .9s linear infinite; }
+.swarmify-root .fresh.stale { color: var(--status-pending); border-color: var(--status-pending); }
+.swarmify-root .fresh.stale .rot { color: var(--status-pending); }
+@keyframes sw-spin { to { transform: rotate(360deg); } }
 
 /* stalled card — distinct from static .attn: a slow amber outline pulse says "no heartbeat" */
 .swarmify-root .fitem.stalled { border-color: var(--status-pending); box-shadow: 0 0 0 1px var(--status-pending-bg); animation: sw-stall 2.4s ease-in-out infinite; }
@@ -359,6 +396,55 @@
 .swarmify-root .failcard .reassign { border: 1px solid var(--ds-border-strong); background: var(--ds-bg); color: var(--ds-text); border-radius: var(--r-md); padding: 6px 10px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
 
 @media (prefers-reduced-motion: reduce) {
-  .swarmify-root .heartbeat .beat,
+  .swarmify-root .hb .beat,
+  .swarmify-root .fresh.syncing .rot,
   .swarmify-root .fitem.stalled { animation: none; }
 }
+
+/* ---------- Host detail / configure pane (HostDetail.tsx) ---------- */
+.swarmify-root .host-status { font-size: 11px; font-weight: 600; color: var(--ds-text-dim); text-transform: lowercase; }
+.swarmify-root .host-btn { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 5px 11px; border-radius: var(--r-md); border: 1px solid var(--ds-border); background: var(--ds-bg-panel); color: var(--ds-text-muted); cursor: pointer; }
+.swarmify-root .host-btn:hover { color: var(--ds-text); border-color: var(--ds-border-strong); }
+.swarmify-root .host-btn.primary { background: var(--brand); border-color: transparent; color: #1a1a1a; }
+.swarmify-root .host-btn.primary:hover { background: var(--brand-600); }
+.swarmify-root .host-btn.danger { color: var(--status-failed); border-color: var(--status-failed-bg); }
+.swarmify-root .host-btn.danger:hover { background: var(--status-failed-bg); }
+.swarmify-root .host-btn:disabled { opacity: .5; cursor: default; }
+
+.swarmify-root .host-offline-note { padding: 9px 12px; border-radius: var(--r-md); background: var(--status-failed-bg); border: 1px solid var(--status-failed); color: var(--status-failed); font-size: 12px; }
+
+.swarmify-root .host-meta-grid { display: grid; grid-template-columns: 96px 1fr; gap: 6px 10px; align-items: center; font-size: 12px; margin-bottom: 12px; }
+.swarmify-root .host-meta-k { color: var(--ds-text-dim); font-size: 11px; }
+.swarmify-root .host-meta-v { color: var(--ds-text); }
+.swarmify-root .host-cap { display: inline-block; font-size: 11px; padding: 1px 7px; margin-right: 5px; border-radius: 999px; border: 1px solid var(--ds-border); background: var(--ds-bg-panel); color: var(--ds-text-muted); }
+.swarmify-root .host-dim { color: var(--ds-text-faint); font-size: 12px; }
+
+.swarmify-root .host-config-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.swarmify-root .host-caps-input { flex: 1; min-width: 140px; font-size: 12px; padding: 5px 9px; border-radius: var(--r-md); border: 1px solid var(--ds-border); background: var(--ds-bg); color: var(--ds-text); }
+.swarmify-root .host-config-error { margin-top: 8px; color: var(--status-failed); font-size: 12px; }
+.swarmify-root .host-fetched { color: var(--ds-text-faint); font-weight: 400; letter-spacing: 0; text-transform: none; }
+
+.swarmify-root .host-agent { border: 1px solid var(--ds-border); border-radius: var(--r-lg); margin-bottom: 8px; overflow: hidden; }
+.swarmify-root .host-agent-h { display: flex; align-items: center; gap: 8px; padding: 7px 11px; background: var(--ds-bg); border-bottom: 1px solid var(--ds-border-subtle); }
+.swarmify-root .host-agent-nm { font-weight: 650; font-size: 13px; }
+.swarmify-root .host-agent-c { margin-left: auto; color: var(--ds-text-faint); font-size: 11px; }
+.swarmify-root .host-res-row { display: flex; flex-wrap: wrap; gap: 6px; padding: 7px 11px; background: var(--ds-bg-panel); border-bottom: 1px solid var(--ds-border-subtle); }
+.swarmify-root .host-res { font-size: 11px; color: var(--ds-text-dim); }
+.swarmify-root .host-res b { color: var(--ds-text); font-weight: 650; }
+
+.swarmify-root .host-ver { display: grid; grid-template-columns: 96px 1fr 110px 76px; gap: 8px; align-items: center; padding: 6px 11px; font-size: 12px; border-top: 1px solid var(--ds-border-subtle); }
+.swarmify-root .host-ver:first-child { border-top: none; }
+.swarmify-root .host-ver-v { display: flex; align-items: center; gap: 6px; }
+.swarmify-root .host-tag { font-size: 9px; font-weight: 700; color: #177245; background: var(--status-running-bg); padding: 1px 5px; border-radius: var(--r-sm); }
+.swarmify-root .host-ver-acct { color: var(--ds-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.swarmify-root .host-plan { color: var(--ds-text-faint); font-size: 10px; margin-left: 5px; text-transform: uppercase; }
+.swarmify-root .host-unsigned { color: var(--status-pending); font-weight: 600; }
+.swarmify-root .host-ver-usage { display: flex; gap: 6px; justify-self: end; }
+.swarmify-root .host-bar { display: flex; align-items: center; gap: 3px; font-size: 9px; color: var(--ds-text-dim); }
+.swarmify-root .host-track { width: 40px; height: 5px; border-radius: 3px; background: var(--ds-bg-sunken); overflow: hidden; }
+.swarmify-root .host-fill { display: block; height: 100%; background: var(--brand-600); }
+.swarmify-root .host-fill.hi { background: var(--status-pending); }
+.swarmify-root .host-fill.crit { background: var(--status-failed); }
+.swarmify-root .host-ver-drift { justify-self: end; font-size: 10px; }
+.swarmify-root .host-drift-warn { color: #8a6d16; background: var(--status-pending-bg); padding: 1px 6px; border-radius: var(--r-sm); font-weight: 600; }
+.swarmify-root .host-drift-ok { color: var(--ds-text-faint); }

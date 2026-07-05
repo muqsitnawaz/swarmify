@@ -1,5 +1,11 @@
 import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { extractSessionQuickDetails, extractSessionQuickSummary } from './session.summary';
+
+function fixture(name: string): string {
+  return readFileSync(join(import.meta.dir, 'testdata', name), 'utf8');
+}
 
 describe('extractSessionQuickSummary', () => {
   test('parses Claude session summary details', () => {
@@ -289,5 +295,40 @@ describe('extractSessionQuickSummary', () => {
     expect(details.recentTools[0]).toBe('Edit');
     expect(details.recentTools[1]).toBe('WebSearch');
     expect(details.recentTools[2]).toBe('Read');
+  });
+});
+
+describe('narrative extraction', () => {
+  test('Claude: narrative is the last assistant prose, not the trailing tool/thinking turn', () => {
+    const details = extractSessionQuickDetails(fixture('narrative-claude.jsonl'), 'claude');
+    expect(details.narrative).toBe('Now updating the config to add the narrative field before the tool call runs.');
+  });
+
+  test('Codex: narrative is the last output_text message, not the apply_patch call', () => {
+    const details = extractSessionQuickDetails(fixture('narrative-codex.jsonl'), 'codex');
+    expect(details.narrative).toBe('Found the off-by-one in the loop bound; patching parser.ts now.');
+  });
+
+  test('Gemini: narrative is the last assistant message content, not the tool call', () => {
+    const details = extractSessionQuickDetails(fixture('narrative-gemini.jsonl'), 'gemini');
+    expect(details.narrative).toBe('Wiring the alias into vite.config.ts so the webview bundle resolves the shared model.');
+  });
+
+  test('narrative is empty when the session has no assistant prose', () => {
+    const toolOnly = extractSessionQuickDetails(fixture('claude-session.jsonl'), 'claude');
+    expect(toolOnly.narrative).toBe('');
+    expect(extractSessionQuickDetails('', 'claude').narrative).toBe('');
+  });
+
+  test('narrative truncates long prose at a word boundary', () => {
+    const long = 'word '.repeat(80).trim();
+    const line = JSON.stringify({
+      type: 'assistant',
+      message: { content: [{ type: 'text', text: long }] },
+    });
+    const details = extractSessionQuickDetails(line, 'claude');
+    expect(details.narrative.length).toBeLessThanOrEqual(163);
+    expect(details.narrative.endsWith('...')).toBe(true);
+    expect(details.narrative).not.toContain('wor.');
   });
 });
