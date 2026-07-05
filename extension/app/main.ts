@@ -10,13 +10,22 @@ import * as os from 'os'
 import { getDefaultSettings } from '../src/core/settings'
 import { fetchAllFloorTasks } from './floorData'
 
-// Anchor every path on the compiled-main directory (app/dist), which
-// app.getAppPath() returns when launched as `electron ./dist/main.js`. Layout:
-// <ext>/app/dist/{main,preload}.js, <ext>/out/app-ui (built UI), <ext>/assets.
-const DIST_DIR = app.getAppPath()
-const UI_INDEX = path.join(DIST_DIR, '..', '..', 'out', 'app-ui', 'index.html')
-const PRELOAD = path.join(DIST_DIR, 'preload.js')
-const ASSETS_DIR = path.join(DIST_DIR, '..', '..', 'assets')
+// Resolve UI / preload / assets for both dev and a packaged .app.
+//   dev  (`electron ./dist/main.js`): getAppPath() = <ext>/app/dist; the built
+//        UI + assets sit at <ext>/out/app-ui and <ext>/assets.
+//   packaged (electron-builder): getAppPath() = .../Resources/app.asar with
+//        main/preload under dist/ inside it; the UI + assets are copied to
+//        Resources/ via `extraResources` (see package.json build config).
+const APP = app.getAppPath()
+const UI_INDEX = app.isPackaged
+  ? path.join(process.resourcesPath, 'app-ui', 'index.html')
+  : path.join(APP, '..', '..', 'out', 'app-ui', 'index.html')
+const PRELOAD = app.isPackaged
+  ? path.join(APP, 'dist', 'preload.js')
+  : path.join(APP, 'preload.js')
+const ASSETS_DIR = app.isPackaged
+  ? path.join(process.resourcesPath, 'assets')
+  : path.join(APP, '..', '..', 'assets')
 const POLL_MS = 5000
 
 let win: BrowserWindow | null = null
