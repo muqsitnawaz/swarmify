@@ -1,6 +1,7 @@
 import React from 'react'
 import { Icon } from './icons'
-import { StructuredReply } from './StructuredReply'
+import { AgentAvatar, agentIdFromPrefix } from './AgentAvatar'
+import { StructuredReply, type ReplyCallbacks } from './StructuredReply'
 import { heartbeatLevel, type FloorAgent, type FloorTicket } from './floorModel'
 import { sinceFromMs } from './floorAdapter'
 import { useNow } from './useNow'
@@ -43,7 +44,7 @@ function FeedItemImpl({ agent: a, selected, plain, onSelect, onOption, onFreeTex
   const liveSince = beats ? sinceFromMs(ageMs) : a.since
 
   const tok = plainTok(a.tok, plain)
-  const meta = plain ? a.project : `${a.project} · ${a.host}${a.ticket ? ` · ${a.ticket}` : ''}`
+  const meta = plain ? a.project : `${a.project} · ${a.hostLabel ?? a.host}${a.ticket ? ` · ${a.ticket}` : ''}`
   const destructive = a.question?.kind === 'destructive'
   const attn = a.phase === 'failed' ? 'fail' : stalled ? 'stall' : a.needs ? 'attn' : ''
 
@@ -72,7 +73,7 @@ function FeedItemImpl({ agent: a, selected, plain, onSelect, onOption, onFreeTex
     >
       <div className="head">
         <span className={`dot ${a.phase}`} />
-        <span className={`av ${a.abbr}`}>{a.abbr}</span>
+        <AgentAvatar id={agentIdFromPrefix(a.abbr) ?? a.abbr.toLowerCase()} size={20} title={a.abbr} />
         <span className="who">{a.name}</span>
         <span className="path">{meta}</span>
         <span className="when">

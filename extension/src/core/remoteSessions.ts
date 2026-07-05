@@ -27,6 +27,22 @@ export type RemotePhase = 'running' | 'idle' | 'waiting' | 'failed' | 'done';
 type ParsableAgentType = 'claude' | 'codex' | 'gemini';
 
 /**
+ * Canonicalize a hostname to its short device label, mirroring agents-cli's
+ * `normalizeHost` (machineId in its session/sync config): take the first dotted
+ * label, lowercase it, and collapse any non-alphanumeric run to a single hyphen.
+ * So `zion.local` and `ZION` both become `zion`, which lines up with the
+ * `agents devices` registry names used under the HOSTS sidebar. Empty in → empty out.
+ */
+export function normalizeHost(raw: string): string {
+  return (raw || '')
+    .split('.')[0]
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+/**
  * The cross-host analog of a local agent. One record per active session on one
  * machine. `host` is the machine we queried ('this-mac' locally, an ssh/tailscale
  * name remotely) — never the raw `host` field of the CLI payload, which is the

@@ -3,12 +3,20 @@ import type { TaskSummary, TerminalDetail as TerminalInfo } from '../../types'
 export type PendingDispatch = {
   id: string
   agentType: string
-  target: 'local' | 'cloud'
+  target: 'local' | 'cloud' | 'device'
   taskId: string
   taskIdentifier: string
   title: string
   createdAt: number
   targetRepo?: string
+  // Device-target metadata (target === 'device'): the registered device the
+  // agent is spawned on over SSH, the secret bundle its creds resolve from, the
+  // resolved project path on that host, the repo slug, and the auto-sync policy.
+  deviceName?: string
+  secretRef?: string
+  projectPath?: string
+  repoSlug?: string
+  syncPolicy?: 'off' | 'safe' | 'aggressive'
   /**
    * 'pending' = dispatched, waiting for a matching terminal/task to appear
    * 'timedOut' = TTL elapsed with no match — treated as a failure signal,
@@ -57,7 +65,11 @@ export function reconcilePending(
     const termMatch = terminals.find((t) =>
       t.agentType === p.agentType && (t.createdAt || 0) >= p.createdAt - matchSlackMs
     )
-    if (p.target === 'local') {
+    if (p.target === 'local' || p.target === 'device') {
+      // Device dispatch spawns over SSH on a remote host, so there is no local
+      // terminal to match in the common case — a same-agentType local terminal
+      // (e.g. an ssh session tab) is still accepted as a best-effort signal;
+      // otherwise the entry falls through to the TTL clock like local does.
       if (termMatch) consumed.add(p.id)
       continue
     }
@@ -171,13 +183,15 @@ export function optimisticActivityLabel(p: PendingDispatch): string {
   const label = p.taskIdentifier || p.title.slice(0, 40)
   const suffix = p.targetRepo ? ` -> ${p.targetRepo}` : ''
   if ((p.status ?? 'pending') === 'timedOut') {
-    return p.target === 'cloud'
-      ? `Dispatch timed out — check Rush Cloud terminal (${label}${suffix})`
-      : `Dispatch timed out — check terminal (${label})`
+    if (p.target === 'cloud') return `Dispatch timed out — check Rush Cloud terminal (${label}${suffix})`
+    if (p.target === 'device') {
+      return `Dispatch timed out — check ${p.deviceName ?? 'device'} over SSH (${label})`
+    }
+    return `Dispatch timed out — check terminal (${label})`
   }
-  return p.target === 'cloud'
-    ? `Queuing on Rush Cloud... (${label}${suffix})`
-    : `Starting... (${label})`
+  if (p.target === 'cloud') return `Queuing on Rush Cloud... (${label}${suffix})`
+  if (p.target === 'device') return `Starting on ${p.deviceName ?? 'device'}... (${label})`
+  return `Starting... (${label})`
 }
 
 export type CloudProvider = 'rush' | 'codex' | 'factory'

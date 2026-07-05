@@ -1,6 +1,6 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { Icon } from './icons'
-import type { FloorAgent, FloorTicket } from './floorModel'
+import { computeHostRows, type FloorAgent, type FloorTicket, type HostRow } from './floorModel'
 
 // Left scope sidebar. Prototype buildSidebar(): factory-floor.html:563-579,
 // wiring wireSidebar():580-588. Smart (All / Needs you), Queue (Backlog),
@@ -12,8 +12,18 @@ interface FloorSidebarProps {
   tickets: FloorTicket[]
   /** Current project filter: null = All agents; a project name otherwise. */
   projFilter: string | null
+  /** Current host scope: null = no host filter; a host name highlights that row. */
+  hostFilter?: string | null
   /** Hosts known to be offline (health comes from SHELL, not hardcoded). */
   offlineHosts?: string[]
+  /** Registered device fleet (agents devices) to surface under HOSTS, even with 0 agents. */
+  devices?: { name: string; online: boolean; agents: number }[]
+  /** Ordered list of pinned host names (pinned hosts render first, drag-reorderable). */
+  hostPins?: string[]
+  /** Pin/unpin a host (moves it above/below the divider). */
+  onToggleHostPin?: (name: string) => void
+  /** Persist a new pinned order after a drag. */
+  onReorderHostPins?: (names: string[]) => void
   /**
    * Scope routing. '' = All agents, '__needs' = Needs you, '__queue' = Backlog,
    * otherwise a project name. Mirrors wireSidebar()'s data-proj values.
@@ -30,27 +40,63 @@ interface FloorSidebarProps {
   hosts?: Array<{ name: string; online: boolean }>
 }
 
-export function FloorSidebar({ agents, tickets, projFilter, offlineHosts = [], onScope, onSelectHost, selectedHost = null, hosts = [] }: FloorSidebarProps) {
+export function FloorSidebar({ agents, tickets, projFilter, hostFilter = null, offlineHosts = [], devices = [], hostPins = [], onToggleHostPin, onReorderHostPins, onScope }: FloorSidebarProps) {
   const byProj: Record<string, number> = {}
-  const byHost: Record<string, number> = {}
   const projWait: Record<string, number> = {}
   for (const a of agents) {
     byProj[a.project] = (byProj[a.project] || 0) + 1
-    byHost[a.host] = (byHost[a.host] || 0) + 1
     if (a.needs) projWait[a.project] = (projWait[a.project] || 0) + 1
   }
   const needs = agents.filter((a) => a.needs).length
-  const offline = new Set(offlineHosts)
+  // HOSTS rows: local machine folded to its real device name, merged with the
+  // online device fleet, pinned hosts first. Pure + unit-tested (computeHostRows).
+  const hostRows = computeHostRows(agents, devices, offlineHosts, hostPins)
+  const pinnedRows = hostRows.filter((h) => h.pinned)
+  const restRows = hostRows.filter((h) => !h.pinned)
 
-  // HOSTS list = hosts running agents (byHost) plus reachable roster hosts. Idle
-  // ssh-config aliases that are offline with no agents stay hidden (clutter);
-  // online devices (yosemite, mac-mini, win-mini) show even with zero agents.
-  const rosterOnline = new Map(hosts.map((h) => [h.name, h.online]))
-  const hostNames = [...new Set<string>([
-    ...Object.keys(byHost),
-    ...hosts.filter((h) => h.online).map((h) => h.name),
-  ])].sort()
-  const hostOffline = (ho: string) => (rosterOnline.has(ho) ? !rosterOnline.get(ho) : offline.has(ho))
+  const [dragName, setDragName] = useState<string | null>(null)
+  const [overName, setOverName] = useState<string | null>(null)
+
+  // Drop `dragName` immediately before `target` in the persisted pin order.
+  const dropBefore = (target: string) => {
+    if (dragName && dragName !== target) {
+      const without = hostPins.filter((n) => n !== dragName)
+      const idx = without.indexOf(target)
+      const next = idx < 0 ? [...without, dragName] : [...without.slice(0, idx), dragName, ...without.slice(idx)]
+      onReorderHostPins?.(next)
+    }
+    setDragName(null)
+    setOverName(null)
+  }
+
+  const renderHost = (h: HostRow) => (
+    <div
+      key={h.name}
+      className={`sb-item sb-host${h.pinned ? ' pinned' : ''}${hostFilter === h.name ? ' on' : ''}${dragName === h.name ? ' dragging' : ''}${overName === h.name ? ' dragover' : ''}`}
+      draggable={h.pinned}
+      onDragStart={h.pinned ? (e) => { setDragName(h.name); e.dataTransfer.effectAllowed = 'move' } : undefined}
+      onDragOver={h.pinned ? (e) => { e.preventDefault(); if (dragName && dragName !== h.name) setOverName(h.name) } : undefined}
+      onDragLeave={h.pinned ? () => setOverName((n) => (n === h.name ? null : n)) : undefined}
+      onDrop={h.pinned ? (e) => { e.preventDefault(); dropBefore(h.name) } : undefined}
+      onDragEnd={() => { setDragName(null); setOverName(null) }}
+      onClick={() => onScope(`host:${h.name}`)}
+    >
+      <span className="sb-grip" title={h.pinned ? 'Drag to reorder' : undefined}>
+        {h.pinned ? <Icon name="grip" size={12} /> : null}
+      </span>
+      <span className={`hd ${h.offline ? 'off' : ''}`} />
+      <span>{h.name}</span>
+      <span className="c">{h.offline ? <span style={{ color: 'var(--fail)' }}>offline</span> : h.count}</span>
+      <button
+        type="button"
+        className={`sb-pin${h.pinned ? ' on' : ''}`}
+        title={h.pinned ? 'Unpin' : 'Pin to top'}
+        onClick={(e) => { e.stopPropagation(); onToggleHostPin?.(h.name) }}
+      >
+        <Icon name="pin" size={12} />
+      </button>
+    </div>
+  )
 
   return (
     <div className="sidebar">
@@ -82,17 +128,9 @@ export function FloorSidebar({ agents, tickets, projFilter, offlineHosts = [], o
       ))}
 
       <div className="sb-sec">HOSTS</div>
-      {hostNames.map((ho) => (
-        <div
-          key={ho}
-          className={`sb-item ${selectedHost === ho ? 'on' : ''}`}
-          onClick={() => onSelectHost?.(ho)}
-        >
-          <span className={`hd ${hostOffline(ho) ? 'off' : ''}`} />
-          <span>{ho}</span>
-          <span className="c">{hostOffline(ho) ? <span style={{ color: 'var(--fail)' }}>offline</span> : (byHost[ho] ?? 0)}</span>
-        </div>
-      ))}
+      {pinnedRows.map(renderHost)}
+      {pinnedRows.length > 0 && restRows.length > 0 && <div className="sb-host-div" />}
+      {restRows.map(renderHost)}
     </div>
   )
 }

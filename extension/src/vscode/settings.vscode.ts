@@ -45,6 +45,12 @@ import { buildAgentTerminalEnv } from '../core/terminals';
 import * as foreman from './foreman.vscode';
 import { startForemanAudio, ForemanAudioSession } from './foreman.audio';
 import { buildTaskDispatchPrompt } from '../core/tasks';
+import { listRegisteredDevices, fetchDeviceStats, countRunningAgents, resolveSecret, getDeviceSyncStatus } from './deviceHealth.vscode';
+import { inferProjectCandidates } from '../core/projectIndex';
+import { normalizeHost } from '../core/remoteSessions';
+import { rankRepos } from '../core/repoIndex';
+import { detectProjects } from '../core/projectDetect';
+import { getSyncStatus } from '../core/repoSync';
 
 let foremanSession: ForemanAudioSession | undefined;
 let foremanSessionGen = 0;
@@ -278,6 +284,99 @@ function composeDispatchPrompt(
     parts.push(`Attachments: ${attachments.map(a => a.ref ? `${a.name} (${a.ref})` : a.name).join(', ')}`);
   }
   return parts.join('\n\n');
+}
+
+// ---------------------------------------------------------------------------
+// Registered-device dispatch (SSH to a real machine). A device is 'local' when
+// its host points at this machine; otherwise the agent is spawned over SSH.
+// ---------------------------------------------------------------------------
+function isLocalDeviceHost(host: string): boolean {
+  const h = hostname();
+  return host === 'this-mac' || host === 'localhost' || host === '' || host === h || host === h.split('.')[0];
+}
+
+// Single-quote a value for safe embedding in a remote /bin/sh command.
+function shq(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+// Build the auto-sync shell snippet run in the project dir before the agent
+// starts. Safe = fetch + fast-forward only (fails loudly on divergence rather
+// than forcing). Aggressive = also rebase, but never force: on a rebase
+// conflict it aborts and exits non-zero so the caller can surface it. Off = ''.
+function buildDeviceSyncShell(policy: 'off' | 'safe' | 'aggressive'): string {
+  if (policy === 'off') return '';
+  const fetch = 'git fetch origin';
+  if (policy === 'safe') {
+    return `${fetch} && git merge --ff-only @{u}`;
+  }
+  return `${fetch} && (git merge --ff-only @{u} || git rebase @{u} || (git rebase --abort; echo "SYNC_CONFLICT: rebase left conflicts — resolve manually" 1>&2; exit 3))`;
+}
+
+const deviceExecFileAsync = promisify(execFile);
+
+// Spawn a coding agent on a registered device over SSH, honoring the resolved
+// credentials (identity file / user) and the auto-sync policy. Fire-and-forget:
+// the remote agent is backgrounded (nohup) so the ssh call returns promptly.
+// Returns an error string to surface inline, or null on success.
+async function dispatchToDevice(input: {
+  agentType: string;
+  host: string;
+  secretRef?: string;
+  projectPath: string;
+  repoSlug?: string;
+  syncPolicy: 'off' | 'safe' | 'aggressive';
+  mode: DispatchModeMsg;
+  prompt: string;
+}): Promise<string | null> {
+  const { agentType, host, secretRef, projectPath, repoSlug, syncPolicy, mode, prompt } = input;
+  if (!projectPath) return 'Device dispatch: no project path resolved — pick a repo/project first.';
+
+  const creds = secretRef ? await resolveSecret(secretRef) : {};
+  const syncShell = buildDeviceSyncShell(syncPolicy);
+  // `agents run <agent> [prompt]` — the prompt is POSITIONAL (no -p flag).
+  // agentType is quoted too (it originates from a webview message).
+  const runCmd = `agents run ${shq(agentType)} --mode ${mode} ${shq(prompt)}`;
+  // Resolve $P on the remote (tilde expands against the remote $HOME), clone the
+  // repo there if it isn't present (a missing clone is just a sync state), then
+  // run the auto-sync policy and start the agent.
+  const pAssign =
+    projectPath === '~' ? 'P="$HOME"'
+      : projectPath.startsWith('~/') ? `P="$HOME/"${shq(projectPath.slice(2))}`
+        : `P=${shq(projectPath)}`;
+  const cloneUrl = repoSlug ? `git@github.com:${repoSlug}.git` : '';
+  const ensureClone = cloneUrl
+    ? `if [ ! -d "$P/.git" ]; then mkdir -p "$(dirname "$P")" && git clone ${shq(cloneUrl)} "$P"; fi && `
+    : '';
+  const remote =
+    `mkdir -p "$HOME/.agents/.tmp"; ${pAssign}; ${ensureClone}cd "$P" && ` +
+    (syncShell ? `${syncShell} && ` : '') +
+    `nohup ${runCmd} > "$HOME/.agents/.tmp/dispatch-$(date +%s).log" 2>&1 &`;
+
+  if (isLocalDeviceHost(host)) {
+    // Local device: run the same snippet through the login shell, no SSH hop.
+    try {
+      await deviceExecFileAsync('/bin/sh', ['-lc', remote], { timeout: 60_000 });
+      return null;
+    } catch (err) {
+      const e = err as { stderr?: string; message?: string };
+      return `Device dispatch failed on ${host}: ${(e.stderr || e.message || 'unknown error').trim()}`;
+    }
+  }
+
+  const target = creds.user ? `${creds.user}@${host}` : host;
+  const args = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8', '-o', 'StrictHostKeyChecking=accept-new'];
+  if (creds.identityFile) args.push('-i', creds.identityFile);
+  // `--` stops ssh option parsing (host/user could start with '-'); run through a
+  // login shell so agents/git resolve on PATH (ssh's default shell is non-login).
+  args.push('--', target, `bash -lc ${shq(remote)}`);
+  try {
+    await deviceExecFileAsync('ssh', args, { timeout: 60_000 });
+    return null;
+  } catch (err) {
+    const e = err as { stderr?: string; message?: string };
+    return `Device dispatch failed on ${host}: ${(e.stderr || e.message || 'unknown error').trim()}`;
+  }
 }
 
 // Per-session policy captured at dispatch time. The Floor / notification layer
@@ -1186,7 +1285,7 @@ export function openPanelAndFocusQuickSpawn(context: vscode.ExtensionContext): v
 // vendor APIs for usage stats. Within the TTL, repeat calls are instant.
 // Strategy mutations bust the cache so the UI reflects the new state.
 const INVENTORY_CACHE_TTL_MS = 60_000;
-const INVENTORY_AGENT_KEYS = ['claude', 'codex', 'gemini', 'opencode', 'cursor'];
+const INVENTORY_AGENT_KEYS = ['claude', 'codex', 'gemini', 'opencode', 'cursor', 'kimi', 'grok', 'droid', 'antigravity', 'copilot', 'amp'];
 let cachedInventories: { data: Record<string, AgentInventory>; fetchedAt: number } | null = null;
 let inventoryFetchInflight: Promise<Record<string, AgentInventory>> | null = null;
 
@@ -1543,13 +1642,114 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
           const defaultTitle = context.globalState.get<string>('agents.defaultAgentTitle', 'CC');
           const defaultAgentId = getBuiltInDefByTitle(defaultTitle)?.key ?? 'claude';
           const agents = mapInventoriesToInstalledAgents(inventories, defaultAgentId);
-          const hosts = buildDispatchHosts(hostResult.hosts, LOCAL_LABEL);
+          // RUN ON = this machine + cloud only. The remote fleet lives in the
+          // device selector (sourced from `agents devices` with correct online
+          // status) — keeping remotes out of here avoids a duplicate, stale,
+          // all-offline host roster.
+          const hosts = buildDispatchHosts(hostResult.hosts, LOCAL_LABEL).filter((h) => h.kind !== 'remote');
           const targets = rankTargets(hostResult.sessions);
           settingsPanel?.webview.postMessage({ type: 'dispatchData', agents, hosts, targets });
         } catch (err) {
           console.error('[SETTINGS] Error fetching dispatch data:', err);
           settingsPanel?.webview.postMessage({ type: 'dispatchData', agents: [], hosts: [], targets: [] });
         }
+        break;
+      }
+      // ---- registered-device dispatch data (Dispatch panel device path) ----
+      case 'listDevices': {
+        // `local` is this machine's canonical device name (matches an `agents
+        // devices` registry entry when the local hostname is aligned with it, as
+        // agents-cli's own self-detection assumes). The sidebar folds its local
+        // session bucket into this name so the machine shows once under its real
+        // name instead of duplicated as 'this-mac' + the registry name.
+        const local = normalizeHost(hostname());
+        try {
+          const devices = await listRegisteredDevices();
+          settingsPanel?.webview.postMessage({ type: 'devicesData', devices, local });
+        } catch (err) {
+          console.error('[SETTINGS] Error listing devices:', err);
+          settingsPanel?.webview.postMessage({ type: 'devicesData', devices: [], local });
+        }
+        break;
+      }
+      case 'deviceHealth': {
+        // Online status comes from the agents-cli registry (tailscale.online).
+        // For online devices only, fetch live load (loadAvg/mem) and running
+        // agent count over their real address; skip offline hosts to avoid SSH
+        // hangs.
+        try {
+          const devices = await listRegisteredDevices();
+          const health = await Promise.all(
+            devices.map(async (device) => {
+              if (!device.online) {
+                return { device, stats: { host: device.host, reachable: false, runningAgents: 0, fetchedAt: Date.now() } };
+              }
+              const isLocal = isLocalDeviceHost(device.host);
+              const creds = device.secretRef ? await resolveSecret(device.secretRef) : {};
+              const [stats, runningAgents] = await Promise.all([
+                fetchDeviceStats(device.host, { isLocal, identityFile: creds.identityFile, user: creds.user || device.user }),
+                countRunningAgents(device.host, { isLocal }),
+              ]);
+              return { device, stats: { ...stats, reachable: true, runningAgents } };
+            }),
+          );
+          settingsPanel?.webview.postMessage({ type: 'deviceHealthData', health });
+        } catch (err) {
+          console.error('[SETTINGS] Error fetching device health:', err);
+          settingsPanel?.webview.postMessage({ type: 'deviceHealthData', health: [] });
+        }
+        break;
+      }
+      case 'projectCandidates': {
+        try {
+          const candidates = await inferProjectCandidates();
+          settingsPanel?.webview.postMessage({ type: 'projectCandidatesData', candidates });
+        } catch (err) {
+          console.error('[SETTINGS] Error inferring project candidates:', err);
+          settingsPanel?.webview.postMessage({ type: 'projectCandidatesData', candidates: [] });
+        }
+        break;
+      }
+      case 'repos': {
+        try {
+          const candidates = await inferProjectCandidates();
+          const repos = await rankRepos(candidates, detectProjects);
+          settingsPanel?.webview.postMessage({ type: 'reposData', repos });
+        } catch (err) {
+          console.error('[SETTINGS] Error ranking repos:', err);
+          settingsPanel?.webview.postMessage({ type: 'reposData', repos: [] });
+        }
+        break;
+      }
+      case 'repoSync': {
+        const root = typeof message.root === 'string' ? message.root : '';
+        const syncHost = typeof message.host === 'string' ? message.host : '';
+        const syncSecretRef = typeof message.secretRef === 'string' ? message.secretRef : undefined;
+        if (!root) {
+          settingsPanel?.webview.postMessage({ type: 'repoSyncData', root: '', status: null });
+          break;
+        }
+        try {
+          // Check sync AS IT EXISTS ON THE SELECTED DEVICE (incl. not-cloned),
+          // not on the local mac. Falls back to the local repo for this-mac.
+          let status;
+          if (syncHost && !isLocalDeviceHost(syncHost)) {
+            const creds = syncSecretRef ? await resolveSecret(syncSecretRef) : {};
+            status = await getDeviceSyncStatus(syncHost, root, { isLocal: false, identityFile: creds.identityFile, user: creds.user });
+          } else {
+            status = await getSyncStatus(root, { fetch: true });
+          }
+          settingsPanel?.webview.postMessage({ type: 'repoSyncData', root, status });
+        } catch (err) {
+          console.error('[SETTINGS] Error checking repo sync:', err);
+          settingsPanel?.webview.postMessage({ type: 'repoSyncData', root, status: null });
+        }
+        break;
+      }
+      case 'manageDevices': {
+        const term = vscode.window.createTerminal('agents devices');
+        term.show();
+        term.sendText('agents devices sync');
         break;
       }
       case 'fetchAgentResources': {
@@ -1829,6 +2029,44 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
       }
       case 'dispatchTask': {
         const agentType = typeof message.agentType === 'string' ? message.agentType : 'claude';
+        // Device target: spawn the agent on a registered machine over SSH, in the
+        // resolved project path, honoring the auto-sync policy + resolved creds.
+        // Kept separate from the local/cloud branches below (which are unchanged).
+        if (message.target === 'device') {
+          const deviceHost = typeof message.host === 'string' ? message.host : '';
+          const projectPath = typeof message.projectPath === 'string' ? message.projectPath : '';
+          const secretRef = typeof message.secretRef === 'string' ? message.secretRef : undefined;
+          const syncPolicy: 'off' | 'safe' | 'aggressive' =
+            message.syncPolicy === 'off' || message.syncPolicy === 'aggressive' ? message.syncPolicy : 'safe';
+          const deviceMode: DispatchModeMsg =
+            message.mode === 'plan' || message.mode === 'edit' ? message.mode : 'auto';
+          const deviceName = typeof message.deviceName === 'string' ? message.deviceName : deviceHost;
+          const promptBody = typeof message.description === 'string' ? message.description : '';
+          const promptIdentifier = typeof message.identifier === 'string' ? message.identifier : '';
+          const devicePrompt = [promptBody.trim(), promptIdentifier ? `Attached ticket: ${promptIdentifier}` : '']
+            .filter(Boolean)
+            .join('\n\n') || (typeof message.title === 'string' ? message.title : '');
+          if (!deviceHost) {
+            vscode.window.showErrorMessage('Device dispatch: no device host provided.');
+            break;
+          }
+          if (!devicePrompt.trim()) {
+            vscode.window.showErrorMessage('Device dispatch: nothing to do — add a prompt or attach a ticket.');
+            break;
+          }
+          const err = await dispatchToDevice({
+            agentType,
+            host: deviceHost,
+            secretRef,
+            projectPath,
+            repoSlug: typeof message.repoSlug === 'string' ? message.repoSlug : undefined,
+            syncPolicy,
+            mode: deviceMode,
+            prompt: devicePrompt,
+          });
+          if (err) vscode.window.showErrorMessage(`${deviceName}: ${err}`);
+          break;
+        }
         const target = message.target === 'cloud' ? 'cloud' : 'local';
         // Cloud provider picks which backend we shell out to. 'rush' keeps
         // the legacy `rush cloud run` path so existing users see no change.
@@ -2191,6 +2429,22 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
         );
         if (!res.success) {
           vscode.window.showErrorMessage(`Nudge failed: ${res.error ?? 'unknown error'}`);
+        }
+        break;
+      }
+      // Answer a waiting "Needs you" agent — the Floor's core action. The webview posts
+      // the agent's session id as `agentId`; deliver the chosen option / free text to that
+      // session (same send path as nudge). Before this case existed the reply was dropped.
+      case 'replyToAgent': {
+        const sessionId = typeof message.agentId === 'string' ? message.agentId : '';
+        const text = typeof message.text === 'string' ? message.text.trim() : '';
+        if (!sessionId || !text) {
+          vscode.window.showErrorMessage('Reply: missing session id or text');
+          break;
+        }
+        const res = await nudgeSession(sessionId, text, 'floor-reply');
+        if (!res.success) {
+          vscode.window.showErrorMessage(`Reply failed: ${res.error ?? 'unknown error'}`);
         }
         break;
       }
@@ -2743,6 +2997,8 @@ function getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri): s
   const cursorIconLight = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'cursor-light.png'));
   const agentsIcon = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'agents.png'));
   const githubIcon = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'github.png'));
+  const antigravityIcon = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'antigravity.png'));
+  const grokIcon = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'assets', 'grok.png'));
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -2760,7 +3016,9 @@ function getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri): s
       cursor: { dark: "${cursorIcon}", light: "${cursorIconLight}" },
       shell: "${agentsIcon}",
       agents: "${agentsIcon}",
-      github: "${githubIcon}"
+      github: "${githubIcon}",
+      antigravity: "${antigravityIcon}",
+      grok: "${grokIcon}"
     };
   </script>
 </head>

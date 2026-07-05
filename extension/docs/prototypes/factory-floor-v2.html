@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Factory Floor v2 — redesign prototype</title>
+<style>
+  /* ---- LOCKED design tokens (from design-system.css / factory-floor.html) ---- */
+  :root {
+    --brand:#a3e635; --brand-600:#84cc16; --brand-ring:rgba(163,230,53,0.25);
+    --run:#22C55E; --idle:#6B7280; --fail:#EF4444; --wait:#D4A72C;
+    --run-bg:#E6F6EE; --fail-bg:#FCE8E8; --wait-bg:#FCF3DC; --idle-bg:#F0F0EF;
+    --r-sm:4px; --r-md:6px; --r-lg:8px; --r-xl:10px;
+  }
+  html[data-theme="light"]{
+    --bg:#E8E6E1; --panel:#F0EEEA; --sunken:#D8D5CF; --recessed:#D0CDC6;
+    --bd:rgba(0,0,0,0.12); --bd-strong:rgba(0,0,0,0.2); --bd-sub:rgba(0,0,0,0.06);
+    --tx:#1C1917; --tx-mut:#57534E; --tx-dim:#78716C; --tx-faint:#A8A29E;
+    --term-bg:#1c1a17; --term-tx:#d8cfc2;
+  }
+  html[data-theme="dark"]{
+    --bg:#0a0a0a; --panel:#141414; --sunken:#050505; --recessed:#0f0f0f;
+    --bd:rgba(255,255,255,0.08); --bd-strong:rgba(255,255,255,0.15); --bd-sub:rgba(255,255,255,0.04);
+    --tx:#E7E5E4; --tx-mut:#A8A29E; --tx-dim:#6E6A63; --tx-faint:#44403C;
+    --run-bg:rgba(34,197,94,0.12); --fail-bg:rgba(239,68,68,0.12); --wait-bg:rgba(212,167,44,0.12); --idle-bg:rgba(255,255,255,0.04);
+    --term-bg:#000; --term-tx:#bfb9ae;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--tx);
+    font-family:Geist,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    font-size:13px;line-height:1.45;letter-spacing:-0.005em;display:flex;flex-direction:column;}
+  .mono{font-family:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+  button{font-family:inherit;color:inherit;cursor:pointer}
+  svg{display:block}
+
+  /* ============ SINGLE HEADER (merged: was sw-topbar + FloorControls .top) ============ */
+  .top{display:flex;align-items:center;gap:12px;padding:0 14px;height:46px;background:var(--panel);
+    border-bottom:2px solid var(--bd-strong);flex:0 0 auto}
+  .logo{display:flex;align-items:center;gap:7px;font-weight:700;letter-spacing:.06em;flex:0 0 auto}
+  .logo .bolt{color:var(--brand);display:inline-flex}
+  .logo .ver{color:var(--tx-faint);font-size:10px;font-weight:600;letter-spacing:0}
+  .vdiv{width:1px;height:20px;background:var(--bd);flex:0 0 auto}
+  .navtabs{display:flex;gap:2px;flex:0 0 auto}
+  .navtabs button{border:none;background:transparent;padding:5px 13px;font-size:11px;font-weight:600;
+    letter-spacing:.04em;text-transform:uppercase;color:var(--tx-dim);border-radius:var(--r-sm);
+    font-family:"Geist Mono",monospace;white-space:nowrap}
+  .navtabs button.on{background:var(--sunken);color:var(--tx)}
+  .topsearch{flex:1 1 260px;min-width:120px;max-width:460px;background:var(--sunken);border:1px solid var(--bd);
+    border-radius:var(--r-md);padding:6px 10px 6px 30px;color:var(--tx);font-size:12px;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2378716C' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;background-position:9px center}
+  .grow{flex:1}
+  .stat{display:flex;align-items:center;gap:6px;color:var(--tx-mut);font-size:12px;flex:0 0 auto;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .stat b{color:var(--tx)}
+  .stat.tok{color:var(--brand-600);font-weight:600}
+  .iconbtn{border:1px solid var(--bd);background:var(--panel);border-radius:var(--r-md);width:30px;height:28px;
+    display:inline-flex;align-items:center;justify-content:center;color:var(--tx-mut);flex:0 0 auto}
+  .iconbtn:hover{color:var(--tx)}
+  .iconbtn.on{background:var(--brand);border-color:var(--brand);color:#1a1a1a}
+
+  /* ============ FILTER BAR (grouped, never wraps) ============ */
+  .fbar{display:flex;align-items:center;gap:10px;padding:7px 14px;background:var(--bg);
+    border-bottom:1px solid var(--bd-sub);flex-wrap:nowrap;overflow-x:auto;flex:0 0 auto;scrollbar-width:thin}
+  .fgroup{display:inline-flex;align-items:center;gap:6px;flex:0 0 auto}
+  .fgroup-label{font-size:9.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--tx-faint);flex:0 0 auto}
+  .fsep{width:1px;height:18px;background:var(--bd);flex:0 0 auto;margin:0 3px}
+  .ctl{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--tx-mut);flex:0 0 auto}
+  .sel{background:var(--panel);border:1px solid var(--bd);border-radius:var(--r-md);padding:4px 8px;font-size:12px;color:var(--tx);font-weight:600}
+  .chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--bd);background:var(--panel);border-radius:999px;
+    padding:3px 11px;font-size:11px;font-weight:600;color:var(--tx-mut);flex:0 0 auto;white-space:nowrap}
+  .chip .cdot{width:8px;height:8px;border-radius:50%}
+  .chip .cdot.run{background:var(--run)}.chip .cdot.idle{background:transparent;border:1.5px solid var(--idle)}
+  .chip .cdot.fail{background:var(--fail)}.chip .cdot.wait{background:var(--wait)}
+  .chip.on{background:var(--brand);border-color:var(--brand);color:#1a1a1a}
+  .chip.needs.on{background:var(--wait);border-color:var(--wait);color:#1a1a1a}
+  .search{flex:1 1 160px;min-width:120px;max-width:340px;background:var(--panel);border:1px solid var(--bd);
+    border-radius:var(--r-md);padding:5px 10px;color:var(--tx);font-size:12px}
+  .disp{display:inline-flex;align-items:center;gap:6px;background:var(--brand);color:#1a1a1a;border:none;font-weight:700;
+    padding:6px 12px;border-radius:var(--r-md);font-size:12px;white-space:nowrap;flex:0 0 auto}
+  .themebtn{border:1px solid var(--bd);background:var(--panel);border-radius:var(--r-md);padding:5px 9px;font-size:12px;
+    white-space:nowrap;flex:0 0 auto;color:var(--tx-mut)}
+
+  /* ============ CENTER TAB STRIP (tabs-primary) ============ */
+  .tabstrip{display:flex;align-items:stretch;background:var(--bg);border-bottom:1px solid var(--bd);
+    padding:0 6px;overflow-x:auto;height:36px;flex:0 0 auto;scrollbar-width:thin}
+  .tab{display:inline-flex;align-items:center;gap:7px;padding:0 11px;font-size:12px;color:var(--tx-mut);
+    border-bottom:2px solid transparent;white-space:nowrap;cursor:pointer;flex:0 0 auto;max-width:230px;user-select:none}
+  .tab:hover{color:var(--tx)}
+  .tab.on{color:var(--tx);border-bottom-color:var(--brand);background:var(--panel)}
+  .tab.home{position:sticky;left:0;z-index:1;background:var(--bg);font-weight:700;letter-spacing:.03em}
+  .tab.on.home{background:var(--panel)}
+  .tab .tname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tab .tx{width:17px;height:17px;border-radius:var(--r-sm);display:inline-flex;align-items:center;justify-content:center;color:var(--tx-faint);margin-left:2px}
+  .tab .tx:hover{background:var(--sunken);color:var(--tx)}
+  .tab.tomb{color:var(--tx-faint)}
+  .tab.tomb .tname{text-decoration:line-through}
+
+  /* ---- generic dot / logo badges ---- */
+  .dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto;display:inline-block}
+  .dot.running{background:var(--run);box-shadow:0 0 0 3px var(--run-bg)}
+  .dot.idle{background:transparent;border:1.5px solid var(--idle)}
+  .dot.failed{background:var(--fail);box-shadow:0 0 0 3px var(--fail-bg)}
+  .dot.waiting{background:var(--wait);box-shadow:0 0 0 3px var(--wait-bg)}
+  .dot.done{background:var(--idle)}
+  /* logo avatar: real brand PNG with letter fallback (assets/*.png) */
+  .av{width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;
+    font-size:10px;font-weight:700;flex:0 0 auto;overflow:hidden;background:var(--sunken);color:var(--tx-mut)}
+  .av img{width:16px;height:16px;object-fit:contain;display:block}
+  .av.lg{width:34px;height:34px;border-radius:8px}.av.lg img{width:24px;height:24px}
+  .tag{font-size:10px;font-weight:700;padding:1px 6px;border-radius:var(--r-sm);background:var(--sunken);color:var(--tx-dim)}
+  .needsflag{font-size:9.5px;font-weight:800;letter-spacing:.04em;padding:1px 6px;border-radius:var(--r-sm);background:var(--wait);color:#1a1a1a}
+  .needsflag.fail{background:var(--fail);color:#fff}
+  .spark{display:inline-flex;align-items:flex-end;gap:1px;height:12px}
+  .spark i{width:2px;background:var(--brand-600);border-radius:1px;display:block;opacity:.85}
+  .since{color:var(--tx-dim);font-size:11px;font-variant-numeric:tabular-nums}
+  .tps{color:var(--brand-600);font-weight:600;font-size:11px;font-variant-numeric:tabular-nums;display:inline-flex;align-items:center;gap:4px}
+
+  /* ============ BODY: scope · feed · queue (3-pane) ============ */
+  .body{flex:1;min-height:0;display:flex;flex-direction:column}
+  .page{display:flex;flex:1;min-height:0}
+  .sidebar{width:210px;flex:0 0 210px;border-right:1px solid var(--bd);overflow:auto;padding:8px 0;background:var(--bg)}
+  .sb-sec{font-size:10px;font-weight:800;letter-spacing:.05em;color:var(--tx-faint);padding:12px 14px 4px}
+  .sb-item{display:flex;align-items:center;gap:8px;padding:6px 14px;font-size:12.5px;cursor:pointer;color:var(--tx-mut)}
+  .sb-item:hover{background:var(--panel)}
+  .sb-item.on{background:var(--panel);color:var(--tx);font-weight:600;box-shadow:inset 3px 0 0 var(--brand)}
+  .sb-item>span:first-child{display:inline-flex;align-items:center;gap:6px}
+  .sb-item .c{margin-left:auto;font-size:11px;color:var(--tx-dim);font-variant-numeric:tabular-nums;display:inline-flex;align-items:center;gap:6px}
+  .sb-item .c .w{color:var(--wait);font-weight:700;display:inline-flex;align-items:center;gap:2px}
+  .sb-item .c .w svg{width:11px;height:11px}
+  .sb-item .hd{width:7px;height:7px;border-radius:50%;background:var(--run)}
+  .sb-item .hd.off{background:var(--fail)}
+
+  .feed-col{flex:1;min-width:0;overflow:auto;display:flex;justify-content:center}
+  .feed{width:100%;max-width:820px;padding:14px 18px 60px}
+  .feed-sec{font-size:11px;font-weight:800;letter-spacing:.05em;color:var(--tx-dim);margin:18px 4px 8px;display:flex;align-items:center;gap:8px}
+  .feed-sec.attn{color:var(--wait)}
+  .feed-sec .ln{flex:1;height:1px;background:var(--bd-sub)}
+  .fitem{background:var(--panel);border:1px solid var(--bd-sub);border-radius:var(--r-lg);padding:12px 14px;margin-bottom:10px;cursor:pointer}
+  .fitem:hover{border-color:var(--bd-strong)}
+  .fitem.attn{border-color:var(--wait);box-shadow:0 0 0 1px var(--wait-bg)}
+  .fitem.fail{border-color:var(--fail);box-shadow:0 0 0 1px var(--fail-bg)}
+  .fitem .head{display:flex;align-items:center;gap:9px;margin-bottom:8px}
+  .fitem .who{font-weight:700;font-size:13px}
+  .fitem .path{color:var(--tx-dim);font-size:11px}
+  .fitem .when{margin-left:auto;color:var(--tx-dim);font-size:11px;display:flex;align-items:center;gap:8px}
+  .fitem .resp{font-size:12.5px;color:var(--tx);line-height:1.5;margin:2px 0 8px;border-left:2px solid var(--bd);padding-left:10px}
+  .fitem .resp .q{color:var(--wait);font-weight:600}
+  .fitem .nowline{font-family:"Geist Mono",monospace;font-size:11px;color:var(--tx-mut);display:flex;align-items:center;gap:8px}
+  .fitem .nowline .v{color:var(--brand-600)}
+  .pill{font-size:10px;font-weight:700;padding:1px 7px;border-radius:999px}
+  .pill.pr{background:var(--brand);color:#1a1a1a}.pill.run{background:var(--run-bg);color:var(--run)}.pill.done{background:var(--idle-bg);color:var(--tx-mut)}
+
+  /* structured reply / clusters (unchanged from source) */
+  .cluster{background:var(--panel);border:1px solid var(--wait);box-shadow:0 0 0 1px var(--wait-bg);border-radius:var(--r-lg);padding:11px 13px;margin-bottom:10px;cursor:pointer}
+  .cluster .ch{display:flex;align-items:center;gap:9px;margin-bottom:8px}
+  .cluster .ch .n{background:var(--wait);color:#1a1a1a;font-weight:800;font-size:11px;border-radius:999px;padding:1px 8px}
+  .cluster .qq{font-size:13px;font-weight:600;flex:1}
+  .cluster .avs{display:flex;margin-right:4px}
+  .cluster .avs .av{margin-left:-6px;border:1.5px solid var(--panel)}
+  .cluster .batchline{font-size:11px;color:var(--tx-dim);margin-bottom:8px}
+  .opts{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .opt{border:1px solid var(--bd-strong);background:var(--bg);border-radius:var(--r-md);padding:6px 14px;font-weight:600;font-size:12px}
+  .opt.primary{background:var(--brand);border-color:var(--brand);color:#1a1a1a}
+  .opt.danger{background:var(--fail);border-color:var(--fail);color:#fff}
+  .opt.batch{margin-left:auto;background:var(--wait);border-color:var(--wait);color:#1a1a1a;font-weight:800}
+  .opt.ghost{color:var(--tx-mut)}
+  .reply2{display:flex;gap:8px;align-items:center;margin-top:8px}
+  .reply2 input{flex:1;background:var(--bg);border:1px solid var(--bd);border-radius:var(--r-md);padding:7px 10px;font-size:12px;color:var(--tx)}
+  .attach{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--bd);background:var(--bg);border-radius:var(--r-md);padding:5px 9px;font-size:11px;color:var(--tx-mut)}
+
+  /* ============ RIGHT RAIL = standing QUEUE (no auto WAITING-ON-YOU) ============ */
+  .detail-col{flex:0 0 400px;border-left:1px solid var(--bd);overflow:auto;background:var(--panel)}
+  .qhead{display:flex;align-items:center;gap:8px;padding:12px 16px 6px;font-size:11px;font-weight:800;letter-spacing:.05em;color:var(--tx-dim)}
+  .qhead .c{margin-left:auto;color:var(--tx-dim);font-weight:600;font-variant-numeric:tabular-nums}
+  .qsub{padding:0 16px 8px;font-size:11px;color:var(--tx-faint)}
+  .qlist{padding:0 10px 10px}
+  .trow{display:flex;align-items:center;gap:9px;padding:8px 8px;border-radius:var(--r-md);cursor:pointer}
+  .trow:hover{background:var(--bg)}
+  .src{font-size:9px;font-weight:800;padding:1px 5px;border-radius:var(--r-sm)}
+  .src.LN{background:#5e6ad2;color:#fff}.src.GH{background:#2d2d2d;color:#fff}
+  .pri{width:7px;height:7px;border-radius:50%;flex:0 0 auto}.pri.urgent{background:var(--fail)}.pri.high{background:var(--wait)}.pri.med{background:var(--idle)}.pri.low{background:var(--bd-strong)}
+  .trow .tt{flex:1;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .trow .tid{font-size:11px;color:var(--tx-dim);font-weight:600}
+  .dispatch-sm{border:1px solid var(--brand);background:transparent;color:var(--brand-600);font-weight:700;font-size:11px;padding:3px 9px;border-radius:var(--r-md);display:inline-flex;align-items:center;gap:4px}
+  .qdiv{height:1px;background:var(--bd-sub);margin:6px 16px}
+
+  /* ============ AGENT TAB — full-screen detail (2-col) ============ */
+  .agentwrap{flex:1;min-width:0;overflow:auto;background:var(--panel)}
+  .adet{max-width:1180px;margin:0 auto;padding:0 0 40px}
+  .dhead{display:flex;align-items:center;gap:12px;padding:16px 22px;border-bottom:1px solid var(--bd)}
+  .dhead .title{font-size:16px;font-weight:700}
+  .dhead .sub{color:var(--tx-dim);font-size:11px;margin-top:2px}
+  .dhead .actions{margin-left:auto;display:flex;gap:8px;flex:0 0 auto}
+  .abtn{border:1px solid var(--bd);background:var(--bg);border-radius:var(--r-md);padding:6px 12px;font-size:12px;font-weight:600;white-space:nowrap;flex:0 0 auto}
+  .dp-row{display:flex;align-items:center;gap:10px;margin-top:10px}
+  .dp-k{width:52px;font-size:11px;color:var(--tx-dim);font-weight:600;flex:0 0 auto}
+  .ttags{display:flex;gap:5px;flex-wrap:wrap;margin-top:10px}
+  .tstat{font-size:10px;font-weight:700;padding:1px 8px;border-radius:999px;text-transform:capitalize}
+  .tstat.todo{background:var(--idle-bg);color:var(--tx-mut)}.tstat.in-progress{background:var(--run-bg);color:var(--run)}.tstat.blocked{background:var(--fail-bg);color:var(--fail)}
+  .tab .src{font-size:9px;font-weight:800;padding:1px 5px;border-radius:var(--r-sm)}
+  .abtn.pri{background:var(--brand);border-color:var(--brand);color:#1a1a1a}
+  .abtn.danger{background:var(--fail);border-color:var(--fail);color:#fff}
+  .decide{background:var(--wait-bg);border:1px solid var(--wait);border-radius:var(--r-lg);padding:14px 16px;margin:16px 22px 0}
+  .decide.fail{background:var(--fail-bg);border-color:var(--fail)}
+  .decide .ql{font-size:10px;font-weight:800;letter-spacing:.05em;color:var(--wait);margin-bottom:6px}
+  .decide.fail .ql{color:var(--fail)}
+  .decide .qt{font-size:14px;font-weight:600;margin-bottom:10px}
+  .acols{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:16px 22px}
+  @media (max-width:900px){.acols{grid-template-columns:1fr}}
+  .acard{background:var(--bg);border:1px solid var(--bd-sub);border-radius:var(--r-lg);padding:14px 16px}
+  .lbl{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--tx-dim);margin-bottom:8px}
+  .now{font-family:"Geist Mono",monospace;font-size:12px;background:var(--term-bg);color:var(--term-tx);padding:9px 11px;border-radius:var(--r-md);margin-bottom:10px}
+  .statline{display:flex;gap:14px;color:var(--tx-mut);font-size:12px;flex-wrap:wrap}
+  .filerow{display:flex;align-items:center;gap:10px;padding:5px 0;font-size:12px}
+  .filerow .mono{flex:1;color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .heat{width:110px;height:6px;border-radius:3px;background:var(--sunken);overflow:hidden;position:relative;flex:0 0 auto}
+  .heat i{position:absolute;left:0;top:0;bottom:0;background:var(--brand-600)}
+  .diff .add{color:var(--run)}.diff .del{color:var(--fail)}
+  .toolrow{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px;color:var(--tx-mut)}
+  .toolrow .ok{color:var(--run)}
+  .xscript{font-family:"Geist Mono",monospace;font-size:12px;line-height:1.6}
+  .xscript .role{color:var(--tx-faint);font-weight:700}
+
+  /* deliverables band (PR / plan / media / files) */
+  .deliv{padding:16px 22px 0}
+  .delivgrid{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px}
+  .dcard{flex:1 1 260px;min-width:240px;border:1px solid var(--bd);border-radius:var(--r-lg);padding:12px 14px;background:var(--bg);display:flex;flex-direction:column;gap:9px}
+  .dcard.pr{border-color:var(--brand);box-shadow:0 0 0 1px var(--brand-ring)}
+  .dc-top{display:flex;align-items:center;gap:9px}
+  .dc-icon{width:30px;height:30px;border-radius:var(--r-md);background:var(--sunken);display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;color:var(--tx-mut)}
+  .dc-title{font-weight:700;font-size:13px}
+  .dc-sub{font-size:11px;color:var(--tx-dim);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .dc-actions{display:flex;gap:8px;flex-wrap:wrap}
+  .dc-actions .abtn{display:inline-flex;align-items:center;gap:5px;padding:5px 10px}
+  .dc-note{font-size:10.5px;color:var(--tx-faint);display:flex;align-items:center;gap:5px}
+  .hostbadge{font-size:9.5px;font-weight:700;letter-spacing:.03em;padding:2px 7px;border-radius:999px;background:var(--sunken);color:var(--tx-mut);display:inline-flex;align-items:center;gap:4px}
+  .thumb{position:relative;height:118px;border-radius:var(--r-md);background:linear-gradient(135deg,var(--sunken),var(--recessed));display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer}
+  .thumb .play{width:44px;height:44px;border-radius:50%;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;color:#fff;padding-left:3px}
+  .thumb .dur{position:absolute;right:8px;bottom:8px;background:rgba(0,0,0,.6);color:#fff;font-size:10px;font-weight:600;padding:1px 6px;border-radius:var(--r-sm)}
+  .mergedpill{background:#8b5cf6;color:#fff;font-size:10px;font-weight:700;padding:1px 8px;border-radius:999px;flex:0 0 auto}
+  .checkspill{background:var(--run-bg);color:var(--run);font-size:10px;font-weight:700;padding:1px 8px;border-radius:999px;flex:0 0 auto}
+  .detail-empty{height:100%;display:flex;align-items:center;justify-content:center;color:var(--tx-faint);font-size:12px;padding:20px;text-align:center}
+  .callout{margin:10px 14px;padding:8px 11px;border:1px dashed var(--bd-strong);border-radius:var(--r-md);font-size:11px;color:var(--tx-dim);background:var(--bg)}
+  .hidden{display:none!important}
+</style>
+</head>
+<body>
+  <!-- SINGLE merged header -->
+  <div class="top">
+    <div class="logo"><span class="bolt" id="ic-zap"></span> FACTORY <span class="ver">v0.9</span></div>
+    <div class="vdiv"></div>
+    <div class="navtabs"><button class="on">Floor</button><button>Bench</button><button>Panel</button></div>
+    <input class="topsearch" placeholder="Search or run command…" />
+    <div class="grow"></div>
+    <div class="stat"><span class="dot running"></span><b id="srun">0</b>/<span id="stot">0</span>&nbsp;running</div>
+    <button class="iconbtn" id="theme" title="Toggle theme"><span id="ic-moon"></span></button>
+    <button class="iconbtn" title="Settings"><span id="ic-gear"></span></button>
+  </div>
+
+  <!-- filter bar: grouped, nowrap -->
+  <div class="fbar">
+    <div class="fgroup"><span class="fgroup-label">Sort</span>
+      <select class="sel"><option>Needs you first</option><option>Recent activity</option><option>tok/s</option><option>Name</option></select></div>
+    <div class="fsep"></div>
+    <div class="fgroup"><span class="fgroup-label">Status</span>
+      <span class="chip needs on"><span id="ic-alert"></span> Needs you</span>
+      <span class="chip"><span class="cdot run"></span> Running</span>
+      <span class="chip"><span class="cdot idle"></span> Idle</span>
+      <span class="chip"><span class="cdot fail"></span> Failed</span></div>
+    <div class="fsep"></div>
+    <div class="fgroup"><span class="fgroup-label">Agent</span>
+      <span class="chip">CC</span><span class="chip">CX</span><span class="chip">GX</span></div>
+    <div class="fsep"></div>
+    <input class="search" placeholder="search agents, branches, activity…" />
+    <div class="grow"></div>
+    <button class="themebtn" id="plain">Plain language: off</button>
+    <button class="iconbtn" id="sidebtn" title="Show / hide sidebar"><span id="ic-sb"></span></button>
+    <button class="disp"><span id="ic-zap2"></span> Dispatch</button>
+  </div>
+
+  <!-- center tab strip -->
+  <div class="tabstrip" id="tabstrip"></div>
+
+  <!-- body -->
+  <div class="body"><div id="stage"></div></div>
+
+<script>
+// ================= ICONS (inline SVG — no decorative glyphs) =================
+const IC={
+  zap:'<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L4.5 13.5H11l-1 8.5L19.5 10H13z"/></svg>',
+  moon:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>',
+  gear:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-2.82 1.17V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 6.6 19.4l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 3.6 9H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 3.6l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 3.6h.09A1.65 1.65 0 0 0 10.6 2H12a2 2 0 0 1 0 0"/></svg>',
+  alert:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12" y2="17"/></svg>',
+  sidebar:'<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2.2" y="2.5" width="11.6" height="11" rx="1.4"/><line x1="6" y1="2.5" x2="6" y2="13.5"/></svg>',
+  x:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg>',
+  chevR:'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><polyline points="9 6 15 12 9 18"/></svg>',
+  clock:'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>',
+  home:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>',
+  git:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M6 9v6"/><circle cx="18" cy="18" r="3"/><path d="M18 15V9a3 3 0 0 0-3-3h-4"/><path d="M13 9l-2-3 2-3"/></svg>',
+  play:'<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>',
+  film:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="7" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="17" y2="20"/><line x1="3" y1="12" x2="21" y2="12"/></svg>',
+  fileTxt:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>',
+  download:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>',
+  external:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>',
+  host:'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="7" rx="1"/><rect x="3" y="13" width="18" height="7" rx="1"/><circle cx="7" cy="7.5" r=".6" fill="currentColor"/><circle cx="7" cy="16.5" r=".6" fill="currentColor"/></svg>',
+};
+function ii(id,name){const e=document.getElementById(id);if(e)e.innerHTML=IC[name]}
+ii('ic-zap','zap');ii('ic-zap2','zap');ii('ic-moon','moon');ii('ic-gear','gear');ii('ic-alert','alert');ii('ic-sb','sidebar');
+
+// ================= fake data (from source prototype) =================
+const HOSTS=["zion","mac-mini","yosemite-s0","yosemite-s1"];  // real device names (post-dedup: no this-mac)
+const PROJECTS=["swarmify","prix-api","web","phoenix-horizon"];
+const VERBS=[["Editing","src/core/tasks.ts"],["Reading","session.activity.ts"],["Running","bun test core/"],["Editing","ui/App.tsx"],["Thinking","planning the migration"],["Running","cargo build --release"],["Editing","remoteSessions.ts"],["Reading","RUNBOOK.md"]];
+const NAMES=["auth-refactor","incr-count","dispatch-fix","rail-virtual","floor-css","docs-pass","changelog","migrate-db","rate-limit","RUSH-812","webhook-retry","onboarding","flaky-test","deploy","r2-sync","perf-audit","cli-help","menu-bar","secrets-ssh","watchdog"];
+let seed=42; function rng(){seed=(seed*1103515245+12345)&0x7fffffff;return seed/0x7fffffff}
+function pick(a){return a[Math.floor(rng()*a.length)]}
+const AGENTS=[];
+const phasesPlan=["running","running","running","running","idle","idle","idle","waiting","failed","done"];
+for(let i=0;i<52;i++){
+  const host=pick(HOSTS), proj=pick(PROJECTS), agent=pick(["CC","CC","CX","GX"]);
+  const phase=pick(phasesPlan); const [verb,target]=pick(VERBS); const running=phase==="running";
+  AGENTS.push({id:"a"+i,host,project:proj,name:pick(NAMES),agent,phase,verb,target,
+    tok:running?Math.floor(40+rng()*180):0,
+    since:running?Math.floor(rng()*50)+"s":phase==="waiting"?Math.floor(rng()*30)+"m":Math.floor(rng()*9)+"h",
+    files:Math.floor(rng()*14),tools:Math.floor(rng()*40),
+    needs:phase==="waiting"||phase==="failed"||(phase==="done"&&rng()>0.6),
+    pr:phase==="done"&&rng()>0.4?"#"+(100+Math.floor(rng()*99)):null,
+    ticket:rng()>0.7?"RUSH-"+(800+Math.floor(rng()*99)):null, branch:"feat-"+pick(NAMES)});
+}
+AGENTS[2].phase="waiting";AGENTS[2].needs=true;AGENTS[2].name="RUSH-812";AGENTS[2].project="prix-api";AGENTS[2].host="yosemite-s0";AGENTS[2].agent="CX";
+AGENTS[5].phase="failed";AGENTS[5].needs=true;AGENTS[5].name="flaky-test";AGENTS[5].project="swarmify";AGENTS[5].host="yosemite-s1";
+AGENTS[8].phase="waiting";AGENTS[8].needs=true;AGENTS[8].name="onboarding";AGENTS[8].project="web";AGENTS[8].agent="GX";
+AGENTS[1].phase="running";AGENTS[1].name="auth-refactor";AGENTS[1].project="swarmify";AGENTS[1].tok=142;AGENTS[1].host="zion";
+const RESP={
+  waiting:["I've refactored the auth flow and all 18 tests pass. Should I also migrate the legacy session store, or leave it for a follow-up?","Two approaches for the rate limiter: a token bucket per-user, or a sliding window. Which do you prefer?","The migration will drop the legacy_tokens column — that's destructive. Confirm before I run it on prod?","Found 3 ways to fix the flaky test. The cleanest changes the retry semantics. OK to proceed?"],
+  failed:["Build failed: cargo build errored on a borrow-check in src/pool.rs:42. I can't resolve it without changing the lifetime — want me to try?","bun test exited 1 — 2 tests fail after the refactor. Stopping so you can look."],
+  running:["Editing the incremental counter now; wired the delta read, running the suite.","Reading session.activity.ts to find where throughput is computed.","Running the full test suite to confirm the migration is safe.","Drafting the PR description and pushing the branch."],
+  done:["Done — opened PR #142. 9 files, +312/-48, all tests green. Ready for review.","Finished and merged. The flaky test now passes 50/50 runs.","Completed the docs pass; pushed to the branch, no PR needed."],
+  idle:["Waiting — last turn finished 2h ago. Pick up where we left off?","Idle. Last action: edited ui/App.tsx."],
+};
+const PHASE_LABEL={running:"running",idle:"idle",waiting:"waiting",failed:"failed",done:"done"};
+const PHASE_RANK={waiting:0,failed:1,running:2,done:3,idle:4};
+AGENTS.forEach(a=>{a.resp=pick(RESP[a.phase]||RESP.idle)});
+const QCLUSTERS=[
+  {key:"ratelimit",q:"Token bucket per-user, or a sliding window?",options:["Token bucket","Sliding window"],kind:"choice"},
+  {key:"mergegreen",q:"Tests pass and the PR is green — merge it?",options:["Merge","Hold"],kind:"confirm"},
+  {key:"approach",q:"Refactor the legacy session store now, or leave a follow-up?",options:["Do it now","Follow-up"],kind:"choice"},
+];
+AGENTS.filter(a=>a.phase==="waiting").forEach((a,i)=>{const c=QCLUSTERS[i%QCLUSTERS.length];a.qkey=c.key;a.q=c.q;a.options=c.options.slice();a.qkind=c.kind;a.resp=c.q});
+{const dz=AGENTS.filter(a=>a.phase==="waiting");if(dz[2]){Object.assign(dz[2],{qkey:"destructive",q:"This will DROP the legacy_tokens column on prod. Confirm?",options:["Confirm","Cancel"],qkind:"destructive",resp:"This will DROP the legacy_tokens column on prod. Confirm?"})}}
+AGENTS.filter(a=>a.phase==="failed").forEach(a=>{a.qkind="retry"});
+// ---- artifact / deliverable demos ----
+// remote agent on yosemite-s0 that recorded a video + wrote release notes + opened a PR
+Object.assign(AGENTS[3],{host:"yosemite-s0",project:"web",name:"release-demo",agent:"CC",phase:"done",needs:false,tok:0,since:"12m",pr:"#148",branch:"feat-release-demo",files:9,tools:31,
+  resp:"Recorded the onboarding walkthrough, wrote release notes, and opened PR #148.",
+  artifacts:[{type:"video",name:"onboarding-demo.mp4",meta:"0:42 · 8.4 MB"},{type:"file",name:"release-notes.md",meta:"markdown · 2.1 KB"}]});
+// local running agent that has drafted a plan awaiting review
+Object.assign(AGENTS[1],{plan:{steps:6,title:"Migrate the legacy session store",preview:"1. normalizeHost primitive · 2. roster from devices list · 3. label sessions by machine · 4. drop this-mac · 5. tests · 6. verify on zion"}});
+// done agent with a merged PR
+Object.assign(AGENTS[7],{host:"mac-mini",project:"swarmify",name:"docs-pass",agent:"CX",phase:"done",needs:false,tok:0,since:"3h",pr:"#151",prMerged:true,branch:"feat-docs-pass",files:5,tools:12,resp:"Docs pass complete. PR #151 merged."});
+const TICKETS=[
+  {id:"RUSH-1298",title:"System agents leak into rush list",project:"prix-api",source:"LN",pri:"urgent",status:"todo",labels:["bug","cli"],desc:"rush list shows internal system agents that should be hidden. Filter them at the source."},
+  {id:"RUSH-1273",title:"HogQL/SQL injection in bug-report query",project:"prix-api",source:"LN",pri:"urgent",status:"todo",labels:["security"],desc:"User input is interpolated into the PostHog query. Parameterize it."},
+  {id:"RUSH-1297",title:"Picker preview wraps mid-word (rune-slice)",project:"prix-api",source:"LN",pri:"high",status:"todo",labels:["bug"],desc:"Truncation slices on bytes, not grapheme boundaries."},
+  {id:"#412",title:"Webview shows a blank panel on reload",project:"swarmify",source:"GH",pri:"high",status:"in-progress",labels:["bug"],desc:"Mount crash on restored shell; attach to the iframe CDP target."},
+  {id:"#418",title:"Virtualize the agent rail at 100+ agents",project:"swarmify",source:"GH",pri:"high",status:"todo",labels:["perf"],desc:"Flat windowed list, fixed-height rows."},
+  {id:"RUSH-1294",title:"Stale Halo branding in user-facing help",project:"web",source:"LN",pri:"med",status:"todo",labels:["docs"],desc:"rush halo build is dead; references remain in help text."},
+  {id:"RUSH-1256",title:"Remote-OAuth MCP installable from CLI",project:"prix-api",source:"LN",pri:"med",status:"in-progress",labels:["feature"],desc:"Make Linear MCP agent-enableable from the rush CLI."},
+  {id:"#88",title:"Add dark-mode to the onboarding flow",project:"web",source:"GH",pri:"med",status:"todo",labels:["ui"],desc:"Respect the host theme during first-run."},
+];
+const PRI_RANK={urgent:0,high:1,med:2,low:3};
+
+// ================= state =================
+let PLAIN=false, SIDEBAR=true, PROJ_FILTER=null, HOST_FILTER=null;
+let TABS=[{id:"floor",kind:"floor",title:"Floor"}], ACTIVE="floor";
+const totRun=AGENTS.filter(a=>a.phase==="running").length;
+document.getElementById("srun").textContent=totRun;
+document.getElementById("stot").textContent=AGENTS.length;
+
+// ================= logo avatar (real brand PNGs, letter fallback) =================
+const LOGO={CC:"claude.png",CX:"chatgpt.png",GX:"gemini.png",CR:"cursor.png",OC:"opencode.png",AG:"antigravity.png",GK:"grok.png",SH:"agents.png"};
+function av(k,big){const f=LOGO[k];const cls="av"+(big?" lg":"");
+  return f?`<span class="${cls}"><img src="assets/${f}" alt="${k}" onerror="this.parentNode.textContent='${k}'"></span>`:`<span class="${cls}">${k}</span>`}
+function dotHtml(p){return `<span class="dot ${p}"></span>`}
+function plainTok(a){return PLAIN?(a.tok>120?"fast":a.tok>0?"working":""):(a.tok?a.tok+" tok/s":"")}
+function sparkEl(tok){let s='<span class="spark">';for(let i=0;i<6;i++){s+=`<i style="height:${tok?(3+((i*53+tok)%10)):2}px"></i>`}return s+'</span>'}
+
+// ================= TAB STRIP =================
+function renderTabs(){
+  const el=document.getElementById("tabstrip");
+  el.innerHTML=TABS.map(t=>{
+    const on=t.id===ACTIVE?" on":"";
+    if(t.kind==="floor") return `<div class="tab home${on}" data-tab="floor"><span class="tx" style="margin:0">${IC.home}</span><span class="tname">Floor</span></div>`;
+    if(t.kind==="ticket"){const tk=TICKETS.find(x=>x.id===t.ticketId); const tomb=tk?"":" tomb";
+      return `<div class="tab${on}${tomb}" data-tab="${t.id}"><span class="src ${tk?tk.source:''}">${tk?tk.source:''}</span><span class="tname">${t.title}</span><span class="tx" data-close="${t.id}">${IC.x}</span></div>`}
+    const a=AGENTS.find(x=>x.id===t.agentId); const tomb=a?"":" tomb";
+    return `<div class="tab${on}${tomb}" data-tab="${t.id}">${a?av(a.agent):''}<span class="tname">${t.title}</span><span class="tx" data-close="${t.id}">${IC.x}</span></div>`;
+  }).join("");
+  el.querySelectorAll(".tab").forEach(n=>n.onclick=(e)=>{
+    if(e.target.closest("[data-close]")){closeTab(e.target.closest("[data-close]").dataset.close);return}
+    ACTIVE=n.dataset.tab; render();
+  });
+}
+function openAgentTab(id){
+  const a=AGENTS.find(x=>x.id===id); if(!a) return;
+  if(!TABS.some(t=>t.id===id)) TABS.push({id,kind:"agent",agentId:id,title:a.name});
+  ACTIVE=id; render();
+}
+function openTicketTab(id){
+  const t=TICKETS.find(x=>x.id===id); if(!t) return;
+  if(!TABS.some(x=>x.id===id)) TABS.push({id,kind:"ticket",ticketId:id,title:t.id});
+  ACTIVE=id; render();
+}
+function closeTab(id){
+  const idx=TABS.findIndex(t=>t.id===id); if(idx<=0) return; // floor is permanent
+  TABS.splice(idx,1);
+  if(ACTIVE===id) ACTIVE=(TABS[idx-1]||TABS[0]).id;
+  render();
+}
+
+// ================= SIDEBAR (scope) =================
+function buildSidebar(){
+  if(!SIDEBAR) return "";
+  const byProj={},byHost={},projWait={};
+  AGENTS.forEach(a=>{byProj[a.project]=(byProj[a.project]||0)+1;byHost[a.host]=(byHost[a.host]||0)+1;if(a.needs)projWait[a.project]=(projWait[a.project]||0)+1});
+  const needs=AGENTS.filter(a=>a.needs).length;
+  let h=`<div class="sb-sec">SMART</div>
+    <div class="sb-item ${PROJ_FILTER===null&&HOST_FILTER===null?'on':''}" data-scope=""><span>All agents</span><span class="c">${AGENTS.length}</span></div>
+    <div class="sb-item" data-scope="__needs"><span style="color:var(--wait)">${IC.alert} Needs you</span><span class="c"><span class="w">${needs}</span></span></div>
+    <div class="sb-sec">PROJECTS</div>`;
+  Object.keys(byProj).sort().forEach(p=>h+=`<div class="sb-item ${PROJ_FILTER===p?'on':''}" data-scope="${p}"><span>${p}</span><span class="c">${projWait[p]?`<span class="w">${IC.clock}${projWait[p]}</span>`:""}${byProj[p]}</span></div>`);
+  h+=`<div class="sb-sec">HOSTS</div>`;
+  const offline={"mac-mini":0};
+  Object.keys(byHost).sort().forEach(ho=>h+=`<div class="sb-item ${HOST_FILTER===ho?'on':''}" data-scope="host:${ho}"><span><span class="hd ${offline[ho]!==undefined&&!offline[ho]?'off':''}"></span>${ho}</span><span class="c">${byHost[ho]}</span></div>`);
+  return `<div class="sidebar">${h}</div>`;
+}
+function wireSidebar(stage){
+  stage.querySelectorAll(".sb-item[data-scope]").forEach(n=>n.onclick=()=>{
+    const v=n.dataset.scope;
+    if(v==="__needs"){PROJ_FILTER=null;HOST_FILTER=null}
+    else if(v.startsWith("host:")){const hn=v.slice(5);HOST_FILTER=HOST_FILTER===hn?null:hn;PROJ_FILTER=null}
+    else{PROJ_FILTER=v||null;HOST_FILTER=null}
+    render();
+  });
+}
+
+// ================= FEED (Floor tab center) =================
+function scopeFn(a){return (PROJ_FILTER===null||a.project===PROJ_FILTER)&&(HOST_FILTER===null||a.host===HOST_FILTER)}
+function structuredReply(a){
+  const danger=a.qkind==="destructive";
+  const opts=(a.options||[]).map((o,i)=>`<button class="opt ${i===0?(danger?'danger':'primary'):'ghost'}">${o}</button>`).join("");
+  const fail=a.phase==="failed"?`<button class="opt primary">Retry</button><button class="opt ghost">View error</button>`:"";
+  return `<div class="opts">${opts}${fail}</div>
+    <div class="reply2"><input placeholder="…or reply in your own words"><button class="opt ghost">Send</button></div>`;
+}
+function clusterCard(arr){
+  const c=arr[0], danger=c.qkind==="destructive";
+  const optBtns=(c.options||[]).map((o,i)=>`<button class="opt ${i===0?(danger?'danger':'primary'):''}">${o}</button>`).join("");
+  const who=arr.slice(0,3).map(a=>`${a.name} · ${a.host}`).join("   ·   ")+(arr.length>3?`   +${arr.length-3} more`:"");
+  return `<div class="cluster" data-cluster="1">
+    <div class="ch"><span class="n">${arr.length}</span><span class="qq">${c.q}</span><span class="avs">${arr.slice(0,5).map(a=>av(a.agent)).join("")}</span></div>
+    <div class="batchline">${who}</div>
+    <div class="opts">${optBtns}<button class="opt ghost">Something else…</button><button class="opt batch">Apply to all ${arr.length}</button></div>
+  </div>`;
+}
+function feedItem(a){
+  const marker=a.pr?`<span class="pill pr">PR ${a.pr}</span>`:a.phase==="running"?`<span class="pill run">running</span>`:a.phase==="done"?`<span class="pill done">done</span>`:"";
+  const tok=plainTok(a);
+  const meta=PLAIN?`${a.project}`:`${a.project} · ${a.host}${a.ticket?` · ${a.ticket}`:""}`;
+  const resp=a.qkind==="destructive"?`<span class="q">${a.resp}</span>`:a.resp;
+  return `<div class="fitem ${a.needs?(a.phase==='failed'?'fail':'attn'):''}" data-id="${a.id}">
+    <div class="head">${dotHtml(a.phase)}${av(a.agent)}<span class="who">${a.name}</span><span class="path">${meta}</span>
+      <span class="when">${marker}${tok?`<span class="tps">${tok}</span>`:""}<span>${a.since} ago</span></span></div>
+    <div class="resp">${resp}</div>
+    ${PLAIN?"":`<div class="nowline">▸ <span class="v">${a.verb}</span> ${a.target}</div>`}
+    ${a.needs?structuredReply(a):""}
+  </div>`;
+}
+function feedCenter(){
+  const needs=AGENTS.filter(a=>a.needs&&scopeFn(a));
+  const active=AGENTS.filter(a=>!a.needs&&scopeFn(a)&&(a.phase==="running"||a.phase==="done")).sort((a,b)=>PHASE_RANK[a.phase]-PHASE_RANK[b.phase]);
+  const waiting=needs.filter(a=>a.phase==="waiting"), failed=needs.filter(a=>a.phase==="failed");
+  const byQ={}; waiting.forEach(a=>{(byQ[a.qkey]=byQ[a.qkey]||[]).push(a)});
+  let needsHtml=""; Object.values(byQ).forEach(arr=>{needsHtml+=arr.length>1?clusterCard(arr):feedItem(arr[0])}); failed.forEach(a=>needsHtml+=feedItem(a));
+  const scopeLabel=HOST_FILTER?` · host: ${HOST_FILTER}`:PROJ_FILTER?` · ${PROJ_FILTER}`:"";
+  return `<div class="feed">
+    ${needs.length?`<div class="feed-sec attn">NEEDS YOU · ${needs.length}${scopeLabel}<span class="ln"></span></div>${needsHtml}`:""}
+    <div class="feed-sec">LIVE ACTIVITY · ${active.length}${scopeLabel}<span class="ln"></span></div>
+    ${active.map(feedItem).join("")||'<div class="callout">No active agents in this scope.</div>'}</div>`;
+}
+
+// ================= RIGHT RAIL = QUEUE (next up + backlog) =================
+function queuePanel(){
+  const tickets=TICKETS.filter(t=>PROJ_FILTER===null||t.project===PROJ_FILTER);
+  const nextup=tickets.slice(0,4);
+  const trow=(t)=>`<div class="trow" data-tid="${t.id}"><span class="pri ${t.pri}"></span><span class="src ${t.source}">${t.source}</span><span class="tid">${t.id}</span><span class="tt">${t.title}</span><button class="dispatch-sm">Dispatch ${IC.chevR}</button></div>`;
+  return `<div class="detail-col">
+    <div class="qhead">NEXT UP — ready to dispatch<span class="c">${nextup.length}</span></div>
+    <div class="qlist">${nextup.map(trow).join("")}</div>
+    <div class="qdiv"></div>
+    <div class="qhead">BACKLOG<span class="c">${tickets.length} tickets</span></div>
+    <div class="qsub">Linear + GitHub, ranked by priority</div>
+    <div class="qlist">${tickets.map(trow).join("")}</div>
+  </div>`;
+}
+
+// ================= DELIVERABLES (PR / plan / media / files) =================
+function prCard(a){
+  const merged=a.prMerged;
+  return `<div class="dcard pr">
+    <div class="dc-top"><span class="dc-icon">${IC.git}</span>
+      <div style="flex:1;min-width:0"><div class="dc-title">Pull request ${a.pr}</div><div class="dc-sub">${a.branch} &rarr; main · +312 / -48</div></div>
+      ${merged?'<span class="mergedpill">merged</span>':'<span class="checkspill">checks passing</span>'}</div>
+    <div class="dc-actions"><button class="abtn pri">${IC.external} Open PR</button><button class="abtn">Copy link</button>${merged?'':'<button class="abtn">Review</button>'}</div>
+  </div>`;
+}
+function planCard(a){
+  return `<div class="dcard">
+    <div class="dc-top"><span class="dc-icon">${IC.fileTxt}</span>
+      <div style="flex:1;min-width:0"><div class="dc-title">Plan ready · ${a.plan.steps} steps</div><div class="dc-sub">${a.plan.title}</div></div></div>
+    <div style="font-size:11.5px;color:var(--tx-mut);line-height:1.5;border-left:2px solid var(--bd);padding-left:9px">${a.plan.preview}</div>
+    <div class="dc-actions"><button class="abtn pri">Review plan</button><button class="abtn">Approve</button><button class="abtn">Send back</button></div>
+  </div>`;
+}
+function artCard(a,art){
+  const remote=a.host!=="zion";
+  const badge=remote?`<span class="hostbadge">${IC.host} ${a.host}</span>`:"";
+  if(art.type==="video"){
+    return `<div class="dcard">
+      <div class="thumb"><span class="play">${IC.play}</span><span class="dur">${(art.meta||'').split('·')[0].trim()}</span></div>
+      <div class="dc-top"><span class="dc-icon">${IC.film}</span><div style="flex:1;min-width:0"><div class="dc-title">${art.name}</div><div class="dc-sub">${art.meta||''} ${badge}</div></div></div>
+      <div class="dc-actions"><button class="abtn pri">${IC.play} ${remote?'Fetch &amp; play':'Play'}</button><button class="abtn">${IC.download} Download</button>${remote?`<button class="abtn">Reveal on ${a.host}</button>`:''}</div>
+      ${remote?`<div class="dc-note">${IC.host} Lives on ${a.host} — streamed over the remote-session bridge on first play.</div>`:''}
+    </div>`;
+  }
+  return `<div class="dcard">
+    <div class="dc-top"><span class="dc-icon">${IC.fileTxt}</span><div style="flex:1;min-width:0"><div class="dc-title">${art.name}</div><div class="dc-sub">${art.meta||''} ${badge}</div></div></div>
+    <div class="dc-actions"><button class="abtn pri">Open</button><button class="abtn">${IC.download} Download</button>${remote?`<button class="abtn">Reveal on ${a.host}</button>`:''}</div>
+  </div>`;
+}
+function deliverables(a){
+  const cards=[];
+  if(a.pr) cards.push(prCard(a));
+  if(a.plan) cards.push(planCard(a));
+  (a.artifacts||[]).forEach(art=>cards.push(artCard(a,art)));
+  if(!cards.length) return "";
+  return `<div class="deliv"><div class="lbl">Deliverables</div><div class="delivgrid">${cards.join("")}</div></div>`;
+}
+
+// ================= AGENT TAB = full-screen detail (2-col) =================
+function agentDetail(a){
+  if(!a) return `<div class="agentwrap"><div class="detail-empty">This agent is no longer running.<br><button class="abtn" style="margin-top:10px">Close tab</button></div></div>`;
+  let decide="";
+  if(a.needs){
+    const danger=a.qkind==="destructive", isFail=a.phase==="failed";
+    const opts=(a.options||[]).map((o,i)=>`<button class="opt ${i===0?(danger?'danger':'primary'):'ghost'}">${o}</button>`).join("");
+    const fail=isFail?`<button class="opt primary">Retry</button><button class="opt ghost">View error</button>`:"";
+    const nudge=a.phase==="waiting"?`<button class="opt ghost">Nudge</button>`:"";
+    decide=`<div class="decide ${isFail?'fail':''}">
+      <div class="ql">${isFail?"FAILED — NEEDS YOU":"WAITING ON YOU"}</div>
+      <div class="qt">${a.q||a.resp}</div>
+      <div class="opts">${opts}${fail}${nudge}</div>
+      <div class="reply2"><input placeholder="…or reply in your own words"><button class="opt primary">Send</button></div>
+    </div>`;
+  }
+  const files=["src/core/tasks.ts","src/vscode/tasks.vscode.ts","ui/settings/App.tsx"];
+  return `<div class="agentwrap"><div class="adet">
+    <div class="dhead">${av(a.agent,true)}
+      <div><div class="title">${a.project} / ${a.name}</div>
+        <div class="sub">host <b>${a.host}</b> · branch ${a.branch} · ${PHASE_LABEL[a.phase]} · ${a.agent}</div></div>
+      <div class="actions"><button class="abtn pri">Focus terminal</button>${a.pr?'<button class="abtn">Open PR</button>':''}<button class="abtn">Retry</button><button class="abtn danger">Kill</button></div>
+    </div>
+    ${decide}
+    ${deliverables(a)}
+    <div class="acols">
+      <div class="acard">
+        <div class="lbl">Live progress</div>
+        <div class="now">Now ▸ ${a.verb} ${a.target}</div>
+        <div class="statline"><span class="tps">${sparkEl(a.tok)} ${a.tok||0} tok/s</span><span>${a.tools+5} msgs</span><span>${a.files} files</span><span>${a.tools} tool calls</span><span>${PHASE_LABEL[a.phase]} ${a.since}</span></div>
+        <div style="margin-top:14px" class="lbl">Recent files</div>
+        ${files.map((f,i)=>`<div class="filerow"><span class="mono">${f}</span><span class="heat"><i style="width:${70-i*22}%"></i></span><span class="diff mono"><span class="add">+${142-i*40}</span> <span class="del">-${18-i*5}</span></span></div>`).join("")}
+        <div style="margin-top:14px" class="lbl">Recent tools</div>
+        <div class="toolrow"><span class="mono">$ bun test core/tasks.test.ts</span><span class="ok mono">18 passed</span></div>
+        <div class="toolrow"><span class="mono">Edit src/core/tasks.ts</span></div>
+        <div class="toolrow"><span class="mono">Read src/core/session.activity.ts</span></div>
+      </div>
+      <div class="acard">
+        <div class="lbl">Transcript</div>
+        <div class="xscript">
+          <p><span class="role">you ▸</span> refactor the auth flow, keep the tests green</p>
+          <p><span class="role">${a.agent} ▸</span> ${a.resp}</p>
+          <p><span class="role">${a.agent} ▸</span> ${a.verb} ${a.target}…</p>
+        </div>
+        <div class="callout">Full-screen only: side-by-side transcript + progress, larger file timeline. The 400px rail can't show both.</div>
+      </div>
+    </div>
+  </div></div>`;
+}
+
+// ================= TICKET TAB = full-screen task + dispatch =================
+function ticketDetail(t){
+  if(!t) return `<div class="agentwrap"><div class="detail-empty">This task is no longer in the queue.<br><button class="abtn" style="margin-top:10px">Close tab</button></div></div>`;
+  const agentOpt=(k,label,pri)=>`<button class="opt ${pri?'primary':'ghost'}">${av(k)} ${label}</button>`;
+  return `<div class="agentwrap"><div class="adet">
+    <div class="dhead"><span class="src ${t.source}" style="font-size:11px;padding:3px 8px">${t.source}</span>
+      <div><div class="title">${t.id}</div><div class="sub">${t.project} · <span class="pri ${t.pri}" style="display:inline-block;vertical-align:middle"></span> ${t.pri} · ${t.status.replace('-',' ')}</div></div>
+      <div class="actions"><button class="abtn">Open in ${t.source==='LN'?'Linear':'GitHub'}</button></div>
+    </div>
+    <div class="acols">
+      <div class="acard">
+        <div style="font-size:14px;font-weight:600;margin-bottom:8px">${t.title}</div>
+        <div style="font-size:12.5px;color:var(--tx-mut);line-height:1.6">${t.desc||''}</div>
+        <div class="ttags"><span class="tstat ${t.status}">${t.status.replace('-',' ')}</span>${(t.labels||[]).map(l=>`<span class="tag">${l}</span>`).join("")}</div>
+      </div>
+      <div class="acard">
+        <div class="lbl">Dispatch an agent onto this task</div>
+        <div class="dp-row"><span class="dp-k">Agent</span><span class="opts">${agentOpt('CC','Claude',true)}${agentOpt('CX','Codex')}${agentOpt('GX','Gemini')}</span></div>
+        <div class="dp-row"><span class="dp-k">Host</span><select class="sel"><option>zion</option><option>mac-mini</option><option>yosemite-s0</option><option>yosemite-s1</option></select></div>
+        <div class="dp-row"><span class="dp-k">Mode</span><span class="opts"><button class="opt ghost">Plan</button><button class="opt primary">Edit</button></span></div>
+        <button class="disp" style="width:100%;justify-content:center;margin-top:12px">${IC.zap} Dispatch onto ${t.id}</button>
+      </div>
+    </div>
+  </div></div>`;
+}
+
+// ================= SWITCHER =================
+function render(){
+  renderTabs();
+  const stage=document.getElementById("stage");
+  if(ACTIVE==="floor"){
+    stage.innerHTML=`<div class="page">${buildSidebar()}<div class="feed-col">${feedCenter()}</div>${queuePanel()}</div>`;
+    wireSidebar(stage);
+    stage.querySelectorAll(".fitem").forEach(r=>r.onclick=(e)=>{if(e.target.closest(".opts")||e.target.closest(".reply2"))return;openAgentTab(r.dataset.id)});
+    stage.querySelectorAll(".cluster").forEach(r=>r.onclick=(e)=>{if(e.target.closest(".opts"))return;});
+    stage.querySelectorAll(".detail-col .trow").forEach(r=>r.onclick=()=>openTicketTab(r.dataset.tid));
+  } else {
+    const tab=TABS.find(t=>t.id===ACTIVE);
+    const body=tab.kind==="ticket"?ticketDetail(TICKETS.find(x=>x.id===tab.ticketId)):agentDetail(AGENTS.find(x=>x.id===tab.agentId));
+    stage.innerHTML=`<div class="page">${buildSidebar()}${body}</div>`;
+    wireSidebar(stage);
+    const cl=stage.querySelector(".detail-empty button"); if(cl)cl.onclick=()=>closeTab(ACTIVE);
+  }
+}
+
+// ================= wiring =================
+document.getElementById("theme").onclick=()=>{const h=document.documentElement;h.dataset.theme=h.dataset.theme==="light"?"dark":"light"};
+const sb=document.getElementById("sidebtn"); sb.classList.toggle("on",SIDEBAR);
+sb.onclick=()=>{SIDEBAR=!SIDEBAR;sb.classList.toggle("on",SIDEBAR);render()};
+document.getElementById("plain").onclick=()=>{PLAIN=!PLAIN;document.getElementById("plain").textContent="Plain language: "+(PLAIN?"on":"off");render()};
+const q=new URLSearchParams(location.search);
+if(q.get("theme"))document.documentElement.dataset.theme=q.get("theme");
+render();
+</script>
+</body>
+</html>

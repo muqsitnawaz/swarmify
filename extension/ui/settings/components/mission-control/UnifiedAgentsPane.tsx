@@ -20,7 +20,7 @@ import {
   PENDING_DISPATCH_TTL_MS,
   type PendingDispatch,
 } from './dispatch'
-import { FloorControls, type FloorView, type StatusChip } from './FloorControls'
+import { FloorControls, type StatusChip } from './FloorControls'
 import { FloorSidebar } from './FloorSidebar'
 import { BacklogCenter } from './BacklogCenter'
 import { TicketDetail } from './TicketDetail'
@@ -44,7 +44,13 @@ import {
   type AgentAbbr,
 } from './floorModel'
 import { adaptUnified, adaptRemote, adaptTickets, sinceFromMs, type RemoteSessionLike } from './floorAdapter'
-import { DispatchPanel } from './DispatchPanel'
+import {
+  DispatchPanel,
+  type DispatchDevice,
+  type DispatchDeviceRepo,
+  type DispatchDeviceSync,
+  type DeviceDispatchRequest,
+} from './DispatchPanel'
 import { PlanReview } from './PlanReview'
 import { FailureCard } from './FailureCard'
 import { ticketKey } from './dispatchInput'
@@ -67,12 +73,14 @@ interface FloorPrefs {
   plain: boolean
   sidebar: boolean
   right: boolean
-  groupBy: FloorGroupBy
   pinned: string[]
+  // Ordered pinned host names for the HOSTS sidebar. null = never customized
+  // (the local machine is pinned by default); [] = user explicitly unpinned all.
+  hostPins: string[] | null
 }
 
 function defaultFloorPrefs(): FloorPrefs {
-  return { plain: false, sidebar: true, right: true, groupBy: 'project', pinned: [] }
+  return { plain: false, sidebar: true, right: true, pinned: [], hostPins: null }
 }
 
 function loadFloorPrefs(): FloorPrefs {
@@ -511,6 +519,17 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   const [dispatchAgents, setDispatchAgents] = useState<InstalledAgent[]>([])
   const [dispatchHosts, setDispatchHosts] = useState<DispatchHost[]>([])
   const [dispatchTargets, setDispatchTargets] = useState<DispatchTarget[]>([])
+  // Registered-device dispatch: devices (with live health), ranked repos->projects,
+  // and the sync status for the currently-selected repo. All backend-driven.
+  const [dispatchDevices, setDispatchDevices] = useState<DispatchDevice[]>([])
+  const [deviceRepos, setDeviceRepos] = useState<DispatchDeviceRepo[]>([])
+  const [deviceSync, setDeviceSync] = useState<DispatchDeviceSync | null>(null)
+  // Lightweight fleet list (agents devices list --json, no SSH) for the sidebar
+  // HOSTS section — populated on mount so hosts show even before the panel opens.
+  const [fleetDevices, setFleetDevices] = useState<{ name: string; online: boolean }[]>([])
+  // This machine's real canonical device name (e.g. 'zion'), from the fleet fetch.
+  // Local agents keep host==='this-mac' for routing but display under this name.
+  const [localHostName, setLocalHostName] = useState<string>('')
   // Floor after-dispatch: plans awaiting review, one per sessionId (from `planReady`).
   const [pendingPlans, setPendingPlans] = useState<PendingPlan[]>([])
   const [cardDragActive, setCardDragActive] = useState(false)
@@ -535,23 +554,23 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     openDispatch({ ticketId: ticketKey(task) })
     onDetailTaskConsumed?.()
   }, [openDetailTaskId, unifiedTasks, onDetailTaskConsumed, openDispatch])
-  const [activeFilter, setActiveFilter] = useState<'all' | 'local' | 'cloud'>('all')
-  const [expandedAgentId, setExpandedAgentId] = useState<string | null>(null)
   const [pendingDispatches, setPendingDispatches] = useState<PendingDispatch[]>([])
   const [tick, setTick] = useState(0)
   // ---------- Floor 3-pane shell state ----------
   const floorPrefs0 = useRef(loadFloorPrefs()).current
   const [center, setCenter] = useState<CenterMode>('agents')
-  const [floorView, setFloorView] = useState<FloorView>('feed')
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null)
   const [projFilter, setProjFilter] = useState<string | null>(null)
+  // Host scope: click a HOSTS row to filter the feed to that machine; click again to clear.
+  const [hostFilter, setHostFilter] = useState<string | null>(null)
   const [floorSort, setFloorSort] = useState<FloorSort>('needs')
-  const [floorGroupBy, setFloorGroupBy] = useState<FloorGroupBy>(floorPrefs0.groupBy)
   const [plain, setPlain] = useState(floorPrefs0.plain)
   const [sidebarOpen, setSidebarOpen] = useState(floorPrefs0.sidebar)
   const [rightOpen, setRightOpen] = useState(floorPrefs0.right)
   const [pinned, setPinned] = useState<Set<string>>(() => new Set(floorPrefs0.pinned))
+  // Ordered pinned HOSTS names (null = default: pin the local machine).
+  const [hostPins, setHostPins] = useState<string[] | null>(floorPrefs0.hostPins)
   const [statusChips, setStatusChips] = useState<StatusChip[]>([])
   const [abbrChips, setAbbrChips] = useState<AgentAbbr[]>([])
   const [floorSearch, setFloorSearch] = useState('')
@@ -570,10 +589,24 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   const [hostInventories, setHostInventories] = useState<Record<string, HostInventory>>({})
   const [hostConfigError, setHostConfigError] = useState<string | null>(null)
 
-  // Persist the durable Floor prefs (pinned set, plain/sidebar/right toggles, group-by).
+  // Persist the durable Floor prefs (pinned set, plain/sidebar/right toggles, group-by, host pins).
   useEffect(() => {
-    saveFloorPrefs({ plain, sidebar: sidebarOpen, right: rightOpen, groupBy: floorGroupBy, pinned: [...pinned] })
-  }, [plain, sidebarOpen, rightOpen, floorGroupBy, pinned])
+    saveFloorPrefs({ plain, sidebar: sidebarOpen, right: rightOpen, pinned: [...pinned], hostPins })
+  }, [plain, sidebarOpen, rightOpen, pinned, hostPins])
+
+  // Effective HOSTS pins: default to pinning just the local machine until the user
+  // customizes. Pin/unpin and drag-reorder always write an explicit list.
+  const effectiveHostPins = useMemo(
+    () => hostPins ?? (localHostName ? [localHostName] : []),
+    [hostPins, localHostName]
+  )
+  const toggleHostPin = useCallback((name: string) => {
+    setHostPins((prev) => {
+      const base = prev ?? (localHostName ? [localHostName] : [])
+      return base.includes(name) ? base.filter((n) => n !== name) : [...base, name]
+    })
+  }, [localHostName])
+  const reorderHostPins = useCallback((names: string[]) => setHostPins(names), [])
 
   // Cross-host merge: fold genuinely-remote sessions into the Floor. Two message
   // types arrive here:
@@ -659,6 +692,109 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     }
     window.addEventListener('message', onMsg)
     return () => window.removeEventListener('message', onMsg)
+  }, [])
+
+  // Registered-device data for the Dispatch panel's device path. Fetched when the
+  // panel opens (device health SSH-probes every host, so we don't probe on every
+  // mount). deviceHealth returns ALL registered devices folded with live stats
+  // (reachable flag included) so offline devices still list as disabled rows.
+  useEffect(() => {
+    if (!dispatchOpen) return
+    postMessage({ type: 'deviceHealth' })
+    postMessage({ type: 'repos' })
+  }, [dispatchOpen])
+  // Cheap fleet fetch on mount (no SSH) so the sidebar HOSTS list is populated.
+  useEffect(() => {
+    postMessage({ type: 'listDevices' })
+  }, [])
+  useEffect(() => {
+    const onMsg = (event: MessageEvent) => {
+      const msg = event.data
+      if (msg?.type === 'devicesData' && Array.isArray(msg.devices)) {
+        if (typeof msg.local === 'string' && msg.local) setLocalHostName(msg.local)
+        setFleetDevices(
+          (msg.devices as Array<{ name: string; online?: boolean }>).map((d) => ({
+            name: d.name,
+            online: !!d.online,
+          })),
+        )
+      } else if (msg?.type === 'deviceHealthData' && Array.isArray(msg.health)) {
+        setDispatchDevices(
+          (msg.health as Array<{ device: { name: string; host: string; secretRef?: string; softLimit?: number }; stats: { reachable?: boolean; runningAgents?: number; memPercent?: number; loadAvg1?: number } }>).map(
+            ({ device, stats }) => ({
+              name: device.name,
+              host: device.host,
+              secretRef: device.secretRef,
+              softLimit: device.softLimit,
+              reachable: !!stats?.reachable,
+              runningAgents: stats?.runningAgents,
+              memPercent: stats?.memPercent,
+              loadAvg1: stats?.loadAvg1,
+            }),
+          ),
+        )
+      } else if (msg?.type === 'reposData' && Array.isArray(msg.repos)) {
+        setDeviceRepos(msg.repos as DispatchDeviceRepo[])
+      } else if (msg?.type === 'repoSyncData') {
+        setDeviceSync((msg.status as DispatchDeviceSync | null) ?? null)
+      }
+    }
+    window.addEventListener('message', onMsg)
+    return () => window.removeEventListener('message', onMsg)
+  }, [])
+
+  const onRequestRepoSync = useCallback((deviceName: string, root: string) => {
+    setDeviceSync(null)
+    const dev = dispatchDevices.find((d) => d.name === deviceName)
+    postMessage({ type: 'repoSync', root, host: dev?.host, secretRef: dev?.secretRef })
+  }, [dispatchDevices])
+
+  const onManageDevices = useCallback(() => {
+    postMessage({ type: 'manageDevices' })
+  }, [])
+
+  const onDeviceDispatch = useCallback((req: DeviceDispatchRequest) => {
+    setDispatchOpen(false)
+    const now = Date.now()
+    const perTicket = req.batch === 'per' && req.ticketIds.length > 1
+    const seeds: (string | undefined)[] = perTicket ? req.ticketIds : [req.ticketIds[0]]
+    const promptTitle = req.prompt.trim().slice(0, 60) || req.ticketIds[0] || 'New agent'
+    seeds.forEach((tid) => {
+      postMessage({
+        type: 'dispatchTask',
+        target: 'device',
+        agentType: req.agent,
+        deviceName: req.deviceName,
+        host: req.host,
+        secretRef: req.secretRef,
+        projectPath: req.projectPath,
+        repoSlug: req.repoSlug,
+        syncPolicy: req.syncPolicy,
+        mode: req.mode,
+        title: perTicket && tid ? tid : promptTitle,
+        description: req.prompt,
+        identifier: tid ?? '',
+      })
+    })
+    const pendings: PendingDispatch[] = seeds.map((tid, i) => ({
+      id: `pending-dispatch-${now}-${i}`,
+      agentType: req.agent,
+      target: 'device',
+      taskId: `dispatch-${now}-${i}`,
+      taskIdentifier: tid ?? '',
+      title: perTicket && tid ? tid : promptTitle,
+      createdAt: now + i,
+      deviceName: req.deviceName,
+      secretRef: req.secretRef,
+      projectPath: req.projectPath,
+      repoSlug: req.repoSlug,
+      syncPolicy: req.syncPolicy,
+    }))
+    setPendingDispatches((prev) => [...prev, ...pendings])
+    setTimeout(() => {
+      postMessage({ type: 'fetchAllTerminals' })
+      postMessage({ type: 'fetchTasks' })
+    }, 800)
   }, [])
 
   const newMenuRef = useRef<HTMLDivElement>(null)
@@ -1039,8 +1175,6 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     postMessage({ type: 'focusTerminal', terminalId: t.id })
   }
 
-  const handleSelectAgent = useCallback((id: string) => setExpandedAgentId(id), [])
-
   const handleRetry = useCallback((taskName: string) => {
     postMessage({ type: 'retrySwarm', taskName })
   }, [])
@@ -1105,8 +1239,8 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   // Local agents (drop the synthetic watchdog row) + genuinely-remote sessions
   // (host !== 'this-mac' so we don't double count this machine's own agents).
   const floorLocalAgents = useMemo(
-    () => adaptUnified(items.filter((i) => i.kind !== 'watchdog'), { pinned, workspaceRepo: workspaceRepoName, nowMs: Date.now(), projectRules }),
-    [items, pinned, workspaceRepoName, projectRules]
+    () => adaptUnified(items.filter((i) => i.kind !== 'watchdog'), { pinned, workspaceRepo: workspaceRepoName, nowMs, localHostName, projectRules }),
+    [items, pinned, workspaceRepoName, nowMs, localHostName, projectRules]
   )
   // Session UUIDs already open as a terminal tab in THIS window (the rich, local
   // source). Used to avoid double-listing an agent that the machine-wide fetch also
@@ -1128,9 +1262,10 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
             (s.context !== 'cloud' && !localTabSessionIds.has(s.sessionId))
         ),
         pinned,
+        localHostName,
         projectRules
       ),
-    [remoteSessions, localTabSessionIds, pinned, projectRules]
+    [remoteSessions, localTabSessionIds, pinned, localHostName, projectRules]
   )
   const floorAgents = useMemo(
     () => [...floorLocalAgents, ...floorRemoteAgents],
@@ -1146,16 +1281,17 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     return m
   }, [items])
 
-  // Center list scoped by project filter + status/agent chips + search.
+  // Center list scoped by project filter + host filter + status/agent chips + search.
   const scopedAgents = useMemo(() => {
     let list = floorAgents
     if (projFilter) list = list.filter((a) => a.project === projFilter)
+    if (hostFilter) list = list.filter((a) => (a.hostLabel ?? a.host) === hostFilter)
     if (statusChips.length) list = list.filter((a) => statusChips.some((c) => (c === 'needs' ? a.needs : a.phase === c)))
     if (abbrChips.length) list = list.filter((a) => abbrChips.includes(a.abbr))
     const q = floorSearch.trim().toLowerCase()
-    if (q) list = list.filter((a) => `${a.name} ${a.branch} ${a.verb} ${a.target} ${a.project} ${a.host}`.toLowerCase().includes(q))
+    if (q) list = list.filter((a) => `${a.name} ${a.branch} ${a.verb} ${a.target} ${a.project} ${a.host} ${a.hostLabel ?? ''}`.toLowerCase().includes(q))
     return list
-  }, [floorAgents, projFilter, statusChips, abbrChips, floorSearch])
+  }, [floorAgents, projFilter, hostFilter, statusChips, abbrChips, floorSearch])
 
   const needsAgents = useMemo(() => scopedAgents.filter((a) => a.needs), [scopedAgents])
   const waitingAgents = useMemo(() => needsAgents.filter((a) => a.phase === 'waiting'), [needsAgents])
@@ -1169,11 +1305,12 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   const floorRunning = useMemo(() => floorAgents.filter((a) => a.phase === 'running').length, [floorAgents])
   const floorTok = useMemo(() => floorAgents.reduce((s, a) => s + a.tok, 0) + liveThroughput, [floorAgents, liveThroughput])
 
-  // Selected agent (defaults to the first waiting, else first live) + its FloorTicket.
-  const selectedFloorAgent: FloorAgent | null = useMemo(() => {
-    if (selectedAgentId) return floorAgents.find((a) => a.id === selectedAgentId) ?? null
-    return waitingAgents[0] ?? activeFeed[0] ?? null
-  }, [selectedAgentId, floorAgents, waitingAgents, activeFeed])
+  // Selected agent: only when the user explicitly picks one. No auto-select — the right
+  // rail must not slam to a "WAITING ON YOU" agent nobody clicked.
+  const selectedFloorAgent: FloorAgent | null = useMemo(
+    () => (selectedAgentId ? floorAgents.find((a) => a.id === selectedAgentId) ?? null : null),
+    [selectedAgentId, floorAgents]
+  )
 
   const selectedFloorTicket = useMemo(
     () => (selectedTicketId ? floorTickets.find((t) => t.id === selectedTicketId) ?? null : null),
@@ -1254,8 +1391,15 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
 
   const onScope = useCallback((value: string) => {
     if (value === '__queue') { setCenter('backlog'); return }
-    if (value === '__needs') { setCenter('agents'); setProjFilter(null); return }
+    if (value === '__needs') { setCenter('agents'); setProjFilter(null); setHostFilter(null); return }
+    if (value.startsWith('host:')) {
+      const h = value.slice(5)
+      setCenter('agents'); setProjFilter(null)
+      setHostFilter((cur) => (cur === h ? null : h)) // click again to clear
+      return
+    }
     setCenter('agents')
+    setHostFilter(null)
     setProjFilter(value || null)
   }, [])
 
@@ -1336,7 +1480,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
           <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'auto' }}>
             <div className="dhead" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
               <div className="title">{a.project} / {a.name}</div>
-              <div className="sub">host <b>{a.host}</b>{a.branch ? ` · ${a.branch}` : ''} · {a.phase}{a.tok ? ` · ${a.tok} tok/s` : ''}</div>
+              <div className="sub">host <b>{a.hostLabel ?? a.host}</b>{a.branch ? ` · ${a.branch}` : ''} · {a.phase}{a.tok ? ` · ${a.tok} tok/s` : ''}</div>
               {a.summary && <div className="resp" style={{ marginTop: 8 }}>{a.summary}</div>}
               {a.resp && a.resp !== a.summary && <div className="resp" style={{ marginTop: 8 }}>{a.resp}</div>}
               {(a.verb || a.target) && <div className="nowline" style={{ marginTop: 8 }}><Icon name="chevR" size={11} /> <span className="v">{a.verb}</span> {a.target}</div>}
@@ -1372,10 +1516,6 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
       onSelectTicket={(id) => setSelectedTicketId(id)}
       onBackToAgents={() => setCenter('agents')}
     />
-  ) : floorView !== 'feed' ? (
-    <div className="feed">
-      <div className="detail-empty">The {floorView} view is coming soon — Feed is the primary Floor view.</div>
-    </div>
   ) : (
     <div className="feed">
       {nextUpTickets.length > 0 && (
@@ -1483,20 +1623,14 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   return (
     <div className="sw-floor-dashboard" style={{ padding: 0, overflow: 'hidden' }}>
       <FloorControls
-        view={floorView}
-        onView={setFloorView}
-        groupBy={floorGroupBy}
-        onGroupBy={setFloorGroupBy}
         runningCount={floorRunning}
         totalCount={floorAgents.length}
-        totalTok={floorTok}
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen((o) => !o)}
         rightOpen={rightOpen}
         onToggleRight={() => setRightOpen((o) => !o)}
         plain={plain}
         onTogglePlain={() => setPlain((o) => !o)}
-        onToggleTheme={() => postMessage({ type: 'executeCommand', command: 'workbench.action.toggleLightDarkThemes' })}
         sort={floorSort}
         onSort={setFloorSort}
         activeStatus={statusChips}
@@ -1505,7 +1639,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
         onToggleAbbr={(ab) => setAbbrChips((prev) => (prev.includes(ab) ? prev.filter((c) => c !== ab) : [...prev, ab]))}
         search={floorSearch}
         onSearch={setFloorSearch}
-        onDispatch={() => setDispatchOpen(true)}
+        onDispatch={() => openDispatch(selectedTicketId ? { ticketId: selectedTicketId } : undefined)}
       />
 
       <div className="page" style={{ flex: 1, minHeight: 0, height: 'auto' }}>
@@ -1514,7 +1648,16 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
             agents={floorAgents}
             tickets={floorTickets}
             projFilter={projFilter}
+            hostFilter={hostFilter}
             offlineHosts={offlineHosts}
+            devices={
+              dispatchDevices.length
+                ? dispatchDevices.map((d) => ({ name: d.name, online: !!d.reachable, agents: d.runningAgents ?? 0 }))
+                : fleetDevices.map((d) => ({ name: d.name, online: d.online, agents: 0 }))
+            }
+            hostPins={effectiveHostPins}
+            onToggleHostPin={toggleHostPin}
+            onReorderHostPins={reorderHostPins}
             onScope={onScope}
             onSelectHost={onSelectHost}
             selectedHost={center === 'host' ? selectedHostId : null}
@@ -1562,6 +1705,12 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
         prefillTicketId={dispatchPrefillTicketId}
         onClose={() => setDispatchOpen(false)}
         onDispatch={onDispatchRequest}
+        devices={dispatchDevices}
+        deviceRepos={deviceRepos}
+        deviceSync={deviceSync}
+        onRequestRepoSync={onRequestRepoSync}
+        onManageDevices={onManageDevices}
+        onDeviceDispatch={onDeviceDispatch}
       />
     </div>
   )

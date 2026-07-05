@@ -129,6 +129,23 @@ describe('toFloorAgentFromUnified', () => {
     expect(a.abbr).toBe('CC')
   })
 
+  test('local agent keeps host this-mac (routing) but takes hostLabel from localHostName (display)', () => {
+    const withName = toFloorAgentFromUnified(
+      baseUnified({}),
+      { pinned: new Set(), workspaceRepo: null, nowMs: NOW, localHostName: 'zion' },
+    )
+    // host stays the routing key so reply/nudge/reassign still target the local machine.
+    expect(withName.host).toBe('this-mac')
+    // hostLabel is the real device name every Floor surface renders.
+    expect(withName.hostLabel).toBe('zion')
+
+    // Before the fleet list resolves (no localHostName), hostLabel is undefined and
+    // callers fall back to host.
+    const noName = toFloorAgentFromUnified(baseUnified({}), { pinned: new Set(), workspaceRepo: null, nowMs: NOW })
+    expect(noName.host).toBe('this-mac')
+    expect(noName.hostLabel).toBeUndefined()
+  })
+
   test('a failed agent needs you and gets a retry question', () => {
     const a = toFloorAgentFromUnified(
       baseUnified({ status: 'failed', active: false, activity: 'build broke' }),
@@ -218,6 +235,34 @@ describe('toFloorAgentFromRemote', () => {
     expect(a.question?.kind).toBe('confirm')
     // remote carries only session-start; heartbeat anchors to it until backend adds a stamp.
     expect(a.lastActivityMs).toBe(NOW - 42_000)
+    // a genuinely-remote host is already its real name — no display override.
+    expect(a.hostLabel).toBeUndefined()
+  })
+
+  test("this machine's out-of-window sessions (host 'this-mac') take the real name as hostLabel so they fold, not duplicate", () => {
+    const base: RemoteSessionLike = {
+      host: 'this-mac',
+      sessionId: 'localsess1',
+      agentType: 'claude',
+      cwd: '/home/u/src/web',
+      project: 'web',
+      phase: 'running',
+      activity: 'Editing App.tsx',
+      tokPerSec: 10,
+      waitingForInput: false,
+      lastResponse: '',
+      prUrl: null,
+      ticket: null,
+      branch: 'feat-z',
+      sinceMs: 1_000,
+      startedAtMs: NOW - 1_000,
+      topic: '',
+      context: 'terminal',
+    }
+    const a = toFloorAgentFromRemote(base, new Set(), 'zion')
+    // host stays the routing key; only the display name resolves to the real device.
+    expect(a.host).toBe('this-mac')
+    expect(a.hostLabel).toBe('zion')
   })
 
   test('a remote session with an unknown start (0) disables the heartbeat rather than false-stalling', () => {

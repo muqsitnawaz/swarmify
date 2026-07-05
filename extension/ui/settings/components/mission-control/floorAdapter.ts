@@ -171,7 +171,7 @@ export function floorPrLabel(url: string | null | undefined): string | null {
  */
 export function toFloorAgentFromUnified(
   u: UnifiedAgentLike,
-  opts: { pinned: Set<string>; workspaceRepo?: string | null; nowMs: number; projectRules?: ProjectRule[] },
+  opts: { pinned: Set<string>; workspaceRepo?: string | null; nowMs: number; localHostName?: string; projectRules?: ProjectRule[] },
 ): FloorAgent {
   const waitingForInput = u.terminal?.waitingForInput === true || u.agent?.status === 'input_required'
   const prOpenUnreviewed = !!u.prUrl
@@ -190,6 +190,9 @@ export function toFloorAgentFromUnified(
   return {
     id: u.id,
     host: 'this-mac',
+    // Display the machine's real device name (e.g. 'zion') instead of the
+    // internal 'this-mac' routing key. Undefined until the fleet list resolves.
+    hostLabel: opts.localHostName || undefined,
     project,
     name: u.displayName,
     abbr: abbrFor(u.agentType),
@@ -223,7 +226,7 @@ export function toFloorAgentFromUnified(
  * phase + activity + throughput, so we trust those and only re-derive needs + the
  * structured question (both pure). Host stays the remote machine name.
  */
-export function toFloorAgentFromRemote(r: RemoteSessionLike, pinned: Set<string>, projectRules: ProjectRule[] = []): FloorAgent {
+export function toFloorAgentFromRemote(r: RemoteSessionLike, pinned: Set<string>, localHostName?: string, projectRules: ProjectRule[] = []): FloorAgent {
   const phase = r.phase
   const prOpenUnreviewed = !!r.prUrl
   const needs = deriveNeeds(phase, prOpenUnreviewed)
@@ -237,6 +240,10 @@ export function toFloorAgentFromRemote(r: RemoteSessionLike, pinned: Set<string>
   return {
     id,
     host: r.host,
+    // This machine's own sessions reported by the machine-wide fetch carry the
+    // synthetic 'this-mac'; give them the real device name so they fold into the
+    // same HOSTS row as in-window local agents instead of a second bucket.
+    hostLabel: r.host === 'this-mac' ? localHostName || undefined : undefined,
     project: deriveProject(r.cwd, r.project, r.project || '—', projectRules),
     name,
     abbr: abbrFor(r.agentType),
@@ -270,14 +277,14 @@ export function toFloorAgentFromRemote(r: RemoteSessionLike, pinned: Set<string>
 /** Map local UnifiedAgents (watchdog rows should be filtered out by the caller). */
 export function adaptUnified(
   agents: UnifiedAgentLike[],
-  opts: { pinned: Set<string>; workspaceRepo?: string | null; nowMs: number; projectRules?: ProjectRule[] },
+  opts: { pinned: Set<string>; workspaceRepo?: string | null; nowMs: number; localHostName?: string; projectRules?: ProjectRule[] },
 ): FloorAgent[] {
   return agents.map((a) => toFloorAgentFromUnified(a, opts))
 }
 
 /** Map genuinely-remote sessions (caller drops host === 'this-mac' to avoid double count). */
-export function adaptRemote(sessions: RemoteSessionLike[], pinned: Set<string>, projectRules: ProjectRule[] = []): FloorAgent[] {
-  return sessions.map((s) => toFloorAgentFromRemote(s, pinned, projectRules))
+export function adaptRemote(sessions: RemoteSessionLike[], pinned: Set<string>, localHostName?: string, projectRules: ProjectRule[] = []): FloorAgent[] {
+  return sessions.map((s) => toFloorAgentFromRemote(s, pinned, localHostName, projectRules))
 }
 
 /** UnifiedTask[] -> FloorTicket[] (delegates to floorModel.toFloorTicket). */
