@@ -66,6 +66,13 @@ function FeedItemImpl({ agent: a, selected, plain, onSelect, onOption, onFreeTex
     a.phase === 'running' ? <span className="pill run">running</span> :
     a.phase === 'done' ? <span className="pill done">done</span> : null
 
+  // CI badge for an open PR, beside the PR pill: green when checks pass (ready to
+  // review/merge), red on failure, amber while they run.
+  const ciBadge =
+    a.pr && a.ci === 'passed' ? <span className="pill cipass">CI passed</span> :
+    a.pr && a.ci === 'failed' ? <span className="pill cifail">CI failed</span> :
+    a.pr && a.ci === 'running' ? <span className="pill cirun">CI running</span> : null
+
   return (
     <div
       className={`fitem ${attn}${selected ? ' selsel' : ''}`}
@@ -79,6 +86,7 @@ function FeedItemImpl({ agent: a, selected, plain, onSelect, onOption, onFreeTex
         <span className="path">{meta}</span>
         <span className="when">
           {marker}
+          {ciBadge}
           {tok && (
             <span className="tps">{!plain && <Icon name="zap" size={11} />}{tok}</span>
           )}

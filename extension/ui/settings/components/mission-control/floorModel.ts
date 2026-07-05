@@ -163,6 +163,10 @@ export interface ReplyTarget {
  * from the real UnifiedAgent (+ cross-host session data). Mirrors prototype
  * AGENTS: factory-floor.html:336-347.
  */
+// CI state of an agent's open PR. Mirrors src/core/prChecks.ts (kept as a plain
+// string union so UI and extension code need not share an import across roots).
+export type CiStatus = 'passed' | 'failed' | 'running' | null
+
 export interface FloorAgent {
   id: string
   host: string          // 'this-mac' for local; remote hostname otherwise. ROUTING key — reply/nudge/reassign target it.
@@ -181,6 +185,7 @@ export interface FloorAgent {
   needs: boolean         // waiting || failed || (done && unreviewed)
   pinned: boolean        // user-pinned (persisted in globalState)
   pr: string | null      // "#142" when a PR is open
+  ci: CiStatus           // CI state of the open PR; null when no PR / unknown
   ticket: string | null  // "RUSH-812" when linked
   branch: string
   resp: string           // last response text (Anthropic Agent-view style)
@@ -417,14 +422,21 @@ export function derivePhase(input: {
   return 'idle'
 }
 
-/** waiting || failed || stalled || (done && unreviewed). */
-export function deriveNeeds(phase: FloorPhase, prOpenUnreviewed: boolean): boolean {
-  return (
-    phase === 'waiting' ||
-    phase === 'failed' ||
-    phase === 'stalled' ||
-    (phase === 'done' && prOpenUnreviewed)
-  )
+/**
+ * waiting || failed || stalled || (open PR that needs a human decision).
+ *
+ * Self-promotion: an agent with an open, unreviewed PR climbs into Needs You the
+ * moment CI settles — passed (ready to merge) or failed (needs a look) — even if
+ * the agent process is still running. While CI is still running it stays in the
+ * live lane. When CI status is unknown (gh unavailable, or a PR with no checks),
+ * fall back to the prior rule: a completed agent with an open PR needs review.
+ */
+export function deriveNeeds(phase: FloorPhase, prOpenUnreviewed: boolean, ci: CiStatus = null): boolean {
+  if (phase === 'waiting' || phase === 'failed' || phase === 'stalled') return true
+  if (!prOpenUnreviewed) return false
+  if (ci === 'passed' || ci === 'failed') return true
+  if (ci === 'running') return false
+  return phase === 'done'
 }
 
 /**

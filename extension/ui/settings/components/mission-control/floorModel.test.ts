@@ -170,6 +170,25 @@ describe('deriveNeeds', () => {
   test('a stalled agent needs attention', () => {
     expect(deriveNeeds('stalled', false)).toBe(true)
   })
+
+  test('self-promotion: an open PR climbs into needs-you once CI settles', () => {
+    // Still running, but CI went green -> promote (the "ready to review" moment).
+    expect(deriveNeeds('running', true, 'passed')).toBe(true)
+    // Running with a red PR -> promote (needs a look).
+    expect(deriveNeeds('running', true, 'failed')).toBe(true)
+    // CI still running -> stay in the live lane, not needs-you.
+    expect(deriveNeeds('running', true, 'running')).toBe(false)
+    // Done + green -> needs review.
+    expect(deriveNeeds('done', true, 'passed')).toBe(true)
+    // Done + CI still running -> not yet.
+    expect(deriveNeeds('done', true, 'running')).toBe(false)
+  })
+
+  test('unknown CI falls back to the prior done+PR rule', () => {
+    expect(deriveNeeds('done', true, null)).toBe(true)
+    expect(deriveNeeds('running', true, null)).toBe(false)
+    expect(deriveNeeds('done', false, null)).toBe(false)
+  })
 })
 
 describe('deriveStalled — a running agent gone quiet', () => {

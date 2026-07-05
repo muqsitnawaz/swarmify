@@ -22,6 +22,7 @@ import {
   type FloorTicket,
   type AgentAbbr,
   type ReplyTarget,
+  type CiStatus,
 } from './floorModel'
 import type { UnifiedTask, RecentToolCall, ProjectRule } from '../../types'
 
@@ -39,6 +40,7 @@ export interface UnifiedAgentLike {
   files: string[]
   toolCalls: number
   prUrl?: string | null
+  ci?: CiStatus | null
   linearIssue?: string | null
   terminal?: {
     id?: string
@@ -72,6 +74,7 @@ export interface RemoteSessionLike {
   waitingForInput: boolean
   lastResponse: string
   prUrl: string | null
+  ci?: CiStatus | null
   ticket: string | null
   branch: string
   sinceMs: number
@@ -220,13 +223,14 @@ export function toFloorAgentFromUnified(
 ): FloorAgent {
   const waitingForInput = u.terminal?.waitingForInput === true || u.agent?.status === 'input_required'
   const prOpenUnreviewed = !!u.prUrl
+  const ci = u.ci ?? null
   const phase = derivePhase({
     status: u.status,
     waitingForInput,
     active: u.active,
     prOpenUnreviewed,
   })
-  const needs = deriveNeeds(phase, prOpenUnreviewed)
+  const needs = deriveNeeds(phase, prOpenUnreviewed, ci)
   const lastMsgs = u.agent?.last_messages
   const resp = (lastMsgs && lastMsgs.length ? lastMsgs[lastMsgs.length - 1] : '') || u.activity || ''
   const { verb, target } = splitActivity(u.activity)
@@ -258,6 +262,7 @@ export function toFloorAgentFromUnified(
     needs,
     pinned: opts.pinned.has(u.id),
     pr: floorPrLabel(u.prUrl),
+    ci,
     ticket: u.linearIssue ?? null,
     branch: u.terminal?.branch ?? u.agent?.branch ?? '',
     resp,
@@ -280,7 +285,8 @@ export function toFloorAgentFromUnified(
 export function toFloorAgentFromRemote(r: RemoteSessionLike, pinned: Set<string>, localHostName?: string, projectRules: ProjectRule[] = []): FloorAgent {
   const phase = r.phase
   const prOpenUnreviewed = !!r.prUrl
-  const needs = deriveNeeds(phase, prOpenUnreviewed)
+  const ci = r.ci ?? null
+  const needs = deriveNeeds(phase, prOpenUnreviewed, ci)
   const { verb, target } = splitActivity(r.activity)
   const id = `remote-${r.host}-${r.sessionId}`
   const name = r.branch || r.ticket || r.sessionId.slice(0, 8)
@@ -312,6 +318,7 @@ export function toFloorAgentFromRemote(r: RemoteSessionLike, pinned: Set<string>
     needs,
     pinned: pinned.has(id),
     pr: floorPrLabel(r.prUrl),
+    ci,
     ticket: r.ticket,
     branch: r.branch,
     resp,
