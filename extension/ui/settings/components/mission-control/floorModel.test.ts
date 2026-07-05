@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test'
-import type { UnifiedTask } from '../../types'
+import type { UnifiedTask, ProjectRule } from '../../types'
 import {
   derivePhase,
   deriveNeeds,
@@ -15,12 +15,58 @@ import {
   toFloorTicket,
   groupTickets,
   sortTickets,
+  resolveProject,
   PHASE_RANK,
   STALL_THRESHOLD_MS,
   type FloorAgent,
   type FloorPhase,
   type StructuredQuestion,
 } from './floorModel'
+
+describe('resolveProject', () => {
+  const RULES: ProjectRule[] = [
+    { pattern: '**/agents/prix/api', project: 'Prix API' },
+    { pattern: '**/agents/prix/app', project: 'Prix App' },
+    { pattern: '/home/muqsit/src/monorepo', project: 'Monorepo Root' },
+  ]
+
+  test('user rules win first, and the first matching rule wins', () => {
+    expect(resolveProject('/x/y/agents/prix/api', RULES)).toBe('Prix API')
+    expect(resolveProject('/x/y/agents/prix/app', RULES)).toBe('Prix App')
+  })
+
+  test('a glob captures work inside the matched directory', () => {
+    expect(resolveProject('/x/y/agents/prix/api/src/routes', RULES)).toBe('Prix API')
+  })
+
+  test('a path-prefix rule matches the dir and descendants but not a shared-prefix sibling', () => {
+    expect(resolveProject('/home/muqsit/src/monorepo/packages/api', RULES)).toBe('Monorepo Root')
+    expect(resolveProject('/home/muqsit/src/monorepo-two', RULES)).toBe('monorepo-two')
+  })
+
+  test('rules beat the git-repo-root default', () => {
+    expect(resolveProject('/x/y/agents/prix/api', RULES, '/x/y/agents')).toBe('Prix API')
+  })
+
+  test('a monorepo subdir with no rule folds to its git repo root basename', () => {
+    expect(resolveProject('/x/y/agents/prix/api', [], '/x/y/agents')).toBe('agents')
+  })
+
+  test('worktree folding beats the git-repo-root default', () => {
+    expect(
+      resolveProject(
+        '/Users/m/src/o/swarmify/.agents/worktrees/floor-port',
+        [],
+        '/Users/m/src/o/swarmify/.agents/worktrees/floor-port',
+      ),
+    ).toBe('swarmify')
+  })
+
+  test('no rules, no repoRoot -> legacy last-segment', () => {
+    expect(resolveProject('/x/y/prix-api')).toBe('prix-api')
+    expect(resolveProject('')).toBe('')
+  })
+})
 
 function makeAgent(overrides: Partial<FloorAgent> = {}): FloorAgent {
   return {

@@ -21,6 +21,7 @@ import {
   enrichWithSessionContent,
   groupByHost,
 } from '../core/remoteSessions';
+import type { ProjectRule } from '../core/settings';
 import { deriveHostLoad, parseRemoteCpuRatio } from '../core/dispatchRanking';
 
 const execFileAsync = promisify(execFile);
@@ -260,7 +261,7 @@ async function probeCpuRatio(host: string, isLocal: boolean): Promise<number | n
  *  `probeCpu` gates the second (CPU-load) SSH round-trip: the live feed poll passes
  *  false to fetch sessions with ONE connection per host; the Dispatch panel passes
  *  true when it needs fresh load for ranking. */
-async function fetchActiveForHost(host: string, isLocal: boolean, fetchedAt: number, probeCpu: boolean): Promise<{
+async function fetchActiveForHost(host: string, isLocal: boolean, fetchedAt: number, probeCpu: boolean, projectRules: ProjectRule[]): Promise<{
   host: string;
   online: boolean;
   sessions: RemoteSession[];
@@ -279,7 +280,7 @@ async function fetchActiveForHost(host: string, isLocal: boolean, fetchedAt: num
     const raw: any[] = Array.isArray(parsed) ? parsed : [];
     const normalized = raw
       .filter((rec) => rec && typeof rec === 'object')
-      .map((rec) => normalizeActiveSession(rec, host, fetchedAt));
+      .map((rec) => normalizeActiveSession(rec, host, fetchedAt, projectRules));
     // Collapse the many-processes-per-session records to one card BEFORE enriching,
     // so each session file is read once (not once per duplicate pid) and the header
     // count matches what the feed renders.
@@ -320,15 +321,23 @@ export interface HostSessionsResult {
 // `hasCpu` records whether this cached result carries live CPU load. A CPU-less feed
 // result must NOT satisfy a Dispatch call that needs load for ranking, so a probeCpu
 // caller treats a CPU-less cache as a miss.
-let activeCache: { at: number; hasCpu: boolean; result: HostSessionsResult } | null = null;
+// `rulesKey` records the project-rule set baked into the cached projects; a change
+// to the user's rules invalidates the cache so grouping updates on the next poll.
+let activeCache: { at: number; hasCpu: boolean; rulesKey: string; result: HostSessionsResult } | null = null;
 let activeInFlight: Promise<HostSessionsResult> | null = null;
-let localCache: { at: number; result: HostSessionsResult } | null = null;
+let localCache: { at: number; rulesKey: string; result: HostSessionsResult } | null = null;
 let localInFlight: Promise<HostSessionsResult> | null = null;
 
 export interface FetchHostSessionsOptions {
   /** Also probe each remote host's CPU load (a second SSH per host). The live feed
    *  poll leaves this false; the Dispatch panel sets it true for load ranking. */
   probeCpu?: boolean;
+  /** Ordered cwd->project mappings applied when normalizing each session's project. */
+  projectRules?: ProjectRule[];
+}
+
+function projectRulesKey(rules: ProjectRule[]): string {
+  return JSON.stringify(rules ?? []);
 }
 
 /** A discovered host offline at discovery time (Tailscale said so) becomes an
@@ -351,7 +360,14 @@ export async function fetchHostSessions(
   opts: FetchHostSessionsOptions = {},
 ): Promise<HostSessionsResult> {
   const probeCpu = opts.probeCpu === true;
-  if (activeCache && fetchedAt - activeCache.at < CACHE_TTL_MS && (activeCache.hasCpu || !probeCpu)) {
+  const projectRules = opts.projectRules ?? [];
+  const rulesKey = projectRulesKey(projectRules);
+  if (
+    activeCache &&
+    fetchedAt - activeCache.at < CACHE_TTL_MS &&
+    (activeCache.hasCpu || !probeCpu) &&
+    activeCache.rulesKey === rulesKey
+  ) {
     return activeCache.result;
   }
   if (activeInFlight) return activeInFlight;
@@ -372,7 +388,7 @@ export async function fetchHostSessions(
       // the batch — which was leaving the whole Floor empty. Label local sessions
       // 'this-mac' for the UI; still no --host (isLocal).
       return withHardTimeout(
-        fetchActiveForHost(label, isLocal, fetchedAt, probeCpu),
+        fetchActiveForHost(label, isLocal, fetchedAt, probeCpu, projectRules),
         isLocal ? ACTIVE_TIMEOUT_LOCAL_MS + 2000 : ACTIVE_TIMEOUT_REMOTE_MS + 2000,
         { host: label, online: false, sessions: [], cpuRatio: null }
       );
@@ -391,7 +407,7 @@ export async function fetchHostSessions(
     for (const h of offline) resolvedHosts.push(offlineHostInfo(h.name === LOCAL_HOST ? LOCAL_LABEL : h.name));
     const groups = groupByHost(sessions, resolvedHosts, fetchedAt);
     const result: HostSessionsResult = { hosts: resolvedHosts, sessions, groups, fetchedAt };
-    activeCache = { at: fetchedAt, hasCpu: probeCpu, result };
+    activeCache = { at: fetchedAt, hasCpu: probeCpu, rulesKey, result };
     return result;
   })();
 
@@ -407,13 +423,19 @@ export async function fetchHostSessions(
  * discovery). Feeds the 3s local poll so the feed feels live without paying the
  * remote fan-out cost. Returns a single-host ('this-mac') HostSessionsResult.
  */
-export async function fetchLocalSessions(fetchedAt: number = Date.now()): Promise<HostSessionsResult> {
-  if (localCache && fetchedAt - localCache.at < LOCAL_CACHE_TTL_MS) return localCache.result;
+export async function fetchLocalSessions(
+  fetchedAt: number = Date.now(),
+  projectRules: ProjectRule[] = [],
+): Promise<HostSessionsResult> {
+  const rulesKey = projectRulesKey(projectRules);
+  if (localCache && fetchedAt - localCache.at < LOCAL_CACHE_TTL_MS && localCache.rulesKey === rulesKey) {
+    return localCache.result;
+  }
   if (localInFlight) return localInFlight;
 
   localInFlight = (async () => {
     const r = await withHardTimeout(
-      fetchActiveForHost(LOCAL_LABEL, true, fetchedAt, false),
+      fetchActiveForHost(LOCAL_LABEL, true, fetchedAt, false, projectRules),
       ACTIVE_TIMEOUT_LOCAL_MS + 2000,
       { host: LOCAL_LABEL, online: false, sessions: [], cpuRatio: null },
     );
@@ -427,7 +449,7 @@ export async function fetchLocalSessions(fetchedAt: number = Date.now()): Promis
     };
     const groups = groupByHost(r.sessions, [host], fetchedAt);
     const result: HostSessionsResult = { hosts: [host], sessions: r.sessions, groups, fetchedAt };
-    localCache = { at: fetchedAt, result };
+    localCache = { at: fetchedAt, rulesKey, result };
     return result;
   })();
 
