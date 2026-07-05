@@ -1031,6 +1031,14 @@ async function fetchCloudRuns(): Promise<TaskSummary[]> {
       cloudRunsCache = { at: Date.now(), tasks };
       return tasks;
     })
+    .catch((err) => {
+      // A transient failure (5s timeout / abort / network blip) must not make
+      // cloud agents vanish from the feed. Serve the last good snapshot if we
+      // have one; leave its timestamp stale so the TTL check lets the next call
+      // retry a fresh fetch rather than pinning the stale copy.
+      console.error('[floor] cloud-runs fetch failed:', err);
+      return cloudRunsCache ? cloudRunsCache.tasks : [];
+    })
     .finally(() => {
       if (cloudRunsInFlight === p) cloudRunsInFlight = undefined;
     });

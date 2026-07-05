@@ -404,23 +404,28 @@ export default function App() {
     vscode.postMessage({ type: 'refreshAgentInventories' })
   }, [activeTab, agentInventories])
 
-  // Stream Floor updates while the floor tab is active and the panel is
-  // visible. The host watches session files of all floor terminals + the teams
-  // config and pushes allTerminalsData/tasksData on change (debounced), so
-  // activity shows in near-real-time instead of on a fixed poll. A slow 30s
-  // poll stays as a safety backstop in case a filesystem event is missed.
-  // retainContextWhenHidden keeps the React tree alive when the tab is hidden,
-  // so the visibility gate prevents work for a UI nobody is looking at.
+  // Stream Floor updates while the floor tab is active. The host watches session
+  // files of all floor terminals + the teams config and pushes
+  // allTerminalsData/tasksData on change (debounced), so activity shows in
+  // near-real-time. The fs-watch subscription is the expensive path, so it stays
+  // gated on visibility — no point watching for a UI nobody is looking at.
+  //
+  // The 30s backstop poll, however, must run whenever the floor is the active
+  // tab, regardless of panelVisible: a webview restored behind another editor
+  // seeds panelVisible=false and onDidChangeViewState only fires on a
+  // transition, so gating the poll on visibility froze the feed until the user
+  // clicked into it. The poll is cheap; run it so a visible-but-mis-seeded floor
+  // still refreshes.
   useEffect(() => {
-    if (activeTab !== 'floor' || !tasksLoaded || !panelVisible) return
-    vscode.postMessage({ type: 'subscribeFloor' })
+    if (activeTab !== 'floor' || !tasksLoaded) return
+    if (panelVisible) vscode.postMessage({ type: 'subscribeFloor' })
     const interval = setInterval(() => {
       vscode.postMessage({ type: 'fetchTasks' })
       vscode.postMessage({ type: 'fetchAllTerminals' })
     }, 30_000)
     return () => {
       clearInterval(interval)
-      vscode.postMessage({ type: 'unsubscribeFloor' })
+      if (panelVisible) vscode.postMessage({ type: 'unsubscribeFloor' })
     }
   }, [activeTab, tasksLoaded, panelVisible])
 
