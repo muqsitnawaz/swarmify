@@ -44,6 +44,8 @@ import {
   type AgentAbbr,
   type CiStatus,
 } from './floorModel'
+import { SavedViews } from './SavedViewsBar'
+import { loadSavedViews, persistSavedViews, upsertView, removeView, viewMatches, type SavedView } from './savedViews'
 import { adaptUnified, adaptRemote, adaptTickets, sinceFromMs, type RemoteSessionLike } from './floorAdapter'
 import {
   DispatchPanel,
@@ -578,6 +580,35 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   const [statusChips, setStatusChips] = useState<StatusChip[]>([])
   const [abbrChips, setAbbrChips] = useState<AgentAbbr[]>([])
   const [floorSearch, setFloorSearch] = useState('')
+  const [savedViews, setSavedViews] = useState<SavedView[]>(() => loadSavedViews())
+
+  const activeViewName = useMemo(() => {
+    const cur = { sort: floorSort, status: statusChips, abbrs: abbrChips, search: floorSearch }
+    return savedViews.find((v) => viewMatches(v, cur))?.name ?? null
+  }, [savedViews, floorSort, statusChips, abbrChips, floorSearch])
+
+  const applyView = useCallback((v: SavedView) => {
+    setFloorSort(v.sort)
+    setStatusChips(v.status)
+    setAbbrChips(v.abbrs)
+    setFloorSearch(v.search)
+  }, [])
+
+  const saveView = useCallback((name: string) => {
+    setSavedViews((prev) => {
+      const next = upsertView(prev, { name, sort: floorSort, status: statusChips, abbrs: abbrChips, search: floorSearch })
+      persistSavedViews(next)
+      return next
+    })
+  }, [floorSort, statusChips, abbrChips, floorSearch])
+
+  const deleteView = useCallback((name: string) => {
+    setSavedViews((prev) => {
+      const next = removeView(prev, name)
+      persistSavedViews(next)
+      return next
+    })
+  }, [])
   const [ticketGroup, setTicketGroup] = useState<TicketGroupBy>('project')
   const [ticketSort, setTicketSort] = useState<TicketSort>('priority')
   const [ticketSrc, setTicketSrc] = useState<Record<TicketSource, boolean>>({ LN: true, GH: true })
@@ -1559,6 +1590,13 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     />
   ) : (
     <div className="feed">
+      <SavedViews
+        views={savedViews}
+        activeName={activeViewName}
+        onApply={applyView}
+        onSave={saveView}
+        onDelete={deleteView}
+      />
       {(needsAgents.length > 0 || pendingPlans.length > 0) && (
         <>
           <div className="feed-sec attn">

@@ -237,6 +237,15 @@
 .swarmify-root .pill.cipass { background: var(--status-running-bg); color: var(--status-running); }
 .swarmify-root .pill.cifail { background: var(--status-failed-bg); color: var(--status-failed); }
 .swarmify-root .pill.cirun { background: var(--status-pending-bg); color: var(--status-pending); }
+.swarmify-root .savedviews { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 0 12px; align-items: center; }
+.swarmify-root .svchip { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--ds-border); color: var(--ds-text-muted); background: var(--ds-bg-panel); cursor: pointer; }
+.swarmify-root .svchip:hover { color: var(--ds-text); border-color: var(--ds-text-muted); }
+.swarmify-root .svchip.on { color: var(--brand); border-color: var(--brand); background: rgba(232, 93, 93, 0.1); }
+.swarmify-root .svchip .svx { display: inline-flex; opacity: 0.45; }
+.swarmify-root .svchip .svx:hover { opacity: 1; }
+.swarmify-root .svadd { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; border: 1px dashed var(--ds-border); color: var(--ds-text-muted); cursor: pointer; }
+.swarmify-root .svadd:hover { color: var(--brand); border-color: var(--brand); }
+.swarmify-root .svinput { font-size: 11px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--brand); background: var(--ds-bg); color: var(--ds-text); width: 112px; outline: none; }
 .swarmify-root .reply { display: flex; gap: 8px; margin-top: 10px; }
 .swarmify-root .reply input { flex: 1; background: var(--ds-bg); border: 1px solid var(--ds-border); border-radius: var(--r-md); padding: 7px 10px; font-size: 12px; color: var(--ds-text); }
 .swarmify-root .reply .approve { background: var(--status-running); color: #fff; border: none; border-radius: var(--r-md); padding: 7px 12px; font-weight: 700; font-size: 12px; }
