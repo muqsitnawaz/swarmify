@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Swarmify session subsystem — architecture</title>
+<style>
+  :root { --ink:#0b1220; --muted:#5b6577; --line:#d7dde6; --bad:#c0392b; --good:#1e8e5a; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:#f6f8fb; color:var(--ink);
+         font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif; }
+  header { padding:28px 36px 8px; }
+  h1 { margin:0 0 4px; font-size:22px; letter-spacing:-.01em; }
+  header p { margin:0; color:var(--muted); }
+  section { padding:18px 36px 34px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:14px;
+          padding:18px 18px 8px; box-shadow:0 1px 2px rgba(16,24,40,.04); }
+  h2 { margin:2px 0 2px; font-size:17px; }
+  .sub { color:var(--muted); margin:0 0 6px; font-size:13.5px; }
+  .legend { display:flex; gap:18px; flex-wrap:wrap; margin:6px 0 16px; color:var(--muted); font-size:13px; }
+  .chip { display:inline-flex; align-items:center; gap:7px; }
+  .dot { width:11px; height:11px; border-radius:3px; display:inline-block; }
+  .dot.bad { background:#f6d4cf; border:1.5px solid var(--bad); }
+  .dot.good { background:#cdeede; border:1.5px solid var(--good); }
+  .dot.plain { background:#eef1f6; border:1.5px solid #aab4c4; }
+  .mermaid { display:flex; justify-content:center; }
+  .note { font-size:12.5px; color:var(--muted); padding:0 36px 30px; max-width:1000px; }
+  code { background:#eef1f6; padding:1px 5px; border-radius:5px; font-size:12.5px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Swarmify session subsystem</h1>
+  <p>Why 15 agents slow the machine — and the single index that fixes it. Evidence in <code>session-index-design.md</code>.</p>
+</header>
+
+<div class="legend" style="padding:0 36px;">
+  <span class="chip"><span class="dot bad"></span> unbounded / sync / hot path</span>
+  <span class="chip"><span class="dot good"></span> the fix</span>
+  <span class="chip"><span class="dot plain"></span> existing component</span>
+</div>
+
+<section>
+  <div class="card">
+    <h2>Today — there is no session index</h2>
+    <p class="sub">Every consumer re-derives everything from raw files. 6 uncoordinated caches, 2 overlapping watchers, 4&ndash;5 reads of the same file per refresh, ~370 readdir/stat per Floor refresh.</p>
+    <pre class="mermaid">
+flowchart TB
+  classDef bad fill:#f6d4cf,stroke:#c0392b,stroke-width:1.5px,color:#3a0f0a;
+  classDef good fill:#cdeede,stroke:#1e8e5a,stroke-width:1.5px,color:#08321f;
+
+  subgraph CONS["UI surfaces / consumers"]
+    direction LR
+    Floor["Factory Floor"]
+    Side["Side panel"]
+    Thru["Throughput poll 2.5s"]
+    WD["Watchdog 120s"]
+    Misc["Recap / goToTerminal / auto-label"]
+  end
+
+  subgraph READ["Readers — each opens raw files independently"]
+    direction LR
+    Prev["getSessionPreviewInfo<br/>head + tail + FULL-FILE count"]:::bad
+    Quick["getSessionQuickDetails<br/>256KB tail"]
+    Thr2["getFloorThroughput<br/>256KB / FULL for Gemini"]:::bad
+    PanR["side panel<br/>tail-80"]
+    CurR["getCursorSessionPreviewInfo<br/>SYNC full DB read"]:::bad
+  end
+
+  subgraph RES["Path resolution — NO cache"]
+    Resolve["getSessionPathBySessionId<br/>~370 readdir/stat per Floor refresh"]:::bad
+  end
+
+  subgraph CACHE["6 uncoordinated caches (no shared result)"]
+    direction LR
+    C["PREVIEW_CACHE · FIRST_MSG_CACHE<br/>sessionSummaryCache · throughputCache<br/>gitInfoCache · sqlJsPromise"]
+  end
+
+  subgraph WATCHERS["2 watcher systems on overlapping paths"]
+    direction LR
+    W1["sessionTracker<br/>fs.watch + fs.watchFile@100ms"]
+    W2["terminalReadiness<br/>recursive fs.watch (parent dir)"]
+  end
+
+  FILES["Raw session files on disk<br/>Claude/Codex/Gemini JSONL · OpenCode JSON · Cursor SQLite<br/>677 files / 328 MB · largest 14.86 MB"]
+
+  Floor --> Prev
+  Floor --> Quick
+  Floor --> Thr2
+  Side --> PanR
+  Side --> Prev
+  Thru --> Thr2
+  WD --> Resolve
+  Misc --> Prev
+
+  Prev --> Resolve
+  Quick --> Resolve
+  Thr2 --> Resolve
+
+  Prev --> FILES
+  Quick --> FILES
+  Thr2 --> FILES
+  PanR --> FILES
+  CurR --> FILES
+  Resolve --> FILES
+
+  W1 -. "each event delivered twice" .-> FILES
+  W2 -.-> FILES
+    </pre>
+  </div>
+</section>
+
+<section>
+  <div class="card">
+    <h2>Proposed — one SessionIndex (single source of truth)</h2>
+    <p class="sub">One watcher feeds one index; a worker pool parses only the appended bytes; every consumer reads a pre-digested record. Existing function signatures stay the same (strangler) so callers don&rsquo;t change.</p>
+    <pre class="mermaid">
+flowchart TB
+  classDef good fill:#cdeede,stroke:#1e8e5a,stroke-width:1.5px,color:#08321f;
+
+  subgraph CONS2["UI surfaces / consumers (unchanged signatures)"]
+    direction LR
+    Floor2["Factory Floor"]
+    Side2["Side panel"]
+    Thru2["Throughput"]
+    WD2["Watchdog"]
+    Misc2["Recap / goToTerminal / auto-label"]
+  end
+
+  subgraph IDX["SessionIndex"]
+    direction LR
+    PathMap["pathBySessionId<br/>Map&lt;sessionId, path&gt; — O(1)"]:::good
+    Digest["digestByPath<br/>ino · size · recordCount<br/>first/last msg · quickDetails<br/>activity · throughput"]:::good
+  end
+
+  Worker["worker_threads pool<br/>parses delta only — uses idle cores"]:::good
+  OneW["ONE shared watcher<br/>(collapses the 2 systems)"]:::good
+  FILES2["Raw files<br/>read once, delta [oldSize, newSize) only"]
+
+  Floor2 --> IDX
+  Side2 --> IDX
+  Thru2 --> IDX
+  WD2 --> IDX
+  Misc2 --> IDX
+
+  OneW -- "append event" --> Digest
+  Digest -- "read new bytes only" --> FILES2
+  FILES2 --> Worker
+  Worker -- "fold forward" --> Digest
+  OneW -. "watches" .-> FILES2
+    </pre>
+  </div>
+</section>
+
+<p class="note">
+  Read top-down. <b>Today:</b> follow any consumer down &mdash; it lands on the raw files, often via
+  several readers, none sharing bytes, and path resolution re-walks the disk every time.
+  <b>Proposed:</b> every consumer stops at <code>SessionIndex</code>; only the index touches disk, and
+  only the newly-appended bytes. P1 (full-count), P2 (raw payload), and the path-resolution storm all
+  collapse into this one module.
+</p>
+
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({ startOnLoad: true, theme: "base", securityLevel: "loose",
+    themeVariables: { fontFamily: "Inter, -apple-system, sans-serif", fontSize: "13px",
+      primaryColor:"#eef1f6", primaryBorderColor:"#aab4c4", primaryTextColor:"#0b1220",
+      lineColor:"#8893a4", clusterBkg:"#fbfcfe", clusterBorder:"#d7dde6" } });
+</script>
+</body>
+</html>
