@@ -1,11 +1,4 @@
-// Saved views — named filter-slices over the one work stream (the mockup's
-// Today / Engineering / My work chips). A view captures the Floor's filter state
-// (sort + status chips + agent chips + search); applying it restores those.
-//
-// Persistence is localStorage (works in both the VS Code webview and the Electron
-// app; the webview has no other client-side store today). The upsert/remove logic
-// is pure so it can be unit-tested without a DOM.
-
+// Named filter-slices over the stream; pure upsert/remove/match + localStorage.
 import type { AgentAbbr, FloorSort } from './floorModel'
 import type { StatusChip } from './FloorControls'
 
