@@ -26,8 +26,39 @@ import {
 export type { AgentCli } from '../core/swarm.detect';
 export type { PromptPackAgent } from '../core/swarm.detect';
 import { readRushTokenCached } from '../core/rushToken';
+import { parseGhChecks, type CiStatus } from '../core/prChecks';
 
 const execAsync = promisify(exec);
+
+// PR CI status, polled via `gh pr checks`, cached per-PR. Drives self-promotion
+// (a PR that goes green climbs into Needs You) and the CI badge. Non-blocking:
+// getPrCiCached returns immediately and refreshes in the background, so the hot
+// fetchTasks path never waits on a gh subprocess.
+const CI_TTL_MS = 30000;
+const ciCache = new Map<string, { at: number; status: CiStatus }>();
+const ciInFlight = new Set<string>();
+
+function refreshPrCi(prUrl: string): void {
+  if (ciInFlight.has(prUrl)) return;
+  ciInFlight.add(prUrl);
+  execAsync(`gh pr checks ${JSON.stringify(prUrl)} --json bucket,state`, { timeout: 8000 })
+    .then(({ stdout }) => ciCache.set(prUrl, { at: Date.now(), status: parseGhChecks(stdout) }))
+    .catch((err: unknown) => {
+      // gh exits non-zero when checks are pending (8) or failing (1) — the JSON is
+      // still on stdout, so parse it. parseGhChecks('') is null, so a genuinely
+      // absent/erroring gh records null (and the TTL still lets it retry later).
+      const out = err && typeof (err as { stdout?: unknown }).stdout === 'string' ? (err as { stdout: string }).stdout : '';
+      ciCache.set(prUrl, { at: Date.now(), status: parseGhChecks(out) });
+    })
+    .finally(() => ciInFlight.delete(prUrl));
+}
+
+function getPrCiCached(prUrl: string | null | undefined): CiStatus {
+  if (!prUrl) return null;
+  const cached = ciCache.get(prUrl);
+  if (!cached || Date.now() - cached.at > CI_TTL_MS) refreshPrCi(prUrl);
+  return cached ? cached.status : null;
+}
 
 // Agent data directories
 // agents-cli teams writes to ~/.agents/teams/agents/
@@ -569,6 +600,7 @@ export interface AgentDetail {
   cloud_session_id?: string | null;
   cloud_provider?: string | null;
   pr_url?: string | null;
+  ci_status?: CiStatus | null;
   repo_owner?: string | null;
   repo_name?: string | null;
   cloud_summary?: string | null;
@@ -948,6 +980,7 @@ export async function fetchTasks(limit?: number, filterCwd?: string): Promise<Ta
         cloud_session_id: meta.cloud_session_id || null,
         cloud_provider: meta.cloud_provider || null,
         pr_url: meta.pr_url || null,
+        ci_status: getPrCiCached(meta.pr_url),
         task_type: (meta as { task_type?: AgentDetail['task_type'] }).task_type ?? null,
         name: (meta as { name?: string | null }).name ?? null,
         after: Array.isArray((meta as { after?: string[] }).after) ? (meta as { after?: string[] }).after : [],
@@ -1100,6 +1133,7 @@ async function computeCloudRuns(): Promise<TaskSummary[]> {
       cloud_session_id: ex.execution_id,
       cloud_provider: 'rush',
       pr_url: ex.pr_url || null,
+      ci_status: getPrCiCached(ex.pr_url),
       repo_owner: ex.repo_owner || null,
       repo_name: ex.repo_name || null,
       cloud_summary: summary,

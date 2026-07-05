@@ -42,6 +42,7 @@ import {
   type TicketSort,
   type TicketSource,
   type AgentAbbr,
+  type CiStatus,
 } from './floorModel'
 import { adaptUnified, adaptRemote, adaptTickets, sinceFromMs, type RemoteSessionLike } from './floorAdapter'
 import {
@@ -133,6 +134,7 @@ interface UnifiedAgent {
   duration: string
   timestamp: string
   prUrl?: string | null
+  ci?: CiStatus | null
   cloudProvider?: string | null
   terminal?: TerminalInfo
   swarm?: TaskSummary
@@ -205,6 +207,7 @@ function buildUnifiedList(terminals: TerminalInfo[], tasks: TaskSummary[]): Unif
         duration: dur || '',
         timestamp: task.latest_activity,
         prUrl: pr,
+        ci: task.agents.map((a) => a.ci_status).find((c) => c != null) ?? null,
         swarm: task,
         teamAgents: task.agents,
         status: status === 'merged' ? 'completed' : status === 'running' ? 'running' : status === 'failed' ? 'failed' : 'idle',
@@ -236,6 +239,7 @@ function buildUnifiedList(terminals: TerminalInfo[], tasks: TaskSummary[]): Unif
         duration: a.duration || '',
         timestamp: a.started_at,
         prUrl: a.pr_url,
+        ci: a.ci_status ?? null,
         cloudProvider: a.cloud_provider,
         agent: a,
         swarm: task,

@@ -234,6 +234,9 @@
 .swarmify-root .pill.pr { background: var(--brand); color: #1a1a1a; }
 .swarmify-root .pill.run { background: var(--status-running-bg); color: var(--status-running); }
 .swarmify-root .pill.done { background: var(--status-idle-bg); color: var(--ds-text-muted); }
+.swarmify-root .pill.cipass { background: var(--status-running-bg); color: var(--status-running); }
+.swarmify-root .pill.cifail { background: var(--status-failed-bg); color: var(--status-failed); }
+.swarmify-root .pill.cirun { background: var(--status-pending-bg); color: var(--status-pending); }
 .swarmify-root .reply { display: flex; gap: 8px; margin-top: 10px; }
 .swarmify-root .reply input { flex: 1; background: var(--ds-bg); border: 1px solid var(--ds-border); border-radius: var(--r-md); padding: 7px 10px; font-size: 12px; color: var(--ds-text); }
 .swarmify-root .reply .approve { background: var(--status-running); color: #fff; border: none; border-radius: var(--r-md); padding: 7px 12px; font-weight: 700; font-size: 12px; }
