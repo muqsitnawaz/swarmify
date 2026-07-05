@@ -2,6 +2,12 @@
 
 Meet the future of IDEs. Swarmify turns your editor into an IAE — orchestrate Claude, Codex, Gemini, and Cursor in parallel with full visibility.
 
+## Terminology: "swarm" → "teams"
+
+The parallel-agents feature is **teams** (`agents teams`), backed by `~/.agents/teams/config.json`. Earlier docs and code called this concept "swarm"; that term is **deprecated** — prefer "teams" in all new work, and read any lingering `swarm*` identifier in the code (e.g. `swarm.detect.ts`, `SwarmStatus`, the `/swarm` command) as legacy naming for "teams".
+
+The product and package names (`swarmify`, `swarm-ext`) also derive from "swarm" and remain for now; they are slated to move to the `agents` brand as part of the planned consolidation of this extension into the `agents-cli` monorepo (tracked separately). Until that lands, keep new user-facing strings on "teams", not "swarm".
+
 ## Architecture
 
 ```
@@ -153,7 +159,7 @@ Extracts both env vars from VS Code terminals at startup:
 | Item | Location |
 |------|----------|
 | Extension settings | VS Code globalState |
-| Swarm config | `~/.agents/teams/config.json` |
+| Teams config | `~/.agents/teams/config.json` |
 | Agent prompts | `~/.swarmify/agents/prompts.json` |
 | Agent logs | `~/.agents/teams/agents/{id}/stdout.log` |
 | Claude session files | `~/.claude/projects/{workspace}/*.jsonl` |
