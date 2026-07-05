@@ -984,6 +984,11 @@ async function watchFloorSessions(workspacePath?: string): Promise<void> {
   } catch { /* ignore */ }
 }
 
+// Last successfully-fetched floor tasks. Re-served when a fetch throws so the
+// webview never wedges (it flips tasksLoaded only on a tasksData reply) and the
+// feed shows the last good snapshot instead of blanking on a transient error.
+let lastFloorTasks: swarm.TaskSummary[] = [];
+
 async function pushFloorUpdate(workspacePath?: string): Promise<void> {
   if (!settingsPanel || !floorSubscribed) return;
   const [floorTerminals, floorTasks] = await Promise.all([
@@ -991,6 +996,7 @@ async function pushFloorUpdate(workspacePath?: string): Promise<void> {
     swarm.fetchTasks(undefined, workspacePath),
   ]);
   if (!settingsPanel || !floorSubscribed) return;
+  lastFloorTasks = floorTasks;
   settingsPanel.webview.postMessage({ type: 'allTerminalsData', terminals: floorTerminals });
   settingsPanel.webview.postMessage({ type: 'tasksData', tasks: floorTasks });
   // Re-reconcile so newly-spawned terminals get watched too.
@@ -1550,11 +1556,22 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
         });
         settingsPanel?.webview.postMessage({ type: 'commandPackInstallDone' });
         break;
-      case 'fetchTasks':
+      case 'fetchTasks': {
         const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        const tasks = await swarm.fetchTasks(message.limit, workspacePath);
-        settingsPanel?.webview.postMessage({ type: 'tasksData', tasks });
+        try {
+          const tasks = await swarm.fetchTasks(message.limit, workspacePath);
+          lastFloorTasks = tasks;
+          settingsPanel?.webview.postMessage({ type: 'tasksData', tasks });
+        } catch (err) {
+          // The webview flips tasksLoaded only on a tasksData reply, and its
+          // retry guard won't refire while tasksLoading stays true — so a throw
+          // here (no reply) freezes the feed permanently. Always reply: re-serve
+          // the last good snapshot, and let the 30s backstop poll repopulate.
+          console.error('[floor] fetchTasks failed:', err);
+          settingsPanel?.webview.postMessage({ type: 'tasksData', tasks: lastFloorTasks });
+        }
         break;
+      }
       case 'fetchTasksBySession':
         const sessionTasks = await swarm.fetchTasksBySession(message.sessionId);
         settingsPanel?.webview.postMessage({
