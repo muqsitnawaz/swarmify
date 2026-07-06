@@ -524,8 +524,10 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   const [dispatchPrefill, setDispatchPrefill] = useState('')
   const [dispatchPrefillTicketId, setDispatchPrefillTicketId] = useState<string | undefined>(undefined)
   // Draft-prompt round-trip result (host 'draftPromptResult'); nonce forces the
-  // DispatchPanel effect to fire even on a repeated ok/error.
+  // DispatchPanel effect to fire even on a repeated ok/error. A monotonic counter
+  // (not Date.now) so two results in the same ms can't collide to an equal nonce.
   const [draftResult, setDraftResult] = useState<DraftResult | null>(null)
+  const draftNonce = useRef(0)
   // Consolidated dispatch data feeding the single DispatchPanel (from `dispatchData`).
   const [dispatchAgents, setDispatchAgents] = useState<InstalledAgent[]>([])
   const [dispatchHosts, setDispatchHosts] = useState<DispatchHost[]>([])
@@ -1226,7 +1228,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
         ok: !!msg.ok,
         text: typeof msg.text === 'string' ? msg.text : undefined,
         error: typeof msg.error === 'string' ? msg.error : undefined,
-        nonce: Date.now(),
+        nonce: ++draftNonce.current,
       })
     }
     window.addEventListener('message', handler)
