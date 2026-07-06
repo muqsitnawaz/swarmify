@@ -147,6 +147,126 @@ export interface TeamLite {
   modified_at?: string;
 }
 
+// --- P1 Jarvis read-tool sources -------------------------------------------
+// Thin wrappers over `agents <cmd> --json` for the expanded Foreman tool set.
+// Shapes below match the live CLI output (verified against agents-cli).
+
+export interface CloudTaskDetail {
+  id: string;
+  provider: string;
+  agent: string;
+  status: string;
+  prompt: string;
+  repo?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface RoutineLite {
+  name: string;
+  agent: string;
+  schedule: string;
+  scheduleHuman?: string;
+  enabled: boolean;
+  overdue?: boolean;
+  nextRunHuman?: string;
+  lastStatus?: string | null;
+  lastRunStartedAt?: string | null;
+}
+
+export interface DeviceLite {
+  name: string;
+  platform: string;
+  online: boolean;
+  relay?: string | null;
+  ip?: string | null;
+}
+
+export interface UsageLite {
+  agent: string;
+  plan?: string | null;
+  usageStatus?: string | null;   // available | limited | ...
+  maxUsedPercent: number;        // worst window, so "am I rate limited" is honest
+  soonestResetAt?: string | null;
+}
+
+export async function getCloudTask(id: string): Promise<CloudTaskDetail | null> {
+  if (!id) return null;
+  const r = await runJson<any>(['cloud', 'status', id, '--json'], null);
+  if (!r || typeof r !== 'object') return null;
+  return {
+    id: String(r.id ?? id),
+    provider: String(r.provider ?? ''),
+    agent: String(r.agent ?? ''),
+    status: String(r.status ?? ''),
+    prompt: String(r.prompt ?? '').slice(0, 200),
+    repo: r.repo ? String(r.repo) : null,
+    createdAt: r.createdAt ? String(r.createdAt) : undefined,
+    updatedAt: r.updatedAt ? String(r.updatedAt) : undefined,
+  };
+}
+
+export async function listRoutines(): Promise<RoutineLite[]> {
+  const raw = await runJson<any[]>(['routines', 'list', '--json'], []);
+  if (!Array.isArray(raw)) return [];
+  return raw.map((r) => ({
+    name: String(r.name ?? ''),
+    agent: String(r.agent ?? ''),
+    schedule: String(r.schedule ?? ''),
+    scheduleHuman: r.scheduleHuman ? String(r.scheduleHuman) : undefined,
+    enabled: r.enabled === true,
+    overdue: r.overdue === true,
+    nextRunHuman: r.nextRunHuman ? String(r.nextRunHuman) : undefined,
+    lastStatus: r.lastStatus ? String(r.lastStatus) : null,
+    lastRunStartedAt: r.lastRunStartedAt ? String(r.lastRunStartedAt) : null,
+  }));
+}
+
+export async function listDevices(): Promise<DeviceLite[]> {
+  const raw = await runJson<any[]>(['devices', 'list', '--json'], []);
+  if (!Array.isArray(raw)) return [];
+  return raw.map((r) => ({
+    name: String(r.name ?? ''),
+    platform: String(r.platform ?? ''),
+    online: !!(r.tailscale && r.tailscale.online),
+    relay: r.tailscale && r.tailscale.relay ? String(r.tailscale.relay) : null,
+    ip: r.address && r.address.ip ? String(r.address.ip) : null,
+  }));
+}
+
+export async function getUsage(): Promise<UsageLite[]> {
+  const raw = await runJson<any[]>(['view', '--json'], []);
+  if (!Array.isArray(raw)) return [];
+  return raw.map((entry) => {
+    const versions = Array.isArray(entry.versions) ? entry.versions : [];
+    // Pick the default (else first signed-in) version and report its tightest
+    // window, so "am I rate limited on Claude" answers on the worst limit.
+    const v = versions.find((x: any) => x.isDefault)
+      ?? versions.find((x: any) => x.signedIn)
+      ?? versions[0]
+      ?? {};
+    const windows = Array.isArray(v.windows) ? v.windows : [];
+    let maxUsedPercent = 0;
+    let soonestResetAt: string | null = null;
+    let soonestMs = Infinity;
+    for (const w of windows) {
+      const p = typeof w.usedPercent === 'number' ? w.usedPercent : 0;
+      if (p > maxUsedPercent) maxUsedPercent = p;
+      if (w.resetsAt) {
+        const ms = Date.parse(String(w.resetsAt));
+        if (Number.isFinite(ms) && ms < soonestMs) { soonestMs = ms; soonestResetAt = String(w.resetsAt); }
+      }
+    }
+    return {
+      agent: String(entry.agent ?? ''),
+      plan: v.plan ? String(v.plan) : null,
+      usageStatus: v.usageStatus ? String(v.usageStatus) : null,
+      maxUsedPercent,
+      soonestResetAt,
+    };
+  });
+}
+
 type CacheEntry<T> = {
   expiresAt: number;
   value?: T;
