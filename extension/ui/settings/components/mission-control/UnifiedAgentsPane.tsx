@@ -53,6 +53,8 @@ import {
   type DispatchDeviceRepo,
   type DispatchDeviceSync,
   type DeviceDispatchRequest,
+  type DraftResult,
+  type DraftTicketPayload,
 } from './DispatchPanel'
 import { PlanReview } from './PlanReview'
 import { FailureCard } from './FailureCard'
@@ -521,6 +523,9 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   const [dispatchOpen, setDispatchOpen] = useState(false)
   const [dispatchPrefill, setDispatchPrefill] = useState('')
   const [dispatchPrefillTicketId, setDispatchPrefillTicketId] = useState<string | undefined>(undefined)
+  // Draft-prompt round-trip result (host 'draftPromptResult'); nonce forces the
+  // DispatchPanel effect to fire even on a repeated ok/error.
+  const [draftResult, setDraftResult] = useState<DraftResult | null>(null)
   // Consolidated dispatch data feeding the single DispatchPanel (from `dispatchData`).
   const [dispatchAgents, setDispatchAgents] = useState<InstalledAgent[]>([])
   const [dispatchHosts, setDispatchHosts] = useState<DispatchHost[]>([])
@@ -1211,6 +1216,27 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     return () => window.removeEventListener('message', handler)
   }, [onThroughputChange])
 
+  // Draft-prompt result from the host. Stamp a nonce so the DispatchPanel effect
+  // fires on every delivery (React would skip an object with unchanged fields).
+  useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      const msg = event.data
+      if (msg?.type !== 'draftPromptResult') return
+      setDraftResult({
+        ok: !!msg.ok,
+        text: typeof msg.text === 'string' ? msg.text : undefined,
+        error: typeof msg.error === 'string' ? msg.error : undefined,
+        nonce: Date.now(),
+      })
+    }
+    window.addEventListener('message', handler)
+    return () => window.removeEventListener('message', handler)
+  }, [])
+
+  const onDraftPrompt = useCallback((payload: { tickets: DraftTicketPayload[]; hint: string }) => {
+    postMessage({ type: 'draftPrompt', tickets: payload.tickets, hint: payload.hint })
+  }, [])
+
   const handleNewAgent = (agent: string) => {
     const commands: Record<string, string> = {
       claude: 'agents.newClaude',
@@ -1814,6 +1840,8 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
         prefillTicketId={dispatchPrefillTicketId}
         onClose={() => setDispatchOpen(false)}
         onDispatch={onDispatchRequest}
+        onDraftPrompt={onDraftPrompt}
+        draftResult={draftResult}
         devices={dispatchDevices}
         deviceRepos={deviceRepos}
         deviceSync={deviceSync}

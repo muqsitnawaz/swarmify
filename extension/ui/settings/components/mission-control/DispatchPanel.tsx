@@ -27,6 +27,22 @@ import type {
 // dispatch.types stay untouched — the device path is additive.
 export type SyncPolicy = 'off' | 'safe' | 'aggressive'
 
+/** One attached ticket flattened for the draft-prompt round-trip (host reads these). */
+export interface DraftTicketPayload {
+  identifier?: string
+  title: string
+  description?: string
+}
+
+/** Result of a draft attempt, delivered from the host via 'draftPromptResult'.
+ *  `nonce` changes each delivery so the panel's effect fires even on repeats. */
+export interface DraftResult {
+  ok: boolean
+  text?: string
+  error?: string
+  nonce: number
+}
+
 export interface DispatchDevice {
   name: string
   host: string
@@ -85,6 +101,9 @@ export interface DispatchPanelProps {
   prefillTicketId?: string             // pre-attach a ticket (from backlog)
   onClose: () => void
   onDispatch: (req: DispatchRequest) => void
+  // --- draft prompt (optional; when omitted the Draft button is hidden) ---
+  onDraftPrompt?: (payload: { tickets: DraftTicketPayload[]; hint: string }) => void
+  draftResult?: DraftResult | null     // parent sets when 'draftPromptResult' arrives
   // --- device path (all optional; when omitted the panel behaves as before) ---
   devices?: DispatchDevice[]           // registered devices with live health
   deviceRepos?: DispatchDeviceRepo[]   // ranked repos -> projects (per-host paths)
@@ -186,9 +205,12 @@ export function DispatchPanel(props: DispatchPanelProps) {
   const {
     open, tasks, agents, hosts, targets, prefill, prefillTicketId, onClose, onDispatch,
     devices, deviceRepos, deviceSync, onRequestRepoSync, onManageDevices, onDeviceDispatch,
+    onDraftPrompt, draftResult,
   } = props
   const [S, setS] = useState<PanelState>(() => seededState(prefill, prefillTicketId))
   const [bellOpen, setBellOpen] = useState(false)
+  const [drafting, setDrafting] = useState(false)
+  const [draftError, setDraftError] = useState<string | undefined>(undefined)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const bellRef = useRef<HTMLSpanElement>(null)
   useClickAway(bellRef, () => setBellOpen(false), bellOpen)
@@ -198,6 +220,8 @@ export function DispatchPanel(props: DispatchPanelProps) {
     if (!open) return
     setS(seededState(prefill, prefillTicketId))
     setBellOpen(false)
+    setDrafting(false)
+    setDraftError(undefined)
     const id = setTimeout(() => inputRef.current?.focus(), 50)
     return () => clearTimeout(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -208,7 +232,35 @@ export function DispatchPanel(props: DispatchPanelProps) {
     if (open) saveDraft(S)
   }, [S, open])
 
+  // Draft result from the host: fill the prompt box on success, show an inline
+  // error on failure. Keyed on nonce so a repeat delivery still fires the effect.
+  useEffect(() => {
+    if (!draftResult) return
+    setDrafting(false)
+    if (draftResult.ok && draftResult.text) {
+      setS(s => ({ ...s, prompt: draftResult.text! }))
+      setDraftError(undefined)
+    } else {
+      setDraftError(draftResult.error ?? 'Could not draft a prompt.')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftResult?.nonce])
+
   if (!open) return null
+
+  // Ask the host to draft the prompt from the attached tickets. The typed prompt
+  // (if any) rides along as a hint the draft should fold in.
+  const runDraft = () => {
+    if (!onDraftPrompt) return
+    const tickets: DraftTicketPayload[] = S.attached
+      .map(k => tasks.find(t => ticketKey(t) === k))
+      .filter((t): t is UnifiedTask => !!t)
+      .map(t => ({ identifier: t.metadata.identifier, title: t.title, description: t.description }))
+    if (tickets.length === 0) return
+    setDraftError(undefined)
+    setDrafting(true)
+    onDraftPrompt({ tickets, hint: S.prompt.trim() })
+  }
 
   const patch = (p: Partial<PanelState>) => setS(s => ({ ...s, ...p }))
 
@@ -377,6 +429,9 @@ export function DispatchPanel(props: DispatchPanelProps) {
           onRemoveAttachment={i => patch({ attachments: S.attachments.filter((_, idx) => idx !== i) })}
           onSubmit={doDispatch}
           inputRef={inputRef}
+          onDraftPrompt={onDraftPrompt ? runDraft : undefined}
+          drafting={drafting}
+          draftError={draftError}
         />
 
         {S.expanded ? (

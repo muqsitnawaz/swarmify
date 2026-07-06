@@ -66,6 +66,13 @@
 .swarmify-root .panel .boxbar { display: flex; align-items: center; gap: 4px; margin-top: 5px; padding-top: 6px; border-top: 1px solid var(--ds-border); }
 .swarmify-root .panel .ib { display: inline-flex; align-items: center; gap: 4px; color: var(--ds-text-dim); cursor: pointer; font-size: 11px; padding: 3px 6px; border-radius: var(--r-md); }
 .swarmify-root .panel .ib:hover { color: var(--ds-text); background: var(--ds-bg-hover); }
+/* Draft prompt: accented so it reads as the primary "let an agent write it" action. */
+.swarmify-root .panel .ib.draft { color: var(--brand-600); font-weight: 500; margin-right: auto; }
+.swarmify-root .panel .ib.draft:hover { color: var(--brand-600); background: var(--brand-ring); }
+.swarmify-root .panel .ib.draft.dis { color: var(--ds-text-dim); opacity: .5; cursor: default; }
+.swarmify-root .panel .ib.draft.dis:hover { background: transparent; }
+.swarmify-root .panel .ib.draft.busy { cursor: default; }
+.swarmify-root .panel .ib .spin { animation: sw-spin .9s linear infinite; }
 
 /* ---- what-to-do actions + ranked suggestions ---- */
 .swarmify-root .panel .wactions { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
