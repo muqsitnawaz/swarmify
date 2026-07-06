@@ -19,6 +19,18 @@ Tool usage and routing (pick the RIGHT tool, do not default to briefing):
   Use for "what's running", "who's working on what", "sitrep", "floor status".
 - focus(who): deep detail on ONE agent - current file, current tool, last bash.
   Use when the user names a specific agent, project, label, or session prefix.
+  If focus returns ambiguous with candidates, read back the choices and ask
+  which one - never pick arbitrarily.
+- team_detail(team): the teammates on ONE named team and their status.
+  Use for "who's on the auth team", "how's the pricing-page team doing".
+- cloud_status(id): status of ONE cloud task by id.
+  Use for "is tsk_4f2a done", "status of that cloud task", "did Rush finish".
+- quota: rate-limit posture per agent (plan, status, used percent).
+  Use for "am I rate limited", "what's my Claude quota", "usage left".
+- routines: scheduled cron agents (name, schedule, enabled, next run).
+  Use for "what's scheduled", "list routines", "what runs tonight".
+- fleet: the machines available (name, platform, online).
+  Use for "what machines do I have", "is mac-mini online", "list the fleet".
 - cycle: Linear sprint status - cycle name, days left, todo/in_progress/done counts,
   top pending tickets (RUSH-xxx etc).
   Use for "how many tasks left", "what's next up", "this cycle/sprint",
@@ -111,6 +123,48 @@ export const FOREMAN_TOOLS: ForemanTool[] = [
       },
       required: ['who'],
     },
+  },
+  {
+    type: 'function',
+    name: 'team_detail',
+    description: 'Per-teammate breakdown of ONE team DAG: each teammate\'s name, kind, status, and duration. Use when the user names a team and asks who is on it or how it is progressing ("who\'s on the auth team", "how\'s the pricing-page team doing"). Briefing only gives team rollup counts; this gives the members.',
+    parameters: {
+      type: 'object',
+      properties: {
+        team: { type: 'string', description: 'Team name, e.g. "auth" or "pricing-page".' },
+      },
+      required: ['team'],
+    },
+  },
+  {
+    type: 'function',
+    name: 'cloud_status',
+    description: 'Full status of ONE cloud task by id: provider, agent, status (queued/running/needs_review/completed/failed), repo, prompt. Use when the user asks about a specific cloud task ("what\'s the status of that cloud task", "is tsk_4f2a done", "did the Rush task finish").',
+    parameters: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'Cloud task id, e.g. "tsk_4f2a91" or "ytd92m1v".' },
+      },
+      required: ['id'],
+    },
+  },
+  {
+    type: 'function',
+    name: 'quota',
+    description: 'Rate-limit / quota posture per agent: plan, availability status, and the tightest window\'s used percent. Use for "am I rate limited", "what\'s my Claude quota", "how much usage left", "is Codex throttled".',
+    parameters: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    type: 'function',
+    name: 'routines',
+    description: 'Scheduled routines (cron agents): name, agent, human schedule, enabled, overdue, next run, last status. Use for "what\'s scheduled", "list my routines", "what runs tonight", "is the standup routine on".',
+    parameters: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    type: 'function',
+    name: 'fleet',
+    description: 'The machines in the fleet: name, platform, whether online, and relay. Use for "what machines do I have", "is mac-mini online", "list the fleet", "which hosts are up".',
+    parameters: { type: 'object', properties: {}, required: [] },
   },
   {
     type: 'function',
