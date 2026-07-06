@@ -47,41 +47,6 @@ export {
   ForemanTool,
 };
 
-// POST to OpenAI to mint a short-lived client token for the Realtime API.
-// The returned client_secret is scoped to a single session and expires in ~1 min;
-// the webview uses it as a bearer token for the WebRTC SDP exchange.
-export async function mintEphemeralKey(apiKey: string): Promise<{ clientSecret: string; expiresAt: number }> {
-  if (!apiKey || !apiKey.trim()) {
-    throw new Error('OpenAI API key not configured. Set agents.openaiApiKey in Settings.');
-  }
-
-  const res = await fetch('https://api.openai.com/v1/realtime/sessions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey.trim()}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: FOREMAN_MODEL,
-      voice: FOREMAN_VOICE,
-    }),
-  });
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`OpenAI session mint failed: ${res.status} ${body.slice(0, 200)}`);
-  }
-
-  const data = (await res.json()) as {
-    client_secret?: { value?: string; expires_at?: number };
-  };
-  const value = data.client_secret?.value;
-  const expiresAt = data.client_secret?.expires_at ?? 0;
-  if (!value) {
-    throw new Error('OpenAI returned no client_secret');
-  }
-  return { clientSecret: value, expiresAt };
-}
 
 // Two canonical sources for "what's on the factory floor":
 //   1. Live terminals across EVERY IDE window (from the shared registry) -
@@ -484,23 +449,6 @@ export async function runForemanTool(
   }
 }
 
-
-// Session config sent on connect: instructions + tool schema + voice.
-// Realtime API reads this from the first `session.update` event on the data channel.
-export function buildSessionUpdate() {
-  return {
-    type: 'session.update',
-    session: {
-      modalities: ['audio', 'text'],
-      voice: FOREMAN_VOICE,
-      instructions: FOREMAN_SYSTEM_PROMPT,
-      input_audio_transcription: { model: 'whisper-1' },
-      tools: FOREMAN_TOOLS,
-      tool_choice: 'auto',
-      temperature: 0.7,
-    },
-  };
-}
 
 // Quiet prefix used in realtime instructions to remind the model to be tight.
 // Exposed as a separate export so the webview can optionally override.
