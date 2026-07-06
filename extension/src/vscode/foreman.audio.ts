@@ -14,6 +14,7 @@
 import { spawn, ChildProcess } from 'child_process';
 import WebSocket from 'ws';
 import { FOREMAN_MODEL, FOREMAN_VOICE, FOREMAN_SYSTEM_PROMPT, FOREMAN_TOOLS } from '../core/foreman.config';
+import { resolveExecutable } from '../core/binResolve';
 
 export const REALTIME_WS = `wss://api.openai.com/v1/realtime?model=${encodeURIComponent(FOREMAN_MODEL)}`;
 export const SAMPLE_RATE = 24000;
@@ -67,13 +68,17 @@ export function buildForemanSessionUpdate() {
       audio: {
         input: {
           format: { type: 'audio/pcm', rate: SAMPLE_RATE },
-          transcription: { model: 'whisper-1' },
-          turn_detection: {
-            type: 'server_vad',
-            threshold: 0.5,
-            prefix_padding_ms: 300,
-            silence_duration_ms: 500,
-          },
+          // near_field: laptop/desktop mic within ~arm's reach. Cleans steady
+          // background noise before VAD so the model doesn't false-trigger on
+          // fan/keyboard hum.
+          noise_reduction: { type: 'near_field' },
+          // gpt-4o-mini-transcribe: lower latency + better accuracy than the
+          // legacy whisper-1 the beta shipped with, at a fraction of the cost.
+          transcription: { model: 'gpt-4o-mini-transcribe' },
+          // semantic_vad (the Agents-SDK default) uses a model to decide the
+          // user actually finished, not just a silence timer — fewer premature
+          // cut-ins on a coordinator who pauses mid-question.
+          turn_detection: { type: 'semantic_vad', eagerness: 'medium' },
         },
         output: {
           format: { type: 'audio/pcm', rate: SAMPLE_RATE },
@@ -127,6 +132,21 @@ export async function startForemanAudio(
 ): Promise<ForemanAudioSession> {
   events.onStatus?.('connecting');
 
+  // Resolve ffmpeg/ffplay to absolute paths BEFORE anything else. The extension
+  // host is launched from the Dock, so it inherits a minimal PATH that omits
+  // Homebrew — a bare spawn('ffmpeg') ENOENTs in production even though the
+  // user's terminal finds it. Fail loud here instead of hanging the orb on a
+  // silent mic. (This was the root cause of "the orb listens but never replies".)
+  const ffmpegPath = resolveExecutable('ffmpeg');
+  const ffplayPath = resolveExecutable('ffplay');
+  if (!ffmpegPath || !ffplayPath) {
+    const missing = [!ffmpegPath && 'ffmpeg', !ffplayPath && 'ffplay'].filter(Boolean).join(' and ');
+    const msg = `${missing} not found on PATH. Install it: brew install ffmpeg`;
+    events.onEvent?.('ffmpeg.missing', msg);
+    events.onStatus?.('error', msg);
+    throw new Error(msg);
+  }
+
   // GA Realtime API (post-2026-05-07): no OpenAI-Beta header.
   // The beta header would route to the removed beta interface and OpenAI
   // returns "Realtime Beta API is no longer supported".
@@ -149,14 +169,14 @@ export async function startForemanAudio(
   // rejects them with "Unrecognized option" and exits before capturing a
   // byte). The device captures at its native rate and the output-side
   // `-ac 1 -ar 24000` resample produces the 24kHz mono PCM the API expects.
-  const mic: ChildProcess = spawn('ffmpeg', [...MIC_FFMPEG_ARGS], {
+  const mic: ChildProcess = spawn(ffmpegPath, [...MIC_FFMPEG_ARGS], {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 
   // ffplay reads raw PCM16 from stdin and plays to the default output.
   // -probesize / -fflags nobuffer minimize playback buffering so the
   // foreman's voice lands close to realtime.
-  const speaker: ChildProcess = spawn('ffplay', [...SPEAKER_FFPLAY_ARGS], {
+  const speaker: ChildProcess = spawn(ffplayPath, [...SPEAKER_FFPLAY_ARGS], {
     stdio: ['pipe', 'ignore', 'pipe'],
   });
 
