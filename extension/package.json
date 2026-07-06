@@ -590,7 +590,7 @@
         "agents.openaiApiKey": {
           "type": "string",
           "default": "",
-          "description": "OpenAI API key. Used by the Foreman voice coordinator (gpt-realtime). Autogit no longer uses this — commit messages are generated via `agents run claude --model haiku`."
+          "description": "OpenAI API key. Used by the Foreman voice coordinator (gpt-realtime-2). Autogit no longer uses this — commit messages are generated via `agents run claude --model haiku`."
         },
         "agents.commitGenTimeoutMs": {
           "type": "number",
