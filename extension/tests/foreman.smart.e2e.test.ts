@@ -12,7 +12,7 @@ import { describe, test, expect } from 'bun:test';
 import { homedir } from 'os';
 import * as fs from 'fs';
 import * as path from 'path';
-import { runSmartTurn, adaptToolsForOpenAI } from '../src/vscode/foreman.smart';
+import { runSmartTurn, adaptToolsForOpenAI, capHistory } from '../src/vscode/foreman.smart';
 import { ForemanTool } from '../src/core/foreman.config';
 
 function loadOpenAIKey(): string | null {
@@ -41,6 +41,39 @@ const BRIEFING_TOOL: ForemanTool = {
   description: 'Live factory floor: which agents are running, on what, for how long.',
   parameters: { type: 'object', properties: {}, required: [] },
 };
+
+describe('capHistory', () => {
+  // Turn shape: user, assistant(tool_calls), tool, assistant(final).
+  const turn = (u: string, id: string) => [
+    { role: 'user', content: u },
+    { role: 'assistant', content: null, tool_calls: [{ id, type: 'function', function: { name: 'briefing', arguments: '{}' } }] },
+    { role: 'tool', tool_call_id: id, content: '{"ok":true}' },
+    { role: 'assistant', content: `answer ${u}` },
+  ];
+
+  test('returns as-is when under the cap', () => {
+    const msgs = turn('a', 'c1');
+    expect(capHistory(msgs, 10)).toBe(msgs);
+  });
+
+  test('never begins the window on a dangling tool message', () => {
+    // Two full turns = 8 messages; cap at 6 would raw-slice to start at a
+    // `tool` message (index 2 of turn 1's tail) — capHistory must advance to
+    // the next user boundary instead.
+    const msgs = [...turn('a', 'c1'), ...turn('b', 'c2')];
+    const capped = capHistory(msgs, 6);
+    expect(capped[0].role).toBe('user');
+    // No tool message may appear before its assistant(tool_calls) parent.
+    for (let i = 0; i < capped.length; i++) {
+      if (capped[i].role === 'tool') {
+        const prev = capped[i - 1];
+        expect(prev && prev.role === 'assistant' && Array.isArray(prev.tool_calls)).toBe(true);
+      }
+    }
+    // Keeps the most recent whole turn.
+    expect(capped).toEqual(turn('b', 'c2'));
+  });
+});
 
 describe('adaptToolsForOpenAI', () => {
   test('wraps the schema under function', () => {
