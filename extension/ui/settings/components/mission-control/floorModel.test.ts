@@ -507,11 +507,53 @@ describe('computeHostRows', () => {
     expect(rows.find((r) => r.name === 'mac-mini')!.count).toBe(0) // registry-only, 0 agents
   })
 
-  test('without a resolved hostLabel the local bucket stays this-mac (pre-fold transient)', () => {
-    // Before the fleet list resolves, hostLabel is undefined; documents that the
-    // fold depends on the real name being threaded in.
-    const rows = computeHostRows([makeAgent({ id: 'a', host: 'this-mac' })], devices, [])
-    expect(rows.map((r) => r.name)).toContain('this-mac')
+  test('never surfaces a raw this-mac phantom row; folds onto localHost when given', () => {
+    // Before the fleet list resolves, hostLabel is undefined so the agent's host is
+    // the synthetic 'this-mac'. That must NOT spawn a phantom 'this-mac' HOSTS row.
+    const rowsNoLocal = computeHostRows([makeAgent({ id: 'a', host: 'this-mac' })], devices, [])
+    expect(rowsNoLocal.map((r) => r.name)).not.toContain('this-mac')
+
+    // Passing the local machine name gives it a row and folds the this-mac count into
+    // it — even when the local machine is not in the device registry.
+    const rows = computeHostRows([makeAgent({ id: 'a', host: 'this-mac' })], devices, [], [], 'yosemite-s1')
+    const local = rows.find((r) => r.name === 'yosemite-s1')!
+    expect(local.count).toBe(1)
+    expect(local.offline).toBe(false)
+    expect(rows.map((r) => r.name)).not.toContain('this-mac')
+  })
+
+  test('a session on an unregistered host creates NO phantom row (the reported bug)', () => {
+    // ssh-config aliases / tailnet peers (mark, phoenix, pi) used to each spawn a HOST
+    // row. Now an agent on an unregistered host is silently dropped from the roster —
+    // only registered devices, pins, and the local machine make rows.
+    const rows = computeHostRows(
+      [
+        makeAgent({ id: 'a', host: 'phoenix' }),
+        makeAgent({ id: 'b', host: 'pi' }),
+        makeAgent({ id: 'c', host: 'yosemite-s0' }),
+      ],
+      devices,
+      [],
+    )
+    const names = rows.map((r) => r.name)
+    expect(names).toEqual(['mac-mini', 'yosemite-s0', 'zion'])
+    expect(names).not.toContain('phoenix')
+    expect(names).not.toContain('pi')
+    expect(rows.find((r) => r.name === 'yosemite-s0')!.count).toBe(1)
+  })
+
+  test('normalizes host case / FQDN onto the registry device row', () => {
+    // A session reported as 'ZION' or a FQDN folds onto the 'zion' device row.
+    const rows = computeHostRows(
+      [
+        makeAgent({ id: 'a', host: 'ZION' }),
+        makeAgent({ id: 'b', host: 'mac-mini.tail1a85a1.ts.net' }),
+      ],
+      devices,
+      [],
+    )
+    expect(rows.find((r) => r.name === 'zion')!.count).toBe(1)
+    expect(rows.find((r) => r.name === 'mac-mini')!.count).toBe(1)
   })
 
   test('a host with agents whose device is offline lists, marked offline', () => {
