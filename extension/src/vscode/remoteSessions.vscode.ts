@@ -1,10 +1,11 @@
 // Cross-host session aggregation — SSH fan-out + host discovery (extension host).
 //
-// Discovers reachable machines (SSH config + Tailscale), then shells out to the
-// `agents` CLI on each — locally for this machine, over SSH (`--host`) for the
-// rest — to list active sessions (Tier-1) and, on demand, render one session as
-// markdown (Tier-2). All parsing/normalizing lives in the pure core module
-// (src/core/remoteSessions.ts); this file only does I/O + fan-out + caching.
+// Discovers machines from the `agents devices` registry + the local machine (see
+// discoverHosts / core reconcileHosts — NOT ssh-config aliases or tailnet peers),
+// then shells out to the `agents` CLI on each — locally for this machine, over SSH
+// (`--host`) for the rest — to list active sessions (Tier-1) and, on demand, render
+// one session as markdown (Tier-2). All parsing/normalizing lives in the pure core
+// module (src/core/remoteSessions.ts); this file only does I/O + fan-out + caching.
 
 import * as fs from 'fs';
 import * as os from 'os';

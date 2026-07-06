@@ -108,10 +108,12 @@ export interface RemoteSession {
   /** Host-reported wall-clock start (epoch ms). Carried verbatim so the UI can
    *  recompute freshness without trusting the remote clock for elapsed. */
   startedAtMs: number;
-  /** Epoch ms of the most recent observed activity. Local sessions get the session
-   *  file's mtime (set by the fan-out after enrichment); otherwise it defaults to the
-   *  reported start, and is 0 when no timestamp is known at all. Drives staleness
-   *  (isStaleSession) so a long-dead session stops being reported running / needs-you. */
+  /** Epoch ms of the most recent OBSERVED activity (the session file's last write).
+   *  File-backed sessions get their mtime from the fan-out after enrichment; it is 0
+   *  when there is no activity signal (a status-only remote/ssh session). NEVER
+   *  backfilled from startedAtMs — start time is not activity. Drives staleness
+   *  (isStaleSession) so an idle-for-days session stops being reported running /
+   *  needs-you, WITHOUT hiding a remote agent that merely started long ago. */
   lastActivityMs: number;
   /** The session's task/prompt line from the CLI payload (`topic`/`label`). Shown
    *  on the card when Tier-1 has no enriched activity yet (remote hosts). */
@@ -366,7 +368,9 @@ export function normalizeActiveSession(
     branch: raw.branch || '',
     sinceMs: startedAtMs > 0 ? Math.max(0, fetchedAt - startedAtMs) : 0,
     startedAtMs,
-    lastActivityMs: startedAtMs,
+    // 0 = no activity signal yet; the fan-out sets the real file mtime for file-backed
+    // sessions. Deliberately NOT startedAtMs — start time is not activity.
+    lastActivityMs: 0,
     topic: raw.topic || raw.label || '',
     sessionFile: raw.sessionFile || '',
     context: raw.context || '',
@@ -420,25 +424,30 @@ export function dedupeSessions(sessions: RemoteSession[]): RemoteSession[] {
 }
 
 /**
- * A session with no observed activity for this long is treated as dead and dropped
- * from the live roster so it can't be reported running or needs-you. Six hours
- * comfortably clears an idle-overnight agent while killing sessions abandoned for
- * days (e.g. an 11-day-old cloud task still marked input_required).
+ * A session whose last OBSERVED ACTIVITY was this long ago is treated as dead and
+ * dropped from the live roster so it can't be reported running or needs-you. Six
+ * hours comfortably clears an idle-overnight agent while killing sessions abandoned
+ * for days (e.g. an 11-day-old file-backed session last written to 11 days ago).
  */
 export const STALE_SESSION_THRESHOLD_MS = 6 * 60 * 60 * 1000;
 
 /**
- * Best available "last activity" epoch for a session: the enriched file mtime when
- * known, else the reported start. 0 means we have no timestamp at all.
+ * A session's last-activity epoch — the enriched session-file mtime (set by the
+ * fan-out for file-backed sessions). This is a GENUINE activity signal: the *last
+ * write*, not the session start. It is deliberately NOT backfilled from startedAtMs,
+ * because start time says nothing about recent activity — a remote agent that started
+ * days ago may be working right now. 0 means we have no activity signal (a status-only
+ * remote/ssh session, or a session with no file), and such a session is never aged out.
  */
 export function sessionLastActivityMs(s: RemoteSession): number {
-  return Math.max(s.lastActivityMs || 0, s.startedAtMs || 0);
+  return s.lastActivityMs || 0;
 }
 
 /**
- * True when a session's newest known activity is older than `thresholdMs`. A session
- * with no timestamp at all (0) is NEVER forced stale — we can't age what we can't
- * see, and a false positive would hide a live agent.
+ * True when a session's last observed activity is older than `thresholdMs`. A session
+ * with no activity signal at all (0) is NEVER forced stale — we can't age what we
+ * can't see, and a false positive would hide a live agent that merely STARTED long
+ * ago (the key distinction: start time is not activity).
  */
 export function isStaleSession(
   s: RemoteSession,
