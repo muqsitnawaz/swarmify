@@ -163,6 +163,17 @@ export interface RawActiveSession {
 const TICKET_RE = /\b[A-Z][A-Z0-9]*-\d+\b/;
 
 /**
+ * Coerce an untyped JSON field to a string. The session JSON is not schema-validated,
+ * so a field TypeScript believes is a string (ticket/branch/topic/label/prUrl) can
+ * arrive as an object (e.g. a linked-ticket `{ id }`). Anything non-string becomes ''
+ * here so it can never flow through to the webview and get rendered as a React child
+ * (which throws "Objects are not valid as a React child"). Normalize at the boundary.
+ */
+function asStr(v: unknown): string {
+  return typeof v === 'string' ? v : '';
+}
+
+/**
  * Map the CLI `status` string onto a FloorPhase.
  *   running            -> running
  *   input_required     -> waiting   (the cheap Tier-1 "needs you" signal)
@@ -302,8 +313,9 @@ export function normalizeActiveSession(
     '';
   const cwd = raw.cwd || '';
   const startedAtMs = typeof raw.startedAtMs === 'number' ? raw.startedAtMs : 0;
-  const ticketText = `${raw.ticket || ''} ${raw.label || ''} ${raw.topic || ''}`;
-  const ticketMatch = raw.ticket || ticketText.match(TICKET_RE)?.[0] || null;
+  const rawTicket = asStr(raw.ticket);
+  const ticketText = `${rawTicket} ${asStr(raw.label)} ${asStr(raw.topic)}`;
+  const ticketMatch = rawTicket || ticketText.match(TICKET_RE)?.[0] || null;
 
   return {
     host,
@@ -316,14 +328,14 @@ export function normalizeActiveSession(
     tokPerSec: 0,
     waitingForInput: phase === 'waiting',
     lastResponse: '',
-    prUrl: raw.prUrl || null,
+    prUrl: asStr(raw.prUrl) || null,
     ticket: ticketMatch,
-    branch: raw.branch || '',
+    branch: asStr(raw.branch),
     sinceMs: startedAtMs > 0 ? Math.max(0, fetchedAt - startedAtMs) : 0,
     startedAtMs,
-    topic: raw.topic || raw.label || '',
-    sessionFile: raw.sessionFile || '',
-    context: raw.context || '',
+    topic: asStr(raw.topic) || asStr(raw.label),
+    sessionFile: asStr(raw.sessionFile),
+    context: asStr(raw.context),
     cloudTaskId: raw.cloudTaskId || '',
     cloudProvider: raw.cloudProvider || '',
     teamName: raw.teamName || '',

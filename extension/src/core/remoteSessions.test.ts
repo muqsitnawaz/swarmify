@@ -138,6 +138,30 @@ describe('normalizeActiveSession', () => {
     expect(s.agentType).toBe('codex');
   });
 
+  test('coerces object-shaped ticket/branch/topic to strings (React #31 guard)', () => {
+    // The session JSON is not schema-validated; the CLI has been observed emitting
+    // `ticket` as an object `{ id }` instead of a string. Those fields flow into the
+    // Floor card's name/summary and are rendered as React children, so a non-string
+    // must never survive normalization (else "Objects are not valid as a React child").
+    const base = ACTIVE.find((r) => r.context === 'terminal')!;
+    const bad = {
+      ...base,
+      ticket: { id: 'RUSH-1262' },
+      branch: { id: 'abc' },
+      topic: { id: 'xyz' },
+      prUrl: { id: 'p' },
+    } as unknown as RawActiveSession;
+    const s = normalizeActiveSession(bad, 'this-mac', FETCHED_AT);
+    expect(typeof s.branch).toBe('string');
+    expect(typeof s.topic).toBe('string');
+    expect(s.ticket === null || typeof s.ticket === 'string').toBe(true);
+    expect(s.prUrl === null || typeof s.prUrl === 'string').toBe(true);
+    // No object leaked through under the guise of a string.
+    for (const v of [s.ticket, s.branch, s.topic, s.prUrl]) {
+      expect(typeof v === 'object' && v !== null).toBe(false);
+    }
+  });
+
   test('input_required becomes waiting + waitingForInput', () => {
     const terminal = ACTIVE.find((r) => r.status === 'input_required')!;
     const s = normalizeActiveSession(terminal, 'this-mac', FETCHED_AT);
