@@ -2,7 +2,9 @@
 // Lives under core/ (no VS Code dependencies) so the realtime payload
 // builder is reachable from `bun test` without dragging the vscode shim.
 
-export const FOREMAN_MODEL = 'gpt-realtime';
+// gpt-realtime-2: current GA default in the OpenAI Agents SDK (2026). ~20%
+// cheaper on audio-in than the original gpt-realtime and the preview models.
+export const FOREMAN_MODEL = 'gpt-realtime-2';
 export const FOREMAN_VOICE = 'cedar';
 
 export const FOREMAN_SYSTEM_PROMPT = `You are Foreman, the voice coordinator of a factory of AI coding agents across
