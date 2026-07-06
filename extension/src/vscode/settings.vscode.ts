@@ -45,6 +45,7 @@ import * as theme from './theme.vscode';
 import { buildAgentTerminalEnv } from '../core/terminals';
 import * as foreman from './foreman.vscode';
 import { startForemanAudio, ForemanAudioSession } from './foreman.audio';
+import { runSmartTurn } from './foreman.smart';
 import { buildTaskDispatchPrompt } from '../core/tasks';
 import { draftDispatchPrompt, type DraftTicket } from '../core/draftPrompt';
 import { listRegisteredDevices, fetchDeviceStats, countRunningAgents, resolveSecret, getDeviceSyncStatus } from './deviceHealth.vscode';
@@ -56,6 +57,10 @@ import { getSyncStatus } from '../core/repoSync';
 
 let foremanSession: ForemanAudioSession | undefined;
 let foremanSessionGen = 0;
+// Smart-mode (turn-based text brain) rolling history. Capped when appended so
+// a long session doesn't grow the OpenAI context unbounded.
+let foremanSmartHistory: any[] = [];
+let foremanSmartAbort: AbortController | undefined;
 
 // Get GitHub repo from git remote (returns "username/repo" or null)
 function getGitHubRepo(workspacePath: string): Promise<string | null> {
@@ -438,6 +443,24 @@ function watchForPlan(
     if (attempts < MAX_ATTEMPTS) setTimeout(tick, POLL_MS);
   };
   setTimeout(tick, POLL_MS);
+}
+
+// The Foreman tool-dependency bundle, shared by BOTH voice engines: the
+// realtime session's onToolCall and the smart-mode text brain both dispatch
+// through runForemanTool with these deps, so tool behavior is identical
+// regardless of mode.
+function buildForemanToolDeps(context: vscode.ExtensionContext): foreman.ForemanToolDeps {
+  return {
+    fetchCycleTasks: async () => {
+      const s = getSettings(context);
+      return fetchAllTasks(context, s.taskSources);
+    },
+    fetchTaskDetails: (id) => findTaskDetailsForForeman(context, id),
+    dispatchTask: (opts) => dispatchForForeman(context, opts),
+    spawnAgent: (opts) => spawnAgentForForeman(context, opts),
+    messageAgent: (opts) => messageAgentForForeman(opts),
+    createTicket: (opts) => createTicketForForeman(opts),
+  };
 }
 
 // Headless lookup used by Foreman's task_details tool. Finds a task by
@@ -2889,18 +2912,7 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
             },
             onToolCall: async (callId, name, args) => {
               try {
-                const deps: foreman.ForemanToolDeps = {
-                  fetchCycleTasks: async () => {
-                    const s = getSettings(context);
-                    return fetchAllTasks(context, s.taskSources);
-                  },
-                  fetchTaskDetails: (id) => findTaskDetailsForForeman(context, id),
-                  dispatchTask: (opts) => dispatchForForeman(context, opts),
-                  spawnAgent: (opts) => spawnAgentForForeman(context, opts),
-                  messageAgent: (opts) => messageAgentForForeman(opts),
-                  createTicket: (opts) => createTicketForForeman(opts),
-                };
-                const result = await foreman.runForemanTool(name, args, wsFolder, deps);
+                const result = await foreman.runForemanTool(name, args, wsFolder, buildForemanToolDeps(context));
                 foremanSession?.sendToolResult(callId, result);
               } catch (err: any) {
                 foremanSession?.sendToolResult(callId, { error: err?.message ?? String(err) });
@@ -2935,6 +2947,49 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
         if (typeof message.itemId === 'string' && message.itemId) {
           foremanSession?.deleteItem(message.itemId);
         }
+        break;
+      }
+      // Smart mode: one turn-based text prompt (typed, or dictated via the
+      // user's Superwhisper) -> OpenAI text brain + the SAME Foreman tools ->
+      // streamed text answer. Reuses the foreman.transcript event path so the
+      // orb renders it exactly like a spoken reply, no new UI plumbing.
+      case 'foreman.smartTurn': {
+        const text = typeof message.text === 'string' ? message.text.trim() : '';
+        if (!text) break;
+        foremanSmartAbort?.abort();
+        const ac = new AbortController();
+        foremanSmartAbort = ac;
+        try {
+          const apiKey = foreman.getOpenAIApiKey();
+          if (!apiKey) throw new Error('OpenAI API key not configured. Set agents.openaiApiKey in Settings.');
+          const wsFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+          settingsPanel?.webview.postMessage({ type: 'foreman.transcript', role: 'user', text, final: true });
+          const { text: answer, history } = await runSmartTurn({
+            apiKey,
+            history: foremanSmartHistory,
+            userText: text,
+            runTool: (name, args) => foreman.runForemanTool(name, args, wsFolder, buildForemanToolDeps(context)),
+            signal: ac.signal,
+            events: {
+              onText: (delta) => settingsPanel?.webview.postMessage({ type: 'foreman.transcript', role: 'assistant', text: delta, final: false }),
+              onToolCall: (name) => settingsPanel?.webview.postMessage({ type: 'foreman.event', eventType: 'smart.tool', summary: name, at: Date.now() }),
+              onStatus: (status, detail) => settingsPanel?.webview.postMessage({ type: 'foreman.event', eventType: `smart.${status}`, summary: detail ?? '', at: Date.now() }),
+            },
+          });
+          if (ac.signal.aborted) break;
+          // Replace the streamed partial with the clean final line.
+          settingsPanel?.webview.postMessage({ type: 'foreman.transcript', role: 'assistant', text: answer, final: true });
+          foremanSmartHistory = history.slice(-24); // cap rolling context
+        } catch (err: any) {
+          if (!ac.signal.aborted) {
+            settingsPanel?.webview.postMessage({ type: 'foreman.status', status: 'error', detail: err?.message ?? String(err) });
+          }
+        }
+        break;
+      }
+      case 'foreman.smartReset': {
+        foremanSmartAbort?.abort();
+        foremanSmartHistory = [];
         break;
       }
     }
