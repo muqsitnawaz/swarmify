@@ -23,6 +23,12 @@ export interface DispatchInputProps {
   onRemoveAttachment: (index: number) => void
   onSubmit: () => void
   inputRef?: React.RefObject<HTMLTextAreaElement | null>
+  /** Draft the prompt from the attached tickets via a headless agent. */
+  onDraftPrompt?: () => void
+  /** True while a draft is in flight (button shows a spinner + disables). */
+  drafting?: boolean
+  /** Inline error from the last draft attempt (shown red under the box). */
+  draftError?: string
 }
 
 interface TicketVM {
@@ -65,7 +71,9 @@ export function DispatchInput(props: DispatchInputProps) {
   const {
     prompt, onPromptChange, attached, tasks, onAddTicket, onRemoveTicket,
     attachments, onAddAttachment, onRemoveAttachment, onSubmit, inputRef,
+    onDraftPrompt, drafting = false, draftError,
   } = props
+  const canDraft = !!onDraftPrompt && attached.length > 0
   const boxRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -155,6 +163,16 @@ export function DispatchInput(props: DispatchInputProps) {
           }}
         />
         <div className="boxbar">
+          {onDraftPrompt && (
+            <span
+              className={`ib draft${drafting ? ' busy' : ''}${canDraft ? '' : ' dis'}`}
+              title={canDraft ? 'Let an agent write the prompt from the attached tickets' : 'Attach a ticket first'}
+              onClick={() => { if (canDraft && !drafting) onDraftPrompt() }}
+            >
+              <Icon name="sparkles" size={13} className={drafting ? 'spin' : undefined} />
+              {drafting ? 'Drafting…' : 'Draft prompt'}
+            </span>
+          )}
           <span className="ib" onClick={() => fileRef.current?.click()}><Icon name="paperclip" size={13} /> Attach</span>
           <span className="ib" onClick={pasteScreenshot}><ImageIcon size={13} /> Paste screenshot</span>
           <span className="ib">@ Mention code</span>
@@ -167,6 +185,7 @@ export function DispatchInput(props: DispatchInputProps) {
           />
         </div>
       </div>
+      {draftError && <div className="reply-err" role="alert">{draftError}</div>}
       <div className="wactions">
         <span className="gbtn accent" onClick={autoPick}><Icon name="zap" size={13} /> Auto-pick urgent</span>
         <span className="sub2" style={{ alignSelf: 'center' }}>or attach from suggestions</span>
