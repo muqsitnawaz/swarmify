@@ -89,7 +89,7 @@ pipeline lives in the extension host (Node.js) because VS Code webviews block
 |   |  ffplay (speaker) <--------|---- WS response.audio.delta            |   |
 |   +------------+---------------+                                        |   |
 |                |                                                        |   |
-|                | wss://api.openai.com/v1/realtime?model=gpt-realtime   |   |
+|                | wss://api.openai.com/v1/realtime?model=gpt-realtime-2 |   |
 +----------------+--------------------------------------------------------+---+
                  |
                  v
@@ -285,13 +285,13 @@ Set once, on WS open
 
 | Field | Value | Why |
 |---|---|---|
-| `model` | `gpt-realtime` | `FOREMAN_MODEL`, defined once in `foreman.vscode.ts:31` |
-| `voice` | `cedar` | `FOREMAN_VOICE`, `foreman.vscode.ts:32` |
+| `model` | `gpt-realtime-2` | `FOREMAN_MODEL`, defined once in `core/foreman.config.ts` |
+| `voice` | `cedar` | `FOREMAN_VOICE`, `core/foreman.config.ts` |
 | `modalities` | `['audio','text']` | we need both speech output and a transcript to render |
 | `input_audio_format` | `pcm16` | matches ffmpeg's `-f s16le` |
 | `output_audio_format` | `pcm16` | matches ffplay's `-f s16le` |
-| `input_audio_transcription.model` | `whisper-1` | user-side transcription for the UI |
-| `turn_detection.type` | `server_vad` | OpenAI handles silence detection; client streams continuously |
+| `input_audio_transcription.model` | `gpt-4o-mini-transcribe` | user-side transcription for the UI |
+| `turn_detection.type` | `semantic_vad` | model decides the user finished, not a fixed silence timer |
 | `tools` | `FOREMAN_TOOLS` | `briefing` + `focus`, see below |
 | `tool_choice` | `auto` | model decides when to call tools |
 | `temperature` | `0.7` | brief, not rigid |
