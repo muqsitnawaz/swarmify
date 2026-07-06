@@ -134,6 +134,19 @@ export function ForemanOrb({ vscode }: ForemanOrbProps) {
     })
   }
 
+  // Smart mode: type or dictate (Superwhisper types into the focused field) a
+  // prompt and submit it to the text brain. Replies stream back over the same
+  // foreman.transcript channel the realtime engine uses, so they render in the
+  // transcript above. Enter submits; Shift+Enter inserts a newline.
+  const [smartInput, setSmartInput] = useState('')
+  const submitSmart = () => {
+    const text = smartInput.trim()
+    if (!text) return
+    vscode.postMessage({ type: 'foreman.smartTurn', text })
+    setSmartInput('')
+    lastActivityAt.current = Date.now()
+  }
+
   // Excise an utterance: server-side conversation.item.delete (so a bad
   // transcription stops steering follow-up answers) plus local removal.
   const deleteLine = (line: TranscriptLine) => {
@@ -202,7 +215,9 @@ export function ForemanOrb({ vscode }: ForemanOrbProps) {
     'idle'
 
   const latestLines = transcript.slice(-TRANSCRIPT_WINDOW)
-  const showTranscript = conn === 'connected' && latestLines.length > 0 && idleCountdown === null
+  // Show the transcript for smart-mode replies too (which arrive with no
+  // realtime "connection"), not just during a live voice session.
+  const showTranscript = latestLines.length > 0 && idleCountdown === null
 
   return (
     <div
@@ -282,6 +297,37 @@ export function ForemanOrb({ vscode }: ForemanOrbProps) {
       >
         {speakerMuted ? 'silent' : 'voice'}
       </button>
+
+      <textarea
+        className="foreman-orb-smart-input"
+        value={smartInput}
+        onChange={(e) => setSmartInput(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault()
+            submitSmart()
+          }
+        }}
+        placeholder="Ask Foreman… (type or dictate, Enter to send)"
+        rows={1}
+        aria-label="Ask Foreman in smart mode"
+        style={{
+          pointerEvents: 'auto',
+          width: 260,
+          maxWidth: '60vw',
+          resize: 'none',
+          background: 'rgba(0,0,0,0.55)',
+          color: '#e6edf3',
+          border: '1px solid rgba(255,255,255,0.14)',
+          borderRadius: 10,
+          padding: '8px 11px',
+          fontFamily: 'inherit',
+          fontSize: 12.5,
+          lineHeight: 1.4,
+          outline: 'none',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.35)',
+        }}
+      />
     </div>
   )
 }
