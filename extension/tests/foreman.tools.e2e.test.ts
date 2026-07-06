@@ -76,13 +76,18 @@ describeIfCli('foreman P1 tool contracts (live agents CLI)', () => {
     }
   });
 
-  test('cloud list --json carries the fields cloud_status parses', () => {
-    const data = runJson(['cloud', 'list', '--json']);
-    expect(Array.isArray(data)).toBe(true);
-    for (const c of data.slice(0, 5)) {
-      expect(c).toHaveProperty('id');
-      expect(c).toHaveProperty('status');
-      expect(c).toHaveProperty('provider');
-    }
+  test('cloud status <id> --json carries the fields cloud_status parses', () => {
+    // Pull a real task id from the list, then exercise the ACTUAL command
+    // getCloudTask depends on (cloud status <id>), whose single-object shape
+    // can drift independently of the list-element shape.
+    const list = runJson(['cloud', 'list', '--json']);
+    expect(Array.isArray(list)).toBe(true);
+    if (list.length === 0) return; // nothing to inspect on a clean account
+    const id = String(list[0].id);
+    const task = runJson(['cloud', 'status', id, '--json']);
+    expect(task && typeof task).toBe('object');
+    expect(task).toHaveProperty('id');
+    expect(task).toHaveProperty('status');
+    expect(task).toHaveProperty('provider');
   });
 });
