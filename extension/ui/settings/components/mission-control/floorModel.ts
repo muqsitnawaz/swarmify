@@ -206,40 +206,70 @@ export interface HostRow {
   pinned: boolean
 }
 
+/** Canonicalize a host name to its device label. Mirror of core normalizeHost so a
+ *  session's host ('mac-mini', 'ZION', a FQDN) folds onto the registry device it
+ *  belongs to. Kept local — ui/ cannot import from src/*. */
+function normalizeHostKey(raw: string): string {
+  return (raw || '')
+    .split('.')[0]
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
 /**
- * Build the HOSTS rows: fold each agent into its DISPLAY host (`hostLabel ?? host`,
- * so the local machine's 'this-mac' bucket collapses onto its real device name),
- * then union with the online device fleet so hosts show even with 0 agents. The
- * local machine therefore appears exactly once, under its real name — never as both
- * 'this-mac' and its registry name. Device-registry reachability is authoritative
- * when a fleet entry exists; session-fetch offlineHosts only decide SSH-config-only
- * hosts.
+ * Build the HOSTS rows, SCOPED to the machines that actually exist: the registered
+ * device fleet + the local machine + any pinned host. A HOST row is NEVER created
+ * from an arbitrary session's host — an agent reported on an unregistered host (an
+ * ssh-config alias, a tailnet peer) is still counted into a matching device row but
+ * can no longer spawn a phantom row of its own (the reported-bug hosts: mark,
+ * mark-aws, phoenix, pi, and the same mac triplicated as localhost / mac-mini /
+ * "Muqsit's Mac mini").
+ *
+ * Each agent folds into its DISPLAY host (`hostLabel ?? host`), normalized to the
+ * device label, so the local machine's 'this-mac' bucket collapses onto its real
+ * name and appears exactly once. Online devices show even with 0 agents. Device
+ * reachability is authoritative when a fleet entry exists; `offlineHosts` only
+ * decides a host that has no device entry (a pin).
+ *
+ * `localHost` is the local machine's canonical name; it always gets a row even when
+ * it isn't in the registry (the machine you're on must always be visible).
  *
  * `pins` is the user's ordered list of pinned host names. Pinned hosts render FIRST,
- * in `pins` order (drag-reorderable), then a divider, then the rest auto-sorted. A
- * pinned host stays visible even with 0 agents / offline, since the user asked for it.
+ * in `pins` order (drag-reorderable), then the rest auto-sorted. A pinned host stays
+ * visible even with 0 agents / offline, since the user asked for it.
  */
 export function computeHostRows(
   agents: FloorAgent[],
   devices: { name: string; online: boolean; agents: number }[],
   offlineHosts: string[],
   pins: string[] = [],
+  localHost?: string,
 ): HostRow[] {
+  // Agent counts keyed by normalized device label so 'this-mac'/hostLabel, a FQDN,
+  // and case variants all land on the same registry row.
   const byHost: Record<string, number> = {}
   for (const a of agents) {
-    const key = a.hostLabel ?? a.host
+    const raw = a.hostLabel ?? a.host
+    // The synthetic local routing key folds onto the local machine before its real
+    // device name has been threaded in as hostLabel (the pre-fold transient).
+    const key = raw === 'this-mac' && localHost ? normalizeHostKey(localHost) : normalizeHostKey(raw)
+    if (!key) continue
     byHost[key] = (byHost[key] || 0) + 1
   }
   const offline = new Set(offlineHosts)
   const pinIndex = new Map(pins.map((n, i) => [n, i]))
   const deviceByName = new Map(devices.map((d) => [d.name, d]))
-  const names = new Set<string>(Object.keys(byHost))
-  for (const d of devices) if (d.online) names.add(d.name)
-  for (const p of pins) names.add(p) // a pinned host is always listed
+  // The row set is the REGISTERED FLEET + local machine + pins — not session hosts.
+  const names = new Set<string>()
+  for (const d of devices) names.add(d.name)
+  if (localHost) names.add(localHost)
+  for (const p of pins) names.add(p)
   const rows = [...names].sort().map((name) => {
     const dev = deviceByName.get(name)
     const offlineRow = dev ? !dev.online : offline.has(name)
-    const count = byHost[name] ?? dev?.agents ?? 0
+    const count = byHost[normalizeHostKey(name)] ?? dev?.agents ?? 0
     return { name, count, offline: offlineRow, pinned: pinIndex.has(name) }
   })
   // Pinned first (in the user's drag order), then the alphabetical remainder.

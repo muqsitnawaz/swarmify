@@ -1,10 +1,11 @@
 // Cross-host session aggregation — SSH fan-out + host discovery (extension host).
 //
-// Discovers reachable machines (SSH config + Tailscale), then shells out to the
-// `agents` CLI on each — locally for this machine, over SSH (`--host`) for the
-// rest — to list active sessions (Tier-1) and, on demand, render one session as
-// markdown (Tier-2). All parsing/normalizing lives in the pure core module
-// (src/core/remoteSessions.ts); this file only does I/O + fan-out + caching.
+// Discovers machines from the `agents devices` registry + the local machine (see
+// discoverHosts / core reconcileHosts — NOT ssh-config aliases or tailnet peers),
+// then shells out to the `agents` CLI on each — locally for this machine, over SSH
+// (`--host`) for the rest — to list active sessions (Tier-1) and, on demand, render
+// one session as markdown (Tier-2). All parsing/normalizing lives in the pure core
+// module (src/core/remoteSessions.ts); this file only does I/O + fan-out + caching.
 
 import * as fs from 'fs';
 import * as os from 'os';
@@ -16,13 +17,18 @@ import {
   RemoteSession,
   HostInfo,
   HostGroup,
+  ReconciledHost,
+  RegisteredDeviceInput,
   normalizeActiveSession,
   dedupeSessions,
+  filterStaleSessions,
+  reconcileHosts,
   enrichWithSessionContent,
   groupByHost,
 } from '../core/remoteSessions';
 import type { ProjectRule } from '../core/settings';
 import { deriveHostLoad, parseRemoteCpuRatio } from '../core/dispatchRanking';
+import { listRegisteredDevices } from './deviceHealth.vscode';
 
 const execFileAsync = promisify(execFile);
 const execAsync = promisify(exec);
@@ -37,7 +43,6 @@ export const LOCAL_LABEL = 'this-mac';
 const ACTIVE_TIMEOUT_LOCAL_MS = 6000;
 const ACTIVE_TIMEOUT_REMOTE_MS = 10000;
 const DETAIL_TIMEOUT_MS = 15000;
-const TAILSCALE_TIMEOUT_MS = 4000;
 const CACHE_TTL_MS = 4000;
 // The local-only fast path polls ~3s; a sub-poll TTL keeps two near-simultaneous
 // local ticks from double-spawning the local `agents` subprocess.
@@ -134,83 +139,35 @@ async function findAgentsCli(): Promise<string> {
 
 // --- Host discovery ---------------------------------------------------------
 
-/** Parse `Host` aliases out of ~/.ssh/config, skipping wildcard patterns. */
-async function readSshConfigHosts(): Promise<string[]> {
-  const cfg = path.join(homedir(), '.ssh', 'config');
-  let text: string;
-  try {
-    text = await fs.promises.readFile(cfg, 'utf-8');
-  } catch {
-    return [];
-  }
-  const hosts: string[] = [];
-  for (const line of text.split(/\r?\n/)) {
-    const m = line.match(/^\s*Host\s+(.+?)\s*$/i);
-    if (!m) continue;
-    for (const name of m[1].split(/\s+/)) {
-      if (!name || name.includes('*') || name.includes('?')) continue;
-      hosts.push(name);
-    }
-  }
-  return hosts;
-}
-
-/** Tailscale MagicDNS peers + their online state (empty if tailscale absent). */
-async function readTailscaleHosts(): Promise<HostInfo[]> {
-  try {
-    const { stdout } = await execFileAsync('tailscale', ['status', '--json'], {
-      timeout: TAILSCALE_TIMEOUT_MS,
-      maxBuffer: 8 * 1024 * 1024,
-      env: pathAugmentedEnv(),
-    });
-    const data = JSON.parse(stdout);
-    const out: HostInfo[] = [];
-    const peers = data?.Peer && typeof data.Peer === 'object' ? Object.values(data.Peer) : [];
-    for (const peer of peers as any[]) {
-      const name = typeof peer?.HostName === 'string' ? peer.HostName : '';
-      if (!name) continue;
-      const online = peer?.Online === true;
-      // Pre-probe placeholders; fetchHostSessions overwrites with measured load.
-      out.push({ name, online, agents: 0, load: online ? 'idle' : 'off', uses: 0 });
-    }
-    return out;
-  } catch {
-    return [];
-  }
-}
-
 /**
- * Enumerate reachable hosts: local machine (always, online) + SSH config aliases
- * + Tailscale peers. Deduped by name; the local machine is never double-listed.
- * SSH-config-only hosts are optimistically online:true — the Tier-1 fetch marks
- * them offline if the query fails.
+ * Enumerate the swept host roster from the DEVICE REGISTRY (`agents devices list`)
+ * + the local machine — NOT ssh-config aliases or raw tailnet peers, which are not
+ * dev machines and previously flooded the sidebar with phantom hosts. The registry
+ * is the canonical device set (the same source listRegisteredDevices feeds the
+ * dispatch panel); reconcileHosts folds a registry entry that is the local machine
+ * into the always-online local host so each machine appears exactly once under its
+ * canonical name. The pure scoping/folding lives in core (reconcileHosts) so it is
+ * unit-tested; this wrapper only does the I/O.
  */
-export async function discoverHosts(): Promise<HostInfo[]> {
-  const [sshHosts, tsHosts] = await Promise.all([
-    readSshConfigHosts(),
-    readTailscaleHosts(),
-  ]);
-
-  const byName = new Map<string, HostInfo>();
-  // Pre-probe placeholders (agents/load/uses); fetchHostSessions overwrites them
-  // with measured live load before the roster crosses to the webview.
-  byName.set(LOCAL_HOST, { name: LOCAL_HOST, online: true, agents: 0, load: 'idle', uses: 0 });
-  for (const h of sshHosts) {
-    if (h === LOCAL_HOST || byName.has(h)) continue;
-    byName.set(h, { name: h, online: true, agents: 0, load: 'idle', uses: 0 });
-  }
-  for (const h of tsHosts) {
-    if (h.name === LOCAL_HOST) continue;
-    // Tailscale's Online flag is authoritative; let it overwrite an SSH default.
-    byName.set(h.name, h);
-  }
-  return [...byName.values()];
+export async function discoverHosts(): Promise<ReconciledHost[]> {
+  const devices = await listRegisteredDevices();
+  const inputs: RegisteredDeviceInput[] = devices.map((d) => ({
+    name: d.name,
+    address: d.host,
+    online: d.online === true,
+  }));
+  return reconcileHosts(inputs, LOCAL_HOST);
 }
 
 // --- Tier-1: active fetch ---------------------------------------------------
 
-/** Read the tail of a local session file for activity/throughput enrichment. */
-async function readSessionTail(sessionFile: string, agentType: string): Promise<string | null> {
+/** Read the tail of a local session file for activity/throughput enrichment, plus
+ *  the file mtime (last-write epoch ms) — the real "last activity" signal used to
+ *  age out stale sessions. */
+async function readSessionTail(
+  sessionFile: string,
+  agentType: string
+): Promise<{ content: string; mtimeMs: number } | null> {
   try {
     const stat = await fs.promises.stat(sessionFile);
     const size = stat.size;
@@ -222,7 +179,7 @@ async function readSessionTail(sessionFile: string, agentType: string): Promise<
       const readStart = agentType === 'gemini' ? 0 : Math.max(0, size - 256 * 1024);
       const buf = Buffer.alloc(size - readStart);
       await fh.read(buf, 0, buf.length, readStart);
-      return buf.toString('utf-8');
+      return { content: buf.toString('utf-8'), mtimeMs: stat.mtimeMs };
     } finally {
       await fh.close();
     }
@@ -261,7 +218,7 @@ async function probeCpuRatio(host: string, isLocal: boolean): Promise<number | n
  *  `probeCpu` gates the second (CPU-load) SSH round-trip: the live feed poll passes
  *  false to fetch sessions with ONE connection per host; the Dispatch panel passes
  *  true when it needs fresh load for ranking. */
-async function fetchActiveForHost(host: string, isLocal: boolean, fetchedAt: number, probeCpu: boolean, projectRules: ProjectRule[]): Promise<{
+async function fetchActiveForHost(sshTarget: string, isLocal: boolean, hostKey: string, fetchedAt: number, probeCpu: boolean, projectRules: ProjectRule[]): Promise<{
   host: string;
   online: boolean;
   sessions: RemoteSession[];
@@ -269,7 +226,10 @@ async function fetchActiveForHost(host: string, isLocal: boolean, fetchedAt: num
 }> {
   const agentsBin = await findAgentsCli();
   const args = ['sessions', '--active', '--json'];
-  if (!isLocal) args.push('--host', host);
+  // `sshTarget` is the machine's SSH address (Tailscale dnsName); `hostKey` is the
+  // canonical device label that groups the sessions in the UI. They differ for a
+  // registered device, so the --host reach and the sidebar bucket stay decoupled.
+  if (!isLocal) args.push('--host', sshTarget);
   try {
     const { stdout } = await execFileAsync(agentsBin, args, {
       timeout: isLocal ? ACTIVE_TIMEOUT_LOCAL_MS : ACTIVE_TIMEOUT_REMOTE_MS,
@@ -280,7 +240,7 @@ async function fetchActiveForHost(host: string, isLocal: boolean, fetchedAt: num
     const raw: any[] = Array.isArray(parsed) ? parsed : [];
     const normalized = raw
       .filter((rec) => rec && typeof rec === 'object')
-      .map((rec) => normalizeActiveSession(rec, host, fetchedAt, projectRules));
+      .map((rec) => normalizeActiveSession(rec, hostKey, fetchedAt, projectRules));
     // Collapse the many-processes-per-session records to one card BEFORE enriching,
     // so each session file is read once (not once per duplicate pid) and the header
     // count matches what the feed renders.
@@ -290,8 +250,14 @@ async function fetchActiveForHost(host: string, isLocal: boolean, fetchedAt: num
       // Only the local host can cheaply read session files to enrich activity,
       // throughput, and waiting. Remote hosts stay status-only until Tier-2.
       if (isLocal && session.sessionFile) {
-        const content = await readSessionTail(session.sessionFile, session.agentType);
-        if (content) session = enrichWithSessionContent(session, content, fetchedAt);
+        const tail = await readSessionTail(session.sessionFile, session.agentType);
+        if (tail) {
+          session = enrichWithSessionContent(session, tail.content, fetchedAt);
+          // The file's last-write time is the real last-activity signal (the CLI
+          // payload carries no timestamp for terminal sessions) — feed it to the
+          // staleness check so an abandoned local agent ages out.
+          session = { ...session, lastActivityMs: tail.mtimeMs };
+        }
       }
       sessions.push(session);
     }
@@ -299,12 +265,12 @@ async function fetchActiveForHost(host: string, isLocal: boolean, fetchedAt: num
     // so always read it; a remote probe is a second SSH, so only when asked. Guarded
     // by its own hard timeout so a slow ssh can never extend the fan-out.
     const cpuRatio = (probeCpu || isLocal)
-      ? await withHardTimeout(probeCpuRatio(host, isLocal), LOAD_PROBE_TIMEOUT_MS + 1000, null)
+      ? await withHardTimeout(probeCpuRatio(sshTarget, isLocal), LOAD_PROBE_TIMEOUT_MS + 1000, null)
       : null;
-    return { host, online: true, sessions, cpuRatio };
+    return { host: hostKey, online: true, sessions, cpuRatio };
   } catch {
     // Dead / slow / unreachable host — never throw the whole fan-out.
-    return { host, online: false, sessions: [], cpuRatio: null };
+    return { host: hostKey, online: false, sessions: [], cpuRatio: null };
   }
 }
 
@@ -374,37 +340,47 @@ export async function fetchHostSessions(
 
   activeInFlight = (async () => {
     const hosts = await discoverHosts();
-    // Only fan out to hosts believed reachable. SSH-config-only hosts are optimistically
-    // online (discoverHosts default) so they are still probed; Tailscale-known-offline
-    // peers are the ones we skip — the freeze culprit.
+    // Only fan out to hosts believed reachable (device registry online flag). Offline
+    // registered devices are skipped entirely and appear as empty offline roster rows.
     const online = hosts.filter((h) => h.online);
     const offline = hosts.filter((h) => !h.online);
     const onlineResults = await mapWithConcurrency(online, FANOUT_CONCURRENCY, (h) => {
-      const isLocal = h.name === LOCAL_HOST;
-      const label = isLocal ? LOCAL_LABEL : h.name;
+      // The local machine's sessions are labelled 'this-mac' for the UI and queried
+      // directly (no --host); a registered remote is reached over ssh at its address
+      // but grouped under its canonical device name.
+      const hostKey = h.isLocal ? LOCAL_LABEL : h.name;
+      const sshTarget = h.isLocal ? hostKey : h.address;
       // execFile's own timeout sends SIGTERM, which a hung ssh can ignore (stuck
       // on connect / host-key / auth). Race every host against a hard wall-clock
       // timeout that always resolves, so ONE unreachable machine can never block
-      // the batch — which was leaving the whole Floor empty. Label local sessions
-      // 'this-mac' for the UI; still no --host (isLocal).
+      // the batch — which was leaving the whole Floor empty.
       return withHardTimeout(
-        fetchActiveForHost(label, isLocal, fetchedAt, probeCpu, projectRules),
-        isLocal ? ACTIVE_TIMEOUT_LOCAL_MS + 2000 : ACTIVE_TIMEOUT_REMOTE_MS + 2000,
-        { host: label, online: false, sessions: [], cpuRatio: null }
+        fetchActiveForHost(sshTarget, h.isLocal, hostKey, fetchedAt, probeCpu, projectRules),
+        h.isLocal ? ACTIVE_TIMEOUT_LOCAL_MS + 2000 : ACTIVE_TIMEOUT_REMOTE_MS + 2000,
+        { host: hostKey, online: false, sessions: [], cpuRatio: null }
       );
     });
-    const sessions: RemoteSession[] = [];
+    // Merge every host's sessions, then (1) collapse the SAME session id reported by
+    // more than one host into one — cross-host dedupe, so a session synced/reachable
+    // on two machines is counted once — and (2) drop stale (long-dead) sessions. Both
+    // run on the merged set so counts, the feed, and needs-you all reconcile.
+    const merged: RemoteSession[] = [];
+    for (const r of onlineResults) merged.push(...r.sessions);
+    const sessions = filterStaleSessions(dedupeSessions(merged), fetchedAt);
+    // Per-host live counts from the reconciled set (post dedupe + stale), so a host's
+    // agent count matches exactly the cards the feed renders for it.
+    const countByHost = new Map<string, number>();
+    for (const s of sessions) countByHost.set(s.host, (countByHost.get(s.host) ?? 0) + 1);
     const resolvedHosts: HostInfo[] = onlineResults.map((r) => {
-      sessions.push(...r.sessions);
-      // agents = this host's active-session count (== HostGroup.sessions.length);
+      // agents = this host's reconciled active-session count (== HostGroup.sessions.length);
       // load = derived from that plus the live CPU ratio ('off' when offline);
       // uses = the same active count, the ranking tiebreak we can source today.
-      const agents = r.sessions.length;
+      const agents = countByHost.get(r.host) ?? 0;
       const load = r.online ? deriveHostLoad(agents, r.cpuRatio) : 'off';
       return { name: r.host, online: r.online, agents, load, uses: agents };
     });
-    // Keep skipped hosts visible in the roster so the sidebar still lists them offline.
-    for (const h of offline) resolvedHosts.push(offlineHostInfo(h.name === LOCAL_HOST ? LOCAL_LABEL : h.name));
+    // Keep offline registered devices visible in the roster so the sidebar lists them.
+    for (const h of offline) resolvedHosts.push(offlineHostInfo(h.name));
     const groups = groupByHost(sessions, resolvedHosts, fetchedAt);
     const result: HostSessionsResult = { hosts: resolvedHosts, sessions, groups, fetchedAt };
     activeCache = { at: fetchedAt, hasCpu: probeCpu, rulesKey, result };
@@ -435,11 +411,14 @@ export async function fetchLocalSessions(
 
   localInFlight = (async () => {
     const r = await withHardTimeout(
-      fetchActiveForHost(LOCAL_LABEL, true, fetchedAt, false, projectRules),
+      fetchActiveForHost(LOCAL_LABEL, true, LOCAL_LABEL, fetchedAt, false, projectRules),
       ACTIVE_TIMEOUT_LOCAL_MS + 2000,
       { host: LOCAL_LABEL, online: false, sessions: [], cpuRatio: null },
     );
-    const agents = r.sessions.length;
+    // Drop stale (long-dead) sessions here too so the fast local poll never
+    // resurrects an abandoned agent the full sweep would have aged out.
+    const sessions = filterStaleSessions(r.sessions, fetchedAt);
+    const agents = sessions.length;
     const host: HostInfo = {
       name: LOCAL_LABEL,
       online: r.online,
@@ -447,8 +426,8 @@ export async function fetchLocalSessions(
       load: r.online ? deriveHostLoad(agents, r.cpuRatio) : 'off',
       uses: agents,
     };
-    const groups = groupByHost(r.sessions, [host], fetchedAt);
-    const result: HostSessionsResult = { hosts: [host], sessions: r.sessions, groups, fetchedAt };
+    const groups = groupByHost(sessions, [host], fetchedAt);
+    const result: HostSessionsResult = { hosts: [host], sessions, groups, fetchedAt };
     localCache = { at: fetchedAt, rulesKey, result };
     return result;
   })();

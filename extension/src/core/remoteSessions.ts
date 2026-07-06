@@ -42,6 +42,46 @@ export function normalizeHost(raw: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
+/** A registered device as seen by the host reconciler (from `agents devices list`). */
+export interface RegisteredDeviceInput {
+  name: string;
+  /** SSH target (the device's Tailscale dnsName). Falls back to `name` when absent. */
+  address?: string;
+  online?: boolean;
+}
+
+/** A host after reconciliation against the device registry. */
+export interface ReconciledHost {
+  /** Canonical device label (normalizeHost of the registry name). Grouping + sidebar key. */
+  name: string;
+  /** SSH target for the Tier-1 fetch; '' for the local machine (queried directly). */
+  address: string;
+  online: boolean;
+  isLocal: boolean;
+}
+
+/**
+ * Scope the swept host roster to the DEVICE REGISTRY + the local machine — never
+ * ssh-config aliases or raw tailnet peers, which are not dev machines and used to
+ * flood the sidebar with phantom hosts (mark, mark-aws, phoenix, pi, plus the same
+ * mac listed as localhost / mac-mini / "Muqsit's Mac mini"). The local machine is
+ * always present and online (queried directly, no ssh); a registry entry that IS the
+ * local machine is folded into it via normalizeHost so the machine appears exactly
+ * once under its canonical name. Pure so it is unit-tested against real `agents
+ * devices` shapes.
+ */
+export function reconcileHosts(devices: RegisteredDeviceInput[], localHost: string): ReconciledHost[] {
+  const localKey = normalizeHost(localHost);
+  const byName = new Map<string, ReconciledHost>();
+  if (localKey) byName.set(localKey, { name: localKey, address: '', online: true, isLocal: true });
+  for (const d of devices) {
+    const key = normalizeHost(d.name);
+    if (!key || key === localKey) continue;
+    byName.set(key, { name: key, address: (d.address || d.name || '').trim(), online: d.online === true, isLocal: false });
+  }
+  return [...byName.values()];
+}
+
 /**
  * The cross-host analog of a local agent. One record per active session on one
  * machine. `host` is the machine we queried ('this-mac' locally, an ssh/tailscale
@@ -68,6 +108,13 @@ export interface RemoteSession {
   /** Host-reported wall-clock start (epoch ms). Carried verbatim so the UI can
    *  recompute freshness without trusting the remote clock for elapsed. */
   startedAtMs: number;
+  /** Epoch ms of the most recent OBSERVED activity (the session file's last write).
+   *  File-backed sessions get their mtime from the fan-out after enrichment; it is 0
+   *  when there is no activity signal (a status-only remote/ssh session). NEVER
+   *  backfilled from startedAtMs — start time is not activity. Drives staleness
+   *  (isStaleSession) so an idle-for-days session stops being reported running /
+   *  needs-you, WITHOUT hiding a remote agent that merely started long ago. */
+  lastActivityMs: number;
   /** The session's task/prompt line from the CLI payload (`topic`/`label`). Shown
    *  on the card when Tier-1 has no enriched activity yet (remote hosts). */
   topic: string;
@@ -333,6 +380,9 @@ export function normalizeActiveSession(
     branch: asStr(raw.branch),
     sinceMs: startedAtMs > 0 ? Math.max(0, fetchedAt - startedAtMs) : 0,
     startedAtMs,
+    // 0 = no activity signal yet; the fan-out sets the real file mtime for file-backed
+    // sessions. Deliberately NOT startedAtMs — start time is not activity.
+    lastActivityMs: 0,
     topic: asStr(raw.topic) || asStr(raw.label),
     sessionFile: asStr(raw.sessionFile),
     context: asStr(raw.context),
@@ -383,6 +433,54 @@ export function dedupeSessions(sessions: RemoteSession[]): RemoteSession[] {
     }
   }
   return [...byId.values(), ...passthrough];
+}
+
+/**
+ * A session whose last OBSERVED ACTIVITY was this long ago is treated as dead and
+ * dropped from the live roster so it can't be reported running or needs-you. Six
+ * hours comfortably clears an idle-overnight agent while killing sessions abandoned
+ * for days (e.g. an 11-day-old file-backed session last written to 11 days ago).
+ */
+export const STALE_SESSION_THRESHOLD_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * A session's last-activity epoch — the enriched session-file mtime (set by the
+ * fan-out for file-backed sessions). This is a GENUINE activity signal: the *last
+ * write*, not the session start. It is deliberately NOT backfilled from startedAtMs,
+ * because start time says nothing about recent activity — a remote agent that started
+ * days ago may be working right now. 0 means we have no activity signal (a status-only
+ * remote/ssh session, or a session with no file), and such a session is never aged out.
+ */
+export function sessionLastActivityMs(s: RemoteSession): number {
+  return s.lastActivityMs || 0;
+}
+
+/**
+ * True when a session's last observed activity is older than `thresholdMs`. A session
+ * with no activity signal at all (0) is NEVER forced stale — we can't age what we
+ * can't see, and a false positive would hide a live agent that merely STARTED long
+ * ago (the key distinction: start time is not activity).
+ */
+export function isStaleSession(
+  s: RemoteSession,
+  now: number,
+  thresholdMs: number = STALE_SESSION_THRESHOLD_MS
+): boolean {
+  const last = sessionLastActivityMs(s);
+  if (last <= 0) return false;
+  return now - last >= thresholdMs;
+}
+
+/**
+ * Drop stale sessions so counts, the feed, and needs-you all exclude long-dead
+ * sessions. Pure; the fan-out applies it to the merged cross-host set.
+ */
+export function filterStaleSessions(
+  sessions: RemoteSession[],
+  now: number,
+  thresholdMs: number = STALE_SESSION_THRESHOLD_MS
+): RemoteSession[] {
+  return sessions.filter((s) => !isStaleSession(s, now, thresholdMs));
 }
 
 /**

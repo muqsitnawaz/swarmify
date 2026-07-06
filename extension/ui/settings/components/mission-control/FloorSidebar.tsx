@@ -38,9 +38,11 @@ interface FloorSidebarProps {
    * hosts appear too — not just hosts that happen to be running an agent.
    */
   hosts?: Array<{ name: string; online: boolean }>
+  /** Local machine's canonical device name — always gets a HOSTS row, even off-registry. */
+  localHost?: string
 }
 
-export function FloorSidebar({ agents, tickets, projFilter, hostFilter = null, offlineHosts = [], devices = [], hostPins = [], onToggleHostPin, onReorderHostPins, onScope }: FloorSidebarProps) {
+export function FloorSidebar({ agents, tickets, projFilter, hostFilter = null, offlineHosts = [], devices = [], hostPins = [], onToggleHostPin, onReorderHostPins, onScope, localHost }: FloorSidebarProps) {
   const byProj: Record<string, number> = {}
   const projWait: Record<string, number> = {}
   for (const a of agents) {
@@ -50,7 +52,7 @@ export function FloorSidebar({ agents, tickets, projFilter, hostFilter = null, o
   const needs = agents.filter((a) => a.needs).length
   // HOSTS rows: local machine folded to its real device name, merged with the
   // online device fleet, pinned hosts first. Pure + unit-tested (computeHostRows).
-  const hostRows = computeHostRows(agents, devices, offlineHosts, hostPins)
+  const hostRows = computeHostRows(agents, devices, offlineHosts, hostPins, localHost)
   const pinnedRows = hostRows.filter((h) => h.pinned)
   const restRows = hostRows.filter((h) => !h.pinned)
 

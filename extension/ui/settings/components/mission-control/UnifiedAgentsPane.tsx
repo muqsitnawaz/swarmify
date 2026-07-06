@@ -1799,6 +1799,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
             onSelectHost={onSelectHost}
             selectedHost={center === 'host' ? selectedHostId : null}
             hosts={hostRoster}
+            localHost={localHostName || undefined}
           />
         )}
         <div className="feed-col">{centerContent}</div>
