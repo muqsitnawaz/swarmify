@@ -19,6 +19,19 @@ const CHAT_URL = 'https://api.openai.com/v1/chat/completions';
 // tools without answering can't spin forever.
 const MAX_TOOL_ROUNDS = 6;
 
+// Trim rolling history to at most `max` messages WITHOUT splitting a tool
+// sequence. A turn is [user, assistant(tool_calls), tool..., assistant]; a raw
+// slice(-max) can leave the window starting on a `tool` (or an assistant whose
+// tool_calls got cut), which OpenAI 400s on ("tool message must follow an
+// assistant with tool_calls"). We advance the cut forward to the next `user`
+// message so the window always begins at a clean turn boundary.
+export function capHistory(messages: any[], max: number): any[] {
+  if (messages.length <= max) return messages;
+  let start = messages.length - max;
+  while (start < messages.length && messages[start]?.role !== 'user') start++;
+  return messages.slice(start);
+}
+
 // OpenAI Chat Completions nests our schema under `function`. FOREMAN_TOOLS is
 // already {type:'function',name,description,parameters}; this is the shallow wrap.
 export function adaptToolsForOpenAI(tools: ForemanTool[]) {
@@ -83,6 +96,13 @@ export async function runSmartTurn(opts: SmartTurnOpts): Promise<{ text: string;
       messages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(result) });
     }
     // loop: the model now speaks using the tool results
+  }
+
+  // Exhausted MAX_TOOL_ROUNDS without a plain answer: don't return an empty
+  // string (the UI silently drops empty finals). Surface it.
+  if (!finalText) {
+    opts.events?.onStatus?.('error', 'stopped after too many tool calls');
+    finalText = 'Stopped after too many tool steps without an answer.';
   }
 
   return { text: finalText, history: messages.slice(1) };

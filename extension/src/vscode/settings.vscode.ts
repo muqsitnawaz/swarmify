@@ -45,7 +45,7 @@ import * as theme from './theme.vscode';
 import { buildAgentTerminalEnv } from '../core/terminals';
 import * as foreman from './foreman.vscode';
 import { startForemanAudio, ForemanAudioSession } from './foreman.audio';
-import { runSmartTurn } from './foreman.smart';
+import { runSmartTurn, capHistory } from './foreman.smart';
 import { buildTaskDispatchPrompt } from '../core/tasks';
 import { draftDispatchPrompt, type DraftTicket } from '../core/draftPrompt';
 import { listRegisteredDevices, fetchDeviceStats, countRunningAgents, resolveSecret, getDeviceSyncStatus } from './deviceHealth.vscode';
@@ -57,8 +57,9 @@ import { getSyncStatus } from '../core/repoSync';
 
 let foremanSession: ForemanAudioSession | undefined;
 let foremanSessionGen = 0;
-// Smart-mode (turn-based text brain) rolling history. Capped when appended so
-// a long session doesn't grow the OpenAI context unbounded.
+// Smart-mode (turn-based text brain) rolling history. Capped on assignment
+// (via capHistory, on a safe turn boundary) so a long session doesn't grow the
+// OpenAI context unbounded.
 let foremanSmartHistory: any[] = [];
 let foremanSmartAbort: AbortController | undefined;
 
@@ -2971,7 +2972,9 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
             runTool: (name, args) => foreman.runForemanTool(name, args, wsFolder, buildForemanToolDeps(context)),
             signal: ac.signal,
             events: {
-              onText: (delta) => settingsPanel?.webview.postMessage({ type: 'foreman.transcript', role: 'assistant', text: delta, final: false }),
+              // Guard on abort so a straggler delta from a superseded turn
+              // can't append into the next turn's transcript line.
+              onText: (delta) => { if (!ac.signal.aborted) settingsPanel?.webview.postMessage({ type: 'foreman.transcript', role: 'assistant', text: delta, final: false }); },
               onToolCall: (name) => settingsPanel?.webview.postMessage({ type: 'foreman.event', eventType: 'smart.tool', summary: name, at: Date.now() }),
               onStatus: (status, detail) => settingsPanel?.webview.postMessage({ type: 'foreman.event', eventType: `smart.${status}`, summary: detail ?? '', at: Date.now() }),
             },
@@ -2979,17 +2982,14 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
           if (ac.signal.aborted) break;
           // Replace the streamed partial with the clean final line.
           settingsPanel?.webview.postMessage({ type: 'foreman.transcript', role: 'assistant', text: answer, final: true });
-          foremanSmartHistory = history.slice(-24); // cap rolling context
+          // Cap on a safe turn boundary so the window never begins on a
+          // dangling tool message (which would 400 the next turn).
+          foremanSmartHistory = capHistory(history, 24);
         } catch (err: any) {
           if (!ac.signal.aborted) {
             settingsPanel?.webview.postMessage({ type: 'foreman.status', status: 'error', detail: err?.message ?? String(err) });
           }
         }
-        break;
-      }
-      case 'foreman.smartReset': {
-        foremanSmartAbort?.abort();
-        foremanSmartHistory = [];
         break;
       }
     }
