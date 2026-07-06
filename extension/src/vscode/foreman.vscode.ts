@@ -1,10 +1,9 @@
 // Foreman: voice coordinator for the factory floor.
 //
 // Extension host responsibilities:
-//   1. Mint an ephemeral OpenAI Realtime session using the user's API key,
-//      so the webview never sees the long-lived key.
-//   2. Compute the live floor digest on demand and return it to the webview,
+//   1. Compute the live floor digest on demand and return it to the webview,
 //      which forwards it to the realtime model as a tool result.
+// (Audio I/O + the Realtime WebSocket live in foreman.audio.ts.)
 
 import * as vscode from 'vscode';
 import {

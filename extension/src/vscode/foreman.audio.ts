@@ -8,7 +8,7 @@
 //                                                       v
 //   speaker <- ffplay <- stdin <- WS delta <- response
 //
-// The realtime model handles turn detection (server_vad) so we simply keep
+// The realtime model handles turn detection (semantic_vad) so we simply keep
 // streaming mic bytes until the session ends.
 
 import { spawn, ChildProcess } from 'child_process';
