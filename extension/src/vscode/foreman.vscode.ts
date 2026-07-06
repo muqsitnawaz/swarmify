@@ -87,9 +87,9 @@ export async function computeBriefing(_workspacePath?: string): Promise<ForemanD
   // same normalized feed focus() reads (agents sessions <id> --json), so
   // briefing and focus never disagree about what an agent is doing. Without
   // this, every live agent is a hardcoded status:'working' with no last_tool -
-  // a hung agent looks identical to a productive one, and the waiting/blocked
-  // concerns can never fire. Capped at the detailed-row limit so the extra
-  // per-session round-trips don't stall the voice turn.
+  // a hung agent looks identical to a productive one, and the 'waiting' concern
+  // can never fire. Capped at the detailed-row limit so the extra per-session
+  // round-trips don't stall the voice turn.
   await enrichLiveAgentsFromFeed(agents);
 
   const cloudDigest: ForemanCloudTask[] = cloud
@@ -313,13 +313,20 @@ async function computeCloudStatus(id: string): Promise<unknown> {
 async function computeQuota(): Promise<unknown> {
   const usage = await getUsage();
   if (usage.length === 0) return { error: 'no usage data available' };
+  const now = Date.now();
   return {
-    agents: usage.map((u) => ({
-      agent: u.agent,
-      plan: u.plan ?? undefined,
-      status: u.usageStatus ?? undefined,
-      used_percent: u.maxUsedPercent,
-    })),
+    agents: usage.map((u) => {
+      const resetMs = u.soonestResetAt ? Date.parse(u.soonestResetAt) : NaN;
+      return {
+        agent: u.agent,
+        plan: u.plan ?? undefined,
+        status: u.usageStatus ?? undefined,
+        used_percent: u.maxUsedPercent,
+        resets_in: Number.isFinite(resetMs) && resetMs > now
+          ? humanElapsedFromMs(resetMs - now)
+          : undefined,
+      };
+    }),
   };
 }
 

@@ -158,8 +158,6 @@ export interface CloudTaskDetail {
   status: string;
   prompt: string;
   repo?: string | null;
-  createdAt?: string;
-  updatedAt?: string;
 }
 
 export interface RoutineLite {
@@ -171,7 +169,6 @@ export interface RoutineLite {
   overdue?: boolean;
   nextRunHuman?: string;
   lastStatus?: string | null;
-  lastRunStartedAt?: string | null;
 }
 
 export interface DeviceLite {
@@ -179,7 +176,6 @@ export interface DeviceLite {
   platform: string;
   online: boolean;
   relay?: string | null;
-  ip?: string | null;
 }
 
 export interface UsageLite {
@@ -201,8 +197,6 @@ export async function getCloudTask(id: string): Promise<CloudTaskDetail | null> 
     status: String(r.status ?? ''),
     prompt: String(r.prompt ?? '').slice(0, 200),
     repo: r.repo ? String(r.repo) : null,
-    createdAt: r.createdAt ? String(r.createdAt) : undefined,
-    updatedAt: r.updatedAt ? String(r.updatedAt) : undefined,
   };
 }
 
@@ -218,7 +212,6 @@ export async function listRoutines(): Promise<RoutineLite[]> {
     overdue: r.overdue === true,
     nextRunHuman: r.nextRunHuman ? String(r.nextRunHuman) : undefined,
     lastStatus: r.lastStatus ? String(r.lastStatus) : null,
-    lastRunStartedAt: r.lastRunStartedAt ? String(r.lastRunStartedAt) : null,
   }));
 }
 
@@ -230,7 +223,6 @@ export async function listDevices(): Promise<DeviceLite[]> {
     platform: String(r.platform ?? ''),
     online: !!(r.tailscale && r.tailscale.online),
     relay: r.tailscale && r.tailscale.relay ? String(r.tailscale.relay) : null,
-    ip: r.address && r.address.ip ? String(r.address.ip) : null,
   }));
 }
 
