@@ -46,6 +46,7 @@ import { buildAgentTerminalEnv } from '../core/terminals';
 import * as foreman from './foreman.vscode';
 import { startForemanAudio, ForemanAudioSession } from './foreman.audio';
 import { buildTaskDispatchPrompt } from '../core/tasks';
+import { draftDispatchPrompt, type DraftTicket } from '../core/draftPrompt';
 import { listRegisteredDevices, fetchDeviceStats, countRunningAgents, resolveSecret, getDeviceSyncStatus } from './deviceHealth.vscode';
 import { inferProjectCandidates } from '../core/projectIndex';
 import { normalizeHost } from '../core/remoteSessions';
@@ -2256,6 +2257,37 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
           : resolveReposFromLabels(labels, localOwner);
         const localCwd = localSlugs.length === 1 ? await resolveLocalRepoPath(localSlugs[0]) : null;
         await openSingleAgentWithQueue(context, agentConfig, [prompt], localCwd ? { cwd: localCwd } : undefined);
+        break;
+      }
+      // Draft a dispatch prompt from the attached tickets so the user doesn't have
+      // to write it. Spawns a headless read-only agent (draftDispatchPrompt) and
+      // posts the text back; the webview drops it into the prompt box for editing.
+      case 'draftPrompt': {
+        const rawTickets = Array.isArray(message.tickets) ? message.tickets : [];
+        const tickets: DraftTicket[] = rawTickets
+          .filter((t: unknown): t is Record<string, unknown> => !!t && typeof t === 'object')
+          .map((t: Record<string, unknown>) => ({
+            identifier: typeof t.identifier === 'string' ? t.identifier : undefined,
+            title: typeof t.title === 'string' ? t.title : '',
+            description: typeof t.description === 'string' ? t.description : undefined,
+          }));
+        const hint = typeof message.hint === 'string' ? message.hint : '';
+        try {
+          const text = await draftDispatchPrompt(tickets, hint);
+          if (text) {
+            settingsPanel?.webview.postMessage({ type: 'draftPromptResult', ok: true, text });
+          } else {
+            settingsPanel?.webview.postMessage({
+              type: 'draftPromptResult', ok: false,
+              error: 'Could not draft a prompt — attach a ticket with a description, or write it yourself.',
+            });
+          }
+        } catch (err) {
+          settingsPanel?.webview.postMessage({
+            type: 'draftPromptResult', ok: false,
+            error: err instanceof Error ? err.message : 'Draft failed',
+          });
+        }
         break;
       }
       // Unified dispatch from the consolidated Dispatch panel. Consumes the full
