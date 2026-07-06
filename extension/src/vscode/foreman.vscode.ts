@@ -12,6 +12,7 @@ import {
   ForemanTerminal,
   ForemanCloudTask,
   ForemanTeamRollup,
+  MAX_DETAILED_AGENTS,
 } from '../core/foreman.digest';
 import { prefixToAgentType } from '../core/utils';
 import { UnifiedTask, CycleInfo } from '../core/tasks';
@@ -21,7 +22,12 @@ import {
   readSessionEvents,
   listCloudTasks,
   listTeams,
+  getTeamStatus,
   getLastSourcesError,
+  getCloudTask,
+  listRoutines,
+  listDevices,
+  getUsage,
   SessionLite,
   SessionEvent,
   CloudTaskLite,
@@ -77,6 +83,15 @@ export async function computeBriefing(_workspacePath?: string): Promise<ForemanD
     agents.push(sessionToForemanTerminal(s, false));
   }
 
+  // Enrich the most-recently-started live agents with REAL activity from the
+  // same normalized feed focus() reads (agents sessions <id> --json), so
+  // briefing and focus never disagree about what an agent is doing. Without
+  // this, every live agent is a hardcoded status:'working' with no last_tool -
+  // a hung agent looks identical to a productive one, and the waiting/blocked
+  // concerns can never fire. Capped at the detailed-row limit so the extra
+  // per-session round-trips don't stall the voice turn.
+  await enrichLiveAgentsFromFeed(agents);
+
   const cloudDigest: ForemanCloudTask[] = cloud
     .filter((c) => c.status === 'running' || c.status === 'needs_review' || c.status === 'completed')
     .slice(0, 10)
@@ -109,6 +124,34 @@ export async function computeBriefing(_workspacePath?: string): Promise<ForemanD
     }
   }
   return digest;
+}
+
+// Fill in real activity (last_tool, recent tools/files, true last-activity
+// time) for the most-recent live agents by reading the SAME normalized event
+// feed focus() uses. Runs readSessionEvents + summarizeTail - one code path,
+// so briefing and focus can never diverge. Setting status=null hands status
+// derivation back to deriveStatus (working/waiting/idle from real activity)
+// instead of the fake hardcoded 'working'.
+async function enrichLiveAgentsFromFeed(agents: ForemanTerminal[]): Promise<void> {
+  const targets = agents
+    .filter((a) => a.openInIde && a.sessionId)
+    .sort((x, y) => (y.startedAtMs ?? 0) - (x.startedAtMs ?? 0))
+    .slice(0, MAX_DETAILED_AGENTS);
+  await Promise.all(
+    targets.map(async (a) => {
+      const events = await readSessionEvents(a.sessionId as string, 30);
+      if (!events.length) return;
+      const tail = summarizeTail(events);
+      a.lastActivityMs = tail.lastEventAtMs ?? a.lastActivityMs;
+      a.lastTool = tail.lastTool;
+      a.lastFilePath = tail.lastFile;
+      a.recentTools = tail.recentTools;
+      a.recentFiles = tail.recentFiles;
+      a.filesEdited = tail.filesEdited;
+      a.toolCalls = tail.toolCalls;
+      a.status = null; // deriveStatus computes real status from lastActivityMs
+    })
+  );
 }
 
 function sessionToForemanTerminal(s: SessionLite, openInIde: boolean): ForemanTerminal {
@@ -174,7 +217,7 @@ export async function computeFocus(who: string, _workspacePath?: string): Promis
   if (!q) return { error: 'no query' };
 
   const local = await listLocalSessions({ since: '6h', limit: 60, all: true });
-  const match = local.find((s) => {
+  const matches = local.filter((s) => {
     if (s.label && s.label.toLowerCase().includes(q)) return true;
     if (s.topic && s.topic.toLowerCase().includes(q)) return true;
     if (s.agent.toLowerCase() === q) return true;
@@ -183,12 +226,32 @@ export async function computeFocus(who: string, _workspacePath?: string): Promis
     return false;
   });
 
-  if (!match) {
+  if (matches.length === 0) {
     return {
       error: `no agent matching "${who}"`,
       available: local.slice(0, 10).map((s) => s.label ?? s.topic ?? `${s.agent} ${s.shortId}`),
     };
   }
+
+  // Ambiguous: N agents match (e.g. "focus on Claude" with three Claudes).
+  // Return the candidates instead of silently picking one, mirroring
+  // message_agent's disambiguation contract so the model reads them back and
+  // asks which one - never reports an arbitrary agent as if it were the answer.
+  if (matches.length > 1) {
+    return {
+      ambiguous: true,
+      query: who,
+      candidates: matches.slice(0, 6).map((s) => ({
+        who: s.label ?? s.shortId,
+        kind: s.agent,
+        label: s.label ?? null,
+        project: s.project ?? null,
+        task: s.topic ?? null,
+      })),
+    };
+  }
+
+  const match = matches[0];
 
   const events = await readSessionEvents(match.id, 30);
   const tail = summarizeTail(events);
@@ -214,6 +277,78 @@ export async function computeFocus(who: string, _workspacePath?: string): Promis
     recent_files: tail.recentFiles,
     files_edited: tail.filesEdited,
     tool_calls: tail.toolCalls,
+  };
+}
+
+// Per-teammate breakdown of one team DAG (name, type, status, duration).
+async function computeTeamDetail(team: string): Promise<unknown> {
+  const mates = await getTeamStatus(team);
+  if (mates.length === 0) return { error: `no team matching "${team}", or it has no teammates` };
+  return {
+    team,
+    teammates: mates.map((m) => ({
+      name: m.name,
+      kind: m.agent_type,
+      status: m.status,
+      duration: m.duration ?? undefined,
+    })),
+  };
+}
+
+async function computeCloudStatus(id: string): Promise<unknown> {
+  const task = await getCloudTask(id);
+  if (!task) return { error: `no cloud task "${id}"` };
+  return {
+    id: task.id,
+    provider: task.provider,
+    agent: task.agent,
+    status: task.status,
+    repo: task.repo ?? undefined,
+    prompt: task.prompt || undefined,
+  };
+}
+
+// Rate-limit posture per agent. usage has no --json, so this reads view --json
+// and reports the tightest window per agent (see getUsage).
+async function computeQuota(): Promise<unknown> {
+  const usage = await getUsage();
+  if (usage.length === 0) return { error: 'no usage data available' };
+  return {
+    agents: usage.map((u) => ({
+      agent: u.agent,
+      plan: u.plan ?? undefined,
+      status: u.usageStatus ?? undefined,
+      used_percent: u.maxUsedPercent,
+    })),
+  };
+}
+
+async function computeRoutines(): Promise<unknown> {
+  const routines = await listRoutines();
+  if (routines.length === 0) return { routines: [], note: 'no routines scheduled' };
+  return {
+    routines: routines.slice(0, 12).map((r) => ({
+      name: r.name,
+      agent: r.agent,
+      schedule: r.scheduleHuman ?? r.schedule,
+      enabled: r.enabled,
+      overdue: r.overdue || undefined,
+      next: r.nextRunHuman ?? undefined,
+      last_status: r.lastStatus ?? undefined,
+    })),
+  };
+}
+
+async function computeFleet(): Promise<unknown> {
+  const devices = await listDevices();
+  if (devices.length === 0) return { machines: [], note: 'no devices registered' };
+  return {
+    machines: devices.map((d) => ({
+      name: d.name,
+      platform: d.platform,
+      online: d.online,
+      relay: d.relay ?? undefined,
+    })),
   };
 }
 
@@ -373,6 +508,26 @@ export async function runForemanTool(
         : '';
       return computeFocus(who, workspacePath);
     }
+    case 'team_detail': {
+      const team = (args && typeof args === 'object' && 'team' in args)
+        ? String((args as { team?: unknown }).team ?? '').trim()
+        : '';
+      if (!team) return { error: 'no team named' };
+      return computeTeamDetail(team);
+    }
+    case 'cloud_status': {
+      const id = (args && typeof args === 'object' && 'id' in args)
+        ? String((args as { id?: unknown }).id ?? '').trim()
+        : '';
+      if (!id) return { error: 'no cloud task id' };
+      return computeCloudStatus(id);
+    }
+    case 'quota':
+      return computeQuota();
+    case 'routines':
+      return computeRoutines();
+    case 'fleet':
+      return computeFleet();
     case 'cycle': {
       if (!deps?.fetchCycleTasks) {
         return { error: 'cycle tool unavailable: no task source wired' };
