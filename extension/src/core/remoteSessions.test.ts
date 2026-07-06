@@ -11,6 +11,11 @@ import {
   dedupeSessions,
   enrichWithSessionContent,
   groupByHost,
+  reconcileHosts,
+  isStaleSession,
+  filterStaleSessions,
+  sessionLastActivityMs,
+  STALE_SESSION_THRESHOLD_MS,
   type RemoteSession,
   type RawActiveSession,
   type ProjectRule,
@@ -353,5 +358,107 @@ describe('dedupeSessions', () => {
     const unique = dedupeSessions([...a, ...b, noId]);
     // 2 distinct session files collapse to 2; the id-less record is kept as-is.
     expect(unique.length).toBe(3);
+  });
+
+  test('collapses the SAME session id reported by two different hosts into one', () => {
+    // The reported bug: session 667403f9 was counted on BOTH yosemite-s1 and zion.
+    // dedupeSessions keys purely by sessionId, so run over the merged cross-host set
+    // it collapses the pair to one — the attention-worthy phase (waiting) survives.
+    const onHostA = normalizeActiveSession(
+      { kind: 'claude', status: 'running', sessionFile: '/x/667403f9.jsonl' } as RawActiveSession,
+      'yosemite-s1',
+      FETCHED_AT,
+    );
+    const onHostB = normalizeActiveSession(
+      { kind: 'claude', status: 'input_required', sessionFile: '/x/667403f9.jsonl' } as RawActiveSession,
+      'zion',
+      FETCHED_AT,
+    );
+    const unique = dedupeSessions([onHostA, onHostB]);
+    expect(unique.length).toBe(1);
+    expect(unique[0].sessionId).toBe('667403f9');
+    expect(unique[0].phase).toBe('waiting');
+  });
+});
+
+describe('reconcileHosts — scope the roster to the device registry + local machine', () => {
+  test('surfaces only registered devices + the always-online local machine', () => {
+    const hosts = reconcileHosts(
+      [
+        { name: 'mac-mini', address: 'mac-mini.tail.ts.net', online: true },
+        { name: 'zion', address: 'zion.tail.ts.net', online: false },
+      ],
+      'yosemite-s1',
+    );
+    const byName = new Map(hosts.map((h) => [h.name, h]));
+    expect([...byName.keys()].sort()).toEqual(['mac-mini', 'yosemite-s1', 'zion']);
+    // Local machine: always online, queried directly (no ssh address).
+    expect(byName.get('yosemite-s1')).toEqual({ name: 'yosemite-s1', address: '', online: true, isLocal: true });
+    // Registered remote: ssh reachable at its dnsName, online flag honored.
+    expect(byName.get('mac-mini')).toEqual({ name: 'mac-mini', address: 'mac-mini.tail.ts.net', online: true, isLocal: false });
+    expect(byName.get('zion')!.online).toBe(false);
+  });
+
+  test('does NOT surface ssh-config aliases or tailnet peers (the phantom hosts)', () => {
+    // reconcileHosts is fed ONLY the device registry, so aliases/peers never reach it.
+    const hosts = reconcileHosts([{ name: 'mac-mini', online: true }], 'zion');
+    const names = hosts.map((h) => h.name);
+    for (const phantom of ['mark', 'mark-aws', 'phoenix', 'pi', 'localhost']) {
+      expect(names).not.toContain(phantom);
+    }
+  });
+
+  test('an FQDN / case-variant local hostname folds onto its registry device', () => {
+    const hosts = reconcileHosts(
+      [{ name: 'zion', address: 'zion.tail.ts.net', online: true }],
+      'ZION.local',
+    );
+    // Only one 'zion' row, and it is the local machine (address '', isLocal true) —
+    // the registry entry was folded in, not listed a second time over ssh.
+    const zions = hosts.filter((h) => h.name === 'zion');
+    expect(zions.length).toBe(1);
+    expect(zions[0]).toEqual({ name: 'zion', address: '', online: true, isLocal: true });
+  });
+});
+
+describe('staleness — long-dead sessions drop out of running / needs-you', () => {
+  const NOW = 1_700_000_000_000;
+  const mk = (over: Partial<RemoteSession>): RemoteSession => ({
+    ...normalizeActiveSession(
+      { kind: 'claude', status: 'input_required', sessionFile: '/x/abcd1234.jsonl' } as RawActiveSession,
+      'zion',
+      NOW,
+    ),
+    ...over,
+  });
+
+  test('sessionLastActivityMs prefers lastActivityMs, falls back to startedAtMs', () => {
+    expect(sessionLastActivityMs(mk({ lastActivityMs: 500, startedAtMs: 100 }))).toBe(500);
+    expect(sessionLastActivityMs(mk({ lastActivityMs: 0, startedAtMs: 100 }))).toBe(100);
+    expect(sessionLastActivityMs(mk({ lastActivityMs: 0, startedAtMs: 0 }))).toBe(0);
+  });
+
+  test('a session idle past the threshold is stale (kills the 11-day cloud task)', () => {
+    const elevenDays = 11 * 24 * 60 * 60 * 1000;
+    const dead = mk({ lastActivityMs: NOW - elevenDays });
+    expect(isStaleSession(dead, NOW)).toBe(true);
+  });
+
+  test('a session active within the threshold is NOT stale', () => {
+    const fresh = mk({ lastActivityMs: NOW - (STALE_SESSION_THRESHOLD_MS - 1000) });
+    expect(isStaleSession(fresh, NOW)).toBe(false);
+  });
+
+  test('a session with no timestamp at all is never forced stale', () => {
+    const unknown = mk({ lastActivityMs: 0, startedAtMs: 0 });
+    expect(isStaleSession(unknown, NOW)).toBe(false);
+  });
+
+  test('filterStaleSessions drops only the aged-out sessions', () => {
+    const fresh = mk({ sessionId: 'aaaa1111', lastActivityMs: NOW - 1000 });
+    const stale = mk({ sessionId: 'bbbb2222', lastActivityMs: NOW - 2 * STALE_SESSION_THRESHOLD_MS });
+    const unknown = mk({ sessionId: 'cccc3333', lastActivityMs: 0, startedAtMs: 0 });
+    const kept = filterStaleSessions([fresh, stale, unknown], NOW);
+    expect(kept.map((s) => s.sessionId).sort()).toEqual(['aaaa1111', 'cccc3333']);
   });
 });
