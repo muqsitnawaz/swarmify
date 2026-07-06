@@ -164,6 +164,13 @@ async function createSymlink(
 const FIND_FILES_TTL_MS = 1000;
 const findFilesCache = new Map<string, { at: number; result: Promise<string[]> }>();
 
+// Dirs the AGENTS.md-mirror walk must never descend into: dependency/build
+// caches (Go module cache is read-only -> EACCES), VCS internals, build output,
+// vendored deps, and nested agent worktrees (each a full repo copy). Without
+// these, a large monorepo workspace produced thousands of stray symlinks and a
+// wall of EACCES errors on every workspace open.
+const EXCLUDE_GLOB = '{**/node_modules/**,**/.git/**,**/.gocache/**,**/.agents/worktrees/**,**/dist/**,**/out/**,**/build/**,**/vendor/**,**/target/**,**/.venv/**,**/.next/**}';
+
 // Find all source files recursively in a directory
 async function findSourceFilesRecursively(
   rootPath: string,
@@ -176,8 +183,13 @@ async function findSourceFilesRecursively(
   }
 
   const pattern = new vscode.RelativePattern(rootPath, `**/${sourceFileName}`);
+  // Exclude dependency caches, VCS internals, build output, and nested agent
+  // worktrees. Globbing only `node_modules` let the walk descend into the Go
+  // module cache (`.gocache/mod`, read-only -> EACCES on symlink) and every
+  // `.agents/worktrees/*`, creating thousands of stray symlinks and error spam.
+  // We only want to mirror AGENTS.md next to real source, not vendored deps.
   const result = Promise.resolve(
-    vscode.workspace.findFiles(pattern, '**/node_modules/**')
+    vscode.workspace.findFiles(pattern, EXCLUDE_GLOB)
   ).then(files => files.map(f => f.fsPath));
   // Don't let a rejected glob stick in the cache for the whole TTL; drop it so
   // the next caller retries instead of inheriting the failure.
