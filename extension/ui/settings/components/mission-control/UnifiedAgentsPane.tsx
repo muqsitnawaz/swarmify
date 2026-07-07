@@ -32,6 +32,7 @@ import { StructuredReply } from './StructuredReply'
 import {
   clusterByQuestion,
   sortAgents,
+  groupAgents,
   latestTodos,
   sessionTaskLine,
   type FloorAgent,
@@ -579,6 +580,10 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   // Host scope: click a HOSTS row to filter the feed to that machine; click again to clear.
   const [hostFilter, setHostFilter] = useState<string | null>(null)
   const [floorSort, setFloorSort] = useState<FloorSort>('needs')
+  // Group the live feed by an axis (project/host/status/agent). 'none' keeps the
+  // default phase sections (NEEDS YOU -> RUNNING -> DONE). Reuses the same
+  // groupAgents() the Backlog's group control uses, so the two bars behave alike.
+  const [floorGroup, setFloorGroup] = useState<FloorGroupBy | 'none'>('none')
   const [plain, setPlain] = useState(floorPrefs0.plain)
   const [sidebarOpen, setSidebarOpen] = useState(floorPrefs0.sidebar)
   const [rightOpen, setRightOpen] = useState(floorPrefs0.right)
@@ -1706,7 +1711,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
         </>
       )}
 
-      <div className="feed-sec">RUNNING · {runningFeed.length}<span className="ln" />
+      <div className="feed-sec">{floorGroup === 'none' ? `RUNNING · ${runningFeed.length}` : `GROUPED BY ${floorGroup.toUpperCase()} · ${runningFeed.length + doneFeed.length}`}<span className="ln" />
         <span
           className={`fresh${syncingHosts ? ' syncing' : ''}${!syncingHosts && lastRemoteSync > 0 && nowMs - lastRemoteSync > 2 * REMOTE_POLL_MS ? ' stale' : ''}`}
           title="Last cross-host sync. Click to refresh now."
@@ -1720,20 +1725,38 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
               : 'not synced yet'}
         </span>
       </div>
-      {runningFeed.map((a) => (
-        <FeedItem
-          key={a.id}
-          agent={a}
-          selected={selectedFloorAgent?.id === a.id}
-          plain={plain}
-          onSelect={selectFloorAgent}
-          onOption={onAgentOption}
-          onFreeText={replyToAgent}
-          onAttach={onAttachScreenshot}
-        />
-      ))}
+      {floorGroup === 'none'
+        ? runningFeed.map((a) => (
+            <FeedItem
+              key={a.id}
+              agent={a}
+              selected={selectedFloorAgent?.id === a.id}
+              plain={plain}
+              onSelect={selectFloorAgent}
+              onOption={onAgentOption}
+              onFreeText={replyToAgent}
+              onAttach={onAttachScreenshot}
+            />
+          ))
+        : [...groupAgents([...runningFeed, ...doneFeed], floorGroup).entries()].map(([k, arr]) => (
+            <React.Fragment key={k}>
+              <div className="feed-sec">{k} · {arr.length}<span className="ln" /></div>
+              {arr.map((a) => (
+                <FeedItem
+                  key={a.id}
+                  agent={a}
+                  selected={selectedFloorAgent?.id === a.id}
+                  plain={plain}
+                  onSelect={selectFloorAgent}
+                  onOption={onAgentOption}
+                  onFreeText={replyToAgent}
+                  onAttach={onAttachScreenshot}
+                />
+              ))}
+            </React.Fragment>
+          ))}
 
-      {doneFeed.length > 0 && (
+      {floorGroup === 'none' && doneFeed.length > 0 && (
         <>
           <div className="feed-sec">DONE TODAY · {doneFeed.length}<span className="ln" /></div>
           {doneFeed.map((a) => (
@@ -1784,6 +1807,8 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
         onTogglePlain={() => setPlain((o) => !o)}
         sort={floorSort}
         onSort={setFloorSort}
+        group={floorGroup}
+        onGroup={setFloorGroup}
         activeStatus={statusChips}
         onToggleStatus={(chip) => setStatusChips((prev) => (prev.includes(chip) ? prev.filter((c) => c !== chip) : [...prev, chip]))}
         activeAbbrs={abbrChips}
