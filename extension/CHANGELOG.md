@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.9.284] - 2026-07-07
+
+### Fixed
+- **Backlog "Group by Project" showed a blank `· N` header.** The webview's `UnifiedTask.metadata` had dropped the Linear `project` field that the host already populates, so `toFloorTicket` fell back to the repo and grouped project-less tickets under an empty key. It now uses the real Linear project (repo fallback), and every group axis (project/host/status/…) coalesces an empty key to a human label (`Unlabeled`, `Unknown host`) so a header is never blank (#148).
+- **"Needs You" cards were identical and contextless.** `RawActiveSession` declared none of the nested `worktree`/`pr`/`preview`/`ticket` objects the CLI emits, so `normalizeActiveSession` silently dropped the worktree slug, the live preview (activity line), the structured ticket id, and the real branch — remote/worktree cards showed only "Edit <file>" + a status word. The card now reads `project · host · worktree · ticket` with a real task line, so two sessions in one repo are distinguishable (#148).
+- **Clicking an agent card did nothing.** `selectFloorAgent` set the selection but never opened the detail rail the way its twin `onSelectHost` did. Fixed, and the rail gained an actions row: Focus terminal (local + remote via `ssh`/`tmux attach`), Reveal worktree, Open PR (#148).
+
+### Added
+- **Group-by control on the Floor top bar.** The unused `groupAgents` is now wired into a delineated `Group` dropdown (None/Project/Host/Status/Agent) matching the Backlog's control; `NEEDS YOU` stays pinned above any grouping (#148).
+- **Empty host shows RECENT sessions** instead of a blank pane — a host filter with 0 live agents lazily fetches that host's recent sessions and renders them through the same card path (paired with the agents-cli `sessions --json --host` clean-array change; degrades to an empty section until that ships) (#148).
+
+### Changed
+- **Single `src/shared/` module** (`tasks.ts`, `project.ts`) is now the one source of truth for the task + project types and `resolveProject`/`normalizeHost`, imported by BOTH the extension host and the webview (via a new `@shared` alias) instead of hand-mirrored across the postMessage boundary — the drift that caused the blank-project bug is now structurally impossible. The vite build fails on a `MISSING_EXPORT` originating in `src/shared` (#148).
+
 ## [0.9.252] - 2026-06-28
 
 ### Performance

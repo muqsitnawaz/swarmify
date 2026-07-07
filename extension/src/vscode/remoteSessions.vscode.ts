@@ -20,6 +20,7 @@ import {
   ReconciledHost,
   RegisteredDeviceInput,
   normalizeActiveSession,
+  normalizeRecentSession,
   resolveSessionHost,
   normalizeHost,
   dedupeSessions,
@@ -300,6 +301,49 @@ async function fetchActiveForHost(sshTarget: string, isLocal: boolean, hostKey: 
   } catch {
     // Dead / slow / unreachable host — never throw the whole fan-out.
     return { host: hostKey, online: false, sessions: [], cpuRatio: null };
+  }
+}
+
+/**
+ * Recent (historical, non-active) sessions for one host — what the Floor shows when a
+ * host filter has 0 live agents instead of a blank pane. Uses the clean-array
+ * `agents sessions --json [--host <t>] --limit N` path (flat SessionMeta), normalized
+ * onto the same RemoteSession shape as active sessions so the card path is identical.
+ * Fetched lazily (only when a host is empty), never on the hot poll.
+ */
+export async function fetchRecentForHost(
+  sshTarget: string,
+  isLocal: boolean,
+  hostKey: string,
+  limit: number,
+  projectRules: ProjectRule[],
+): Promise<RemoteSession[]> {
+  const agentsBin = await findAgentsCli();
+  const fetchedAt = Date.now();
+  const args = ['sessions', '--json', '--limit', String(limit)];
+  if (isLocal) args.push('--local');
+  else args.push('--host', sshTarget);
+  try {
+    const { stdout } = await execFileAsync(agentsBin, args, {
+      timeout: isLocal ? ACTIVE_TIMEOUT_LOCAL_MS : ACTIVE_TIMEOUT_REMOTE_MS,
+      maxBuffer: 16 * 1024 * 1024,
+      env: pathAugmentedEnv(),
+    });
+    const parsed = JSON.parse(stdout);
+    const raw: any[] = Array.isArray(parsed) ? parsed : [];
+    return raw
+      .filter((rec) => rec && typeof rec === 'object')
+      .map((rec) => normalizeRecentSession(
+        rec,
+        resolveSessionHost(rec.machine, hostKey, LOCAL_MACHINE_ID, LOCAL_LABEL),
+        fetchedAt,
+        projectRules,
+      ));
+  } catch {
+    // An older agents-cli (before the clean `--host --json` array) streams a
+    // non-JSON banner, so JSON.parse throws -> no recent shown. Graceful: the RECENT
+    // section simply stays empty until the engine change is released.
+    return [];
   }
 }
 
