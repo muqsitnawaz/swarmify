@@ -1,5 +1,12 @@
 # Agents
 
+> [!IMPORTANT]
+> **This source tree is deprecated.** Development has moved to the
+> [`agents-cli`](https://github.com/muqsitnawaz/agents-cli) monorepo at
+> [`apps/factory`](https://github.com/muqsitnawaz/agents-cli/tree/main/apps/factory).
+> The `swarm-ext` extension is now built and released from there; this copy is
+> frozen for history. See [`../MIGRATION.md`](../MIGRATION.md).
+
 Orchestrate Claude, Codex, Gemini, and Cursor in parallel — from one IDE. Open source. Free.
 
 Turn your editor into a command center for orchestrating Claude, Codex, Gemini, and Cursor in parallel. Each agent runs as a full-screen editor tab. Each agent can spawn sub-agents. You orchestrate — approving plans, monitoring execution, shipping faster.
