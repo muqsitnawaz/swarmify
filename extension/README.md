@@ -5,7 +5,7 @@
 > [`agents-cli`](https://github.com/muqsitnawaz/agents-cli) monorepo at
 > [`apps/factory`](https://github.com/muqsitnawaz/agents-cli/tree/main/apps/factory).
 > The `swarm-ext` extension is now built and released from there; this copy is
-> frozen for history. See [`../MIGRATION.md`](../MIGRATION.md).
+> frozen for history.
 
 Orchestrate Claude, Codex, Gemini, and Cursor in parallel — from one IDE. Open source. Free.
 

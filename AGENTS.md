@@ -1,5 +1,12 @@
 # Swarmify - The Integrated Agents Environment
 
+> **DEPRECATED — DO NOT WORK IN THIS REPOSITORY.**
+> The Agents extension (`swarm-ext`) now lives in the `agents-cli` monorepo at
+> `apps/factory/` (https://github.com/muqsitnawaz/agents-cli). That is the source of
+> truth — make every change there. This tree is frozen for history; nothing here
+> should be edited, built, or released. If you were routed here, stop and go to
+> `agents-cli/apps/factory`.
+
 Meet the future of IDEs. Swarmify turns your editor into an IAE — orchestrate Claude, Codex, Gemini, and Cursor in parallel with full visibility.
 
 ## Terminology: "swarm" → "teams"

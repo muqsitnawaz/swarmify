@@ -1,5 +1,11 @@
 # Agents Extension
 
+> **DEPRECATED — DO NOT WORK IN THIS TREE.**
+> This extension moved to the `agents-cli` monorepo at `apps/factory/`
+> (https://github.com/muqsitnawaz/agents-cli). That is the source of truth and where
+> `swarm-ext` is built/released. This copy is frozen for history — edit `apps/factory`,
+> not here.
+
 VS Code extension for multi-agent coding. Spawns AI terminals (Claude, Codex, Gemini, Cursor, OpenCode) as editor tabs with keyboard shortcuts, and dispatches work to Rush Cloud.
 
 This file is a **map**, not the territory. Keep it a short paragraph per area plus pointers. Read the actual code for current details.

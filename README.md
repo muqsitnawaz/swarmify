@@ -7,7 +7,6 @@
 > [`apps/factory`](https://github.com/muqsitnawaz/agents-cli/tree/main/apps/factory).
 > The published extension continues from there — nothing changes for users. This
 > repo is kept for history only; open issues and PRs against `agents-cli`.
-> See [`MIGRATION.md`](./MIGRATION.md) for what moved where.
 
 [![Extension](https://img.shields.io/visual-studio-marketplace/v/swarmify.swarm-ext?label=Extension&color=blue)](https://marketplace.visualstudio.com/items?itemName=swarmify.swarm-ext)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue)](https://www.typescriptlang.org/)
