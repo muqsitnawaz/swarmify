@@ -297,6 +297,7 @@ export interface FloorTicket {
   status: TicketStatus
   desc: string
   labels: string[]
+  owner: string        // metadata.assignee (human or agent) || '' when unassigned
 }
 
 // ---------- controls state ----------
@@ -352,7 +353,7 @@ export interface HostInventory {
 }
 export type FloorGroupBy = 'host' | 'project' | 'status' | 'agent'
 export type FloorSort = 'needs' | 'recent' | 'tok' | 'name'
-export type TicketGroupBy = 'project' | 'priority' | 'source' | 'status'
+export type TicketGroupBy = 'project' | 'priority' | 'source' | 'status' | 'owner'
 export type TicketSort = 'priority' | 'id'
 
 // ---------- stable rank constants (data — final, not stubs) ----------
@@ -688,6 +689,7 @@ export function toFloorTicket(task: UnifiedTask): FloorTicket {
     status: toTicketStatus(task.status),
     desc: task.description ?? '',
     labels: task.metadata.labels ?? [],
+    owner: task.metadata.assignee ?? '',
   }
 }
 
@@ -723,6 +725,7 @@ export function groupTickets(tickets: FloorTicket[], by: TicketGroupBy): Map<str
     priority: (t) => t.pri,
     source: (t) => (t.source === 'LN' ? 'Linear' : 'GitHub'),
     status: (t) => t.status.replace('-', ' '),
+    owner: (t) => t.owner || 'Unassigned',
   }
   const get = accessor[by]
   const groups = new Map<string, FloorTicket[]>()
