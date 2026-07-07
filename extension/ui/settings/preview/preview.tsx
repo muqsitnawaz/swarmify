@@ -3,7 +3,7 @@
 // current UI can be seen/screenshotted without the VS Code extension host. Not
 // shipped (vite.settings.config.ts only inputs settings/index.html); a dev harness.
 //
-// Run:  cd extension/ui && bun run dev  ->  open http://localhost:5173/preview/
+// Run:  cd extension/ui && bun run dev  ->  open http://localhost:5173/settings/preview/
 //   URL params:  ?view=feed|dispatch  &  ?theme=dark|light
 // (Serve over http, not file://, or ES-module imports are CORS-blocked.)
 import React, { useState } from 'react'
