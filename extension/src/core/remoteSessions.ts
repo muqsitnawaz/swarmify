@@ -374,6 +374,76 @@ export function normalizeActiveSession(
   };
 }
 
+/**
+ * The FLAT `SessionMeta` shape emitted by `agents sessions --json` (recent, not
+ * --active). Field names differ from the active payload (ticketId vs ticket,
+ * gitBranch vs worktree.branch, lastActivity ISO vs startedAtMs), so recent sessions
+ * get their own normalizer that lands on the SAME RemoteSession shape — one card path
+ * for active AND recent. Unknown fields ignored.
+ */
+export interface RawRecentSession {
+  id?: string;
+  shortId?: string;
+  agent?: string;
+  timestamp?: string;
+  lastActivity?: string;
+  project?: string;
+  cwd?: string;
+  gitBranch?: string;
+  worktreeSlug?: string;
+  ticketId?: string;
+  prUrl?: string;
+  prNumber?: number;
+  topic?: string;
+  label?: string;
+  machine?: string;
+}
+
+/** Map a recent (historical, non-active) SessionMeta onto RemoteSession. Recent =
+ *  not live, so phase is always 'idle'; lastActivity drives the "…ago" stamp. */
+export function normalizeRecentSession(
+  raw: RawRecentSession,
+  host: string,
+  fetchedAt: number,
+  projectRules: ProjectRule[] = []
+): RemoteSession {
+  const cwd = asStr(raw.cwd);
+  const worktreeSlug = asStr(raw.worktreeSlug) || worktreeSlugOf(cwd);
+  const lastActivityMs = raw.lastActivity ? Date.parse(raw.lastActivity) || 0 : 0;
+  const startedAtMs = raw.timestamp ? Date.parse(raw.timestamp) || 0 : 0;
+  return {
+    host,
+    sessionId: asStr(raw.id),
+    agentType: asStr(raw.agent).toLowerCase(),
+    cwd,
+    project: asStr(raw.project) || resolveProject(cwd, projectRules),
+    phase: 'idle',
+    activity: '',
+    tokPerSec: 0,
+    waitingForInput: false,
+    lastResponse: '',
+    prUrl: asStr(raw.prUrl) || null,
+    ticket: asStr(raw.ticketId) || null,
+    branch: asStr(raw.gitBranch),
+    worktreeSlug,
+    worktreePath: worktreeSlug ? cwd : '',
+    sinceMs: startedAtMs > 0 ? Math.max(0, fetchedAt - startedAtMs) : 0,
+    startedAtMs,
+    lastActivityMs,
+    topic: asStr(raw.topic) || asStr(raw.label),
+    sessionFile: '',
+    context: 'recent',
+    cloudTaskId: '',
+    cloudProvider: '',
+    teamName: '',
+    pid: 0,
+    transport: '',
+    replyRail: '',
+    replyMuxTarget: '',
+    replyMuxSocket: '',
+  };
+}
+
 /** Phase precedence for dedup — the most attention-worthy record wins. */
 const DEDUPE_PHASE_RANK: Record<RemotePhase, number> = {
   waiting: 0,

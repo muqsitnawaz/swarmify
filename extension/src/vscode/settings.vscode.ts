@@ -1942,6 +1942,25 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
         }
         break;
       }
+      case 'fetchRecentSessions': {
+        // Lazy: the Floor asks for a host's RECENT (historical) sessions only when that
+        // host has 0 live agents, so an empty host filter shows recent work instead of a
+        // blank pane. Rides its own 'recentSessions' message, keyed by host.
+        const recentHost = typeof message.host === 'string' ? message.host : '';
+        try {
+          if (!recentHost) break;
+          const { fetchRecentForHost, LOCAL_LABEL } = await import('./remoteSessions.vscode');
+          const isLocal = recentHost === 'this-mac' || recentHost === LOCAL_LABEL;
+          const sessions = await fetchRecentForHost(
+            recentHost, isLocal, recentHost, 12, getSettings(context).projectRules ?? [],
+          );
+          settingsPanel?.webview.postMessage({ type: 'recentSessions', host: recentHost, sessions });
+        } catch (err) {
+          console.error('[SETTINGS] Error fetching recent sessions:', err);
+          settingsPanel?.webview.postMessage({ type: 'recentSessions', host: recentHost, sessions: [] });
+        }
+        break;
+      }
       case 'fetchHostInventory': {
         // Host detail pane: installed agents/versions/accounts/usage/resources on
         // one host (over SSH for remotes) + registry metadata. Cached per host.

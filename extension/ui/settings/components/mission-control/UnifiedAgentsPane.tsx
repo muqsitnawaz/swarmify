@@ -579,6 +579,9 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   const [projFilter, setProjFilter] = useState<string | null>(null)
   // Host scope: click a HOSTS row to filter the feed to that machine; click again to clear.
   const [hostFilter, setHostFilter] = useState<string | null>(null)
+  // Recent (historical) sessions per host, fetched lazily only when a host filter has
+  // 0 live agents — so an empty host shows recent work instead of a blank pane.
+  const [recentByHost, setRecentByHost] = useState<Record<string, RemoteSessionLike[]>>({})
   const [floorSort, setFloorSort] = useState<FloorSort>('needs')
   // Group the live feed by an axis (project/host/status/agent). 'none' keeps the
   // default phase sections (NEEDS YOU -> RUNNING -> DONE). Reuses the same
@@ -695,6 +698,10 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
       } else if (msg?.type === 'localSessions') {
         const local = Array.isArray(msg.sessions) ? (msg.sessions as RemoteSessionLike[]) : []
         setRemoteSessions((prev) => [...prev.filter((s) => s.host !== 'this-mac'), ...local])
+      } else if (msg?.type === 'recentSessions') {
+        const rh = typeof msg.host === 'string' ? msg.host : ''
+        const recent = Array.isArray(msg.sessions) ? (msg.sessions as RemoteSessionLike[]) : []
+        setRecentByHost((p) => ({ ...p, [rh]: recent }))
       }
     }
     window.addEventListener('message', onMsg)
@@ -1376,6 +1383,19 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     return list
   }, [floorAgents, projFilter, hostFilter, statusChips, abbrChips, floorSearch])
 
+  // Empty host filter -> show that host's recent sessions instead of a blank pane.
+  // Fetch once per host (lazily), then adapt through the SAME card path as live agents.
+  const hostHasNoActive = !!hostFilter && scopedAgents.length === 0
+  useEffect(() => {
+    if (hostHasNoActive && hostFilter && recentByHost[hostFilter] === undefined) {
+      postMessage({ type: 'fetchRecentSessions', host: hostFilter })
+    }
+  }, [hostHasNoActive, hostFilter, recentByHost])
+  const recentAgents = useMemo(
+    () => (hostFilter && hostHasNoActive ? adaptRemote(recentByHost[hostFilter] ?? [], pinned, localHostName, projectRules) : []),
+    [hostFilter, hostHasNoActive, recentByHost, pinned, localHostName, projectRules]
+  )
+
   const needsAgents = useMemo(() => scopedAgents.filter((a) => a.needs), [scopedAgents])
   const waitingAgents = useMemo(() => needsAgents.filter((a) => a.phase === 'waiting'), [needsAgents])
   const failedAgents = useMemo(() => needsAgents.filter((a) => a.phase === 'failed'), [needsAgents])
@@ -1760,6 +1780,26 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
         <>
           <div className="feed-sec">DONE TODAY · {doneFeed.length}<span className="ln" /></div>
           {doneFeed.map((a) => (
+            <FeedItem
+              key={a.id}
+              agent={a}
+              selected={selectedFloorAgent?.id === a.id}
+              plain={plain}
+              onSelect={selectFloorAgent}
+              onOption={onAgentOption}
+              onFreeText={replyToAgent}
+              onAttach={onAttachScreenshot}
+            />
+          ))}
+        </>
+      )}
+
+      {hostHasNoActive && (
+        <>
+          <div className="feed-sec">RECENT · {recentAgents.length}{hostFilter ? ` · ${hostFilter}` : ''}<span className="ln" /></div>
+          {recentAgents.length === 0 ? (
+            <div className="detail-empty" style={{ padding: '10px 16px' }}>No recent sessions for this host.</div>
+          ) : recentAgents.map((a) => (
             <FeedItem
               key={a.id}
               agent={a}
