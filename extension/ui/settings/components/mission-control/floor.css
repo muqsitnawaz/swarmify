@@ -334,6 +334,11 @@
 .swarmify-root .reply2 { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
 .swarmify-root .reply2 input { flex: 1; background: var(--ds-bg); border: 1px solid var(--ds-border); border-radius: var(--r-md); padding: 7px 10px; font-size: 12px; color: var(--ds-text); }
 .swarmify-root .reply-err { margin-top: 6px; font-size: 11px; color: var(--status-failed); }
+.swarmify-root .followup { display: flex; gap: 7px; align-items: center; margin-top: 9px; opacity: .72; transition: opacity .12s; }
+.swarmify-root .followup:hover, .swarmify-root .followup:focus-within { opacity: 1; }
+.swarmify-root .followup > svg { color: var(--ds-text-faint); flex: none; }
+.swarmify-root .followup input { flex: 1; background: var(--ds-bg); border: 1px solid var(--ds-border); border-radius: var(--r-md); padding: 6px 10px; font-size: 12px; color: var(--ds-text); }
+.swarmify-root .followup input::placeholder { color: var(--ds-text-faint); }
 .swarmify-root .legend { display: flex; gap: 14px; padding: 6px 16px; font-size: 10.5px; color: var(--ds-text-dim); background: var(--ds-bg-panel); border-top: 1px solid var(--ds-border); }
 .swarmify-root .legend span { display: inline-flex; align-items: center; gap: 5px; }
 

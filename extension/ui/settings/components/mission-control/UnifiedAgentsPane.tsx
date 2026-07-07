@@ -25,7 +25,7 @@ import { FloorSidebar } from './FloorSidebar'
 import { BacklogCenter } from './BacklogCenter'
 import { TicketDetail } from './TicketDetail'
 import { HostDetail } from './HostDetail'
-import { FeedItem, TicketStrip } from './FeedItem'
+import { FeedItem, FollowUpBox } from './FeedItem'
 import { TodoChecklist } from './TodoChecklist'
 import { NeedsYouClusters } from './NeedsYouClusters'
 import { StructuredReply } from './StructuredReply'
@@ -1350,7 +1350,6 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     [floorLocalAgents, floorRemoteAgents]
   )
   const floorTickets = useMemo(() => adaptTickets(unifiedTasks), [unifiedTasks])
-  const nextUpTickets = useMemo(() => adaptTickets(queueTasks), [queueTasks])
 
   // Lookup back to the source UnifiedAgent so the right pane can reuse the rich DetailPane.
   const unifiedById = useMemo(() => {
@@ -1483,11 +1482,6 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     setPendingPlans((prev) => prev.filter((p) => p.sessionId !== sessionId))
   }, [])
 
-  // Open a Floor ticket in the consolidated Dispatch panel with it pre-attached.
-  const openTicketDetail = useCallback((ticketId: string) => {
-    openDispatch({ ticketId })
-  }, [openDispatch])
-
   const onScope = useCallback((value: string) => {
     if (value === '__queue') { setCenter('backlog'); return }
     if (value === '__needs') { setCenter('agents'); setProjFilter(null); setHostFilter(null); return }
@@ -1505,11 +1499,6 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
   const selectFloorAgent = useCallback((id: string) => {
     setCenter('agents')
     setSelectedAgentId(id)
-  }, [])
-
-  const selectFloorTicket = useCallback((id: string) => {
-    setCenter('backlog')
-    setSelectedTicketId(id)
   }, [])
 
   // Host detail pane: clicking a host in the sidebar opens its detail/config on
@@ -1581,6 +1570,11 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
             <div className="dhead" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
               <div className="title">{a.project} / {a.name}</div>
               <div className="sub">host <b>{a.hostLabel ?? a.host}</b>{a.branch ? ` · ${a.branch}` : ''} · {a.phase}{a.tok ? ` · ${a.tok} tok/s` : ''}</div>
+              {a.prUrl && (
+                <ExtLink href={a.prUrl} className="opt ghost" style={{ marginTop: 8, textDecoration: 'none' }}>
+                  <Icon name="chevR" size={11} /> Open PR {a.pr ?? ''} on GitHub
+                </ExtLink>
+              )}
               {a.summary && <div className="resp" style={{ marginTop: 8 }}>{a.summary}</div>}
               {a.resp && a.resp !== a.summary && <div className="resp" style={{ marginTop: 8 }}>{a.resp}</div>}
               {(a.verb || a.target) && <div className="nowline" style={{ marginTop: 8 }}><Icon name="chevR" size={11} /> <span className="v">{a.verb}</span> {a.target}</div>}
@@ -1593,6 +1587,12 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
                     <RecentToolCallRow key={`${call.name}-${i}`} call={call} />
                   ))}
                 </div>
+              </div>
+            )}
+            {!a.needs && (a.phase === 'idle' || a.phase === 'done') && a.reply.kind !== 'none' && (
+              <div style={{ padding: '0 16px 14px' }}>
+                <FollowUpBox onSend={(t) => replyToAgent(a, t)} />
+                {replyErrors.get(a.id) && <div className="reply-err" role="alert">{replyErrors.get(a.id)}</div>}
               </div>
             )}
           </div>
@@ -1706,18 +1706,6 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
           onAttach={onAttachScreenshot}
         />
       ))}
-
-      {nextUpTickets.length > 0 && (
-        <div className="backlog">
-          <div className="bh" onClick={() => setCenter('backlog')}>
-            <span><Icon name="chevD" size={11} /> READY TO DISPATCH · {floorTickets.length}</span>
-            <span className="c"><span className="seeall" onClick={(e) => { e.stopPropagation(); setCenter('backlog') }}>see all {floorTickets.length} <Icon name="chevR" size={10} /></span></span>
-          </div>
-          {nextUpTickets.map((t) => (
-            <TicketStrip key={t.id} ticket={t} onDispatch={openTicketDetail} onSelect={selectFloorTicket} />
-          ))}
-        </div>
-      )}
 
       {doneFeed.length > 0 && (
         <>

@@ -185,6 +185,7 @@ export interface FloorAgent {
   needs: boolean         // waiting || failed || (done && unreviewed)
   pinned: boolean        // user-pinned (persisted in globalState)
   pr: string | null      // "#142" when a PR is open
+  prUrl: string | null   // full PR URL (https://github.com/…/pull/N) — the real external link to open
   ci: CiStatus           // CI state of the open PR; null when no PR / unknown
   ticket: string | null  // "RUSH-812" when linked
   branch: string
