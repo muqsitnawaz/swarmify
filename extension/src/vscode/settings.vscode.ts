@@ -2672,6 +2672,36 @@ function wirePanel(panel: vscode.WebviewPanel, context: vscode.ExtensionContext)
         entry?.terminal.show(false);
         break;
       }
+      case 'focusRemoteSession': {
+        // Open a terminal attached to a remote (or local-but-tabless) agent's tmux
+        // session, so a cross-host card can be "focused in a new terminal" the same
+        // way a local tab can. Reuses the tmux socket the reply channel already knows
+        // (ReplyTarget.muxSocket); ssh -t for a remote host, direct tmux locally.
+        const host = typeof message.host === 'string' && message.host !== 'this-mac' ? message.host : '';
+        const socket = typeof message.muxSocket === 'string' ? message.muxSocket : '';
+        const label = typeof message.label === 'string' && message.label ? message.label : 'session';
+        if (!socket) { break; }
+        const shq = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
+        const attach = `tmux -S ${shq(socket)} attach`;
+        const cmd = host ? `ssh -t ${shq(host)} ${shq(attach)}` : attach;
+        const term = vscode.window.createTerminal({ name: `attach ${label}` });
+        term.sendText(cmd, true);
+        term.show(false);
+        break;
+      }
+      case 'revealWorktree': {
+        // Reveal a local worktree in the Explorer; a remote worktree can't be shown in
+        // this window's file tree, so copy its path (silent, no toast).
+        const p = typeof message.path === 'string' ? message.path : '';
+        const host = typeof message.host === 'string' && message.host !== 'this-mac' ? message.host : '';
+        if (!p) { break; }
+        if (host) {
+          await vscode.env.clipboard.writeText(p);
+        } else {
+          await vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(p));
+        }
+        break;
+      }
       case 'focusRushCloudTerminal': {
         // Used by the Factory Floor's "dispatch timed out" banner — jumps
         // the user to the cloud terminal so they can read the actual error.

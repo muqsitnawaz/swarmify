@@ -33,6 +33,7 @@ import {
   clusterByQuestion,
   sortAgents,
   latestTodos,
+  sessionTaskLine,
   type FloorAgent,
   type CenterMode,
   type HostInventory,
@@ -1496,9 +1497,14 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
     setProjFilter(value || null)
   }, [])
 
+  // Selecting an agent opens its detail rail — the SAME setRightOpen(true) that
+  // onSelectHost does. These two were the drifted pair: this one omitted it, so
+  // clicking an agent card silently did nothing (the rail only renders when
+  // rightOpen). Keep them symmetric.
   const selectFloorAgent = useCallback((id: string) => {
     setCenter('agents')
     setSelectedAgentId(id)
+    setRightOpen(true)
   }, [])
 
   // Host detail pane: clicking a host in the sidebar opens its detail/config on
@@ -1569,13 +1575,33 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
           <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'auto' }}>
             <div className="dhead" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
               <div className="title">{a.project} / {a.name}</div>
-              <div className="sub">host <b>{a.hostLabel ?? a.host}</b>{a.branch ? ` · ${a.branch}` : ''} · {a.phase}{a.tok ? ` · ${a.tok} tok/s` : ''}</div>
-              {a.prUrl && (
-                <ExtLink href={a.prUrl} className="opt ghost" style={{ marginTop: 8, textDecoration: 'none' }}>
-                  <Icon name="chevR" size={11} /> Open PR {a.pr ?? ''} on GitHub
-                </ExtLink>
-              )}
-              {a.summary && <div className="resp" style={{ marginTop: 8 }}>{a.summary}</div>}
+              <div className="sub">host <b>{a.hostLabel ?? a.host}</b>{(a.worktreeSlug || a.branch) ? ` · ${a.worktreeSlug || a.branch}` : ''} · {a.phase}{a.tok ? ` · ${a.tok} tok/s` : ''}{a.ticket ? ` · ${a.ticket}` : ''}</div>
+              {/* Actions: give a selected agent something to DO (issue: clicking a card
+                  offered nothing). Focus opens the session's terminal — local via the
+                  live vscode terminal, remote via an ssh + tmux-attach terminal. */}
+              <div className="opts" style={{ marginTop: 8, flexWrap: 'wrap', gap: 6 }}>
+                {a.reply.kind === 'terminal' && a.reply.terminalId && (
+                  <button className="opt" onClick={() => postMessage({ type: 'focusTerminal', terminalId: a.reply.terminalId })}>
+                    <Icon name="chevR" size={11} /> Focus terminal
+                  </button>
+                )}
+                {a.reply.kind === 'tmux' && a.reply.muxTarget && (
+                  <button className="opt" onClick={() => postMessage({ type: 'focusRemoteSession', host: a.reply.host, muxSocket: a.reply.muxSocket, muxTarget: a.reply.muxTarget, sessionId: a.reply.sessionId, label: a.name })}>
+                    <Icon name="chevR" size={11} /> Focus in terminal
+                  </button>
+                )}
+                {a.worktreePath && (
+                  <button className="opt" onClick={() => postMessage({ type: 'revealWorktree', path: a.worktreePath, host: a.host })}>
+                    <Icon name="chevR" size={11} /> Reveal worktree
+                  </button>
+                )}
+                {a.prUrl && (
+                  <ExtLink href={a.prUrl} className="opt ghost" style={{ textDecoration: 'none' }}>
+                    <Icon name="chevR" size={11} /> Open PR {a.pr ?? ''}
+                  </ExtLink>
+                )}
+              </div>
+              {(() => { const task = sessionTaskLine(a); return task && task !== a.resp.trim() ? <div className="resp" style={{ marginTop: 8 }}>{task}</div> : null })()}
               {a.resp && a.resp !== a.summary && <div className="resp" style={{ marginTop: 8 }}>{a.resp}</div>}
               {(a.verb || a.target) && <div className="nowline" style={{ marginTop: 8 }}><Icon name="chevR" size={11} /> <span className="v">{a.verb}</span> {a.target}</div>}
             </div>
