@@ -479,6 +479,19 @@ describe('findTerminalNameByTabLabel', () => {
     expect(findTerminalNameByTabLabel(terminalNames, 'CC - nonexistent')).toBeNull();
   });
 
+  // Root cause of the "status bar shows the wrong terminal's session" bug: when
+  // several same-agent terminals share a name (three unlabeled Claude terminals
+  // are all "CC"), a name lookup can only ever return the FIRST one — it cannot
+  // distinguish which tab is actually focused. This is why the status-bar tab
+  // handlers must resolve via vscode.window.activeTerminal (object identity)
+  // instead of by name; this test pins the ambiguity that motivates that.
+  test('is ambiguous across duplicate names — always the first (motivates identity resolution)', () => {
+    const names = ['CC', 'CC', 'CC'];
+    expect(findTerminalNameByTabLabel(names, 'CC')).toBe('CC');
+    // A caller doing `names.indexOf(result)` gets 0 no matter which tab is live.
+    expect(names.indexOf(findTerminalNameByTabLabel(names, 'CC') as string)).toBe(0);
+  });
+
   test('returns null for empty terminal list', () => {
     expect(findTerminalNameByTabLabel([], 'CC')).toBeNull();
   });
