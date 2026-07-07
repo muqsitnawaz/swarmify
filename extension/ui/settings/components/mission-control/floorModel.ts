@@ -131,6 +131,8 @@ export interface FloorAgent {
   ci: CiStatus           // CI state of the open PR; null when no PR / unknown
   ticket: string | null  // "RUSH-812" when linked
   branch: string
+  worktreeSlug: string   // "<slug>" under .agents/worktrees/; '' when not a worktree. Disambiguates sibling sessions + labels the card when topic/preview are empty.
+  worktreePath: string   // absolute worktree path, for the Reveal-worktree action; '' when not a worktree
   resp: string           // last response text (Anthropic Agent-view style)
   question: StructuredQuestion | null
   reply: ReplyTarget     // how a user reply reaches this agent (host dispatches on kind)
@@ -354,6 +356,18 @@ function firstNonEmpty(...values: Array<string | null | undefined>): string | un
     if (typeof v === 'string' && v.trim()) return v.trim()
   }
   return undefined
+}
+
+/**
+ * The one "what is this session doing" line, used by BOTH the card and the detail
+ * rail so no surface re-derives it or renders blank. Fallback chain: the CLI summary
+ * / live preview, then the last response, then the worktree slug or branch (a task
+ * label when there's no narrative — e.g. "headless-secrets-shadow"). Returns '' when
+ * the agent carries no task signal at all; callers that need an absolute fallback add
+ * `|| a.name` (the card already shows the name separately, so it omits that).
+ */
+export function sessionTaskLine(a: FloorAgent): string {
+  return firstNonEmpty(a.summary, a.resp, a.worktreeSlug, a.branch) ?? ''
 }
 
 /**

@@ -113,6 +113,13 @@ export interface RemoteSession {
   prUrl: string | null;
   ticket: string | null;
   branch: string;
+  /** The `<slug>` under `.agents/worktrees/<slug>/` — the strong per-session
+   *  disambiguator (two agents in sibling worktrees of one repo differ only here).
+   *  '' when the session isn't in a worktree. */
+  worktreeSlug: string;
+  /** Absolute worktree path (== cwd for a worktree session), for the Reveal-worktree
+   *  action. '' when not a worktree. */
+  worktreePath: string;
   /** Elapsed ms since the session started, computed against the fetch clock so
    *  host clock skew does not distort it. */
   sinceMs: number;
@@ -208,7 +215,15 @@ export interface RawActiveSession {
   cloudStatus?: string;
   branch?: string;
   prUrl?: string;
-  ticket?: string;
+  /** The CLI emits these NESTED objects on `sessions --active --json` (agents-cli
+   *  ActiveSession: preview / pr / worktree / ticket). Earlier this shape declared
+   *  none of them, so normalizeActiveSession silently dropped the worktree slug, the
+   *  live preview (activity line), the structured ticket id, and the real branch —
+   *  which is why remote/worktree cards showed only "Edit <file>" + a status word. */
+  preview?: string;
+  pr?: { url?: string; number?: number } | null;
+  worktree?: { slug?: string; path?: string; branch?: string } | null;
+  ticket?: string | { id?: string; url?: string } | null;
   /** Normalized device id the CLI attributes this session to (machineId() form,
    *  e.g. 'zion', 'yosemite-s0'). Present on every row of a fanned-out
    *  `sessions --active --json` — the load-bearing signal for which physical
@@ -309,9 +324,16 @@ export function normalizeActiveSession(
     '';
   const cwd = raw.cwd || '';
   const startedAtMs = typeof raw.startedAtMs === 'number' ? raw.startedAtMs : 0;
-  const rawTicket = asStr(raw.ticket);
+  // Ticket can arrive as a structured object ({ id }) OR a bare string; read the id
+  // first, then fall back to scanning ticket/label/topic text for a RUSH-123 token.
+  const rawTicket =
+    raw.ticket && typeof raw.ticket === 'object' ? asStr(raw.ticket.id) : asStr(raw.ticket);
   const ticketText = `${rawTicket} ${asStr(raw.label)} ${asStr(raw.topic)}`;
   const ticketMatch = rawTicket || ticketText.match(TICKET_RE)?.[0] || null;
+  // The live preview (latest agent turn/tool action) is the human "what is it doing"
+  // line; it was previously never read, leaving remote cards blank.
+  const preview = asStr(raw.preview);
+  const worktreeSlug = asStr(raw.worktree?.slug) || worktreeSlugOf(cwd);
 
   return {
     host,
@@ -323,10 +345,16 @@ export function normalizeActiveSession(
     activity: '',
     tokPerSec: 0,
     waitingForInput: phase === 'waiting',
-    lastResponse: '',
-    prUrl: asStr(raw.prUrl) || null,
+    lastResponse: preview,
+    // pr is a { url, number } object on the CLI payload; keep top-level prUrl as a
+    // fallback for older shapes.
+    prUrl: asStr(raw.prUrl) || asStr(raw.pr?.url) || null,
     ticket: ticketMatch,
-    branch: asStr(raw.branch),
+    // The remote branch lives at worktree.branch; the top-level `branch` is usually
+    // absent, which is why remote branch was always empty.
+    branch: asStr(raw.branch) || asStr(raw.worktree?.branch),
+    worktreeSlug,
+    worktreePath: asStr(raw.worktree?.path) || (worktreeSlug ? cwd : ''),
     sinceMs: startedAtMs > 0 ? Math.max(0, fetchedAt - startedAtMs) : 0,
     startedAtMs,
     // 0 = no activity signal yet; the fan-out sets the real file mtime for file-backed
