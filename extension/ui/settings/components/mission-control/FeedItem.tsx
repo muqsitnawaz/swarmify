@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { Icon } from './icons'
 import { AgentAvatar, agentIdFromPrefix } from './AgentAvatar'
 import { StructuredReply, type ReplyCallbacks } from './StructuredReply'
@@ -114,6 +114,37 @@ function FeedItemImpl({ agent: a, selected, plain, onSelect, onOption, onFreeTex
           />
         </div>
       )}
+      {/* Contextual follow-up: an agent that isn't working (idle or done) and isn't
+          already asking for you is ready for the next task. Queue one right on its row,
+          delivered over the same reply channel (cloud -> `agents cloud message`, a live
+          tmux/terminal -> sendText). Suppressed when there's no reachable channel. */}
+      {!a.needs && (a.phase === 'idle' || a.phase === 'done') && a.reply.kind !== 'none' && (
+        <FollowUpBox onSend={(t) => onFreeText(a, t)} />
+      )}
+    </div>
+  )
+}
+
+// Slim per-agent "queue a follow-up task" input, shown on idle/done rows in place of the
+// old standalone NEXT-UP dispatch list. Local state so a keystroke never re-renders the feed.
+export function FollowUpBox({ onSend }: { onSend: (text: string) => void }) {
+  const [text, setText] = useState('')
+  const send = () => {
+    const t = text.trim()
+    if (!t) return
+    onSend(t)
+    setText('')
+  }
+  return (
+    <div className="followup" onClick={(e) => e.stopPropagation()}>
+      <Icon name="chevR" size={11} />
+      <input
+        placeholder="Queue a follow-up task…"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') send() }}
+      />
+      <button className="opt ghost" onClick={send}>Queue</button>
     </div>
   )
 }

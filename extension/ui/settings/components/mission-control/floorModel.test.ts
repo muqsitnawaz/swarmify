@@ -87,6 +87,7 @@ function makeAgent(overrides: Partial<FloorAgent> = {}): FloorAgent {
     needs: false,
     pinned: false,
     pr: null,
+    prUrl: null,
     ticket: null,
     branch: 'feat-auth',
     resp: '',
