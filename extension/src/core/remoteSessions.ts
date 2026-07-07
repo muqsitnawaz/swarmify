@@ -42,6 +42,26 @@ export function normalizeHost(raw: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
+/**
+ * Decide which HOSTS bucket a session belongs to. A bare `agents sessions
+ * --active --json` fans out over the whole fleet, so a single query answers for
+ * many machines — each row carries its own `machine` id. Bucket by that id, NOT
+ * by the host we happened to query (`fallbackHost`), or every remote session
+ * collapses onto the querying machine. The local machine's own id maps to
+ * `localLabel` ('this-mac') so the webview's `host === 'this-mac'` routing keeps
+ * working. Rows with no machine (cloud) fall back to the querying host.
+ */
+export function resolveSessionHost(
+  rawMachine: string | undefined,
+  fallbackHost: string,
+  localMachineId: string,
+  localLabel: string,
+): string {
+  const norm = normalizeHost(rawMachine || '');
+  if (!norm) return fallbackHost;
+  return norm === localMachineId ? localLabel : norm;
+}
+
 /** A registered device as seen by the host reconciler (from `agents devices list`). */
 export interface RegisteredDeviceInput {
   name: string;
@@ -198,6 +218,11 @@ export interface RawActiveSession {
   branch?: string;
   prUrl?: string;
   ticket?: string;
+  /** Normalized device id the CLI attributes this session to (machineId() form,
+   *  e.g. 'zion', 'yosemite-s0'). Present on every row of a fanned-out
+   *  `sessions --active --json` — the load-bearing signal for which physical
+   *  machine a session runs on. Absent for cloud rows (attributed to the querier). */
+  machine?: string;
   /** How the CLI says a reply reaches this session. `reply` is null for raw TTYs
    *  (e.g. bare Ghostty) with no programmatic input channel; a tmux-backed session
    *  carries the socket + pane to drive via `tmux send-keys` (over ssh when remote). */
