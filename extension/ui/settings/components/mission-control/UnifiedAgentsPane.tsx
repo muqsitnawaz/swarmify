@@ -1591,7 +1591,7 @@ export function UnifiedAgentsPane({ terminals, tasks, tasksLoading, unifiedTasks
             )}
             {!a.needs && (a.phase === 'idle' || a.phase === 'done') && a.reply.kind !== 'none' && (
               <div style={{ padding: '0 16px 14px' }}>
-                <FollowUpBox onSend={(t) => replyToAgent(a, t)} />
+                <FollowUpBox key={a.id} onSend={(t) => replyToAgent(a, t)} />
                 {replyErrors.get(a.id) && <div className="reply-err" role="alert">{replyErrors.get(a.id)}</div>}
               </div>
             )}
