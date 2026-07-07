@@ -16,9 +16,14 @@ import {
   computeOutputTokensPerSec,
   formatActivity,
 } from './session.activity';
-import type { ProjectRule } from './settings';
+import { resolveProject, normalizeHost, worktreeSlugOf } from '../shared/project';
+import type { ProjectRule } from '../shared/project';
 
-export type { ProjectRule } from './settings';
+// Re-exported so existing host importers keep their `from '../core/remoteSessions'`
+// path. The impls now live in src/shared/project so the webview (@shared) imports
+// the SAME source instead of a hand-mirrored copy that silently drifts.
+export { resolveProject, normalizeHost, worktreeSlugOf };
+export type { ProjectRule } from '../shared/project';
 
 /** Mirror of floorModel.FloorPhase (kept in sync by hand; not imported). */
 export type RemotePhase = 'running' | 'idle' | 'waiting' | 'failed' | 'done';
@@ -26,21 +31,7 @@ export type RemotePhase = 'running' | 'idle' | 'waiting' | 'failed' | 'done';
 /** Agent types whose session files session.activity.ts knows how to parse. */
 type ParsableAgentType = 'claude' | 'codex' | 'gemini';
 
-/**
- * Canonicalize a hostname to its short device label, mirroring agents-cli's
- * `normalizeHost` (machineId in its session/sync config): take the first dotted
- * label, lowercase it, and collapse any non-alphanumeric run to a single hyphen.
- * So `zion.local` and `ZION` both become `zion`, which lines up with the
- * `agents devices` registry names used under the HOSTS sidebar. Empty in → empty out.
- */
-export function normalizeHost(raw: string): string {
-  return (raw || '')
-    .split('.')[0]
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
+// normalizeHost now lives in src/shared/project.ts (imported + re-exported above).
 
 /**
  * Decide which HOSTS bucket a session belongs to. A bare `agents sessions
@@ -278,76 +269,9 @@ export function mapStatusToPhase(status: string | undefined): RemotePhase {
   }
 }
 
-/**
- * Convert a project-rule glob to a RegExp. `**` spans path separators, `*` does
- * not, `?` matches a single non-separator char. A trailing subpath always matches
- * so a rule for a directory also captures sessions running inside it.
- */
-function projectGlobToRegExp(glob: string): RegExp {
-  let re = '';
-  for (let i = 0; i < glob.length; i++) {
-    const c = glob[i];
-    if (c === '*') {
-      if (glob[i + 1] === '*') {
-        re += '.*';
-        i++;
-      } else {
-        re += '[^/]*';
-      }
-    } else if (c === '?') {
-      re += '[^/]';
-    } else {
-      re += c.replace(/[.+^${}()|[\]\\]/g, '\\$&');
-    }
-  }
-  return new RegExp('^' + re + '(?:/.*)?$');
-}
-
-/**
- * Does a rule's pattern match a cwd? A pattern with no glob metacharacters is a
- * plain path prefix (the exact dir or any descendant); otherwise it is a glob.
- */
-function matchesProjectRule(cwd: string, pattern: string): boolean {
-  const p = pattern.trim().replace(/\/+$/, '');
-  if (!p) return false;
-  if (!/[*?]/.test(p)) return cwd === p || cwd.startsWith(p + '/');
-  return projectGlobToRegExp(p).test(cwd);
-}
-
-/** Last path segment of a repo-root path (or a bare repo name). */
-function pathBasename(p: string): string {
-  const parts = p.replace(/\/+$/, '').split('/').filter(Boolean);
-  return parts[parts.length - 1] || '';
-}
-
-/**
- * Resolve a session cwd to a display project for Floor grouping. Order:
- *   1. user rules (first match wins) — glob or path-prefix against the cwd.
- *   2. worktree fold: `.../<repo>/.agents/worktrees/<slug>` -> `<repo>`.
- *   3. git repo root basename, when the caller supplies `repoRoot` — so a
- *      monorepo subdir (`.../agents/prix/api`) folds to the repo, not the leaf.
- *   4. ultimate fallback: the cwd's last path segment (legacy behavior).
- * Pure — mirrored in ui/.../floorModel.ts across the webview boundary.
- */
-export function resolveProject(
-  cwd: string,
-  rules: ProjectRule[] = [],
-  repoRoot?: string | null
-): string {
-  if (!cwd) return '';
-  const norm = cwd.replace(/\/+$/, '');
-  for (const rule of rules) {
-    if (rule && matchesProjectRule(norm, rule.pattern)) return rule.project;
-  }
-  const wt = norm.match(/\/([^/]+)\/\.agents\/worktrees\//);
-  if (wt) return wt[1];
-  if (repoRoot) {
-    const base = pathBasename(repoRoot);
-    if (base) return base;
-  }
-  const parts = norm.split('/').filter(Boolean);
-  return parts[parts.length - 1] || norm;
-}
+// projectGlobToRegExp / matchesProjectRule / pathBasename / resolveProject now
+// live in src/shared/project.ts (imported + re-exported above) — one impl shared
+// with the webview, no lockstep-mirrored copy.
 
 /**
  * Derive a display project from a working directory with no user rules — the
