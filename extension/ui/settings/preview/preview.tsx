@@ -11,6 +11,7 @@ import ReactDOM from 'react-dom/client'
 import '../index.css'
 
 import { Icon } from '../components/mission-control/icons'
+import { FloorSidebar } from '../components/mission-control/FloorSidebar'
 import { FeedItem, TicketStrip } from '../components/mission-control/FeedItem'
 import { SavedViews } from '../components/mission-control/SavedViewsBar'
 import { DispatchPanel } from '../components/mission-control/DispatchPanel'
@@ -213,6 +214,39 @@ function Backlog() {
   )
 }
 
+// Sidebar with the HOSTS rail — local + online + offline devices, one pinned —
+// so the host status dots (`.hd`) can be screenshotted at their true size.
+function Sidebar() {
+  const [pins, setPins] = useState<string[]>(['zion'])
+  const sidebarAgents: FloorAgent[] = [
+    ...running,
+    agent({ id: 's1', hostLabel: 'yosemite-s0', project: 'agents-cli' }),
+    agent({ id: 's2', hostLabel: 'yosemite-s0', project: 'agents-cli' }),
+    agent({ id: 's3', hostLabel: 'yosemite-s1', project: 'agents-cli' }),
+  ]
+  const devices = [
+    { name: 'zion', online: true, agents: 8 },
+    { name: 'mac-mini', online: true, agents: 0 },
+    { name: 'win-mini', online: true, agents: 0 },
+    { name: 'yosemite-s0', online: true, agents: 2 },
+    { name: 'yosemite-s1', online: false, agents: 1 },
+  ]
+  return (
+    <FloorSidebar
+      agents={sidebarAgents}
+      tickets={tickets}
+      projFilter={null}
+      offlineHosts={['yosemite-s1']}
+      devices={devices}
+      hostPins={pins}
+      onToggleHostPin={(n) => setPins((p) => (p.includes(n) ? p.filter((x) => x !== n) : [...p, n]))}
+      onReorderHostPins={setPins}
+      onScope={noop}
+      localHost="zion"
+    />
+  )
+}
+
 function Preview() {
   const params = new URLSearchParams(location.search)
   const theme = params.get('theme') === 'light' ? 'theme-light' : 'theme-dark'
@@ -221,8 +255,8 @@ function Preview() {
   return (
     <div className={`swarmify-root ${theme}`} style={{ minHeight: '100vh' }}>
       <div className="sw-floor-dashboard" style={{ padding: 0 }}>
-        <div className="page">
-          <div className="feed-col">{view === 'backlog' ? <Backlog /> : <Feed />}</div>
+        <div className="page" style={{ display: 'flex' }}>
+          {view === 'sidebar' ? <Sidebar /> : <div className="feed-col">{view === 'backlog' ? <Backlog /> : <Feed />}</div>}
         </div>
       </div>
       <DispatchPanel
