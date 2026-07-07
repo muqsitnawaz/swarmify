@@ -14,7 +14,8 @@ import { Icon } from '../components/mission-control/icons'
 import { FeedItem, TicketStrip } from '../components/mission-control/FeedItem'
 import { SavedViews } from '../components/mission-control/SavedViewsBar'
 import { DispatchPanel } from '../components/mission-control/DispatchPanel'
-import type { FloorAgent, FloorTicket, StructuredQuestion } from '../components/mission-control/floorModel'
+import { BacklogCenter } from '../components/mission-control/BacklogCenter'
+import type { FloorAgent, FloorTicket, StructuredQuestion, TicketGroupBy, TicketSort } from '../components/mission-control/floorModel'
 import type { UnifiedTask } from '../types'
 import type { InstalledAgent, DispatchHost, DispatchTarget } from '../components/mission-control/dispatch.types'
 
@@ -110,9 +111,9 @@ const done: FloorAgent[] = [
 
 // READY TO DISPATCH backlog.
 const tickets: FloorTicket[] = [
-  { id: 'RUSH-1262', title: '[security] rush CLI PKCE token exchange uses unpinned http client', project: 'rush', source: 'LN', pri: 'urgent', status: 'todo', desc: '', labels: ['security'] },
-  { id: 'RUSH-799', title: 'Remote agent heartbeat anchors to start time, shows false stall', project: 'agents-cli', source: 'LN', pri: 'high', status: 'todo', desc: '', labels: [] },
-  { id: '#418', title: 'Kanban / Deadline feed views are stubs -> "coming soon"', project: 'swarmify', source: 'GH', pri: 'med', status: 'todo', desc: '', labels: [] },
+  { id: 'RUSH-1262', title: '[security] rush CLI PKCE token exchange uses unpinned http client', project: 'rush', source: 'LN', pri: 'urgent', status: 'todo', desc: '', labels: ['security'], owner: 'Muqsit' },
+  { id: 'RUSH-799', title: 'Remote agent heartbeat anchors to start time, shows false stall', project: 'agents-cli', source: 'LN', pri: 'high', status: 'todo', desc: '', labels: [], owner: 'Muqsit' },
+  { id: '#418', title: 'Kanban / Deadline feed views are stubs -> "coming soon"', project: 'swarmify', source: 'GH', pri: 'med', status: 'todo', desc: '', labels: [], owner: '' },
 ]
 
 // Dispatch panel mock data.
@@ -187,6 +188,31 @@ function Feed() {
   )
 }
 
+// Backlog center with the group/sort/filter toolbar. Defaults to grouping by
+// Owner so the preview shows tickets bucketed by assignee (incl. Unassigned).
+function Backlog() {
+  const [group, setGroup] = useState<TicketGroupBy>('owner')
+  const [sort, setSort] = useState<TicketSort>('priority')
+  const [srcFilter, setSrcFilter] = useState<Record<'LN' | 'GH', boolean>>({ LN: true, GH: true })
+  const [selected, setSelected] = useState<string | null>(null)
+  return (
+    <BacklogCenter
+      tickets={tickets}
+      group={group}
+      sort={sort}
+      srcFilter={srcFilter}
+      projFilter={null}
+      search=""
+      selectedTicketId={selected}
+      onGroup={setGroup}
+      onSort={setSort}
+      onToggleSrc={(s) => setSrcFilter((f) => ({ ...f, [s]: !f[s] }))}
+      onSelectTicket={setSelected}
+      onBackToAgents={noop}
+    />
+  )
+}
+
 function Preview() {
   const params = new URLSearchParams(location.search)
   const theme = params.get('theme') === 'light' ? 'theme-light' : 'theme-dark'
@@ -196,7 +222,7 @@ function Preview() {
     <div className={`swarmify-root ${theme}`} style={{ minHeight: '100vh' }}>
       <div className="sw-floor-dashboard" style={{ padding: 0 }}>
         <div className="page">
-          <div className="feed-col"><Feed /></div>
+          <div className="feed-col">{view === 'backlog' ? <Backlog /> : <Feed />}</div>
         </div>
       </div>
       <DispatchPanel
