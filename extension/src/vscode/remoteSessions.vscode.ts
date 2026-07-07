@@ -224,8 +224,10 @@ async function probeCpuRatio(host: string, isLocal: boolean): Promise<number | n
  *               `machine` id. This is the reliable multi-host source (the extension's
  *               own per-host `--host` sweep is unreliable ssh-in-ssh and slow).
  *   - --local : this machine's sessions only, no SSH (the cheap fast-tier poll).
- *   - --host  : one specific remote (kept only for on-demand Tier-2 detail).
- *  `probeCpu` gates a second (CPU-load) round-trip; the live feed leaves it false. */
+ *   - --host  : one specific remote — retained for completeness, but NO current
+ *               caller takes this path (both the feed sweep and the fast tier query
+ *               the local machine; on-demand remote detail uses fetchHostSessionDetail).
+ *  `probeCpu` only affects local CPU freshness now (both callers are local). */
 async function fetchActiveForHost(sshTarget: string, isLocal: boolean, hostKey: string, fetchedAt: number, probeCpu: boolean, projectRules: ProjectRule[], fanOut = false): Promise<{
   host: string;
   online: boolean;
@@ -322,8 +324,10 @@ let localCache: { at: number; rulesKey: string; result: HostSessionsResult } | n
 let localInFlight: Promise<HostSessionsResult> | null = null;
 
 export interface FetchHostSessionsOptions {
-  /** Also probe each remote host's CPU load (a second SSH per host). The live feed
-   *  poll leaves this false; the Dispatch panel sets it true for load ranking. */
+  /** Kept for the Dispatch panel's load-ranking call. Since the feed now sources
+   *  every host from one bare fan-out (no per-host SSH), remote CPU is no longer
+   *  probed; this only affects local CPU freshness + the `hasCpu` cache key so a
+   *  Dispatch call after a feed poll can force one fresh sweep. */
   probeCpu?: boolean;
   /** Ordered cwd->project mappings applied when normalizing each session's project. */
   projectRules?: ProjectRule[];
