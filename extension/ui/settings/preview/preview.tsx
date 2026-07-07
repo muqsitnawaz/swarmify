@@ -44,6 +44,8 @@ function agent(p: Partial<FloorAgent>): FloorAgent {
     ci: null,
     ticket: null,
     branch: 'main',
+    worktreeSlug: '',
+    worktreePath: '',
     resp: '',
     question: null,
     reply: { kind: 'terminal', host: 'this-mac' },
@@ -53,6 +55,22 @@ function agent(p: Partial<FloorAgent>): FloorAgent {
     ...p,
   }
 }
+
+// Issue-2 demo: two sessions in the SAME repo + worktree that used to render as
+// identical, contextless "Edit linux.ts / waiting_input" cards. They now carry the
+// project, the worktree slug, and a distinct task line.
+const twinA = agent({
+  id: 'twin-a', abbr: 'CC', name: '02ebf318', project: 'agents-cli', phase: 'waiting',
+  needs: true, worktreeSlug: 'headless-secrets-shadow', branch: 'muqsit/headless-secrets',
+  verb: 'Edit', target: 'src/lib/secrets/linux.ts',
+  summary: 'Removing the stale BYOK resolver and its keychain writes.', since: '0s',
+})
+const twinB = agent({
+  id: 'twin-b', abbr: 'CC', name: 'e3d6852d', project: 'agents-cli', phase: 'waiting',
+  needs: true, worktreeSlug: 'headless-secrets-shadow', branch: 'muqsit/headless-secrets',
+  verb: 'Edit', target: 'src/lib/secrets/linux.ts',
+  summary: 'Adding the Linux secret-service fallback path + a regression test.', since: '0s',
+})
 
 const dropQuestion: StructuredQuestion = {
   kind: 'destructive',
@@ -115,6 +133,9 @@ const tickets: FloorTicket[] = [
   { id: 'RUSH-1262', title: '[security] rush CLI PKCE token exchange uses unpinned http client', project: 'rush', source: 'LN', pri: 'urgent', status: 'todo', desc: '', labels: ['security'], owner: 'Muqsit' },
   { id: 'RUSH-799', title: 'Remote agent heartbeat anchors to start time, shows false stall', project: 'agents-cli', source: 'LN', pri: 'high', status: 'todo', desc: '', labels: [], owner: 'Muqsit' },
   { id: '#418', title: 'Kanban / Deadline feed views are stubs -> "coming soon"', project: 'swarmify', source: 'GH', pri: 'med', status: 'todo', desc: '', labels: [], owner: '' },
+  // A ticket with no formal project — grouping renders it under "Unlabeled", never a
+  // blank "· N" header (issue 1).
+  { id: 'RUSH-1240', title: '[rush/app] X/social integration renders a broken avatar (not CSP)', project: '', source: 'LN', pri: 'high', status: 'todo', desc: '', labels: ['Bug'], owner: 'Muqsit' },
 ]
 
 // Dispatch panel mock data.
@@ -158,9 +179,11 @@ function Feed() {
       />
 
       <div className="feed-sec attn">
-        <Icon name="alert" size={11} /> NEEDS YOU · 2
+        <Icon name="alert" size={11} /> NEEDS YOU · 4
         <span className="ln" />
       </div>
+      <FeedItem agent={twinA} selected={false} plain={false} onSelect={noop} onOption={noop} onFreeText={noop} onAttach={noop} />
+      <FeedItem agent={twinB} selected={false} plain={false} onSelect={noop} onOption={noop} onFreeText={noop} onAttach={noop} />
       <FeedItem agent={askAgent} selected={false} plain={false} onSelect={noop} onOption={noop} onFreeText={noop} onAttach={noop} />
       <FeedItem agent={reviewAgent} selected={false} plain={false} onSelect={noop} onOption={noop} onFreeText={noop} onAttach={noop} />
 
@@ -192,7 +215,7 @@ function Feed() {
 // Backlog center with the group/sort/filter toolbar. Defaults to grouping by
 // Owner so the preview shows tickets bucketed by assignee (incl. Unassigned).
 function Backlog() {
-  const [group, setGroup] = useState<TicketGroupBy>('owner')
+  const [group, setGroup] = useState<TicketGroupBy>('project')
   const [sort, setSort] = useState<TicketSort>('priority')
   const [srcFilter, setSrcFilter] = useState<Record<'LN' | 'GH', boolean>>({ LN: true, GH: true })
   const [selected, setSelected] = useState<string | null>(null)
