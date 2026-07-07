@@ -1490,13 +1490,8 @@ export async function activate(context: vscode.ExtensionContext) {
     })
   );
 
-  // Resolve which terminal a terminal-tab switch refers to. Prefer
-  // vscode.window.activeTerminal (object IDENTITY) — it correctly tracks the
-  // focused terminal even when several agent terminals share a tab name like
-  // "CC". Fall back to matching the tab LABEL by name only when the API can't
-  // give us the active terminal: findTerminalNameByTabLabel returns the FIRST
-  // terminal with that name, so with duplicate names it pinned the status bar to
-  // terminal #0 regardless of which one was focused (the wrong-session bug).
+  // Prefer activeTerminal (identity) over a tab-label name match: same-agent
+  // terminals share a name ("CC"), so name matching always returns the first.
   const terminalForActiveTab = (tabLabel: string | undefined): vscode.Terminal | undefined => {
     const active = vscode.window.activeTerminal;
     if (active) return active;
