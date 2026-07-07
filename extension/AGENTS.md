@@ -21,7 +21,7 @@ The Factory Floor feed + Dispatch panel are a React webview (`ui/settings`, top 
 
 ```
 cd extension/ui && bun run dev
-# open http://localhost:5173/preview/?view=feed        (or ?view=dispatch)
+# open http://localhost:5173/settings/preview/?view=feed   (or ?view=dispatch)
 #   add &theme=dark  or  &theme=light
 ```
 
