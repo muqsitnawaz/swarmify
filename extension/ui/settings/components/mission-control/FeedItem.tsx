@@ -139,6 +139,7 @@ export function FollowUpBox({ onSend }: { onSend: (text: string) => void }) {
     <div className="followup" onClick={(e) => e.stopPropagation()}>
       <Icon name="chevR" size={11} />
       <input
+        aria-label="Queue a follow-up task"
         placeholder="Queue a follow-up task…"
         value={text}
         onChange={(e) => setText(e.target.value)}
