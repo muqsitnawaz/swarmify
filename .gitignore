@@ -21,3 +21,8 @@ extension/undefined.tmp-*
 **/.claude
 **/.ignore
 .agents/worktrees/
+
+# zsh profiling artifacts
+.tmp-zprof-init.zsh
+zsh_trace*.log
+*.zprof
