@@ -291,7 +291,7 @@ if [ "$INSTALLED" -eq 0 ]; then
     echo "Warning: no editor CLI found (tried cursor, code, codium). Skipping local install." >&2
 else
     echo "Installed to $INSTALLED editor(s)."
-    # Installed to disk != active in a running editor. Reload running windows
+    # Installed to disk != active in a running editor. Report stale windows
     # and verify activation from exthost.log.
     bash "$(dirname "${BASH_SOURCE[0]}")/activate.sh" "$EXT_FQN"
 fi
