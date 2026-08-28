@@ -28,6 +28,7 @@ RELOAD_WINDOWS=0
 for ARG in "$@"; do
     case "$ARG" in
         --reload-windows) RELOAD_WINDOWS=1 ;;
+        -*) echo "Unknown flag: $ARG" >&2; echo "Usage: $0 <publisher.name> [--reload-windows]" >&2; exit 1 ;;
         *) EXT_FQN="$ARG" ;;
     esac
 done
