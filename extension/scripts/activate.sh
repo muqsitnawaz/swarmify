@@ -2,7 +2,7 @@
 #
 # Activate a freshly-installed extension in already-running editors, then prove it.
 #
-#   activate.sh <publisher.name>
+#   activate.sh <publisher.name> [--reload-windows]
 #
 # Installing writes the new version to disk, but a running editor loaded its
 # extension host once at window-open and keeps the OLD code until the window
@@ -11,18 +11,28 @@
 #   1. for each running target editor (code, codium, cursor), finds when the
 #      new version landed (the installed extension dir's mtime),
 #   2. flags windows whose host activated before that (stale),
-#   3. best-effort reloads the stale ones ("Developer: Reload Window" via
-#      System Events — needs Accessibility permission for the terminal),
+#   3. reports the stale ones; with --reload-windows, also best-effort reloads
+#      them ("Developer: Reload Window" via System Events — needs Accessibility
+#      permission for the terminal),
 #   4. re-verifies from exthost.log and reports LIVE vs STALE per window.
 #
+# The reload raises editor windows and synthesizes keystrokes into whatever the
+# operator is doing, so it never runs by default — only with --reload-windows.
 # Reload is best-effort; the on-disk-mtime vs activation-time comparison is the
 # source of truth. A failed reload is reported, never silently assumed.
 
 set -uo pipefail
 
-EXT_FQN="${1:-}"
+EXT_FQN=""
+RELOAD_WINDOWS=0
+for ARG in "$@"; do
+    case "$ARG" in
+        --reload-windows) RELOAD_WINDOWS=1 ;;
+        *) EXT_FQN="$ARG" ;;
+    esac
+done
 if [ -z "$EXT_FQN" ]; then
-    echo "Usage: $0 <publisher.name>" >&2
+    echo "Usage: $0 <publisher.name> [--reload-windows]" >&2
     exit 1
 fi
 
@@ -128,6 +138,8 @@ for CLI in code codium cursor; do
 
     if [ "$(stale_count "$LOGDIR" "$INSTALL_EP")" -eq 0 ]; then
         echo "  $CLI: already live (all windows activated after install)."
+    elif [ "$RELOAD_WINDOWS" -eq 0 ]; then
+        echo "  $CLI: stale window(s) — re-run with --reload-windows to auto-reload, or reload manually (Cmd+Shift+P -> Developer: Reload Window)"
     else
         echo "  $CLI: stale window(s) -> reloading"
         if reload_editor_windows "$APP" "$PROC"; then
