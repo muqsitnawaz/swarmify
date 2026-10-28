@@ -1041,7 +1041,7 @@ export async function fetchTasks(limit?: number, filterCwd?: string): Promise<Ta
 
 // Rush Cloud runs from Prix API
 const RUSH_USER_YAML = path.join(os.homedir(), '.rush', 'user.yaml');
-const PRIX_API_URL = 'https://api.prix.dev';
+const PRIX_API_URL = 'https://api.phoenix.so';
 
 // Bound the cloud-runs HTTP call: the floor poll (10s) and terminal open/close
 // bursts (debounced 500ms) all funnel through fetchTasks -> fetchCloudRuns. A
