@@ -12,7 +12,7 @@ import { promises as fsp } from 'fs'
 const TEAMS_DIR = path.join(os.homedir(), '.agents', 'teams', 'agents')
 const SWARM_DIR = path.join(os.homedir(), '.agents', 'swarm', 'agents')
 const RUSH_USER_YAML = path.join(os.homedir(), '.rush', 'user.yaml')
-const PRIX_API_URL = 'https://api.prix.dev'
+const PRIX_API_URL = 'https://api.phoenix.so'
 
 interface AgentMetaLike {
   agent_id?: string
