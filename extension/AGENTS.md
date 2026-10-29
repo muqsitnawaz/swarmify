@@ -69,6 +69,17 @@ bash scripts/install.sh <version>   # Package .vsix and install to Cursor + Code
 | Cloud dispatch resolver (label parsing, repo/owner) | `ui/settings/components/mission-control/dispatch.ts` + `src/vscode/settings.vscode.ts` (`case 'dispatchTask'`) |
 | Foreman voice orb (OpenAI Realtime, mic + speaker pipeline) | `src/vscode/foreman.audio.ts` (audio I/O via ffmpeg/ffplay, mic-gated during TTS to prevent echo loop), `src/vscode/foreman.vscode.ts` (session + tools), `ui/settings/components/foreman/ForemanOrb.tsx` (UI) |
 
+## Related Documentation
+
+Design docs live in `docs/` (numbered, read in order for context):
+
+| Doc | Covers |
+|---|---|
+| `docs/01-foreman-orb.md` | Foreman voice orb (OpenAI Realtime mic/speaker pipeline). |
+| `docs/02-floor-event-stream.md` | Factory Floor unified time-ordered session event stream (design). |
+| `docs/03-floor-session-summary.md` | Factory Floor per-session summary (Phase 0 plan). |
+| `docs/04-distributed-monitor.md` | Cross-window monitor: leader election (`src/monitor/`), NDJSON broadcast pub/sub, centralized detectors run only on the leader. |
+
 ## Keybindings
 
 The canonical list is `package.json` → `contributes.keybindings`. Read it there; don't let this doc drift.
